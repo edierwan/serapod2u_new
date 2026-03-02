@@ -303,13 +303,22 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
     // ── Redirect old accounting URLs to Finance module ────────────
     if (view === 'accounting' || view === 'settings-accounting') {
+      setCurrentView(view)
       router.push('/finance')
       return
     }
 
     // ── Redirect Customer & Growth breadcrumb to its landing page ──
     if (view === 'customer-growth') {
+      setCurrentView(view)
       router.push('/customer-growth')
+      return
+    }
+
+    // ── Redirect Supply Chain to its landing page ──
+    if (view === 'supply-chain') {
+      setCurrentView(view)
+      router.push('/supply-chain')
       return
     }
 

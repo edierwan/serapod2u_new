@@ -716,18 +716,11 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                         if (item.submenu) {
                           setExpandedMenu(isMenuOpen ? null : item.id)
                         } else {
-                          const modulePath = resolveModulePath(item.id)
-                          if (modulePath) {
-                            // Always update view state first so the component re-renders
-                            // even if the URL hasn't changed (e.g. navigating back to
-                            // Supply Chain after visiting My Profile on the same page).
-                            onViewChange(item.id)
-                            router.push(modulePath)
-                            setIsMobileMenuOpen(false)
-                          } else {
-                            onViewChange(item.id)
-                            setIsMobileMenuOpen(false) // Close mobile menu on navigation
-                          }
+                          // onViewChange (handleViewChange) handles both
+                          // setCurrentView and router.push for module-level
+                          // pages, so we don't need a separate router.push here.
+                          onViewChange(item.id)
+                          setIsMobileMenuOpen(false)
                         }
                       }}
                     />

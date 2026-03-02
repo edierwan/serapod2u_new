@@ -6,11 +6,19 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye, Trash2 } from 'lucide-react'
+import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye, Trash2, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import UserDialogNew from '@/components/users/UserDialogNew'
+import type { User, Role, Organization } from '@/types/user'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,6 +91,19 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
     total_cost: 0
   })
   const [loading, setLoading] = useState(true)
+
+  // Unique consumers dialog (Issue 3)
+  const [showUniqueConsumers, setShowUniqueConsumers] = useState(false)
+  const [uniqueConsumersList, setUniqueConsumersList] = useState<any[]>([])
+  const [loadingUniqueConsumers, setLoadingUniqueConsumers] = useState(false)
+
+  // Consumer detail dialog (Issue 4)
+  const [selectedConsumerUser, setSelectedConsumerUser] = useState<User | null>(null)
+  const [consumerDialogOpen, setConsumerDialogOpen] = useState(false)
+  const [consumerRoles, setConsumerRoles] = useState<Role[]>([])
+  const [consumerOrgs, setConsumerOrgs] = useState<Organization[]>([])
+  const [loadingConsumerDetail, setLoadingConsumerDetail] = useState(false)
+
   const { toast } = useToast()
   const supabase = createClient()
 
@@ -177,7 +198,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             points_amount,
             scanned_at,
             organizations ( org_name, org_type_code ),
-            users!consumer_qr_scans_consumer_id_fkey ( full_name, phone, email, organization_id, organizations!fk_users_organization ( org_type_code ) )
+            users!consumer_qr_scans_consumer_id_fkey ( id, full_name, phone, email, organization_id, shop_name, organizations!fk_users_organization ( org_type_code ) )
           )
         `, { count: 'exact' })
         .eq('company_id', userProfile.organizations.id)
@@ -244,8 +265,6 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           ? `${lastScan.location_lat.toFixed(4)}, ${lastScan.location_lng.toFixed(4)}`
           : null
 
-        const shopName = lastScan?.organizations?.org_name || (lastScan?.shop_id ? 'Shop ID: ' + lastScan.shop_id.substring(0, 8) : '-')
-
         // Points logic: try qr_codes first, then scan record
         let points = 0
         if (qr.is_points_collected) {
@@ -299,6 +318,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         const isIndependentUser = scanUser?.organizations?.org_type_code === 'INDEP';
         const independentUserName = isIndependentUser ? scanUser?.full_name : null;
 
+        // Shop name: prefer scan org name; for independent users fall back to their shop_name field
+        const shopName = lastScan?.organizations?.org_name
+          || (isIndependentUser && scanUser?.shop_name ? scanUser.shop_name : null)
+          || (lastScan?.shop_id ? 'Shop ID: ' + lastScan.shop_id.substring(0, 8) : '-')
+
         // Order document numbers
         const orderDocNo = qr.orders?.display_doc_no || qr.orders?.order_no || 'N/A';
         const legacyOrderNo = qr.orders?.display_doc_no ? qr.orders?.order_no : null;
@@ -308,6 +332,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           consumer_name: consumerName,
           consumer_phone: qr.consumer_phone,
           consumer_email: qr.consumer_email,
+          consumer_user_id: scanUser?.id || null,
           activated_at: qr.redeemed_at || qr.updated_at,
           points_awarded: points,
           lucky_draw_entered: qr.is_lucky_draw_entered,
@@ -407,15 +432,26 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       // Total scans (activations)
       const { count: totalScans } = await getBaseQuery()
 
-      // Unique consumers
+      // Unique consumers – only count those who actually activated (same filter as total scans)
       let uniqueQuery = supabase
         .from('qr_codes')
         .select('consumer_phone')
         .eq('company_id', userProfile.organizations.id)
+        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
         .not('consumer_phone', 'is', null)
 
       if (selectedOrderId && selectedOrderId !== 'all') {
         uniqueQuery = uniqueQuery.eq('order_id', selectedOrderId)
+      }
+
+      if (selectedActivityType && selectedActivityType !== 'all') {
+        if (selectedActivityType === 'lucky_draw') {
+          uniqueQuery = uniqueQuery.eq('is_lucky_draw_entered', true)
+        } else if (selectedActivityType === 'points') {
+          uniqueQuery = uniqueQuery.eq('is_points_collected', true)
+        } else if (selectedActivityType === 'gift') {
+          uniqueQuery = uniqueQuery.eq('is_redeemed', true)
+        }
       }
 
       const { data: uniqueConsumers } = await uniqueQuery
@@ -475,6 +511,116 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
       })
     } catch (error: any) {
       console.error('Error loading stats:', error)
+    }
+  }
+
+  // ── Issue 3: load unique consumers list ──────────────────────────
+  const loadUniqueConsumersList = async () => {
+    setLoadingUniqueConsumers(true)
+    try {
+      let query = supabase
+        .from('qr_codes')
+        .select('consumer_phone, consumer_name, consumer_email, updated_at')
+        .eq('company_id', userProfile.organizations.id)
+        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+        .not('consumer_phone', 'is', null)
+        .order('updated_at', { ascending: false })
+        .limit(50000)
+
+      if (selectedOrderId && selectedOrderId !== 'all') {
+        query = query.eq('order_id', selectedOrderId)
+      }
+      if (selectedActivityType && selectedActivityType !== 'all') {
+        if (selectedActivityType === 'lucky_draw') query = query.eq('is_lucky_draw_entered', true)
+        else if (selectedActivityType === 'points') query = query.eq('is_points_collected', true)
+        else if (selectedActivityType === 'gift') query = query.eq('is_redeemed', true)
+      }
+
+      const { data } = await query
+
+      // Group by phone
+      const grouped = new Map<string, { phone: string; name: string; email: string; count: number; lastActive: string }>()
+      data?.forEach((row: any) => {
+        const phone = row.consumer_phone
+        if (!grouped.has(phone)) {
+          grouped.set(phone, {
+            phone,
+            name: row.consumer_name || '',
+            email: row.consumer_email || '',
+            count: 1,
+            lastActive: row.updated_at
+          })
+        } else {
+          const entry = grouped.get(phone)!
+          entry.count += 1
+          if (!entry.name && row.consumer_name) entry.name = row.consumer_name
+          if (!entry.email && row.consumer_email) entry.email = row.consumer_email
+          if (row.updated_at > entry.lastActive) entry.lastActive = row.updated_at
+        }
+      })
+
+      // Also try to enrich with user names from the users table
+      const phones = Array.from(grouped.keys())
+      if (phones.length > 0 && phones.length <= 1000) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('phone, full_name, email, shop_name')
+          .in('phone', phones)
+        users?.forEach((u: any) => {
+          const entry = grouped.get(u.phone)
+          if (entry) {
+            if (!entry.name && u.full_name) entry.name = u.full_name
+            if (!entry.email && u.email) entry.email = u.email
+          }
+        })
+      }
+
+      setUniqueConsumersList(Array.from(grouped.values()).sort((a, b) => b.count - a.count))
+      setShowUniqueConsumers(true)
+    } catch (error: any) {
+      console.error('Error loading unique consumers:', error)
+      toast({ title: 'Error', description: 'Failed to load unique consumers list', variant: 'destructive' })
+    } finally {
+      setLoadingUniqueConsumers(false)
+    }
+  }
+
+  // ── Issue 4: open consumer detail dialog ─────────────────────────
+  const openConsumerDetail = async (consumerUserId: string | null, consumerPhone: string | null) => {
+    if (!consumerUserId && !consumerPhone) return
+    setLoadingConsumerDetail(true)
+    try {
+      // Fetch the user record
+      let userQuery = supabase
+        .from('users')
+        .select('*')
+      if (consumerUserId) {
+        userQuery = userQuery.eq('id', consumerUserId)
+      } else {
+        userQuery = userQuery.eq('phone', consumerPhone!)
+      }
+      const { data: userData } = await userQuery.maybeSingle()
+
+      if (!userData) {
+        toast({ title: 'User not found', description: 'No registered user found for this consumer.', variant: 'destructive' })
+        return
+      }
+
+      // Fetch roles and organizations for the dialog
+      const [rolesRes, orgsRes] = await Promise.all([
+        supabase.from('roles').select('*').order('role_level'),
+        supabase.from('organizations').select('*').eq('id', userProfile.organizations.id)
+      ])
+
+      setConsumerRoles(rolesRes.data || [])
+      setConsumerOrgs(orgsRes.data || [])
+      setSelectedConsumerUser(userData as User)
+      setConsumerDialogOpen(true)
+    } catch (error: any) {
+      console.error('Error loading consumer detail:', error)
+      toast({ title: 'Error', description: 'Failed to load consumer details', variant: 'destructive' })
+    } finally {
+      setLoadingConsumerDetail(false)
     }
   }
 
@@ -612,7 +758,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div className="mb-2 sm:mb-0">
                 <p className="text-xs sm:text-sm text-gray-600">Unique Consumers</p>
-                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.unique_consumers.toLocaleString()}</p>
+                <button
+                  onClick={loadUniqueConsumersList}
+                  disabled={loadingUniqueConsumers}
+                  className="text-xl sm:text-2xl font-bold text-green-600 hover:text-green-800 underline decoration-dotted underline-offset-4 cursor-pointer transition-colors disabled:opacity-50"
+                  title="Click to view unique consumers list"
+                >
+                  {loadingUniqueConsumers ? '...' : stats.unique_consumers.toLocaleString()}
+                </button>
               </div>
               <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
             </div>
@@ -828,9 +981,20 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                             </td>
                             <td className="px-4 py-3">
                               <div>
-                                <p className="text-xs font-medium text-gray-900">
-                                  {activation.consumer_name || 'Anonymous'}
-                                </p>
+                                {(activation.consumer_user_id || activation.consumer_phone) ? (
+                                  <button
+                                    onClick={() => openConsumerDetail(activation.consumer_user_id, activation.consumer_phone)}
+                                    disabled={loadingConsumerDetail}
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left disabled:opacity-50"
+                                    title="Click to view consumer details"
+                                  >
+                                    {activation.consumer_name || 'Anonymous'}
+                                  </button>
+                                ) : (
+                                  <p className="text-xs font-medium text-gray-900">
+                                    {activation.consumer_name || 'Anonymous'}
+                                  </p>
+                                )}
                                 <p className="text-[10px] text-gray-500">{activation.consumer_phone}</p>
                               </div>
                             </td>
@@ -1011,6 +1175,90 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Unique Consumers Dialog (Issue 3) */}
+      <Dialog open={showUniqueConsumers} onOpenChange={setShowUniqueConsumers}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-green-600" />
+              Unique Consumers ({uniqueConsumersList.length})
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 -mx-6 px-6">
+            {loadingUniqueConsumers ? (
+              <div className="text-center py-8 text-gray-500">Loading...</div>
+            ) : uniqueConsumersList.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No consumers found</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white border-b">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">#</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Consumer</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Phone</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Scans</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Last Active</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {uniqueConsumersList.map((consumer, idx) => (
+                    <tr key={consumer.phone} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-xs text-gray-500">{idx + 1}</td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => {
+                            setShowUniqueConsumers(false)
+                            openConsumerDetail(null, consumer.phone)
+                          }}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left"
+                        >
+                          {consumer.name || 'Anonymous'}
+                        </button>
+                        {consumer.email && (
+                          <p className="text-[10px] text-gray-400">{consumer.email}</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-600">{consumer.phone}</td>
+                      <td className="px-3 py-2 text-xs text-right font-medium text-gray-900">{consumer.count}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{new Date(consumer.lastActive).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Consumer Detail Dialog (Issue 4) */}
+      <UserDialogNew
+        user={selectedConsumerUser}
+        roles={consumerRoles}
+        organizations={consumerOrgs}
+        open={consumerDialogOpen}
+        currentUserRoleLevel={userProfile.roles?.role_level ?? 100}
+        onOpenChange={(open) => {
+          setConsumerDialogOpen(open)
+          if (!open) setSelectedConsumerUser(null)
+        }}
+        onSave={async (userData) => {
+          try {
+            if (!selectedConsumerUser?.id) return
+            const { error } = await supabase
+              .from('users')
+              .update(userData)
+              .eq('id', selectedConsumerUser.id)
+            if (error) throw error
+            toast({ title: 'Success', description: 'Consumer details updated.' })
+            setConsumerDialogOpen(false)
+            setSelectedConsumerUser(null)
+            loadActivations()
+          } catch (err: any) {
+            toast({ title: 'Error', description: err.message || 'Failed to update consumer.', variant: 'destructive' })
+          }
+        }}
+      />
     </div>
   )
 }
