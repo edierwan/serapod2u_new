@@ -58,6 +58,7 @@ import {
     Zap
 } from 'lucide-react'
 import { format, subDays, startOfMonth, endOfMonth, differenceInDays } from 'date-fns'
+import ConsumerAnalyticsTab from './ConsumerAnalyticsTab'
 
 interface ReportingViewProps {
     userProfile: any
@@ -502,6 +503,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         <TabsTrigger value="products" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
                             <Package className="w-4 h-4 mr-2" />
                             Products
+                        </TabsTrigger>
+                        <TabsTrigger value="consumer-analytics" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                            <Users className="w-4 h-4 mr-2" />
+                            Consumer Analytics
                         </TabsTrigger>
                     </TabsList>
 
@@ -1025,6 +1030,16 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 </div>
                             </CardContent>
                         </Card>
+                    </TabsContent>
+
+                    {/* Consumer Analytics Tab */}
+                    <TabsContent value="consumer-analytics" className="space-y-6 animate-in fade-in-50 duration-500">
+                        <ConsumerAnalyticsTab
+                            userProfile={userProfile}
+                            chartGridColor={chartGridColor}
+                            chartTickColor={chartTickColor}
+                            isDark={isDark}
+                        />
                     </TabsContent>
                 </Tabs>
 
