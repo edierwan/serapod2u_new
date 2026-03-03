@@ -227,10 +227,17 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         query = query.ilike('consumer_name', `%${filterConsumer}%`)
       }
 
-      // Note: Filtering by Shop Name or MMYY on related tables or derived fields is complex in Supabase/PostgREST directly.
-      // For MMYY, we can filter on updated_at range if needed, or do client side filtering if dataset is small.
-      // For Shop Name (in consumer_qr_scans), we can't easily filter the parent query based on child relation in standard PostgREST without embedding resource filtering which has limitations.
-      // We will handle Shop Name and MMYY filtering client-side for now or use specific date range query for MMYY.
+      // Server-side MMYY filter: convert "MMYY" (e.g. "0226" → Feb 2026) into a date-range
+      if (filterMMYY && filterMMYY.length === 4) {
+        const mm = parseInt(filterMMYY.substring(0, 2), 10)
+        const yy = parseInt(filterMMYY.substring(2, 4), 10)
+        if (mm >= 1 && mm <= 12 && !isNaN(yy)) {
+          const year = 2000 + yy
+          const startOfMonth = new Date(year, mm - 1, 1).toISOString()
+          const startOfNextMonth = new Date(year, mm, 1).toISOString()
+          query = query.gte('updated_at', startOfMonth).lt('updated_at', startOfNextMonth)
+        }
+      }
 
       // Sorting
       // Note: Sorting by related fields (product name, shop name) is also tricky. 
@@ -354,22 +361,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         }
       }) || []
 
-      // Client-side filtering for complex fields (Shop Name, MMYY)
+      // Client-side filtering for Shop Name (related tables can't be filtered server-side easily)
       if (filterShop) {
         transformedData = transformedData.filter(item =>
           item.shop_name.toLowerCase().includes(filterShop.toLowerCase())
         )
       }
 
-      if (filterMMYY) {
-        // Format: MMYY e.g. 1125 for Nov 2025
-        transformedData = transformedData.filter(item => {
-          const date = new Date(item.activated_at)
-          const month = (date.getMonth() + 1).toString().padStart(2, '0')
-          const year = date.getFullYear().toString().slice(-2)
-          return `${month}${year}` === filterMMYY
-        })
-      }
+      // MMYY is now filtered server-side above — no client filter needed
 
       setActivations(transformedData)
     } catch (error: any) {
@@ -415,49 +414,18 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
   const loadStats = async () => {
     try {
-      // Base query builder
-      const getBaseQuery = () => {
-        let q = supabase
-          .from('qr_codes')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', userProfile.organizations.id)
-          .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
+      // Use server-side RPC to get all stats in a single query (no 1000-row cap)
+      const { data: statsData, error: statsError } = await supabase.rpc('fn_consumer_activity_stats', {
+        p_company_id: userProfile.organizations.id,
+        p_order_id: (selectedOrderId && selectedOrderId !== 'all') ? selectedOrderId : null,
+        p_activity_type: (selectedActivityType && selectedActivityType !== 'all') ? selectedActivityType : null,
+      })
 
-        if (selectedOrderId && selectedOrderId !== 'all') {
-          q = q.eq('order_id', selectedOrderId)
-        }
-        return q
-      }
+      if (statsError) throw statsError
 
-      // Total scans (activations)
-      const { count: totalScans } = await getBaseQuery()
+      const row = Array.isArray(statsData) ? statsData[0] : statsData
 
-      // Unique consumers – only count those who actually activated (same filter as total scans)
-      let uniqueQuery = supabase
-        .from('qr_codes')
-        .select('consumer_phone')
-        .eq('company_id', userProfile.organizations.id)
-        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-        .not('consumer_phone', 'is', null)
-
-      if (selectedOrderId && selectedOrderId !== 'all') {
-        uniqueQuery = uniqueQuery.eq('order_id', selectedOrderId)
-      }
-
-      if (selectedActivityType && selectedActivityType !== 'all') {
-        if (selectedActivityType === 'lucky_draw') {
-          uniqueQuery = uniqueQuery.eq('is_lucky_draw_entered', true)
-        } else if (selectedActivityType === 'points') {
-          uniqueQuery = uniqueQuery.eq('is_points_collected', true)
-        } else if (selectedActivityType === 'gift') {
-          uniqueQuery = uniqueQuery.eq('is_redeemed', true)
-        }
-      }
-
-      const { data: uniqueConsumers } = await uniqueQuery
-      const uniqueCount = new Set(uniqueConsumers?.map((c: any) => c.consumer_phone)).size
-
-      // Fetch point value from organization settings
+      // Fetch point value from organization settings for cost calculation
       let pointValueRM = 0
       const { data: orgData } = await supabase
         .from('organizations')
@@ -472,42 +440,15 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         }
       }
 
-      // Total points
-      // Fetch ALL matching qr_codes (Supabase defaults to 1000 rows – override with a high limit)
-      let pointsQuery = supabase
-        .from('qr_codes')
-        .select('points_value, consumer_qr_scans(points_amount)')
-        .eq('company_id', userProfile.organizations.id)
-        .eq('is_points_collected', true)
-        .limit(50000)
-
-      if (selectedOrderId && selectedOrderId !== 'all') {
-        pointsQuery = pointsQuery.eq('order_id', selectedOrderId)
-      }
-
-      const { data: pointsData } = await pointsQuery
-      const totalPoints = pointsData?.reduce((sum: number, qr: any) => {
-        let points = qr.points_value || 0
-        // Fallback to scans if points_value is 0/null
-        if (!points && qr.consumer_qr_scans && qr.consumer_qr_scans.length > 0) {
-          points = qr.consumer_qr_scans.reduce((s: number, scan: any) => s + (scan.points_amount || 0), 0)
-        }
-        return sum + points
-      }, 0) || 0
-
+      const totalPoints = Number(row?.total_points) || 0
       const totalCost = totalPoints * pointValueRM
 
-      // Today's scans
-      const today = new Date().toISOString().split('T')[0]
-      let todayQuery = getBaseQuery().gte('updated_at', `${today}T00:00:00`)
-      const { count: todayScans } = await todayQuery
-
       setStats({
-        total_scans: totalScans || 0,
-        unique_consumers: uniqueCount,
+        total_scans: Number(row?.total_scans) || 0,
+        unique_consumers: Number(row?.unique_consumers) || 0,
         total_points: totalPoints,
-        today_scans: todayScans || 0,
-        total_cost: totalCost
+        today_scans: Number(row?.today_scans) || 0,
+        total_cost: totalCost,
       })
     } catch (error: any) {
       console.error('Error loading stats:', error)
@@ -518,64 +459,24 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const loadUniqueConsumersList = async () => {
     setLoadingUniqueConsumers(true)
     try {
-      let query = supabase
-        .from('qr_codes')
-        .select('consumer_phone, consumer_name, consumer_email, updated_at')
-        .eq('company_id', userProfile.organizations.id)
-        .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-        .not('consumer_phone', 'is', null)
-        .order('updated_at', { ascending: false })
-        .limit(50000)
-
-      if (selectedOrderId && selectedOrderId !== 'all') {
-        query = query.eq('order_id', selectedOrderId)
-      }
-      if (selectedActivityType && selectedActivityType !== 'all') {
-        if (selectedActivityType === 'lucky_draw') query = query.eq('is_lucky_draw_entered', true)
-        else if (selectedActivityType === 'points') query = query.eq('is_points_collected', true)
-        else if (selectedActivityType === 'gift') query = query.eq('is_redeemed', true)
-      }
-
-      const { data } = await query
-
-      // Group by phone
-      const grouped = new Map<string, { phone: string; name: string; email: string; count: number; lastActive: string }>()
-      data?.forEach((row: any) => {
-        const phone = row.consumer_phone
-        if (!grouped.has(phone)) {
-          grouped.set(phone, {
-            phone,
-            name: row.consumer_name || '',
-            email: row.consumer_email || '',
-            count: 1,
-            lastActive: row.updated_at
-          })
-        } else {
-          const entry = grouped.get(phone)!
-          entry.count += 1
-          if (!entry.name && row.consumer_name) entry.name = row.consumer_name
-          if (!entry.email && row.consumer_email) entry.email = row.consumer_email
-          if (row.updated_at > entry.lastActive) entry.lastActive = row.updated_at
-        }
+      // Use server-side RPC to aggregate and enrich (no 1000-row cap)
+      const { data, error } = await supabase.rpc('fn_consumer_unique_list', {
+        p_company_id: userProfile.organizations.id,
+        p_order_id: (selectedOrderId && selectedOrderId !== 'all') ? selectedOrderId : null,
+        p_activity_type: (selectedActivityType && selectedActivityType !== 'all') ? selectedActivityType : null,
       })
 
-      // Also try to enrich with user names from the users table
-      const phones = Array.from(grouped.keys())
-      if (phones.length > 0 && phones.length <= 1000) {
-        const { data: users } = await supabase
-          .from('users')
-          .select('phone, full_name, email, shop_name')
-          .in('phone', phones)
-        users?.forEach((u: any) => {
-          const entry = grouped.get(u.phone)
-          if (entry) {
-            if (!entry.name && u.full_name) entry.name = u.full_name
-            if (!entry.email && u.email) entry.email = u.email
-          }
-        })
-      }
+      if (error) throw error
 
-      setUniqueConsumersList(Array.from(grouped.values()).sort((a, b) => b.count - a.count))
+      const list = (data || []).map((row: any) => ({
+        phone: row.phone,
+        name: row.name || '',
+        email: row.email || '',
+        count: Number(row.scan_count),
+        lastActive: row.last_active,
+      }))
+
+      setUniqueConsumersList(list)
       setShowUniqueConsumers(true)
     } catch (error: any) {
       console.error('Error loading unique consumers:', error)

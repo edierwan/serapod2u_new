@@ -101,7 +101,7 @@ const AnimatedCounter = ({ value, duration = 1000, prefix = '', suffix = '', dec
         const animate = (currentTime: number) => {
             if (!startTime) startTime = currentTime
             const progress = Math.min((currentTime - startTime) / duration, 1)
-            
+
             // Easing function for smooth animation
             const easeOutQuart = 1 - Math.pow(1 - progress, 4)
             setDisplayValue(easeOutQuart * value)
@@ -148,9 +148,9 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                         ) : (
                             <div className="text-3xl font-bold text-foreground tracking-tight">
                                 {typeof value === 'number' ? (
-                                    <AnimatedCounter 
-                                        value={value} 
-                                        prefix={title.includes('Revenue') ? 'RM ' : ''} 
+                                    <AnimatedCounter
+                                        value={value}
+                                        prefix={title.includes('Revenue') ? 'RM ' : ''}
                                         decimals={title.includes('Revenue') ? 2 : 0}
                                     />
                                 ) : value}
@@ -158,13 +158,12 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                         )}
                         <div className="flex items-center gap-2">
                             {change !== undefined && (
-                                <Badge 
-                                    variant="secondary" 
-                                    className={`text-xs font-medium ${
-                                        isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
-                                        isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 
-                                        'bg-muted text-muted-foreground'
-                                    }`}
+                                <Badge
+                                    variant="secondary"
+                                    className={`text-xs font-medium ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                            isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                                'bg-muted text-muted-foreground'
+                                        }`}
                                 >
                                     {isPositive && <ArrowUpRight className="w-3 h-3 mr-0.5" />}
                                     {isNegative && <ArrowDownRight className="w-3 h-3 mr-0.5" />}
@@ -263,10 +262,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 params.append('distributorId', selectedDistributor)
             }
 
-            console.log('[ReportingView] Fetching stats with params:', { 
-                startDate: dateParams.startDate, 
+            console.log('[ReportingView] Fetching stats with params:', {
+                startDate: dateParams.startDate,
                 endDate: dateParams.endDate,
-                distributor: selectedDistributor 
+                distributor: selectedDistributor
             })
 
             const res = await fetch(`/api/reporting/stats?${params}`, {
@@ -277,8 +276,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
             })
             const json = await res.json()
 
-            console.log('[ReportingView] API response:', { 
-                status: res.status, 
+            console.log('[ReportingView] API response:', {
+                status: res.status,
                 ok: res.ok,
                 hasData: !!json,
                 summary: json?.summary,
@@ -365,13 +364,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
             return sum + orderTotal
         }, 0) || 0
 
-        const pendingPayments = financialData.documents?.filter((d: any) =>  
+        const pendingPayments = financialData.documents?.filter((d: any) =>
             d.doc_type === 'PAYMENT_REQUEST' && d.status === 'pending'
         ).length || 0
-        const completedPayments = financialData.documents?.filter((d: any) => 
+        const completedPayments = financialData.documents?.filter((d: any) =>
             d.doc_type === 'PAYMENT' && d.status === 'acknowledged'
         ).length || 0
-        const invoiceCount = financialData.documents?.filter((d: any) => 
+        const invoiceCount = financialData.documents?.filter((d: any) =>
             d.doc_type === 'INVOICE'
         ).length || 0
 
@@ -578,13 +577,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                             <AreaChart data={trendData}>
                                                 <defs>
                                                     <linearGradient id="colorUnits" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
-                                                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
+                                                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
                                                     </linearGradient>
                                                 </defs>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
-                                                <XAxis 
-                                                    dataKey="date" 
+                                                <XAxis
+                                                    dataKey="date"
                                                     tickFormatter={(value: string) => {
                                                         const [year, month] = value.split('-')
                                                         const date = new Date(parseInt(year), parseInt(month) - 1)
@@ -594,16 +593,16 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     axisLine={false}
                                                     tick={{ fill: chartTickColor, fontSize: 12 }}
                                                 />
-                                                <YAxis 
+                                                <YAxis
                                                     tickLine={false}
                                                     axisLine={false}
                                                     tick={{ fill: chartTickColor, fontSize: 12 }}
                                                     tickFormatter={(value) => value.toLocaleString()}
                                                 />
-                                                <Tooltip 
-                                                    contentStyle={{ 
-                                                        borderRadius: '12px', 
-                                                        border: 'none', 
+                                                <Tooltip
+                                                    contentStyle={{
+                                                        borderRadius: '12px',
+                                                        border: 'none',
                                                         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
                                                         backgroundColor: tooltipBg,
                                                         color: isDark ? '#f3f4f6' : undefined
@@ -615,9 +614,9 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                         return format(date, 'MMMM yyyy')
                                                     }}
                                                 />
-                                                <Area 
-                                                    type="monotone" 
-                                                    dataKey="units" 
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="units"
                                                     stroke={COLORS.primary}
                                                     strokeWidth={3}
                                                     fill="url(#colorUnits)"
@@ -654,7 +653,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                                                     ))}
                                                 </Pie>
-                                                <Tooltip 
+                                                <Tooltip
                                                     contentStyle={tooltipStyle}
                                                     formatter={(value: number) => [value.toLocaleString(), 'Units']}
                                                 />
@@ -698,7 +697,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     tickLine={false}
                                                     axisLine={false}
                                                 />
-                                                <Tooltip 
+                                                <Tooltip
                                                     cursor={{ fill: 'transparent' }}
                                                     contentStyle={tooltipStyle}
                                                     formatter={(value: number) => [value.toLocaleString(), 'Units']}
@@ -800,8 +799,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                     <ResponsiveContainer width="100%" height="100%">
                                         <ComposedChart data={trendData}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
-                                            <XAxis 
-                                                dataKey="date" 
+                                            <XAxis
+                                                dataKey="date"
                                                 tickFormatter={(value: string) => {
                                                     const [year, month] = value.split('-')
                                                     const date = new Date(parseInt(year), parseInt(month) - 1)
@@ -811,7 +810,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                 axisLine={false}
                                             />
                                             <YAxis tickLine={false} axisLine={false} />
-                                            <Tooltip 
+                                            <Tooltip
                                                 contentStyle={tooltipStyle}
                                             />
                                             <Legend />
@@ -873,16 +872,16 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 <CardContent>
                                     <div className="h-[300px] flex items-center justify-center">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <RadialBarChart 
-                                                cx="50%" 
-                                                cy="50%" 
-                                                innerRadius="30%" 
-                                                outerRadius="100%" 
+                                            <RadialBarChart
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius="30%"
+                                                outerRadius="100%"
                                                 data={[
                                                     { name: 'Sales Revenue', value: 85, fill: COLORS.success },
                                                     { name: 'Other Income', value: 15, fill: COLORS.primary },
                                                 ]}
-                                                startAngle={180} 
+                                                startAngle={180}
                                                 endAngle={0}
                                             >
                                                 <RadialBar
@@ -890,9 +889,9 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     dataKey="value"
                                                     cornerRadius={10}
                                                 />
-                                                <Legend 
-                                                    iconType="circle" 
-                                                    layout="horizontal" 
+                                                <Legend
+                                                    iconType="circle"
+                                                    layout="horizontal"
                                                     verticalAlign="bottom"
                                                     wrapperStyle={{ paddingTop: '20px' }}
                                                 />
@@ -922,9 +921,9 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     <span className="font-semibold">{item.value}</span>
                                                 </div>
                                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                                    <div 
+                                                    <div
                                                         className="h-full rounded-full transition-all duration-1000 ease-out"
-                                                        style={{ 
+                                                        style={{
                                                             width: `${Math.min((item.value / Math.max(item.total, 1)) * 100, 100)}%`,
                                                             backgroundColor: item.color
                                                         }}
@@ -942,8 +941,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                             <div>
                                                 <p className="text-sm font-medium text-green-900 dark:text-green-200">Collection Rate</p>
                                                 <p className="text-2xl font-bold text-green-600">
-                                                    {financialMetrics?.invoiceCount 
-                                                        ? Math.round((financialMetrics.completedPayments / financialMetrics.invoiceCount) * 100) 
+                                                    {financialMetrics?.invoiceCount
+                                                        ? Math.round((financialMetrics.completedPayments / financialMetrics.invoiceCount) * 100)
                                                         : 0}%
                                                 </p>
                                             </div>
@@ -1016,9 +1015,9 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                                     </div>
                                                 </div>
                                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                                    <div 
+                                                    <div
                                                         className="h-full rounded-full transition-all duration-1000 ease-out"
-                                                        style={{ 
+                                                        style={{
                                                             width: `${percentage}%`,
                                                             backgroundColor: CHART_COLORS[index % CHART_COLORS.length]
                                                         }}

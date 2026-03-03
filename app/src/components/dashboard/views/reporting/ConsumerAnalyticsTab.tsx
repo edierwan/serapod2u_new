@@ -277,181 +277,95 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
         }
     }, [period])
 
-    // ── Data loading ─────────────────────────────────────────────────────────
+    // ── Data loading (server-side aggregation via RPC) ──────────────────────
     const loadData = useCallback(async () => {
         if (!companyId) return
         setLoading(true)
         try {
             const fromDate = dateRange.from.toISOString()
             const toDate = dateRange.to.toISOString()
+            const rpcParams = { p_company_id: companyId, p_from: fromDate, p_to: toDate }
 
-            // 1) Daily aggregation
-            const { data: rawDaily } = await supabase
-                .from('qr_codes')
-                .select('updated_at, consumer_phone, points_value, is_redeemed, is_lucky_draw_entered, is_points_collected')
-                .eq('company_id', companyId)
-                .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-                .gte('updated_at', fromDate)
-                .lte('updated_at', toDate)
-                .order('updated_at', { ascending: true })
-                .limit(50000)
+            // Fire all 5 RPC calls in parallel for speed
+            const [summaryRes, dailyRes, topRes, productRes, hourlyRes] = await Promise.all([
+                supabase.rpc('fn_consumer_analytics_summary', rpcParams),
+                supabase.rpc('fn_consumer_analytics_daily', rpcParams),
+                supabase.rpc('fn_consumer_analytics_top_consumers', { ...rpcParams, p_limit: 50 }),
+                supabase.rpc('fn_consumer_analytics_products', rpcParams),
+                supabase.rpc('fn_consumer_analytics_hourly', rpcParams),
+            ])
 
-            // Group by date
-            const byDay = new Map<string, { scans: number; consumers: Set<string>; points: number; gifts: number; luckyDraws: number }>()
-            const allConsumers = new Set<string>()
-            let totalPoints = 0
-
-            rawDaily?.forEach((row: any) => {
-                const d = row.updated_at?.substring(0, 10)
-                if (!d) return
-                if (!byDay.has(d)) byDay.set(d, { scans: 0, consumers: new Set(), points: 0, gifts: 0, luckyDraws: 0 })
-                const entry = byDay.get(d)!
-                entry.scans++
-                if (row.consumer_phone) { entry.consumers.add(row.consumer_phone); allConsumers.add(row.consumer_phone) }
-                if (row.is_points_collected) { entry.points += row.points_value || 0; totalPoints += row.points_value || 0 }
-                if (row.is_redeemed) entry.gifts++
-                if (row.is_lucky_draw_entered) entry.luckyDraws++
-            })
-
-            const dailyArr: DailyScan[] = Array.from(byDay.entries())
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([date, v]) => ({
-                    date: format(parseISO(date), period === '90d' || period === 'quarter' || period === 'all' ? 'dd MMM' : 'dd MMM'),
-                    scans: v.scans,
-                    uniqueConsumers: v.consumers.size,
-                    points: v.points,
-                    gifts: v.gifts,
-                    luckyDraws: v.luckyDraws,
-                }))
-
+            // 1) Daily data
+            const dailyArr: DailyScan[] = (dailyRes.data || []).map((row: any) => ({
+                date: format(parseISO(row.scan_date), 'dd MMM'),
+                scans: Number(row.scans),
+                uniqueConsumers: Number(row.unique_consumers),
+                points: Number(row.points),
+                gifts: Number(row.gifts),
+                luckyDraws: Number(row.lucky_draws),
+            }))
             setDailyData(dailyArr)
 
-            // Summary stats
-            const totalScans = rawDaily?.length || 0
+            // 2) Summary stats
+            const s = summaryRes.data?.[0] || summaryRes.data || { total_scans: 0, unique_consumers: 0, total_points: 0 }
+            const totalScans = Number(s.total_scans) || 0
+            const uniqueConsumers = Number(s.unique_consumers) || 0
+            const totalPoints = Number(s.total_points) || 0
             const days = Math.max(differenceInDays(dateRange.to, dateRange.from), 1)
             const peakEntry = dailyArr.reduce((best, d) => d.scans > (best?.scans || 0) ? d : best, dailyArr[0])
 
-            // Growth rate: compare first half vs second half
+            // Growth rate: compare first half vs second half of daily data
             const half = Math.floor(dailyArr.length / 2)
-            const firstHalfScans = dailyArr.slice(0, half).reduce((s, d) => s + d.scans, 0)
-            const secondHalfScans = dailyArr.slice(half).reduce((s, d) => s + d.scans, 0)
+            const firstHalfScans = dailyArr.slice(0, half).reduce((sum, d) => sum + d.scans, 0)
+            const secondHalfScans = dailyArr.slice(half).reduce((sum, d) => sum + d.scans, 0)
             const growthRate = firstHalfScans > 0 ? ((secondHalfScans - firstHalfScans) / firstHalfScans) * 100 : 0
 
-            // Consumer retention: consumers active in both halves
-            const firstHalfConsumers = new Set<string>()
-            const secondHalfConsumers = new Set<string>()
-            const halfIdx = Math.floor((rawDaily?.length || 0) / 2)
-            rawDaily?.forEach((row: any, i: number) => {
-                if (row.consumer_phone) {
-                    if (i < halfIdx) firstHalfConsumers.add(row.consumer_phone)
-                    else secondHalfConsumers.add(row.consumer_phone)
-                }
-            })
-            const returning = [...firstHalfConsumers].filter(c => secondHalfConsumers.has(c)).length
-            const retentionRate = firstHalfConsumers.size > 0 ? (returning / firstHalfConsumers.size) * 100 : 0
+            // Retention: consumers appearing in both halves (from daily unique counts approximation)
+            const firstHalfConsumers = dailyArr.slice(0, half).reduce((sum, d) => sum + d.uniqueConsumers, 0)
+            const secondHalfConsumers = dailyArr.slice(half).reduce((sum, d) => sum + d.uniqueConsumers, 0)
+            const avgHalfConsumers = (firstHalfConsumers + secondHalfConsumers) / 2
+            const retentionRate = uniqueConsumers > 0 && avgHalfConsumers > 0
+                ? Math.min(((uniqueConsumers / avgHalfConsumers) * 100), 100)
+                : 0
 
             setSummary({
                 totalScans,
-                uniqueConsumers: allConsumers.size,
+                uniqueConsumers,
                 totalPoints,
                 avgScansPerDay: Math.round(totalScans / days),
                 peakDay: peakEntry?.date || '-',
                 peakDayScans: peakEntry?.scans || 0,
                 growthRate: parseFloat(growthRate.toFixed(1)),
                 retentionRate: parseFloat(retentionRate.toFixed(1)),
-                avgScansPerConsumer: allConsumers.size > 0 ? parseFloat((totalScans / allConsumers.size).toFixed(1)) : 0,
-                newConsumersThisPeriod: allConsumers.size,
+                avgScansPerConsumer: uniqueConsumers > 0 ? parseFloat((totalScans / uniqueConsumers).toFixed(1)) : 0,
+                newConsumersThisPeriod: uniqueConsumers,
             })
 
-            // 2) Top consumers
-            const consumerMap = new Map<string, { name: string; count: number; points: number; last: string }>()
-            rawDaily?.forEach((row: any) => {
-                const ph = row.consumer_phone
-                if (!ph) return
-                const existing = consumerMap.get(ph)
-                if (!existing) {
-                    consumerMap.set(ph, { name: '', count: 1, points: row.points_value || 0, last: row.updated_at })
-                } else {
-                    existing.count++
-                    existing.points += row.points_value || 0
-                    if (row.updated_at > existing.last) existing.last = row.updated_at
-                }
-            })
-
-            // Enrich with user names
-            const phones = Array.from(consumerMap.keys())
-            if (phones.length > 0 && phones.length <= 1000) {
-                const { data: users } = await supabase
-                    .from('users')
-                    .select('phone, full_name')
-                    .in('phone', phones)
-                users?.forEach((u: any) => {
-                    const entry = consumerMap.get(u.phone)
-                    if (entry && u.full_name) entry.name = u.full_name
-                })
-            }
-            // Also try to match from qr_codes consumer_name
-            rawDaily?.forEach((row: any) => {
-                if (row.consumer_phone) {
-                    const entry = consumerMap.get(row.consumer_phone)
-                    if (entry && !entry.name) {
-                        // Get name from qr_codes data loaded separately
-                    }
-                }
-            })
-            // Get names from qr_codes directly for those without user records
-            const phonesWithoutName = Array.from(consumerMap.entries()).filter(([_, v]) => !v.name).map(([ph]) => ph)
-            if (phonesWithoutName.length > 0 && phonesWithoutName.length <= 500) {
-                const { data: qrNames } = await supabase
-                    .from('qr_codes')
-                    .select('consumer_phone, consumer_name')
-                    .in('consumer_phone', phonesWithoutName)
-                    .not('consumer_name', 'is', null)
-                    .limit(1000)
-                qrNames?.forEach((q: any) => {
-                    const entry = consumerMap.get(q.consumer_phone)
-                    if (entry && !entry.name && q.consumer_name) entry.name = q.consumer_name
-                })
-            }
-
-            const topArr = Array.from(consumerMap.entries())
-                .map(([phone, v]) => ({ phone, name: v.name || phone, scanCount: v.count, totalPoints: v.points, lastActive: v.last }))
-                .sort((a, b) => b.scanCount - a.scanCount)
-                .slice(0, 50) // Store top 50 for flexible topN selection
-                .map((c, i) => ({ ...c, rank: i + 1 }))
-
+            // 3) Top consumers (already enriched with names by the SQL function)
+            const topArr: TopConsumer[] = (topRes.data || []).map((row: any, i: number) => ({
+                phone: row.phone,
+                name: row.consumer_name || row.phone,
+                scanCount: Number(row.scan_count),
+                totalPoints: Number(row.total_points),
+                lastActive: row.last_active,
+                rank: i + 1,
+            }))
             setTopConsumers(topArr)
 
-            // 3) Product scans
-            const { data: productData } = await supabase
-                .from('qr_codes')
-                .select('product_id, consumer_phone, products ( product_name )')
-                .eq('company_id', companyId)
-                .or('is_redeemed.eq.true,is_lucky_draw_entered.eq.true,is_points_collected.eq.true')
-                .gte('updated_at', fromDate)
-                .lte('updated_at', toDate)
-                .limit(50000)
-
-            const prodMap = new Map<string, { name: string; count: number; consumers: Set<string> }>()
-            productData?.forEach((r: any) => {
-                const name = (r as any).products?.product_name || 'Unknown'
-                if (!prodMap.has(name)) prodMap.set(name, { name, count: 0, consumers: new Set() })
-                const e = prodMap.get(name)!
-                e.count++
-                if (r.consumer_phone) e.consumers.add(r.consumer_phone)
-            })
-            const totalProductScans = Array.from(prodMap.values()).reduce((s, p) => s + p.count, 0) || 1
-            const productArr = Array.from(prodMap.values())
-                .map(p => ({ productName: p.name, scanCount: p.count, uniqueConsumers: p.consumers.size, percentage: parseFloat(((p.count / totalProductScans) * 100).toFixed(1)) }))
-                .sort((a, b) => b.scanCount - a.scanCount)
+            // 4) Product scans
+            const productRows = productRes.data || []
+            const totalProductScans = productRows.reduce((sum: number, r: any) => sum + Number(r.scan_count), 0) || 1
+            const productArr: ProductScan[] = productRows.map((r: any) => ({
+                productName: r.product_name,
+                scanCount: Number(r.scan_count),
+                uniqueConsumers: Number(r.unique_consumers),
+                percentage: parseFloat(((Number(r.scan_count) / totalProductScans) * 100).toFixed(1)),
+            }))
             setProductScans(productArr)
 
-            // 4) Hourly heatmap
+            // 5) Hourly heatmap
             const hourMap = new Map<number, number>()
-            rawDaily?.forEach((row: any) => {
-                const h = new Date(row.updated_at).getHours()
-                hourMap.set(h, (hourMap.get(h) || 0) + 1)
-            })
+            ;(hourlyRes.data || []).forEach((row: any) => hourMap.set(Number(row.hour), Number(row.scans)))
             const hourlyArr: HourlyData[] = Array.from({ length: 24 }, (_, i) => ({
                 hour: i,
                 label: `${i.toString().padStart(2, '0')}:00`,
