@@ -84,9 +84,225 @@ const STATUS_STYLES: Record<string, string> = {
   'ended': 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 }
 
-// ── Mock Data Generator ─────────────────────────────────────────
-// TODO: Replace with real Supabase queries when incentive_campaigns table is created
-function generateMockCampaigns(): Campaign[] {
+// ── Tier assignment by revenue rank ─────────────────────────────
+function assignTier(rank: number, total: number): 'platinum' | 'gold' | 'silver' | 'bronze' {
+  const pct = rank / total
+  if (pct <= 0.1) return 'platinum'
+  if (pct <= 0.25) return 'gold'
+  if (pct <= 0.5) return 'silver'
+  return 'bronze'
+}
+
+// ── Real data fetcher: distributors from orders + organizations ──
+async function fetchDistributorPerformance(
+  supabase: ReturnType<typeof createClient>,
+  period: string
+): Promise<DistributorPerformance[]> {
+  // Determine date window for the selected period
+  const now = new Date()
+  let periodStart: Date
+  let prevStart: Date
+  let prevEnd: Date
+  if (period === 'month') {
+    periodStart = startOfMonth(now)
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    prevStart = startOfMonth(prevMonth)
+    prevEnd = endOfMonth(prevMonth)
+  } else if (period === 'quarter') {
+    const qMonth = Math.floor(now.getMonth() / 3) * 3
+    periodStart = new Date(now.getFullYear(), qMonth, 1)
+    const prevQMonth = qMonth - 3 < 0 ? qMonth - 3 + 12 : qMonth - 3
+    const prevQYear = qMonth - 3 < 0 ? now.getFullYear() - 1 : now.getFullYear()
+    prevStart = new Date(prevQYear, prevQMonth, 1)
+    prevEnd = new Date(periodStart.getTime() - 1)
+  } else if (period === 'year') {
+    periodStart = new Date(now.getFullYear(), 0, 1)
+    prevStart = new Date(now.getFullYear() - 1, 0, 1)
+    prevEnd = new Date(now.getFullYear() - 1, 11, 31)
+  } else {
+    // all time – no period filter, growth vs previous year
+    periodStart = new Date(2000, 0, 1)
+    prevStart = new Date(2000, 0, 1)
+    prevEnd = new Date(2000, 0, 1)
+  }
+
+  const periodISO = format(periodStart, 'yyyy-MM-dd')
+  const prevStartISO = format(prevStart, 'yyyy-MM-dd')
+  const prevEndISO = format(prevEnd, 'yyyy-MM-dd')
+
+  // Fetch all active distributors
+  const { data: orgs } = await supabase
+    .from('organizations')
+    .select('id, org_code, org_name')
+    .eq('org_type_code', 'DIST')
+    .eq('is_active', true)
+    .order('org_code')
+
+  if (!orgs || orgs.length === 0) return []
+
+  // Fetch current-period orders with line totals via RPC or raw join
+  // We use two queries: current period and previous period
+  const { data: currentOrders } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      buyer_org_id,
+      created_at,
+      order_items ( line_total )
+    `)
+    .in('buyer_org_id', orgs.map(o => o.id))
+    .not('status', 'in', '("draft","cancelled")')
+    .gte('created_at', period === 'all' ? '2000-01-01' : periodISO)
+
+  const { data: prevOrders } = period !== 'all' ? await supabase
+    .from('orders')
+    .select(`
+      id,
+      buyer_org_id,
+      created_at,
+      order_items ( line_total )
+    `)
+    .in('buyer_org_id', orgs.map(o => o.id))
+    .not('status', 'in', '("draft","cancelled")')
+    .gte('created_at', prevStartISO)
+    .lte('created_at', prevEndISO)
+  : { data: [] as any[] }
+
+  // Aggregate current period
+  const currentMap = new Map<string, { orders: number; revenue: number }>()
+  for (const o of (currentOrders || [])) {
+    const entry = currentMap.get(o.buyer_org_id) || { orders: 0, revenue: 0 }
+    entry.orders += 1
+    const lineItems = o.order_items as { line_total: number }[] | null
+    entry.revenue += (lineItems || []).reduce((s: number, li: any) => s + (Number(li.line_total) || 0), 0)
+    currentMap.set(o.buyer_org_id, entry)
+  }
+
+  // Aggregate previous period for growth calc
+  const prevMap = new Map<string, { orders: number; revenue: number }>()
+  for (const o of (prevOrders || [])) {
+    const entry = prevMap.get(o.buyer_org_id) || { orders: 0, revenue: 0 }
+    entry.orders += 1
+    const lineItems = o.order_items as { line_total: number }[] | null
+    entry.revenue += (lineItems || []).reduce((s: number, li: any) => s + (Number(li.line_total) || 0), 0)
+    prevMap.set(o.buyer_org_id, entry)
+  }
+
+  // Calculate consecutive monthly order streaks
+  const { data: allOrders } = await supabase
+    .from('orders')
+    .select('buyer_org_id, created_at')
+    .in('buyer_org_id', orgs.map(o => o.id))
+    .not('status', 'in', '("draft","cancelled")')
+    .order('created_at', { ascending: false })
+
+  const streakMap = new Map<string, number>()
+  if (allOrders) {
+    const orgMonths = new Map<string, Set<string>>()
+    for (const o of allOrders) {
+      const key = o.buyer_org_id
+      if (!orgMonths.has(key)) orgMonths.set(key, new Set())
+      const d = new Date(o.created_at as string)
+      orgMonths.get(key)!.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    for (const [orgId, months] of orgMonths) {
+      let streak = 0
+      const cur = new Date(now.getFullYear(), now.getMonth(), 1)
+      while (true) {
+        const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`
+        if (months.has(key)) {
+          streak++
+          cur.setMonth(cur.getMonth() - 1)
+        } else break
+      }
+      streakMap.set(orgId, streak)
+    }
+  }
+
+  // Build performance list
+  const results: DistributorPerformance[] = orgs.map(org => {
+    const cur = currentMap.get(org.id) || { orders: 0, revenue: 0 }
+    const prev = prevMap.get(org.id) || { orders: 0, revenue: 0 }
+    const growthPercent = prev.revenue > 0
+      ? Math.round(((cur.revenue - prev.revenue) / prev.revenue) * 100)
+      : cur.revenue > 0 ? 100 : 0
+    return {
+      id: org.id,
+      name: org.org_name,
+      orgCode: org.org_code,
+      totalOrders: cur.orders,
+      totalRevenue: cur.revenue,
+      growthPercent,
+      activeCampaigns: 0,
+      earnedRewards: 0,
+      rank: 0,
+      streak: streakMap.get(org.id) || 0,
+      tier: 'bronze' as const,
+    }
+  })
+    .filter(d => d.totalOrders > 0 || period === 'all')
+    .sort((a, b) => b.totalRevenue - a.totalRevenue)
+    .map((d, i, arr) => ({ ...d, rank: i + 1, tier: assignTier(i + 1, arr.length) }))
+
+  return results
+}
+
+// ── Real data fetcher: monthly trend from orders ────────────────
+async function fetchMonthlyTrend(
+  supabase: ReturnType<typeof createClient>
+): Promise<{ month: string; revenue: number; orders: number; distributors: number }[]> {
+  const now = new Date()
+  const months: { month: string; start: string; end: string }[] = []
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    months.push({
+      month: format(d, 'MMM yyyy'),
+      start: format(startOfMonth(d), 'yyyy-MM-dd'),
+      end: format(endOfMonth(d), 'yyyy-MM-dd'),
+    })
+  }
+
+  const { data: orders } = await supabase
+    .from('orders')
+    .select('id, buyer_org_id, created_at, order_items ( line_total )')
+    .not('status', 'in', '("draft","cancelled")')
+    .gte('created_at', months[0].start)
+
+  const result = months.map(m => {
+    const mOrders = (orders || []).filter(o => {
+      const d = o.created_at?.substring(0, 10) || ''
+      return d >= m.start && d <= m.end
+    })
+    const distSet = new Set(mOrders.map(o => o.buyer_org_id))
+    const revenue = mOrders.reduce((s, o) => {
+      const lineItems = o.order_items as { line_total: number }[] | null
+      return s + (lineItems || []).reduce((ls: number, li: any) => ls + (Number(li.line_total) || 0), 0)
+    }, 0)
+    return {
+      month: m.month,
+      revenue: Math.round(revenue),
+      orders: mOrders.length,
+      distributors: distSet.size,
+    }
+  })
+
+  return result
+}
+
+// ── Compute tier distribution from real distributor list ─────────
+function computeTierDistribution(distributors: DistributorPerformance[]) {
+  const counts = { platinum: 0, gold: 0, silver: 0, bronze: 0 }
+  for (const d of distributors) counts[d.tier]++
+  return [
+    { name: 'Platinum', value: counts.platinum, fill: TIER_COLORS.platinum },
+    { name: 'Gold', value: counts.gold, fill: TIER_COLORS.gold },
+    { name: 'Silver', value: counts.silver, fill: TIER_COLORS.silver },
+    { name: 'Bronze', value: counts.bronze, fill: TIER_COLORS.bronze },
+  ].filter(t => t.value > 0)
+}
+
+// ── Static campaign data (kept until incentive_campaigns table exists) ──
+function getStaticCampaigns(): Campaign[] {
   return [
     {
       id: 'camp-001', name: 'Q1 Volume Blitz', type: 'volume', status: 'active',
@@ -124,57 +340,6 @@ function generateMockCampaigns(): Campaign[] {
       targetValue: 300, rewardType: 'cash', rewardValue: 1500, eligibleDistributors: 20,
       participatingDistributors: 18, achievedCount: 14, totalSpend: 21000, budgetCap: 30000,
     },
-  ]
-}
-
-function generateMockDistributors(): DistributorPerformance[] {
-  const names = [
-    'Sinar Jaya Distribution', 'PT Mega Sejahtera', 'CV Abadi Mandiri',
-    'UD Berkah Sentosa', 'PT Maju Bersama', 'CV Karya Utama',
-    'PT Global Perkasa', 'UD Sumber Rezeki', 'CV Makmur Indah',
-    'PT Serapod Selatan', 'CV Timur Raya', 'UD Barat Gemilang',
-  ]
-  return names.map((name, i) => ({
-    id: `dist-${i + 1}`,
-    name,
-    orgCode: `DIST${String(i + 1).padStart(3, '0')}`,
-    totalOrders: Math.floor(Math.random() * 200) + 50,
-    totalRevenue: Math.floor(Math.random() * 500000) + 100000,
-    growthPercent: Math.floor(Math.random() * 40) - 10,
-    activeCampaigns: Math.floor(Math.random() * 3) + 1,
-    earnedRewards: Math.floor(Math.random() * 10000) + 1000,
-    rank: i + 1,
-    streak: Math.floor(Math.random() * 8),
-    tier: (['platinum', 'gold', 'gold', 'silver', 'silver', 'silver', 'bronze', 'bronze', 'bronze', 'bronze', 'bronze', 'bronze'] as const)[i],
-  })).sort((a, b) => b.totalRevenue - a.totalRevenue).map((d, i) => ({ ...d, rank: i + 1 }))
-}
-
-function generateMonthlyTrend() {
-  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-  return months.map((m, i) => ({
-    month: m,
-    reward: Math.floor(Math.random() * 15000) + 5000,
-    participation: Math.floor(Math.random() * 10) + 12,
-    achievement: Math.floor(Math.random() * 30) + 40,
-  }))
-}
-
-function generateCampaignROI() {
-  return [
-    { name: 'Volume Blitz', spend: 14000, revenueGenerated: 89000, roi: 535 },
-    { name: 'Growth Sprint', spend: 6000, revenueGenerated: 42000, roi: 600 },
-    { name: 'Streak Warrior', spend: 0, revenueGenerated: 18000, roi: 0 },
-    { name: 'Tiered Excellence', spend: 15000, revenueGenerated: 125000, roi: 733 },
-    { name: 'Holiday Push', spend: 21000, revenueGenerated: 156000, roi: 643 },
-  ]
-}
-
-function generateTierDistribution() {
-  return [
-    { name: 'Platinum', value: 2, fill: TIER_COLORS.platinum },
-    { name: 'Gold', value: 4, fill: TIER_COLORS.gold },
-    { name: 'Silver', value: 8, fill: TIER_COLORS.silver },
-    { name: 'Bronze', value: 10, fill: TIER_COLORS.bronze },
   ]
 }
 
@@ -319,12 +484,11 @@ function LeaderboardRow({ dist, index }: { dist: DistributorPerformance; index: 
   const TierIcon = TIER_ICONS[dist.tier]
   return (
     <div className={`flex items-center gap-4 p-4 rounded-xl transition-all duration-200 hover:bg-muted/60 ${index < 3 ? 'bg-gradient-to-r from-amber-50/50 to-transparent dark:from-amber-950/10' : ''}`}>
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-        index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-        index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' :
-        index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-        'bg-muted text-muted-foreground'
-      }`}>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+          index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' :
+            index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+              'bg-muted text-muted-foreground'
+        }`}>
         {index < 3 ? ['🥇', '🥈', '🥉'][index] : `#${index + 1}`}
       </div>
       <div className="flex-1 min-w-0">
@@ -381,25 +545,40 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
   const chartGridColor = isDark ? '#374151' : '#e5e7eb'
   const chartTickColor = isDark ? '#9ca3af' : '#6b7280'
 
-  // ── Data Fetch ──────────────────────────────────────────────
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        // TODO: Replace with real Supabase queries when tables exist:
-        //   const { data: camps } = await supabase.from('incentive_campaigns').select('*')
-        //   const { data: dists } = await supabase.from('distributor_performance_mv').select('*')
-        setCampaigns(generateMockCampaigns())
-        setDistributors(generateMockDistributors())
-        setMonthlyTrend(generateMonthlyTrend())
-        setROIData(generateCampaignROI())
-        setTierDist(generateTierDistribution())
-      } finally {
-        setLoading(false)
-      }
+  const supabase = createClient()
+
+  // ── Data Fetch (real data from orders + organizations) ──────
+  const loadData = useCallback(async (period?: string) => {
+    setLoading(true)
+    try {
+      const p = period ?? leaderboardPeriod
+      const [dists, trend] = await Promise.all([
+        fetchDistributorPerformance(supabase, p),
+        fetchMonthlyTrend(supabase),
+      ])
+      setDistributors(dists)
+      setTierDist(computeTierDistribution(dists))
+      setMonthlyTrend(trend.map(t => ({
+        month: t.month,
+        reward: t.revenue, // mapped to "reward" key to match chart dataKey
+        participation: t.distributors,
+        achievement: t.orders,
+      })))
+      setROIData([]) // No campaign ROI data until incentive_campaigns table exists
+      setCampaigns(getStaticCampaigns())
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [])
+  }, [leaderboardPeriod, supabase])
+
+  useEffect(() => {
+    loadData()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch when leaderboard period changes
+  useEffect(() => {
+    loadData(leaderboardPeriod)
+  }, [leaderboardPeriod]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Computed KPIs ─────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -457,7 +636,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => { setLoading(true); setTimeout(() => { setCampaigns(generateMockCampaigns()); setDistributors(generateMockDistributors()); setMonthlyTrend(generateMonthlyTrend()); setROIData(generateCampaignROI()); setTierDist(generateTierDistribution()); setLoading(false) }, 500) }}>
+          <Button variant="outline" size="sm" onClick={() => loadData()}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
           <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg">
@@ -506,9 +685,9 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
             <Card className="border-0 shadow-lg bg-card/80 backdrop-blur lg:col-span-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-indigo-500" /> Incentive Program Trend
+                  <Activity className="w-5 h-5 text-indigo-500" /> Distributor Order Trend
                 </CardTitle>
-                <CardDescription>Monthly reward spend, participation & achievement rate</CardDescription>
+                <CardDescription>Monthly revenue, active distributors & order count (last 12 months)</CardDescription>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -519,9 +698,9 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                     <YAxis yAxisId="right" orientation="right" tick={{ fill: chartTickColor, fontSize: 12 }} />
                     <Tooltip contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: 'none', borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
                     <Legend />
-                    <Area yAxisId="left" type="monotone" dataKey="reward" name="Reward Spend (RM)" fill="#6366f120" stroke="#6366f1" />
-                    <Bar yAxisId="right" dataKey="participation" name="Participants" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
-                    <Line yAxisId="right" type="monotone" dataKey="achievement" name="Achievement %" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+                    <Area yAxisId="left" type="monotone" dataKey="reward" name="Revenue (RM)" fill="#6366f120" stroke="#6366f1" />
+                    <Bar yAxisId="right" dataKey="participation" name="Active Distributors" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
+                    <Line yAxisId="right" type="monotone" dataKey="achievement" name="Orders" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>

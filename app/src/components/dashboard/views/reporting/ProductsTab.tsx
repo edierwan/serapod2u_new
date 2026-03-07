@@ -1015,11 +1015,10 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                   {slowMoving.map((item) => (
                     <div
                       key={item.variantId}
-                      className={`rounded-lg border p-3 ${
-                        item.severity === 'red'
+                      className={`rounded-lg border p-3 ${item.severity === 'red'
                           ? 'border-red-500/30 bg-red-500/5'
                           : 'border-amber-500/30 bg-amber-500/5'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="min-w-0 flex-1">
@@ -1028,11 +1027,10 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                         </div>
                         <Badge
                           variant="secondary"
-                          className={`ml-2 flex-shrink-0 text-xs ${
-                            item.severity === 'red'
+                          className={`ml-2 flex-shrink-0 text-xs ${item.severity === 'red'
                               ? 'bg-red-500/20 text-red-600 dark:text-red-400'
                               : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                          }`}
+                            }`}
                         >
                           {item.decline === -100 ? 'No Orders' : `${item.decline}%`}
                         </Badge>
@@ -1375,11 +1373,11 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               const prod = productMap.get(v.product_id)
               return (v.variant_name || '').toLowerCase().includes(q) || (prod?.product_name || '').toLowerCase().includes(q) || (prod?.product_code || '').toLowerCase().includes(q)
             }).length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>No SKUs match your search</p>
-              </div>
-            )}
+                <div className="text-center py-12 text-muted-foreground">
+                  <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p>No SKUs match your search</p>
+                </div>
+              )}
           </div>
         </DialogContent>
       </Dialog>

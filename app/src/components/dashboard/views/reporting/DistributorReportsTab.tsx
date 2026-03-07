@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Sheet,
   SheetContent,
@@ -14,16 +15,23 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, Cell, ComposedChart, Line,
 } from 'recharts'
 import {
   Download, TrendingUp, TrendingDown, Users, ShoppingCart,
-  Loader2, RefreshCw, DollarSign, ArrowUpRight, ArrowDownRight, 
+  Loader2, RefreshCw, DollarSign, ArrowUpRight, ArrowDownRight,
   Building2, Target, CheckCircle2, Search, Copy, Link2,
   PieChart as PieChartIcon, UserMinus, UserPlus, Repeat, Crown,
-  Medal, Award, ChevronRight, Package, Minus,
-  Calendar as CalendarIcon, Filter, X,
+  Medal, Award, ChevronRight, Package, Minus, ChevronLeft,
+  Calendar as CalendarIcon, Filter, X, Eye, MapPin, Phone,
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { useTheme } from '@/components/providers/ThemeProvider'
@@ -107,61 +115,73 @@ function KPICardSkeleton() {
 // ============================================================
 // KPI CARD
 // ============================================================
-function KPICardComponent({ kpi, loading }: { kpi: KPICard; loading: boolean }) {
+function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: boolean; onClick?: () => void }) {
   if (loading) return <KPICardSkeleton />
 
   const Icon = ICON_MAP[kpi.icon] || Target
   const isUp = kpi.trend === 'up'
   const isDown = kpi.trend === 'down'
+  const isClickable = !!onClick
+
+  // Adaptive font: smaller for large RM values
+  const isLargeRM = kpi.label.includes('Amount') || kpi.label.includes('Order Value')
+  const valueFontClass = isLargeRM ? 'text-lg lg:text-xl' : 'text-xl lg:text-2xl'
 
   return (
-    <Card className="relative overflow-hidden group hover:shadow-xl transition-all duration-500 border-0 bg-card/80 backdrop-blur hover:-translate-y-0.5">
+    <Card
+      className={`relative overflow-hidden group hover:shadow-xl transition-all duration-500 border-0 bg-card/80 backdrop-blur hover:-translate-y-0.5 ${isClickable ? 'cursor-pointer ring-0 hover:ring-2 hover:ring-blue-400/50' : ''}`}
+      onClick={onClick}
+    >
       <div
-        className="absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-[0.08] group-hover:opacity-[0.15] transition-opacity duration-500"
+        className="absolute top-0 right-0 w-28 h-28 -mr-6 -mt-6 rounded-full opacity-[0.08] group-hover:opacity-[0.15] transition-opacity duration-500"
         style={{ backgroundColor: kpi.color }}
       />
       <div
         className="absolute bottom-0 left-0 h-1 w-full opacity-80"
         style={{ background: `linear-gradient(to right, ${kpi.color}, transparent)` }}
       />
-      <CardContent className="pt-6 pb-5">
+      <CardContent className="pt-4 pb-4">
         <div className="flex items-start justify-between">
-          <div className="space-y-1.5 min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{kpi.label}</p>
-            <div className="text-2xl lg:text-3xl font-bold text-foreground tracking-tight">
+          <div className="space-y-1 min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{kpi.label}</p>
+            <div className={`${valueFontClass} font-bold text-foreground tracking-tight truncate`}>
               {typeof kpi.value === 'number' && !kpi.formattedValue.includes('%') ? (
                 <AnimatedCounter
                   value={kpi.value}
-                  prefix={kpi.label.includes('Amount') || kpi.label.includes('Order Value') ? 'RM ' : ''}
-                  decimals={kpi.label.includes('Amount') || kpi.label.includes('Order Value') ? 2 : 0}
+                  prefix={isLargeRM ? 'RM ' : ''}
+                  decimals={isLargeRM ? 2 : 0}
                 />
               ) : (
                 kpi.formattedValue
               )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {kpi.delta !== null && (
                 <Badge
                   variant="secondary"
-                  className={`text-xs font-medium ${
-                    isUp
+                  className={`text-[10px] font-medium px-1.5 py-0 ${isUp
                       ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                       : isDown
-                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
                 >
-                  {isUp && <ArrowUpRight className="w-3 h-3 mr-0.5" />}
-                  {isDown && <ArrowDownRight className="w-3 h-3 mr-0.5" />}
-                  {!isUp && !isDown && <Minus className="w-3 h-3 mr-0.5" />}
+                  {isUp && <ArrowUpRight className="w-2.5 h-2.5 mr-0.5" />}
+                  {isDown && <ArrowDownRight className="w-2.5 h-2.5 mr-0.5" />}
+                  {!isUp && !isDown && <Minus className="w-2.5 h-2.5 mr-0.5" />}
                   {Math.abs(kpi.delta).toFixed(1)}%
                 </Badge>
               )}
-              <span className="text-[10px] text-muted-foreground">{kpi.deltaLabel}</span>
+              <span className="text-[9px] text-muted-foreground">{kpi.deltaLabel}</span>
             </div>
+            {isClickable && (
+              <p className="text-[9px] text-blue-500 font-medium mt-0.5 flex items-center gap-0.5">
+                <Eye className="w-2.5 h-2.5" /> Click to view details
+              </p>
+            )}
           </div>
-          <div className="p-3 rounded-xl shrink-0" style={{ backgroundColor: `${kpi.color}12` }}>
-            <Icon className="w-5 h-5" style={{ color: kpi.color }} />
+          <div className="p-2.5 rounded-xl shrink-0" style={{ backgroundColor: `${kpi.color}12` }}>
+            <Icon className="w-4 h-4" style={{ color: kpi.color }} />
           </div>
         </div>
       </CardContent>
@@ -344,13 +364,12 @@ function DistributorDetailDrawer({
                         <p className="text-sm font-semibold">RM {o.amount.toLocaleString()}</p>
                         <Badge
                           variant="secondary"
-                          className={`text-[10px] ${
-                            o.status === 'approved'
+                          className={`text-[10px] ${o.status === 'approved'
                               ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                               : o.status === 'submitted'
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
                         >
                           {o.status}
                         </Badge>
@@ -419,7 +438,6 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<any>(null)
   const [dateRange, setDateRange] = useState('last3Months')
-  const [orderType, setOrderType] = useState('all')
   const [seller, setSeller] = useState('all')
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
@@ -429,7 +447,13 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedDistId, setSelectedDistId] = useState<string | null>(null)
-  const [sellers, setSellers] = useState<{ id: string; org_name: string }[]>([])
+  const [distributors, setDistributors] = useState<{ id: string; org_name: string }[]>([])
+  const [ordersDialogOpen, setOrdersDialogOpen] = useState(false)
+  const [distDialogOpen, setDistDialogOpen] = useState(false)
+  const [distDialogTab, setDistDialogTab] = useState<'active' | 'inactive'>('active')
+  const [orderListPage, setOrderListPage] = useState(1)
+  const [allDistributors, setAllDistributors] = useState<any[]>([])
+  const ORDERS_PER_PAGE = 20
 
   // ── Fetch report data ────────────────────────────────────
   const fetchReport = useCallback(async () => {
@@ -438,7 +462,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
     try {
       const params = new URLSearchParams()
       params.set('dateRange', dateRange)
-      if (orderType && orderType !== 'all') params.set('orderType', orderType)
+      params.set('orderType', 'D2H')
       if (seller && seller !== 'all') params.set('seller', seller)
       if (status && status !== 'all') params.set('status', status)
       if (search) params.set('search', search)
@@ -451,23 +475,22 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || `Error ${res.status}`)
       setData(json)
-      if (json.sellers) setSellers(json.sellers)
+      if (json.distributors) setDistributors(json.distributors)
+      if (json.allDistributors) setAllDistributors(json.allDistributors)
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [dateRange, orderType, seller, status, search])
+  }, [dateRange, seller, status, search])
 
   // ── Init from URL search params ──────────────────────────
   useEffect(() => {
     if (typeof window === 'undefined') return
     const sp = new URLSearchParams(window.location.search)
     if (sp.get('dateRange')) setDateRange(sp.get('dateRange')!)
-    if (sp.get('orderType')) setOrderType(sp.get('orderType')!)
     if (sp.get('seller')) setSeller(sp.get('seller')!)
     if (sp.get('status')) setStatus(sp.get('status')!)
-    if (sp.get('search')) setSearch(sp.get('search')!)
     if (sp.get('search')) setSearch(sp.get('search')!)
   }, [])
 
@@ -477,12 +500,12 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const handleExportCSV = useCallback(() => {
     const params = new URLSearchParams()
     params.set('dateRange', dateRange)
-    if (orderType && orderType !== 'all') params.set('orderType', orderType)
+    params.set('orderType', 'D2H')
     if (seller && seller !== 'all') params.set('seller', seller)
     if (status && status !== 'all') params.set('status', status)
     if (search) params.set('search', search)
     window.open(`/api/reporting/distributors/csv?${params}`, '_blank')
-  }, [dateRange, orderType, seller, status, search])
+  }, [dateRange, seller, status, search])
 
   // ── Copy Share Link ──────────────────────────────────────
   const handleCopyLink = useCallback(() => {
@@ -554,26 +577,15 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             </SelectContent>
           </Select>
 
-          <Select value={orderType} onValueChange={setOrderType}>
-            <SelectTrigger className="w-[130px] bg-card border-border shadow-sm h-9 text-sm">
-              <SelectValue placeholder="Order Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="H2M">H2M</SelectItem>
-              <SelectItem value="D2H">D2H</SelectItem>
-              <SelectItem value="S2D">S2D</SelectItem>
-            </SelectContent>
-          </Select>
-
           <Select value={seller} onValueChange={setSeller}>
-            <SelectTrigger className="w-[170px] bg-card border-border shadow-sm h-9 text-sm">
-              <SelectValue placeholder="All Sellers" />
+            <SelectTrigger className="w-[200px] bg-card border-border shadow-sm h-9 text-sm">
+              <Building2 className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder="All Distributors" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Sellers</SelectItem>
-              {sellers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.org_name}</SelectItem>
+              <SelectItem value="all">All Distributors</SelectItem>
+              {distributors.map((d) => (
+                <SelectItem key={d.id} value={d.id}>{d.org_name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -584,7 +596,6 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="submitted">Submitted</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="closed">Closed</SelectItem>
@@ -606,11 +617,11 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
 
-          {(orderType !== 'all' || seller !== 'all' || status !== 'all' || search) && (
+          {(seller !== 'all' || status !== 'all' || search) && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setOrderType('all'); setSeller('all'); setStatus('all'); setSearch('') }}
+              onClick={() => { setSeller('all'); setStatus('all'); setSearch('') }}
               className="h-9 text-xs text-muted-foreground"
             >
               <X className="w-3 h-3 mr-1" /> Clear
@@ -643,7 +654,19 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => <KPICardSkeleton key={i} />)
-          : kpis.map((kpi) => <KPICardComponent key={kpi.id} kpi={kpi} loading={false} />)}
+          : kpis.map((kpi) => (
+              <KPICardComponent
+                key={kpi.id}
+                kpi={kpi}
+                loading={false}
+                onClick={
+                  kpi.id === 'totalOrders' ? () => { setOrderListPage(1); setOrdersDialogOpen(true) }
+                  : kpi.id === 'activeDistributors' ? () => { setDistDialogTab('active'); setDistDialogOpen(true) }
+                  : undefined
+                }
+              />
+            ))
+        }
       </div>
 
       {/* ─── TREND CHART ─────────────────────────────────────── */}
@@ -692,6 +715,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                   <YAxis
                     tickLine={false}
                     axisLine={false}
+                    domain={[0, 'auto']}
                     tick={{ fill: chartTick, fontSize: 12 }}
                     tickFormatter={(v) =>
                       trendMetric === 'amount'
@@ -924,12 +948,210 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             <Building2 className="w-16 h-16 text-muted-foreground/30 mb-4" />
             <h3 className="text-lg font-semibold text-muted-foreground">No Distributor Activity</h3>
             <p className="text-sm text-muted-foreground mt-1">No distributor order activity found for this filter selection.</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDateRange('last12Months'); setOrderType('all'); setSeller('all'); setStatus('all'); setSearch('') }}>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDateRange('last12Months'); setSeller('all'); setStatus('all'); setSearch('') }}>
               <RefreshCw className="w-4 h-4 mr-1.5" /> Reset Filters
             </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* ─── ORDERS LIST DIALOG ────────────────────────────── */}
+      <Dialog open={ordersDialogOpen} onOpenChange={setOrdersDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-blue-600" />
+              All Distributor Orders
+            </DialogTitle>
+            <DialogDescription>
+              {data?.orders?.length ?? 0} orders found for the selected period (D2H only)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            {(() => {
+              const allOrders: any[] = data?.orders || []
+              const totalPages = Math.ceil(allOrders.length / ORDERS_PER_PAGE)
+              const pageOrders = allOrders.slice((orderListPage - 1) * ORDERS_PER_PAGE, orderListPage * ORDERS_PER_PAGE)
+              return (
+                <div className="space-y-2">
+                  {pageOrders.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      <p>No orders found</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-muted-foreground text-xs">
+                              <th className="text-left py-2.5 px-2 font-medium">#</th>
+                              <th className="text-left py-2.5 px-2 font-medium">Order No</th>
+                              <th className="text-left py-2.5 px-2 font-medium">Distributor</th>
+                              <th className="text-right py-2.5 px-2 font-medium">Amount (RM)</th>
+                              <th className="text-center py-2.5 px-2 font-medium">Items</th>
+                              <th className="text-center py-2.5 px-2 font-medium">Status</th>
+                              <th className="text-right py-2.5 px-2 font-medium">Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageOrders.map((o: any, idx: number) => (
+                              <tr key={o.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                                <td className="py-2.5 px-2 text-xs text-muted-foreground">{(orderListPage - 1) * ORDERS_PER_PAGE + idx + 1}</td>
+                                <td className="py-2.5 px-2 font-medium text-xs">{o.display_doc_no || o.order_no}</td>
+                                <td className="py-2.5 px-2 text-xs">{o.buyer_name}</td>
+                                <td className="py-2.5 px-2 text-right font-semibold tabular-nums text-xs">
+                                  RM {(o.total || 0).toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-2.5 px-2 text-center text-xs">{o.items_count}</td>
+                                <td className="py-2.5 px-2 text-center">
+                                  <Badge variant="secondary" className={`text-[10px] ${
+                                    o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                    : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                    : 'bg-muted text-muted-foreground'
+                                  }`}>
+                                    {o.status}
+                                  </Badge>
+                                </td>
+                                <td className="py-2.5 px-2 text-right text-xs text-muted-foreground">
+                                  {o.created_at ? format(new Date(o.created_at), 'dd MMM yyyy') : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {/* Pagination */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between pt-3 px-1">
+                          <p className="text-xs text-muted-foreground">
+                            Showing {(orderListPage - 1) * ORDERS_PER_PAGE + 1}–{Math.min(orderListPage * ORDERS_PER_PAGE, allOrders.length)} of {allOrders.length}
+                          </p>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={orderListPage <= 1}
+                              onClick={() => setOrderListPage((p) => Math.max(1, p - 1))}
+                            >
+                              <ChevronLeft className="w-3 h-3 mr-0.5" /> Prev
+                            </Button>
+                            <span className="text-xs text-muted-foreground px-2">
+                              Page {orderListPage} of {totalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={orderListPage >= totalPages}
+                              onClick={() => setOrderListPage((p) => Math.min(totalPages, p + 1))}
+                            >
+                              Next <ChevronRight className="w-3 h-3 ml-0.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── DISTRIBUTORS DIALOG ─────────────────────────────── */}
+      <Dialog open={distDialogOpen} onOpenChange={setDistDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-amber-600" />
+              Distributor Directory
+            </DialogTitle>
+            <DialogDescription>
+              {allDistributors.length} total distributors in the system
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs value={distDialogTab} onValueChange={(v) => setDistDialogTab(v as 'active' | 'inactive')} className="flex-1 overflow-hidden flex flex-col">
+            <TabsList className="grid w-full grid-cols-2 mb-3">
+              <TabsTrigger value="active" className="text-sm">
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                Active ({allDistributors.filter((d: any) => d.hasOrders).length})
+              </TabsTrigger>
+              <TabsTrigger value="inactive" className="text-sm">
+                <UserMinus className="w-3.5 h-3.5 mr-1.5" />
+                Inactive ({allDistributors.filter((d: any) => !d.hasOrders).length})
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="active" className="flex-1 overflow-y-auto mt-0">
+              <div className="space-y-2">
+                {allDistributors.filter((d: any) => d.hasOrders).length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>No active distributors in this period</p>
+                  </div>
+                ) : (
+                  allDistributors.filter((d: any) => d.hasOrders).map((d: any) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer"
+                      onClick={() => { setDistDialogOpen(false); setSelectedDistId(d.id); setDrawerOpen(true) }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                          <Building2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{d.org_name}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{d.org_type_code}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Active</Badge>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+            <TabsContent value="inactive" className="flex-1 overflow-y-auto mt-0">
+              <div className="space-y-2">
+                {allDistributors.filter((d: any) => !d.hasOrders).length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <CheckCircle2 className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>All distributors are active in this period</p>
+                  </div>
+                ) : (
+                  allDistributors.filter((d: any) => !d.hasOrders).map((d: any) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer"
+                      onClick={() => { setDistDialogOpen(false); setSelectedDistId(d.id); setDrawerOpen(true) }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                          <Building2 className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{d.org_name}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{d.org_type_code}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-[10px] bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Inactive</Badge>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── DETAIL DRAWER ───────────────────────────────────── */}
       <DistributorDetailDrawer

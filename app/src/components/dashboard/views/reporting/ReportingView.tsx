@@ -164,8 +164,8 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                                 <Badge
                                     variant="secondary"
                                     className={`text-xs font-medium ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                            isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                                                'bg-muted text-muted-foreground'
+                                        isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                            'bg-muted text-muted-foreground'
                                         }`}
                                 >
                                     {isPositive && <ArrowUpRight className="w-3 h-3 mr-0.5" />}

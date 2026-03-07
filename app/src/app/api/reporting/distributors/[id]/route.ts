@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const distId = params.id
+    const { id: distId } = await params
     if (!distId) {
       return NextResponse.json({ error: 'Missing distributor id' }, { status: 400 })
     }
@@ -65,11 +65,11 @@ export async function GET(
 
     // Fetch variant names for top products
     const variantIds = new Set<string>()
-    ;(orders || []).forEach((o: any) => {
-      o.order_items?.forEach((i: any) => {
-        if (i.variant_id) variantIds.add(i.variant_id)
+      ; (orders || []).forEach((o: any) => {
+        o.order_items?.forEach((i: any) => {
+          if (i.variant_id) variantIds.add(i.variant_id)
+        })
       })
-    })
 
     let variantNames: Record<string, string> = {}
     if (variantIds.size > 0) {
@@ -78,16 +78,16 @@ export async function GET(
         .select('id, variant_name, products(product_name)')
         .in('id', Array.from(variantIds))
 
-      ;(variants || []).forEach((v: any) => {
-        const pn = v.products?.product_name || ''
-        const vn = v.variant_name || ''
-        const full = pn && vn && pn !== vn ? `${pn} - ${vn}` : vn || pn || 'Unknown'
-        const match = full.match(/\[(.*?)\]/)
-        variantNames[v.id] = match ? match[1].trim() : full
-      })
+        ; (variants || []).forEach((v: any) => {
+          const pn = v.products?.product_name || ''
+          const vn = v.variant_name || ''
+          const full = pn && vn && pn !== vn ? `${pn} - ${vn}` : vn || pn || 'Unknown'
+          const match = full.match(/\[(.*?)\]/)
+          variantNames[v.id] = match ? match[1].trim() : full
+        })
     }
 
-    ;(orders || []).forEach((o: any) => {
+    ; (orders || []).forEach((o: any) => {
       const lineTotal = (o.order_items || []).reduce(
         (s: number, i: any) => s + (Number(i.line_total) || 0),
         0
@@ -103,14 +103,14 @@ export async function GET(
       monthMap[mKey].amount += lineTotal
       monthMap[mKey].orders += 1
 
-      // Product aggregation
-      ;(o.order_items || []).forEach((i: any) => {
-        const vid = i.variant_id || 'unknown'
-        if (!productMap[vid])
-          productMap[vid] = { name: variantNames[vid] || 'Unknown', qty: 0, amount: 0 }
-        productMap[vid].qty += i.qty || 0
-        productMap[vid].amount += Number(i.line_total) || 0
-      })
+        // Product aggregation
+        ; (o.order_items || []).forEach((i: any) => {
+          const vid = i.variant_id || 'unknown'
+          if (!productMap[vid])
+            productMap[vid] = { name: variantNames[vid] || 'Unknown', qty: 0, amount: 0 }
+          productMap[vid].qty += i.qty || 0
+          productMap[vid].amount += Number(i.line_total) || 0
+        })
 
       if (recentOrders.length < 20) {
         recentOrders.push({

@@ -405,12 +405,19 @@ export async function GET(request: Request) {
       icon: 'Repeat',
     })
 
-    // ── Sellers / Manufacturers list (for filter dropdown) ────────────
-    const { data: sellers } = await supabase
+    // ── Distributors list (for filter dropdown) ─────────────────
+    const { data: distributorsList } = await supabase
       .from('organizations')
-      .select('id, org_name')
-      .in('org_type_code', ['MFG', 'MANU', 'HQ'])
+      .select('id, org_name, org_type_code, status')
+      .eq('org_type_code', 'DIST')
       .order('org_name')
+
+    // Active = those with orders in current period, Inactive = rest
+    const activeDistIds = new Set(Object.keys(distMap))
+    const allDistributorsList = (distributorsList || []).map((d: any) => ({
+      ...d,
+      hasOrders: activeDistIds.has(d.id),
+    }))
 
     return NextResponse.json({
       kpis,
@@ -428,7 +435,20 @@ export async function GET(request: Request) {
         status,
         search,
       },
-      sellers: sellers || [],
+      distributors: (distributorsList || []).map((d: any) => ({ id: d.id, org_name: d.org_name })),
+      allDistributors: allDistributorsList,
+      orders: orders.map((o: any) => ({
+        id: o.id,
+        order_no: o.order_no || o.display_doc_no || o.id,
+        display_doc_no: o.display_doc_no,
+        order_type: o.order_type,
+        status: o.status,
+        created_at: o.created_at,
+        buyer_name: o.buyer?.org_name || 'Unknown',
+        seller_name: o.seller?.org_name || 'Unknown',
+        total: (o.order_items || []).reduce((s: number, i: any) => s + (Number(i.line_total) || 0), 0),
+        items_count: (o.order_items || []).length,
+      })),
     })
   } catch (error: any) {
     console.error('[Distributor Report API] Error:', error)

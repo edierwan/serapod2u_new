@@ -779,12 +779,11 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
                   {topConsumers.map((c) => (
                     <tr key={c.id} className="border-b border-muted/50 hover:bg-muted/30 transition-colors">
                       <td className="py-3 pr-4">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                          c.rank === 1 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          c.rank === 2 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
-                          c.rank === 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                          'bg-muted text-muted-foreground'
-                        }`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${c.rank === 1 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                            c.rank === 2 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
+                              c.rank === 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                'bg-muted text-muted-foreground'
+                          }`}>
                           {c.rank <= 3 ? ['🥇', '🥈', '🥉'][c.rank - 1] : c.rank}
                         </div>
                       </td>
@@ -799,8 +798,8 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
                       <td className="py-3">
                         <Badge variant="secondary" className={
                           c.frequency === 'High' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                          c.frequency === 'Medium' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                          'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                            c.frequency === 'Medium' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                              'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                         }>{c.frequency}</Badge>
                       </td>
                     </tr>
