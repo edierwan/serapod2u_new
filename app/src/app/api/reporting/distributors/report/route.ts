@@ -168,9 +168,11 @@ export async function GET(request: Request) {
     let totalOrderCount = orders.length
     const distMap: Record<
       string,
-      { id: string; name: string; rm: number; orders: number; lastDate: string }
+      { id: string; name: string; rm: number; orders: number; lastDate: string; orderDates: string[] }
     > = {}
     const monthlyMap: Record<string, { amount: number; orders: number }> = {}
+    // Track product-level repeat data
+    const productOrderMap: Record<string, { name: string; orderCount: number; distIds: Set<string>; totalQty: number; totalRM: number }> = {}
 
     orders.forEach((o: any) => {
       const distId = o.buyer?.id || 'unknown'
@@ -182,13 +184,25 @@ export async function GET(request: Request) {
       totalAmount += lineTotal
 
       if (!distMap[distId]) {
-        distMap[distId] = { id: distId, name: distName, rm: 0, orders: 0, lastDate: '' }
+        distMap[distId] = { id: distId, name: distName, rm: 0, orders: 0, lastDate: '', orderDates: [] }
       }
       distMap[distId].rm += lineTotal
       distMap[distId].orders += 1
+      if (o.created_at) distMap[distId].orderDates.push(o.created_at)
       if (o.created_at > (distMap[distId].lastDate || '')) {
         distMap[distId].lastDate = o.created_at
       }
+
+      // Track product repeat data
+      ;(o.order_items || []).forEach((item: any) => {
+        const vid = item.variant_id || 'unknown'
+        if (!productOrderMap[vid]) {
+          productOrderMap[vid] = { name: vid, orderCount: 0, distIds: new Set(), totalQty: 0, totalRM: 0 }
+        }
+        productOrderMap[vid].distIds.add(distId)
+        productOrderMap[vid].totalQty += item.qty || 0
+        productOrderMap[vid].totalRM += Number(item.line_total) || 0
+      })
 
       const mKey = (o.created_at || '').slice(0, 7)
       if (!monthlyMap[mKey]) monthlyMap[mKey] = { amount: 0, orders: 0 }
@@ -405,10 +419,181 @@ export async function GET(request: Request) {
       icon: 'Repeat',
     })
 
-    // ── Distributors list (for filter dropdown) ─────────────────
+    // ── Repeat Rate Analytics (comprehensive) ─────────────────────────
+    const allDistValues = Object.values(distMap)
+    const singleOrderDists = allDistValues.filter((d) => d.orders === 1)
+    const repeatDistValues = allDistValues.filter((d) => d.orders > 1)
+    const avgRepeatOrders = repeatDistValues.length > 0
+      ? repeatDistValues.reduce((s, d) => s + d.orders, 0) / repeatDistValues.length
+      : 0
+
+    // Compute average days between orders for each distributor
+    const computeAvgGap = (dates: string[]) => {
+      if (dates.length < 2) return null
+      const sorted = [...dates].sort()
+      let totalGap = 0
+      for (let i = 1; i < sorted.length; i++) {
+        totalGap += (new Date(sorted[i]).getTime() - new Date(sorted[i - 1]).getTime()) / 86400000
+      }
+      return totalGap / (sorted.length - 1)
+    }
+
+    const distGaps = allDistValues.map((d) => ({
+      ...d,
+      avgGap: computeAvgGap(d.orderDates),
+    }))
+
+    const distWithGaps = distGaps.filter((d) => d.avgGap !== null)
+    const overallAvgGap = distWithGaps.length > 0
+      ? distWithGaps.reduce((s, d) => s + (d.avgGap || 0), 0) / distWithGaps.length
+      : 0
+
+    // Repeat revenue contribution
+    const repeatRevenue = repeatDistValues.reduce((s, d) => s + d.rm, 0)
+    const singleRevenue = singleOrderDists.reduce((s, d) => s + d.rm, 0)
+
+    // Order frequency distribution buckets
+    const freqBuckets = { '1': 0, '2': 0, '3': 0, '4-5': 0, '6+': 0 }
+    allDistValues.forEach((d) => {
+      if (d.orders === 1) freqBuckets['1']++
+      else if (d.orders === 2) freqBuckets['2']++
+      else if (d.orders === 3) freqBuckets['3']++
+      else if (d.orders <= 5) freqBuckets['4-5']++
+      else freqBuckets['6+']++
+    })
+
+    // Repeat trend by month (compute repeat rate per month)
+    const monthlyDistOrders: Record<string, Set<string>> = {}
+    const monthlyRepeatDists: Record<string, Set<string>> = {}
+    orders.forEach((o: any) => {
+      const distId = o.buyer?.id || 'unknown'
+      const mKey = (o.created_at || '').slice(0, 7)
+      if (!monthlyDistOrders[mKey]) monthlyDistOrders[mKey] = new Set()
+      if (!monthlyRepeatDists[mKey]) monthlyRepeatDists[mKey] = new Set()
+      monthlyDistOrders[mKey].add(distId)
+    })
+    // Second pass: count orders per dist per month
+    const monthlyDistOrderCounts: Record<string, Record<string, number>> = {}
+    orders.forEach((o: any) => {
+      const distId = o.buyer?.id || 'unknown'
+      const mKey = (o.created_at || '').slice(0, 7)
+      if (!monthlyDistOrderCounts[mKey]) monthlyDistOrderCounts[mKey] = {}
+      monthlyDistOrderCounts[mKey][distId] = (monthlyDistOrderCounts[mKey][distId] || 0) + 1
+    })
+    const repeatTrend = Object.entries(monthlyDistOrders)
+      .map(([month, dists]) => {
+        const total = dists.size
+        const repeated = Object.entries(monthlyDistOrderCounts[month] || {})
+          .filter(([, count]) => count > 1).length
+        return {
+          month,
+          label: format(parseISO(month + '-01'), 'MMM yy'),
+          repeatRate: total > 0 ? (repeated / total) * 100 : 0,
+          repeatDists: repeated,
+          totalDists: total,
+        }
+      })
+      .sort((a, b) => a.month.localeCompare(b.month))
+
+    // At-risk distributors: those whose last order is old or gap is increasing
+    const now = new Date()
+    const atRiskDists = distGaps.map((d) => {
+      const daysSinceLastOrder = d.lastDate
+        ? (now.getTime() - new Date(d.lastDate).getTime()) / 86400000
+        : 999
+      let riskLevel: 'healthy' | 'warning' | 'at_risk' | 'inactive' = 'healthy'
+      if (daysSinceLastOrder > 90) riskLevel = 'inactive'
+      else if (daysSinceLastOrder > 60) riskLevel = 'at_risk'
+      else if (daysSinceLastOrder > 30) riskLevel = 'warning'
+      return {
+        id: d.id,
+        name: d.name,
+        orders: d.orders,
+        rm: d.rm,
+        avgGap: d.avgGap,
+        lastDate: d.lastDate,
+        daysSinceLastOrder: Math.round(daysSinceLastOrder),
+        riskLevel,
+      }
+    }).sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder)
+
+    // Product repeat analysis - resolve variant names
+    const productVariantIds = Object.keys(productOrderMap).filter((id) => id !== 'unknown')
+    let productVariantNames: Record<string, string> = {}
+    if (productVariantIds.length > 0) {
+      const { data: pvars } = await supabase
+        .from('product_variants')
+        .select('id, variant_name, products(product_name)')
+        .in('id', productVariantIds.slice(0, 50))
+      ;(pvars || []).forEach((v: any) => {
+        const pn = v.products?.product_name || ''
+        const vn = v.variant_name || ''
+        productVariantNames[v.id] = pn && vn && pn !== vn ? `${pn} - ${vn}` : vn || pn || 'Unknown'
+      })
+    }
+
+    const productRepeat = Object.entries(productOrderMap)
+      .map(([vid, data]) => ({
+        variantId: vid,
+        name: productVariantNames[vid] || data.name || 'Unknown',
+        uniqueDistributors: data.distIds.size,
+        totalQty: data.totalQty,
+        totalRM: data.totalRM,
+      }))
+      .sort((a, b) => b.uniqueDistributors - a.uniqueDistributors || b.totalRM - a.totalRM)
+      .slice(0, 15)
+
+    // Gap distribution
+    const gapBuckets = { '0-7 days': 0, '8-14 days': 0, '15-30 days': 0, '31-60 days': 0, '60+ days': 0 }
+    distWithGaps.forEach((d) => {
+      const g = d.avgGap || 0
+      if (g <= 7) gapBuckets['0-7 days']++
+      else if (g <= 14) gapBuckets['8-14 days']++
+      else if (g <= 30) gapBuckets['15-30 days']++
+      else if (g <= 60) gapBuckets['31-60 days']++
+      else gapBuckets['60+ days']++
+    })
+
+    const repeatAnalytics = {
+      overview: {
+        repeatRate,
+        repeatDists: repeatDistValues.length,
+        singleOrderDists: singleOrderDists.length,
+        avgRepeatOrders: Math.round(avgRepeatOrders * 10) / 10,
+        avgDaysBetweenOrders: Math.round(overallAvgGap * 10) / 10,
+        repeatRevenue,
+        singleRevenue,
+        repeatRevenueShare: totalAmount > 0 ? (repeatRevenue / totalAmount) * 100 : 0,
+      },
+      freqBuckets,
+      repeatTrend,
+      topRepeatDists: repeatDistValues
+        .map((d) => ({
+          id: d.id,
+          name: d.name,
+          orders: d.orders,
+          rm: d.rm,
+          aov: d.orders > 0 ? d.rm / d.orders : 0,
+          lastDate: d.lastDate,
+          avgGap: computeAvgGap(d.orderDates),
+        }))
+        .sort((a, b) => b.orders - a.orders)
+        .slice(0, 20),
+      singleOrderDistList: singleOrderDists.map((d) => ({
+        id: d.id,
+        name: d.name,
+        rm: d.rm,
+        lastDate: d.lastDate,
+      })),
+      atRiskDists: atRiskDists.filter((d) => d.riskLevel !== 'healthy'),
+      gapBuckets,
+      productRepeat,
+    }
+
+    // ── Distributors list (for filter dropdown + dialog) ────────
     const { data: distributorsList } = await supabase
       .from('organizations')
-      .select('id, org_name, org_type_code, status')
+      .select('id, org_name, org_type_code, is_active, org_code, contact_name, contact_phone, city, state_id')
       .eq('org_type_code', 'DIST')
       .order('org_name')
 
@@ -417,6 +602,8 @@ export async function GET(request: Request) {
     const allDistributorsList = (distributorsList || []).map((d: any) => ({
       ...d,
       hasOrders: activeDistIds.has(d.id),
+      orderCount: distMap[d.id]?.orders || 0,
+      totalRM: distMap[d.id]?.rm || 0,
     }))
 
     return NextResponse.json({
@@ -426,6 +613,7 @@ export async function GET(request: Request) {
       comparison,
       insights,
       totalCount: totalOrderCount,
+      repeatAnalytics,
       filters: {
         dateRange,
         startDate: dates.start,

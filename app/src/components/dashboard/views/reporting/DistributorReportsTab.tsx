@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { useTheme } from '@/components/providers/ThemeProvider'
+import RepeatRateAnalytics from './RepeatRateAnalytics'
 import type {
   DistributorReportData,
   KPICard,
@@ -453,6 +454,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const [distDialogTab, setDistDialogTab] = useState<'active' | 'inactive'>('active')
   const [orderListPage, setOrderListPage] = useState(1)
   const [allDistributors, setAllDistributors] = useState<any[]>([])
+  const [repeatRateOpen, setRepeatRateOpen] = useState(false)
   const ORDERS_PER_PAGE = 20
 
   // ── Fetch report data ────────────────────────────────────
@@ -534,6 +536,22 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const trend: MonthlyTrendPoint[] = data?.trend || []
   const comparison: ComparisonItem[] = data?.comparison || []
   const insights: InsightCardType[] = data?.insights || []
+
+  // ── Repeat Rate Analytics View ────────────────────────────
+  if (repeatRateOpen) {
+    return (
+      <RepeatRateAnalytics
+        data={data?.repeatAnalytics || null}
+        loading={loading}
+        onBack={() => setRepeatRateOpen(false)}
+        onDistributorClick={(id) => {
+          setRepeatRateOpen(false)
+          setSelectedDistId(id)
+          setDrawerOpen(true)
+        }}
+      />
+    )
+  }
 
   return (
     <div className="space-y-8 animate-in fade-in-50 duration-500">
@@ -651,7 +669,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
       )}
 
       {/* ─── KPI CARDS ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => <KPICardSkeleton key={i} />)
           : kpis.map((kpi) => (
@@ -662,6 +680,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                 onClick={
                   kpi.id === 'totalOrders' ? () => { setOrderListPage(1); setOrdersDialogOpen(true) }
                   : kpi.id === 'activeDistributors' ? () => { setDistDialogTab('active'); setDistDialogOpen(true) }
+                  : kpi.id === 'repeatRate' ? () => setRepeatRateOpen(true)
                   : undefined
                 }
               />
