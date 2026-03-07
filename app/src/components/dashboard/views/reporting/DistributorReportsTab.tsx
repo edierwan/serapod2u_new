@@ -418,7 +418,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<any>(null)
-  const [dateRange, setDateRange] = useState('thisMonth')
+  const [dateRange, setDateRange] = useState('last3Months')
   const [orderType, setOrderType] = useState('all')
   const [seller, setSeller] = useState('all')
   const [status, setStatus] = useState('all')

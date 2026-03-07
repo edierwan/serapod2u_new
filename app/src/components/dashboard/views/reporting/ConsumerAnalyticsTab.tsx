@@ -13,7 +13,7 @@ import {
 import {
   RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   Users, Scan, Target, BarChart3, Activity, Zap, Crown, Eye,
-  UserPlus, UserCheck, Clock, Calendar, Flame, Star,
+  UserPlus, UserCheck, Clock, Calendar, Flame, Star, Package,
 } from 'lucide-react'
 import {
   format, subDays, subMonths, startOfMonth, endOfMonth,
@@ -116,6 +116,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
   const [refreshing, setRefreshing] = useState(false)
   const [scans, setScans] = useState<ScanRow[]>([])
   const [allScans, setAllScans] = useState<ScanRow[]>([]) // 12mo for monthly trends
+  const [qrProductMap, setQrProductMap] = useState<Map<string, string>>(new Map()) // qr_code_id -> product name
 
   // ── Data Fetching ────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -131,6 +132,29 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
       if (!error && data) {
         setAllScans(data as unknown as ScanRow[])
+
+        // Build QR code → product name lookup
+        const qrIds = [...new Set((data as any[]).map(s => s.qr_code_id).filter(Boolean))]
+        if (qrIds.length > 0) {
+          const nameMap = new Map<string, string>()
+          const batchSize = 200
+          for (let i = 0; i < qrIds.length; i += batchSize) {
+            const batch = qrIds.slice(i, i + batchSize)
+            const { data: qrRows } = await supabase
+              .from('qr_codes')
+              .select('id, product_id, products(product_name), product_variants(variant_name)')
+              .in('id', batch)
+            if (qrRows) {
+              (qrRows as any[]).forEach(qr => {
+                const prodName = qr.products?.product_name || ''
+                const varName = qr.product_variants?.variant_name || ''
+                const label = varName ? `${prodName} - ${varName}` : prodName || `QR-${qr.id.slice(0, 8)}`
+                nameMap.set(qr.id, label)
+              })
+            }
+          }
+          setQrProductMap(nameMap)
+        }
       }
     } catch (err) {
       console.error('ConsumerAnalyticsTab fetch error:', err)
@@ -328,20 +352,26 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
   // ── Product Engagement ───────────────────────────────────────────────────
   const productEngagement = useMemo(() => {
-    // Group scans by qr_code_id to see which products have most engagement
+    // Group scans by qr_code_id then resolve to product names
     const qrMap = new Map<string, number>()
     periodScans.forEach(s => {
       if (s.qr_code_id) {
         qrMap.set(s.qr_code_id, (qrMap.get(s.qr_code_id) || 0) + 1)
       }
     })
-    const sorted = [...qrMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
-    return sorted.map(([id, count], i) => ({
-      name: `QR-${id.slice(0, 8)}`,
+    // Merge by product name (multiple QR codes can map to same product)
+    const productAgg = new Map<string, number>()
+    qrMap.forEach((count, qrId) => {
+      const name = qrProductMap.get(qrId) || `QR-${qrId.slice(0, 8)}`
+      productAgg.set(name, (productAgg.get(name) || 0) + count)
+    })
+    const sorted = [...productAgg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+    return sorted.map(([name, count], i) => ({
+      name,
       scans: count,
       fill: CHART_COLORS[i % CHART_COLORS.length],
     }))
-  }, [periodScans])
+  }, [periodScans, qrProductMap])
 
   // ── Top Consumers ────────────────────────────────────────────────────────
   const topConsumers = useMemo(() => {
@@ -793,12 +823,12 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
             <CardDescription>Top scanned products by engagement volume</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
+            <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={productEngagement} layout="vertical">
+                <BarChart data={productEngagement} layout="vertical" margin={{ left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
                   <XAxis type="number" tick={{ fill: chartTickColor, fontSize: 11 }} />
-                  <YAxis dataKey="name" type="category" width={90} tick={{ fill: chartTickColor, fontSize: 11 }} />
+                  <YAxis dataKey="name" type="category" width={160} tick={{ fill: chartTickColor, fontSize: 11 }} />
                   <Tooltip contentStyle={{ backgroundColor: isDark ? '#1e293b' : '#fff', border: 'none', borderRadius: 12 }} />
                   <Bar dataKey="scans" radius={[0, 4, 4, 0]}>
                     {productEngagement.map((entry, index) => (

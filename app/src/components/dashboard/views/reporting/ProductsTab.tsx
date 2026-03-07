@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   AreaChart,
   Area,
@@ -49,6 +51,9 @@ import {
   ShieldAlert,
   Megaphone,
   Crown,
+  Search,
+  X,
+  Eye,
 } from 'lucide-react'
 import {
   format,
@@ -234,6 +239,8 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
   const [products, setProducts] = useState<ProductRow[]>([])
   const [inventory, setInventory] = useState<InventoryRow[]>([])
   const [categories, setCategories] = useState<CategoryRow[]>([])
+  const [showSkuModal, setShowSkuModal] = useState(false)
+  const [skuSearch, setSkuSearch] = useState('')
 
   // ── Data Fetching ────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -753,16 +760,17 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       {/* ── 1. KPI Cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {/* Active SKUs */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400/50 transition-all" onClick={() => setShowSkuModal(true)}>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <Boxes className="h-4 w-4 text-blue-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Active SKUs</span>
             </div>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
               <AnimatedCounter value={kpis.activeSKUs} />
+              <Eye className="h-4 w-4 text-blue-400 opacity-60" />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">product variants</p>
+            <p className="text-xs text-muted-foreground mt-1">click to view SKU details</p>
           </CardContent>
           <div className="h-1 bg-gradient-to-r from-blue-500 to-blue-400" />
         </Card>
@@ -1275,6 +1283,106 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
           </Card>
         </>
       )}
+
+      {/* ── SKU Detail Modal ──────────────────────────────────────────── */}
+      <Dialog open={showSkuModal} onOpenChange={setShowSkuModal}>
+        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Boxes className="h-5 w-5 text-blue-500" />
+              Active SKU Directory ({variants.filter(v => v.is_active).length} variants)
+            </DialogTitle>
+            <DialogDescription>Complete list of active product variants with pricing and inventory details</DialogDescription>
+          </DialogHeader>
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by SKU name, product name, or code..."
+              value={skuSearch}
+              onChange={e => setSkuSearch(e.target.value)}
+              className="pl-9"
+            />
+            {skuSearch && (
+              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7" onClick={() => setSkuSearch('')}>
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 overflow-auto min-h-0 -mx-2 px-2">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-background z-10">
+                <tr className="border-b text-muted-foreground text-xs uppercase tracking-wider">
+                  <th className="text-left py-2 pl-2">#</th>
+                  <th className="text-left py-2">Product</th>
+                  <th className="text-left py-2">Variant / SKU</th>
+                  <th className="text-left py-2">Code</th>
+                  <th className="text-right py-2">Base Cost</th>
+                  <th className="text-right py-2">Retail Price</th>
+                  <th className="text-right py-2">On Hand</th>
+                  <th className="text-right py-2 pr-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {variants
+                  .filter(v => v.is_active)
+                  .filter(v => {
+                    if (!skuSearch) return true
+                    const q = skuSearch.toLowerCase()
+                    const prod = productMap.get(v.product_id)
+                    return (
+                      (v.variant_name || '').toLowerCase().includes(q) ||
+                      (prod?.product_name || '').toLowerCase().includes(q) ||
+                      (prod?.product_code || '').toLowerCase().includes(q)
+                    )
+                  })
+                  .map((v, idx) => {
+                    const prod = productMap.get(v.product_id)
+                    const inv = inventory.find(i => i.variant_id === v.id)
+                    return (
+                      <tr key={v.id} className="border-b border-border/50 hover:bg-muted/40 transition-colors">
+                        <td className="py-2.5 pl-2 text-muted-foreground">{idx + 1}</td>
+                        <td className="py-2.5">
+                          <span className="font-medium text-foreground">{prod?.product_name || '-'}</span>
+                        </td>
+                        <td className="py-2.5">
+                          <span className="text-foreground">{v.variant_name || '-'}</span>
+                        </td>
+                        <td className="py-2.5">
+                          <Badge variant="outline" className="text-[10px] font-mono">{prod?.product_code || '-'}</Badge>
+                        </td>
+                        <td className="py-2.5 text-right font-mono">
+                          {v.base_cost != null ? `RM ${v.base_cost.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="py-2.5 text-right font-mono">
+                          {v.suggested_retail_price != null ? `RM ${v.suggested_retail_price.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="py-2.5 text-right font-mono">
+                          {inv ? inv.quantity_on_hand.toLocaleString() : '-'}
+                        </td>
+                        <td className="py-2.5 text-right pr-2">
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
+                            Active
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+            {variants.filter(v => v.is_active).filter(v => {
+              if (!skuSearch) return true
+              const q = skuSearch.toLowerCase()
+              const prod = productMap.get(v.product_id)
+              return (v.variant_name || '').toLowerCase().includes(q) || (prod?.product_name || '').toLowerCase().includes(q) || (prod?.product_code || '').toLowerCase().includes(q)
+            }).length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <Search className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p>No SKUs match your search</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
