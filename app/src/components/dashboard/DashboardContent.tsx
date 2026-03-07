@@ -108,6 +108,7 @@ import ConsumerScanView from '@/components/dashboard/views/qr-tracking/ConsumerS
 
 import DistributorOrderView from '@/components/orders/DistributorOrderView'
 import ShopOrderView from '@/components/orders/ShopOrderView'
+import DistributorIncentiveView from '@/components/supply-chain/DistributorIncentiveView'
 // Consumer Engagement Components
 import LuckyDrawView from '@/components/dashboard/views/consumer-engagement/LuckyDrawView'
 import ConsumerActivationsView from '@/components/dashboard/views/consumer-engagement/ConsumerActivationsView'
@@ -357,6 +358,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <WarehouseShipV2 userProfile={userProfile} onViewChange={handleViewChange} />
       case 'distributor-order':
         return <DistributorOrderView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'distributor-incentive':
+        return <DistributorIncentiveView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'shop-order':
         return <ShopOrderView userProfile={userProfile} onViewChange={handleViewChange} />
 

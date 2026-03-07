@@ -419,9 +419,9 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<any>(null)
   const [dateRange, setDateRange] = useState('thisMonth')
-  const [orderType, setOrderType] = useState('')
-  const [seller, setSeller] = useState('')
-  const [status, setStatus] = useState('')
+  const [orderType, setOrderType] = useState('all')
+  const [seller, setSeller] = useState('all')
+  const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [trendMetric, setTrendMetric] = useState<'amount' | 'orders'>('amount')
   const [comparisonMode, setComparisonMode] = useState<'absolute' | 'growth'>('absolute')
@@ -438,9 +438,9 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
     try {
       const params = new URLSearchParams()
       params.set('dateRange', dateRange)
-      if (orderType) params.set('orderType', orderType)
-      if (seller) params.set('seller', seller)
-      if (status) params.set('status', status)
+      if (orderType && orderType !== 'all') params.set('orderType', orderType)
+      if (seller && seller !== 'all') params.set('seller', seller)
+      if (status && status !== 'all') params.set('status', status)
       if (search) params.set('search', search)
 
       // Update URL for shareability
@@ -468,6 +468,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
     if (sp.get('seller')) setSeller(sp.get('seller')!)
     if (sp.get('status')) setStatus(sp.get('status')!)
     if (sp.get('search')) setSearch(sp.get('search')!)
+    if (sp.get('search')) setSearch(sp.get('search')!)
   }, [])
 
   useEffect(() => { fetchReport() }, [fetchReport])
@@ -476,9 +477,9 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
   const handleExportCSV = useCallback(() => {
     const params = new URLSearchParams()
     params.set('dateRange', dateRange)
-    if (orderType) params.set('orderType', orderType)
-    if (seller) params.set('seller', seller)
-    if (status) params.set('status', status)
+    if (orderType && orderType !== 'all') params.set('orderType', orderType)
+    if (seller && seller !== 'all') params.set('seller', seller)
+    if (status && status !== 'all') params.set('status', status)
     if (search) params.set('search', search)
     window.open(`/api/reporting/distributors/csv?${params}`, '_blank')
   }, [dateRange, orderType, seller, status, search])
@@ -558,7 +559,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
               <SelectValue placeholder="Order Type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Types</SelectItem>
+              <SelectItem value="all">All Types</SelectItem>
               <SelectItem value="H2M">H2M</SelectItem>
               <SelectItem value="D2H">D2H</SelectItem>
               <SelectItem value="S2D">S2D</SelectItem>
@@ -570,7 +571,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
               <SelectValue placeholder="All Sellers" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Sellers</SelectItem>
+              <SelectItem value="all">All Sellers</SelectItem>
               {sellers.map((s) => (
                 <SelectItem key={s.id} value={s.id}>{s.org_name}</SelectItem>
               ))}
@@ -582,7 +583,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Status</SelectItem>
+              <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="submitted">Submitted</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
@@ -605,11 +606,11 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
 
-          {(orderType || seller || status || search) && (
+          {(orderType !== 'all' || seller !== 'all' || status !== 'all' || search) && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setOrderType(''); setSeller(''); setStatus(''); setSearch('') }}
+              onClick={() => { setOrderType('all'); setSeller('all'); setStatus('all'); setSearch('') }}
               className="h-9 text-xs text-muted-foreground"
             >
               <X className="w-3 h-3 mr-1" /> Clear
@@ -923,7 +924,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
             <Building2 className="w-16 h-16 text-muted-foreground/30 mb-4" />
             <h3 className="text-lg font-semibold text-muted-foreground">No Distributor Activity</h3>
             <p className="text-sm text-muted-foreground mt-1">No distributor order activity found for this filter selection.</p>
-            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDateRange('last12Months'); setOrderType(''); setSeller(''); setStatus(''); setSearch('') }}>
+            <Button variant="outline" size="sm" className="mt-4" onClick={() => { setDateRange('last12Months'); setOrderType('all'); setSeller('all'); setStatus('all'); setSearch('') }}>
               <RefreshCw className="w-4 h-4 mr-1.5" /> Reset Filters
             </Button>
           </CardContent>

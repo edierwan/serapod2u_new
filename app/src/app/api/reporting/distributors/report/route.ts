@@ -70,6 +70,11 @@ export async function GET(request: Request) {
     const status = searchParams.get('status') || ''
     const search = searchParams.get('search') || ''
 
+    // Normalize 'all' to empty (no filter)
+    const effectiveOrderType = orderType === 'all' ? '' : orderType
+    const effectiveSeller = seller === 'all' ? '' : seller
+    const effectiveStatus = status === 'all' ? '' : status
+
     const supabase = await createClient()
 
     // Auth
@@ -114,9 +119,9 @@ export async function GET(request: Request) {
       .lte('created_at', dates.end)
       .order('created_at', { ascending: false })
 
-    if (orderType) q = q.eq('order_type', orderType as any)
-    if (seller) q = q.eq('seller_org_id', seller)
-    if (status) q = q.eq('status', status as any)
+    if (effectiveOrderType) q = q.eq('order_type', effectiveOrderType as any)
+    if (effectiveSeller) q = q.eq('seller_org_id', effectiveSeller)
+    if (effectiveStatus) q = q.eq('status', effectiveStatus as any)
 
     const { data: allOrders, error: ordErr } = await q
     if (ordErr) {
@@ -149,9 +154,9 @@ export async function GET(request: Request) {
       .gte('created_at', dates.prevStart)
       .lte('created_at', dates.prevEnd)
 
-    if (orderType) prevQ = prevQ.eq('order_type', orderType as any)
-    if (seller) prevQ = prevQ.eq('seller_org_id', seller)
-    if (status) prevQ = prevQ.eq('status', status as any)
+    if (effectiveOrderType) prevQ = prevQ.eq('order_type', effectiveOrderType as any)
+    if (effectiveSeller) prevQ = prevQ.eq('seller_org_id', effectiveSeller)
+    if (effectiveStatus) prevQ = prevQ.eq('status', effectiveStatus as any)
 
     const { data: prevAllOrders } = await prevQ
     const prevOrders = (prevAllOrders || []).filter(

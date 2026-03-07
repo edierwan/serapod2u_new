@@ -27,6 +27,7 @@ import {
     ListTree,
     Settings as SettingsIcon,
     Building2,
+    Trophy,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -94,6 +95,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         children: [
             { id: 'orders', label: 'Orders', icon: FileText },
             { id: 'distributor-order', label: 'Distributor Order', icon: ShoppingCart, access: { allowedOrgTypes: ['HQ', 'DIST'] } },
+            { id: 'distributor-incentive', label: 'Distributor Incentive', icon: Trophy, access: { allowedOrgTypes: ['HQ'] } },
             { id: 'shop-order', label: 'Shop Order', icon: Store, access: { allowedOrgTypes: ['HQ', 'SHOP'] } },
         ],
     },

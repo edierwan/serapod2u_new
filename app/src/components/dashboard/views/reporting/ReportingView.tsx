@@ -60,6 +60,8 @@ import {
 import { format, subDays, startOfMonth, endOfMonth, differenceInDays } from 'date-fns'
 import ConsumerAnalyticsTab from './ConsumerAnalyticsTab'
 import DistributorReportsTab from './DistributorReportsTab'
+import OperationsTab from './OperationsTab'
+import ProductsTab from './ProductsTab'
 
 interface ReportingViewProps {
     userProfile: any
@@ -757,75 +759,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                     {/* Operations Tab */}
                     <TabsContent value="operations" className="space-y-6 animate-in fade-in-50 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <MetricCard
-                                title="Orders in Progress"
-                                value={data?.summary?.ordersInProgress || 0}
-                                icon={Clock}
-                                color={COLORS.warning}
-                                subtitle="submitted/approved"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Completed Orders"
-                                value={data?.summary?.completedOrders || 0}
-                                icon={CheckCircle2}
-                                color={COLORS.success}
-                                subtitle="shipped/closed"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Total POs"
-                                value={data?.summary?.totalPOs || 0}
-                                change={5.2}
-                                changeType="increase"
-                                icon={Receipt}
-                                color={COLORS.purple}
-                                subtitle="purchase orders"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Pending DOs"
-                                value={data?.summary?.pendingDOs || 0}
-                                icon={Truck}
-                                color={COLORS.cyan}
-                                subtitle="delivery orders"
-                                loading={loading}
-                            />
-                        </div>
-
-                        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-                            <CardHeader>
-                                <CardTitle className="text-lg font-semibold">Order Processing Timeline</CardTitle>
-                                <CardDescription>Daily order volume and status breakdown</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-[400px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <ComposedChart data={trendData}>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridColor} />
-                                            <XAxis
-                                                dataKey="date"
-                                                tickFormatter={(value: string) => {
-                                                    const [year, month] = value.split('-')
-                                                    const date = new Date(parseInt(year), parseInt(month) - 1)
-                                                    return format(date, 'MMM')
-                                                }}
-                                                tickLine={false}
-                                                axisLine={false}
-                                            />
-                                            <YAxis tickLine={false} axisLine={false} />
-                                            <Tooltip
-                                                contentStyle={tooltipStyle}
-                                            />
-                                            <Legend />
-                                            <Bar dataKey="units" name="Units Shipped" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
-                                            <Line type="monotone" dataKey="units" name="Trend" stroke={COLORS.success} strokeWidth={2} dot={false} />
-                                        </ComposedChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <OperationsTab
+                            userProfile={userProfile}
+                            chartGridColor={chartGridColor}
+                            chartTickColor={chartTickColor}
+                            isDark={isDark}
+                        />
                     </TabsContent>
 
                     {/* Finance Tab */}
@@ -960,80 +899,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                     {/* Products Tab */}
                     <TabsContent value="products" className="space-y-6 animate-in fade-in-50 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                            <MetricCard
-                                title="Active SKUs"
-                                value={data?.summary?.totalSKUs || productMixData.length || 0}
-                                icon={Package}
-                                color={COLORS.primary}
-                                subtitle="in inventory"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Total Units Ordered"
-                                value={data?.summary?.totalUnits || 0}
-                                icon={TrendingUp}
-                                color={COLORS.success}
-                                subtitle="across all orders"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Inventory Stock"
-                                value={data?.summary?.totalInventory || 0}
-                                icon={BoxIcon}
-                                color={COLORS.purple}
-                                subtitle="units on hand"
-                                loading={loading}
-                            />
-                            <MetricCard
-                                title="Product Diversity"
-                                value={productMixData.length >= 5 ? 'High' : productMixData.length >= 3 ? 'Medium' : 'Low'}
-                                icon={PieChartIcon}
-                                color={COLORS.cyan}
-                                subtitle="portfolio health"
-                                loading={loading}
-                            />
-                        </div>
-
-                        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-                            <CardHeader>
-                                <CardTitle className="text-lg font-semibold">Product Performance Matrix</CardTitle>
-                                <CardDescription>Detailed breakdown by variant</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    {productMixData.map((product: any, index: number) => {
-                                        const total = data?.summary?.totalUnits || 1
-                                        const percentage = (product.units / total) * 100
-                                        return (
-                                            <div key={index} className="p-4 bg-muted rounded-xl hover:bg-muted/80 transition-colors">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-4 h-4 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                                                        <span className="font-medium text-foreground">{product.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <span className="text-lg font-bold text-foreground">{product.units?.toLocaleString()}</span>
-                                                        <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                                                            {percentage.toFixed(1)}%
-                                                        </Badge>
-                                                    </div>
-                                                </div>
-                                                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full rounded-full transition-all duration-1000 ease-out"
-                                                        style={{
-                                                            width: `${percentage}%`,
-                                                            backgroundColor: CHART_COLORS[index % CHART_COLORS.length]
-                                                        }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <ProductsTab
+                            userProfile={userProfile}
+                            chartGridColor={chartGridColor}
+                            chartTickColor={chartTickColor}
+                            isDark={isDark}
+                        />
                     </TabsContent>
 
                     {/* Consumer Analytics Tab */}
