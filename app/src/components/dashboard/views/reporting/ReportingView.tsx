@@ -433,41 +433,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </div>
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
-                            <SelectTrigger className="w-[200px] bg-card border-border shadow-sm">
-                                <Building2 className="mr-2 h-4 w-4 text-muted-foreground" />
-                                <SelectValue placeholder="All Distributors" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Distributors</SelectItem>
-                                {distributors.map(d => (
-                                    <SelectItem key={d.id} value={d.id}>{d.org_name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select value={dateRange} onValueChange={setDateRange}>
-                            <SelectTrigger className="w-[180px] bg-card border-border shadow-sm">
-                                <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                                <SelectValue placeholder="Select range" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="today">Today</SelectItem>
-                                <SelectItem value="last7">Last 7 Days</SelectItem>
-                                <SelectItem value="last30">Last 30 Days</SelectItem>
-                                <SelectItem value="last90">Last 90 Days</SelectItem>
-                                <SelectItem value="thisMonth">This Month</SelectItem>
-                                <SelectItem value="lastMonth">Last Month</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Button variant="outline" onClick={fetchData} className="bg-card shadow-sm">
-                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        </Button>
-                        <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-200 dark:shadow-blue-900/30">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export Report
-                        </Button>
-                    </div>
+
                 </div>
 
                 {/* Error Banner */}

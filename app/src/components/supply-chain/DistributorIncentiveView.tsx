@@ -18,6 +18,8 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   BarChart, Bar, LineChart, Line, PieChart as RechartsPC, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -166,7 +168,7 @@ async function fetchDistributorPerformance(
     .not('status', 'in', '("draft","cancelled")')
     .gte('created_at', prevStartISO)
     .lte('created_at', prevEndISO)
-  : { data: [] as any[] }
+    : { data: [] as any[] }
 
   // Aggregate current period
   const currentMap = new Map<string, { orders: number; revenue: number }>()
@@ -485,9 +487,9 @@ function LeaderboardRow({ dist, index }: { dist: DistributorPerformance; index: 
   return (
     <div className={`flex items-center gap-4 p-4 rounded-xl transition-all duration-200 hover:bg-muted/60 ${index < 3 ? 'bg-gradient-to-r from-amber-50/50 to-transparent dark:from-amber-950/10' : ''}`}>
       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-          index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' :
-            index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-              'bg-muted text-muted-foreground'
+        index === 1 ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300' :
+          index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+            'bg-muted text-muted-foreground'
         }`}>
         {index < 3 ? ['🥇', '🥈', '🥉'][index] : `#${index + 1}`}
       </div>
@@ -540,6 +542,20 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
   const [tierDist, setTierDist] = useState<any[]>([])
   const [campaignFilter, setCampaignFilter] = useState<string>('all')
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('month')
+  const [campaignDialogOpen, setCampaignDialogOpen] = useState(false)
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
+  const [campaignForm, setCampaignForm] = useState({
+    name: '',
+    type: 'volume' as Campaign['type'],
+    status: 'draft' as Campaign['status'],
+    startDate: '',
+    endDate: '',
+    targetMetric: '',
+    targetValue: 0,
+    rewardType: 'cash' as Campaign['rewardType'],
+    rewardValue: 0,
+    budgetCap: 0,
+  })
 
   const isDark = typeof window !== 'undefined' && document.documentElement.classList.contains('dark')
   const chartGridColor = isDark ? '#374151' : '#e5e7eb'
@@ -606,10 +622,84 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
   }, [campaigns, campaignFilter])
 
   // ── Handlers ──────────────────────────────────────────────────
-  const handleEditCampaign = useCallback((c: Campaign) => {
-    // TODO: Open campaign editor modal
-    console.log('Edit campaign:', c.id)
+  const openNewCampaignDialog = useCallback(() => {
+    setEditingCampaign(null)
+    setCampaignForm({
+      name: '',
+      type: 'volume',
+      status: 'draft',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(new Date().getFullYear(), new Date().getMonth() + 3, 0), 'yyyy-MM-dd'),
+      targetMetric: 'Total cases ordered',
+      targetValue: 0,
+      rewardType: 'cash',
+      rewardValue: 0,
+      budgetCap: 0,
+    })
+    setCampaignDialogOpen(true)
   }, [])
+
+  const handleEditCampaign = useCallback((c: Campaign) => {
+    setEditingCampaign(c)
+    setCampaignForm({
+      name: c.name,
+      type: c.type,
+      status: c.status,
+      startDate: c.startDate,
+      endDate: c.endDate,
+      targetMetric: c.targetMetric,
+      targetValue: c.targetValue,
+      rewardType: c.rewardType,
+      rewardValue: c.rewardValue,
+      budgetCap: c.budgetCap,
+    })
+    setCampaignDialogOpen(true)
+  }, [])
+
+  const handleSaveCampaign = useCallback(() => {
+    if (editingCampaign) {
+      // Update existing
+      setCampaigns(prev => prev.map(cp =>
+        cp.id === editingCampaign.id
+          ? {
+              ...cp,
+              name: campaignForm.name,
+              type: campaignForm.type,
+              status: campaignForm.status,
+              startDate: campaignForm.startDate,
+              endDate: campaignForm.endDate,
+              targetMetric: campaignForm.targetMetric,
+              targetValue: campaignForm.targetValue,
+              rewardType: campaignForm.rewardType,
+              rewardValue: campaignForm.rewardValue,
+              budgetCap: campaignForm.budgetCap,
+            }
+          : cp
+      ))
+    } else {
+      // Create new
+      const newCampaign: Campaign = {
+        id: `camp-${Date.now()}`,
+        name: campaignForm.name,
+        type: campaignForm.type,
+        status: campaignForm.status,
+        startDate: campaignForm.startDate,
+        endDate: campaignForm.endDate,
+        targetMetric: campaignForm.targetMetric,
+        targetValue: campaignForm.targetValue,
+        rewardType: campaignForm.rewardType,
+        rewardValue: campaignForm.rewardValue,
+        eligibleDistributors: distributors.length,
+        participatingDistributors: 0,
+        achievedCount: 0,
+        totalSpend: 0,
+        budgetCap: campaignForm.budgetCap,
+      }
+      setCampaigns(prev => [...prev, newCampaign])
+    }
+    setCampaignDialogOpen(false)
+    setEditingCampaign(null)
+  }, [editingCampaign, campaignForm, distributors.length])
 
   const handleToggleCampaign = useCallback((c: Campaign) => {
     setCampaigns(prev => prev.map(cp =>
@@ -639,7 +729,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           <Button variant="outline" size="sm" onClick={() => loadData()}>
             <RefreshCw className="w-4 h-4 mr-1" /> Refresh
           </Button>
-          <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg">
+          <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg" onClick={openNewCampaignDialog}>
             <Plus className="w-4 h-4 mr-1" /> New Campaign
           </Button>
         </div>
@@ -820,7 +910,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               </Select>
               <span className="text-sm text-muted-foreground">{filteredCampaigns.length} campaigns</span>
             </div>
-            <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+            <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white" onClick={openNewCampaignDialog}>
               <Plus className="w-4 h-4 mr-1" /> Create Campaign
             </Button>
           </div>
@@ -1199,6 +1289,158 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ═══ CAMPAIGN CREATE / EDIT DIALOG ═══ */}
+      <Dialog open={campaignDialogOpen} onOpenChange={setCampaignDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {editingCampaign ? <Edit className="w-5 h-5 text-indigo-500" /> : <Plus className="w-5 h-5 text-indigo-500" />}
+              {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCampaign ? 'Update campaign details below.' : 'Fill in the details to launch a new incentive campaign.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-5 py-4">
+            {/* Campaign Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="campaign-name">Campaign Name</Label>
+              <Input
+                id="campaign-name"
+                placeholder="e.g. Q2 Volume Blitz"
+                value={campaignForm.name}
+                onChange={(e) => setCampaignForm(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+
+            {/* Type & Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Campaign Type</Label>
+                <Select value={campaignForm.type} onValueChange={(v) => setCampaignForm(prev => ({ ...prev, type: v as Campaign['type'] }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="volume">Volume Target</SelectItem>
+                    <SelectItem value="growth">Growth %</SelectItem>
+                    <SelectItem value="streak">Order Streak</SelectItem>
+                    <SelectItem value="product-mix">Product Mix</SelectItem>
+                    <SelectItem value="tiered">Tiered Bonus</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <Select value={campaignForm.status} onValueChange={(v) => setCampaignForm(prev => ({ ...prev, status: v as Campaign['status'] }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="ended">Ended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="start-date">Start Date</Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={campaignForm.startDate}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, startDate: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="end-date">End Date</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={campaignForm.endDate}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, endDate: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Target */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="target-metric">Target Metric</Label>
+                <Input
+                  id="target-metric"
+                  placeholder="e.g. Total cases ordered"
+                  value={campaignForm.targetMetric}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, targetMetric: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="target-value">Target Value</Label>
+                <Input
+                  id="target-value"
+                  type="number"
+                  min={0}
+                  value={campaignForm.targetValue}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, targetValue: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+
+            {/* Reward */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Reward Type</Label>
+                <Select value={campaignForm.rewardType} onValueChange={(v) => setCampaignForm(prev => ({ ...prev, rewardType: v as Campaign['rewardType'] }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="credit">Credit</SelectItem>
+                    <SelectItem value="gift">Gift</SelectItem>
+                    <SelectItem value="points">Points</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="reward-value">Reward Value (per person)</Label>
+                <Input
+                  id="reward-value"
+                  type="number"
+                  min={0}
+                  value={campaignForm.rewardValue}
+                  onChange={(e) => setCampaignForm(prev => ({ ...prev, rewardValue: Number(e.target.value) }))}
+                />
+              </div>
+            </div>
+
+            {/* Budget */}
+            <div className="grid gap-2">
+              <Label htmlFor="budget-cap">Budget Cap (RM)</Label>
+              <Input
+                id="budget-cap"
+                type="number"
+                min={0}
+                placeholder="e.g. 48000"
+                value={campaignForm.budgetCap}
+                onChange={(e) => setCampaignForm(prev => ({ ...prev, budgetCap: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setCampaignDialogOpen(false)}>Cancel</Button>
+            <Button
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white"
+              onClick={handleSaveCampaign}
+              disabled={!campaignForm.name || !campaignForm.startDate || !campaignForm.endDate}
+            >
+              {editingCampaign ? 'Save Changes' : 'Create Campaign'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
