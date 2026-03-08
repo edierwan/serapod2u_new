@@ -161,10 +161,10 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
                 <Badge
                   variant="secondary"
                   className={`text-[10px] font-medium px-1.5 py-0 ${isUp
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : isDown
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        : 'bg-muted text-muted-foreground'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : isDown
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : 'bg-muted text-muted-foreground'
                     }`}
                 >
                   {isUp && <ArrowUpRight className="w-2.5 h-2.5 mr-0.5" />}
@@ -366,10 +366,10 @@ function DistributorDetailDrawer({
                         <Badge
                           variant="secondary"
                           className={`text-[10px] ${o.status === 'approved'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                              : o.status === 'submitted'
-                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                : 'bg-muted text-muted-foreground'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : o.status === 'submitted'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                              : 'bg-muted text-muted-foreground'
                             }`}
                         >
                           {o.status}
@@ -673,18 +673,18 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
         {loading
           ? Array.from({ length: 6 }).map((_, i) => <KPICardSkeleton key={i} />)
           : kpis.map((kpi) => (
-              <KPICardComponent
-                key={kpi.id}
-                kpi={kpi}
-                loading={false}
-                onClick={
-                  kpi.id === 'totalOrders' ? () => { setOrderListPage(1); setOrdersDialogOpen(true) }
+            <KPICardComponent
+              key={kpi.id}
+              kpi={kpi}
+              loading={false}
+              onClick={
+                kpi.id === 'totalOrders' ? () => { setOrderListPage(1); setOrdersDialogOpen(true) }
                   : kpi.id === 'activeDistributors' ? () => { setDistDialogTab('active'); setDistDialogOpen(true) }
-                  : kpi.id === 'repeatRate' ? () => setRepeatRateOpen(true)
-                  : undefined
-                }
-              />
-            ))
+                    : kpi.id === 'repeatRate' ? () => setRepeatRateOpen(true)
+                      : undefined
+              }
+            />
+          ))
         }
       </div>
 
@@ -1024,12 +1024,11 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                                 </td>
                                 <td className="py-2.5 px-2 text-center text-xs">{o.items_count}</td>
                                 <td className="py-2.5 px-2 text-center">
-                                  <Badge variant="secondary" className={`text-[10px] ${
-                                    o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                    : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                    : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                    : 'bg-muted text-muted-foreground'
-                                  }`}>
+                                  <Badge variant="secondary" className={`text-[10px] ${o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                      : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                          : 'bg-muted text-muted-foreground'
+                                    }`}>
                                     {o.status}
                                   </Badge>
                                 </td>

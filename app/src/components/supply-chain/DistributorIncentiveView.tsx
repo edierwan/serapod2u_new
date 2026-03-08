@@ -26,6 +26,9 @@ import {
   ComposedChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis
 } from 'recharts'
+import IncentiveRulesTab from './incentive/IncentiveRulesTab'
+import IncentivePayoutsTab from './incentive/IncentivePayoutsTab'
+import IncentiveNotificationsTab from './incentive/IncentiveNotificationsTab'
 
 // ── Types ───────────────────────────────────────────────────────
 interface UserProfile {
@@ -753,6 +756,12 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           <TabsTrigger value="insights" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
             <Sparkles className="w-4 h-4" /> Insights
           </TabsTrigger>
+          <TabsTrigger value="rules" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+            <Settings className="w-4 h-4" /> Rules / Setup
+          </TabsTrigger>
+          <TabsTrigger value="payouts" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+            <DollarSign className="w-4 h-4" /> Payouts
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══ DASHBOARD TAB ═══ */}
@@ -1025,140 +1034,10 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
 
         {/* ═══ NOTIFICATIONS TAB ═══ */}
         <TabsContent value="notifications" className="space-y-6 mt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                <Bell className="w-5 h-5 text-indigo-500" /> WhatsApp & Notification Control
-              </h2>
-              <p className="text-sm text-muted-foreground">Manage automated incentive messages to distributors</p>
-            </div>
-          </div>
-
-          {/* Notification Templates */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              {
-                id: 'campaign-launch',
-                title: 'Campaign Launch Announcement',
-                trigger: 'When a new campaign goes active',
-                channel: 'WhatsApp + In-App',
-                status: 'enabled',
-                lastSent: '2 days ago',
-                icon: Send,
-                template: '🎯 New Incentive Campaign: {campaign_name}\n\nTarget: {target_metric} ≥ {target_value}\nReward: {reward_type} RM{reward_value}\nPeriod: {start_date} – {end_date}\n\nStart ordering now to qualify!',
-              },
-              {
-                id: 'milestone-alert',
-                title: 'Milestone Achievement Alert',
-                trigger: 'When distributor hits 50%, 75%, 100% of target',
-                channel: 'WhatsApp',
-                status: 'enabled',
-                lastSent: '5 hours ago',
-                icon: Trophy,
-                template: '🏆 Congratulations {dist_name}!\n\nYou\'ve reached {milestone}% of your target in {campaign_name}.\nCurrent: {current_value}/{target_value}\n\nKeep going!',
-              },
-              {
-                id: 'weekly-progress',
-                title: 'Weekly Progress Report',
-                trigger: 'Every Monday 9:00 AM',
-                channel: 'WhatsApp',
-                status: 'enabled',
-                lastSent: 'Monday',
-                icon: BarChart3,
-                template: '📊 Weekly Incentive Report\n\nActive Campaigns: {active_count}\nYour Rank: #{rank}\nRewards Earned: RM{earned}\nNext Milestone: {next_milestone}',
-              },
-              {
-                id: 'campaign-ending',
-                title: 'Campaign Ending Reminder',
-                trigger: '7 days and 1 day before campaign ends',
-                channel: 'WhatsApp + In-App',
-                status: 'enabled',
-                lastSent: '1 week ago',
-                icon: Clock,
-                template: '⏰ {campaign_name} ends in {days_left} days!\n\nYour progress: {current_value}/{target_value}\nYou need {remaining} more to qualify.\n\nDon\'t miss out on RM{reward_value}!',
-              },
-              {
-                id: 'tier-upgrade',
-                title: 'Tier Upgrade Notification',
-                trigger: 'When distributor moves to a higher tier',
-                channel: 'WhatsApp + In-App',
-                status: 'disabled',
-                lastSent: 'Never',
-                icon: Crown,
-                template: '👑 You\'ve been promoted to {new_tier} tier!\n\nBenefits unlocked:\n- Higher reward multiplier\n- Priority stock allocation\n- Exclusive campaigns',
-              },
-              {
-                id: 'reward-payout',
-                title: 'Reward Payout Confirmation',
-                trigger: 'When reward is processed',
-                channel: 'WhatsApp',
-                status: 'enabled',
-                lastSent: '3 days ago',
-                icon: Gift,
-                template: '🎁 Reward Paid!\n\nCampaign: {campaign_name}\nAmount: RM{reward_amount}\nType: {reward_type}\nRef: {ref_number}\n\nThank you for your performance!',
-              },
-            ].map((notif) => (
-              <Card key={notif.id} className="border-0 shadow-lg bg-card/80 backdrop-blur hover:shadow-xl transition-all">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2.5 rounded-xl ${notif.status === 'enabled' ? 'bg-indigo-100 dark:bg-indigo-900/30' : 'bg-muted'}`}>
-                        <notif.icon className={`w-5 h-5 ${notif.status === 'enabled' ? 'text-indigo-600 dark:text-indigo-400' : 'text-muted-foreground'}`} />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-foreground text-sm">{notif.title}</h3>
-                        <p className="text-xs text-muted-foreground">{notif.trigger}</p>
-                      </div>
-                    </div>
-                    <Badge className={notif.status === 'enabled' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>
-                      {notif.status}
-                    </Badge>
-                  </div>
-
-                  <div className="p-3 bg-muted/50 rounded-lg mb-3 font-mono text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
-                    {notif.template.substring(0, 120)}...
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <MessageSquare className="w-3 h-3" /> {notif.channel}
-                    </span>
-                    <span>Last sent: {notif.lastSent}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* WhatsApp Connection Status */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-green-500" /> WhatsApp Gateway Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-xl border border-green-100 dark:border-green-800 text-center">
-                  <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                  <p className="font-semibold text-green-700 dark:text-green-400">Connected</p>
-                  <p className="text-xs text-muted-foreground">Gateway Status</p>
-                </div>
-                <div className="p-4 bg-muted/50 rounded-xl text-center">
-                  <p className="text-2xl font-bold text-foreground">247</p>
-                  <p className="text-xs text-muted-foreground">Messages Sent (30d)</p>
-                </div>
-                <div className="p-4 bg-muted/50 rounded-xl text-center">
-                  <p className="text-2xl font-bold text-foreground">98.4%</p>
-                  <p className="text-xs text-muted-foreground">Delivery Rate</p>
-                </div>
-                <div className="p-4 bg-muted/50 rounded-xl text-center">
-                  <p className="text-2xl font-bold text-foreground">73%</p>
-                  <p className="text-xs text-muted-foreground">Read Rate</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <IncentiveNotificationsTab
+            campaigns={campaigns.map(c => ({ id: c.id, name: c.name, status: c.status }))}
+            loading={loading}
+          />
         </TabsContent>
 
         {/* ═══ INSIGHTS TAB ═══ */}
@@ -1287,6 +1166,22 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ═══ RULES / SETUP TAB ═══ */}
+        <TabsContent value="rules" className="space-y-6 mt-6">
+          <IncentiveRulesTab
+            campaigns={campaigns.map(c => ({ id: c.id, name: c.name, status: c.status }))}
+            loading={loading}
+          />
+        </TabsContent>
+
+        {/* ═══ PAYOUTS TAB ═══ */}
+        <TabsContent value="payouts" className="space-y-6 mt-6">
+          <IncentivePayoutsTab
+            campaigns={campaigns.map(c => ({ id: c.id, name: c.name, status: c.status }))}
+            loading={loading}
+          />
         </TabsContent>
       </Tabs>
 

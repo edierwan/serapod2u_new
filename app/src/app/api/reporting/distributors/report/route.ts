@@ -194,7 +194,7 @@ export async function GET(request: Request) {
       }
 
       // Track product repeat data
-      ;(o.order_items || []).forEach((item: any) => {
+      ; (o.order_items || []).forEach((item: any) => {
         const vid = item.variant_id || 'unknown'
         if (!productOrderMap[vid]) {
           productOrderMap[vid] = { name: vid, orderCount: 0, distIds: new Set(), totalQty: 0, totalRM: 0 }
@@ -525,11 +525,11 @@ export async function GET(request: Request) {
         .from('product_variants')
         .select('id, variant_name, products(product_name)')
         .in('id', productVariantIds.slice(0, 50))
-      ;(pvars || []).forEach((v: any) => {
-        const pn = v.products?.product_name || ''
-        const vn = v.variant_name || ''
-        productVariantNames[v.id] = pn && vn && pn !== vn ? `${pn} - ${vn}` : vn || pn || 'Unknown'
-      })
+        ; (pvars || []).forEach((v: any) => {
+          const pn = v.products?.product_name || ''
+          const vn = v.variant_name || ''
+          productVariantNames[v.id] = pn && vn && pn !== vn ? `${pn} - ${vn}` : vn || pn || 'Unknown'
+        })
     }
 
     const productRepeat = Object.entries(productOrderMap)
