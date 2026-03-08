@@ -77,91 +77,6 @@ const PAYMENT_METHODS = [
   { value: 'internal_wallet', label: 'Internal Wallet / Credit', icon: Wallet },
 ]
 
-// ── Static data for demo (will be replaced by DB queries) ─────
-function getStaticPayouts(): Payout[] {
-  return [
-    {
-      id: 'pay-001', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      org_id: 'org-1', org_name: 'Mega Distribution Sdn Bhd', org_code: 'DIST-001',
-      qualified_metric: 'Cases Sold', qualified_value: 580, target_value: 500,
-      reward_amount: 2000, reward_type: 'cash', currency: 'MYR',
-      status: 'completed', qualification_date: '2025-03-15T00:00:00Z',
-      approved_by: 'admin-1', approved_at: '2025-03-20T10:00:00Z',
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: 'bank_transfer', paid_at: '2025-03-25T14:00:00Z',
-      payment_reference: 'PAY-2025-001', payment_notes: null,
-      created_at: '2025-03-15T00:00:00Z'
-    },
-    {
-      id: 'pay-002', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      org_id: 'org-2', org_name: 'Southern Star Trading', org_code: 'DIST-002',
-      qualified_metric: 'Cases Sold', qualified_value: 520, target_value: 500,
-      reward_amount: 2000, reward_type: 'cash', currency: 'MYR',
-      status: 'approved', qualification_date: '2025-03-18T00:00:00Z',
-      approved_by: 'admin-1', approved_at: '2025-03-22T09:00:00Z',
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: null, paid_at: null, payment_reference: null, payment_notes: null,
-      created_at: '2025-03-18T00:00:00Z'
-    },
-    {
-      id: 'pay-003', campaign_id: 'camp-002', campaign_name: 'Monthly Growth Sprint',
-      org_id: 'org-3', org_name: 'East Coast Supplies', org_code: 'DIST-003',
-      qualified_metric: 'MoM Growth %', qualified_value: 22, target_value: 15,
-      reward_amount: 500, reward_type: 'credit', currency: 'MYR',
-      status: 'pending_approval', qualification_date: '2025-03-01T00:00:00Z',
-      approved_by: null, approved_at: null,
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: null, paid_at: null, payment_reference: null, payment_notes: null,
-      created_at: '2025-03-01T00:00:00Z'
-    },
-    {
-      id: 'pay-004', campaign_id: 'camp-002', campaign_name: 'Monthly Growth Sprint',
-      org_id: 'org-4', org_name: 'Northern Express Dist', org_code: 'DIST-004',
-      qualified_metric: 'MoM Growth %', qualified_value: 18, target_value: 15,
-      reward_amount: 500, reward_type: 'credit', currency: 'MYR',
-      status: 'pending_approval', qualification_date: '2025-03-01T00:00:00Z',
-      approved_by: null, approved_at: null,
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: null, paid_at: null, payment_reference: null, payment_notes: null,
-      created_at: '2025-03-01T00:00:00Z'
-    },
-    {
-      id: 'pay-005', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      org_id: 'org-5', org_name: 'Central Valley Corp', org_code: 'DIST-005',
-      qualified_metric: 'Cases Sold', qualified_value: 510, target_value: 500,
-      reward_amount: 2000, reward_type: 'cash', currency: 'MYR',
-      status: 'qualified', qualification_date: '2025-03-25T00:00:00Z',
-      approved_by: null, approved_at: null,
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: null, paid_at: null, payment_reference: null, payment_notes: null,
-      created_at: '2025-03-25T00:00:00Z'
-    },
-    {
-      id: 'pay-006', campaign_id: 'camp-002', campaign_name: 'Monthly Growth Sprint',
-      org_id: 'org-6', org_name: 'Coastal Trading LLC', org_code: 'DIST-006',
-      qualified_metric: 'MoM Growth %', qualified_value: 25, target_value: 15,
-      reward_amount: 500, reward_type: 'credit', currency: 'MYR',
-      status: 'rejected', qualification_date: '2025-02-28T00:00:00Z',
-      approved_by: 'admin-1', approved_at: '2025-03-05T11:00:00Z',
-      rejection_reason: 'Data discrepancy flagged — pending verification', adjusted_amount: null,
-      payment_method: null, paid_at: null, payment_reference: null, payment_notes: null,
-      created_at: '2025-02-28T00:00:00Z'
-    },
-    {
-      id: 'pay-007', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      org_id: 'org-7', org_name: 'Prime Wholesale Partners', org_code: 'DIST-007',
-      qualified_metric: 'Cases Sold', qualified_value: 650, target_value: 500,
-      reward_amount: 2000, reward_type: 'cash', currency: 'MYR',
-      status: 'completed', qualification_date: '2025-03-10T00:00:00Z',
-      approved_by: 'admin-1', approved_at: '2025-03-15T10:00:00Z',
-      rejection_reason: null, adjusted_amount: null,
-      payment_method: 'bank_transfer', paid_at: '2025-03-20T14:00:00Z',
-      payment_reference: 'PAY-2025-002', payment_notes: null,
-      created_at: '2025-03-10T00:00:00Z'
-    },
-  ]
-}
-
 // ── Payout Row Component ──────────────────────────────────────
 function PayoutRow({ payout, onAction }: { payout: Payout; onAction: (p: Payout, action: string) => void }) {
   const cfg = STATUS_CONFIG[payout.status] || STATUS_CONFIG.qualified
@@ -300,8 +215,6 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
         payment_notes: p.payment_notes,
         created_at: p.created_at,
       })))
-    } else {
-      setPayouts(getStaticPayouts())
     }
   }, [supabase])
 

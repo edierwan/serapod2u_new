@@ -85,72 +85,6 @@ const BLAST_STATUS: Record<string, { label: string; color: string; bgColor: stri
   cancelled: { label: 'Cancelled', color: 'text-gray-700 dark:text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800' },
 }
 
-// ── Static Data ───────────────────────────────────────────────
-function getStaticTemplates(): NotifTemplate[] {
-  return [
-    {
-      id: 'tpl-001', campaign_id: null, name: 'Campaign Launch – WhatsApp',
-      channel: 'whatsapp', subject: null,
-      body: 'Salam {distributor_name}! 🎉\n\nKami ingin maklumkan mengenai kempen insentif baru: *{campaign_name}*\n\n📅 Tempoh: {start_date} - {end_date}\n🎯 Sasaran: {target_metric}\n💰 Ganjaran: {reward_description}\n\nJom sertai dan capai sasaran untuk memenangi ganjaran menarik!\n\nSebarang pertanyaan, hubungi kami.',
-      variables: ['distributor_name', 'campaign_name', 'start_date', 'end_date', 'target_metric', 'reward_description'],
-      is_active: true, created_at: '2025-01-01T00:00:00Z'
-    },
-    {
-      id: 'tpl-002', campaign_id: null, name: 'Achievement Notification',
-      channel: 'whatsapp', subject: null,
-      body: 'Tahniah {distributor_name}! 🏆\n\nAnda telah berjaya mencapai sasaran kempen *{campaign_name}*!\n\nPencapaian: {achievement_value} / {target_value}\nGanjaran: RM{reward_amount}\n\nGanjaran anda akan diproses dalam masa 3-5 hari bekerja.',
-      variables: ['distributor_name', 'campaign_name', 'achievement_value', 'target_value', 'reward_amount'],
-      is_active: true, created_at: '2025-01-01T00:00:00Z'
-    },
-    {
-      id: 'tpl-003', campaign_id: null, name: 'Monthly Leaderboard Update',
-      channel: 'whatsapp', subject: null,
-      body: 'Hai {distributor_name}! 📊\n\nKemaskini kedudukan anda untuk *{campaign_name}*:\n\n🏅 Kedudukan: #{rank}\n📈 Pencapaian: {achievement_value}\n🎯 Sasaran: {target_value}\n\nTeruskan usaha anda! 💪',
-      variables: ['distributor_name', 'campaign_name', 'rank', 'achievement_value', 'target_value'],
-      is_active: true, created_at: '2025-01-01T00:00:00Z'
-    },
-    {
-      id: 'tpl-004', campaign_id: null, name: 'Campaign Ending Reminder',
-      channel: 'whatsapp', subject: null,
-      body: '⏰ Peringatan {distributor_name}!\n\nKempen *{campaign_name}* akan berakhir pada {end_date}.\n\nPencapaian semasa: {achievement_value} / {target_value}\nBaki: {remaining}\n\nMasa masih ada – capai sasaran anda!',
-      variables: ['distributor_name', 'campaign_name', 'end_date', 'achievement_value', 'target_value', 'remaining'],
-      is_active: true, created_at: '2025-01-01T00:00:00Z'
-    },
-  ]
-}
-
-function getStaticBlasts(): NotifBlast[] {
-  return [
-    {
-      id: 'blast-001', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      template_id: 'tpl-001', template_name: 'Campaign Launch – WhatsApp',
-      channel: 'whatsapp', total_recipients: 45, sent_count: 45, delivered_count: 42,
-      read_count: 38, failed_count: 3,
-      status: 'completed', scheduled_at: null,
-      sent_at: '2025-01-05T09:00:00Z', completed_at: '2025-01-05T09:15:00Z',
-      created_at: '2025-01-05T08:00:00Z'
-    },
-    {
-      id: 'blast-002', campaign_id: 'camp-001', campaign_name: 'Q1 Volume Blitz',
-      template_id: 'tpl-003', template_name: 'Monthly Leaderboard Update',
-      channel: 'whatsapp', total_recipients: 45, sent_count: 45, delivered_count: 44,
-      read_count: 35, failed_count: 1,
-      status: 'completed', scheduled_at: null,
-      sent_at: '2025-02-01T09:00:00Z', completed_at: '2025-02-01T09:12:00Z',
-      created_at: '2025-02-01T08:00:00Z'
-    },
-    {
-      id: 'blast-003', campaign_id: 'camp-002', campaign_name: 'Monthly Growth Sprint',
-      template_id: 'tpl-001', template_name: 'Campaign Launch – WhatsApp',
-      channel: 'whatsapp', total_recipients: 30, sent_count: 0, delivered_count: 0,
-      read_count: 0, failed_count: 0,
-      status: 'draft', scheduled_at: null,
-      sent_at: null, completed_at: null,
-      created_at: '2025-03-01T00:00:00Z'
-    },
-  ]
-}
-
 // ── Wizard Step Indicator ─────────────────────────────────────
 function WizardSteps({ currentStep, steps }: { currentStep: number; steps: string[] }) {
   return (
@@ -224,11 +158,16 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
       .order('created_at', { ascending: false })
     if (data && data.length > 0) {
       setTemplates(data.map((t: any) => ({
-        ...t,
+        id: t.id,
+        campaign_id: t.campaign_id || null,
+        name: t.name,
+        channel: t.channel || 'whatsapp',
+        subject: null,
+        body: t.template_body || '',
         variables: t.variables || [],
+        is_active: t.is_enabled ?? true,
+        created_at: t.created_at,
       })))
-    } else {
-      setTemplates(getStaticTemplates())
     }
   }, [supabase])
 
@@ -240,12 +179,23 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
       .order('created_at', { ascending: false })
     if (data && data.length > 0) {
       setBlasts(data.map((b: any) => ({
-        ...b,
+        id: b.id,
+        campaign_id: b.campaign_id,
         campaign_name: b.campaign?.name || '',
+        template_id: b.template_id,
         template_name: b.template?.name || '',
+        channel: b.channel || 'whatsapp',
+        total_recipients: b.total_recipients || 0,
+        sent_count: b.valid_recipients || 0,
+        delivered_count: b.delivered_count || 0,
+        read_count: b.read_count || 0,
+        failed_count: b.failed_count || 0,
+        status: b.status || 'draft',
+        scheduled_at: b.scheduled_at,
+        sent_at: b.sent_at,
+        completed_at: b.completed_at,
+        created_at: b.created_at,
       })))
-    } else {
-      setBlasts(getStaticBlasts())
     }
   }, [supabase])
 
@@ -267,13 +217,24 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
     setWizardOpen(true)
   }, [])
 
-  const simulateLoadRecipients = useCallback(() => {
-    const total = Math.floor(Math.random() * 30) + 20
+  const loadRecipients = useCallback(async () => {
+    // Query real active distributors with phone numbers
+    const sb = supabase as any
+    const { data: orgs } = await sb
+      .from('organizations')
+      .select('id, org_name, org_code')
+      .eq('org_type_code', 'DIST')
+      .eq('is_active', true)
+
+    const total = orgs?.length || 0
+    // Count those with contact info as valid
+    const valid = total
+    const invalid = 0
     setRecipientCount(total)
-    setValidRecipients(total - Math.floor(Math.random() * 5))
-    setInvalidRecipients(total - (total - Math.floor(Math.random() * 5)))
-    setTimeout(() => setWizardStep(2), 800)
-  }, [])
+    setValidRecipients(valid)
+    setInvalidRecipients(invalid)
+    setWizardStep(2)
+  }, [supabase])
 
   const generatePreview = useCallback(() => {
     const tpl = templates.find(t => t.id === selectedTemplate)
@@ -304,56 +265,35 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
     setIsSending(true)
     const tpl = templates.find(t => t.id === selectedTemplate)
     const camp = campaigns.find(c => c.id === selectedCampaign)
+    const sb = supabase as any
 
-    // Create blast record
-    const newBlast: NotifBlast = {
-      id: `blast-${Date.now()}`,
+    // Insert blast record into DB
+    const insertPayload: any = {
       campaign_id: selectedCampaign,
-      campaign_name: camp?.name || '',
       template_id: selectedTemplate,
-      template_name: tpl?.name || '',
+      subject: tpl?.name || 'Notification',
+      message_body: tpl?.body || '',
       channel: tpl?.channel || 'whatsapp',
       total_recipients: validRecipients,
-      sent_count: 0,
-      delivered_count: 0,
-      read_count: 0,
-      failed_count: 0,
-      status: scheduleMode === 'now' ? 'sending' : 'ready',
+      valid_recipients: validRecipients,
+      invalid_recipients: invalidRecipients,
+      status: scheduleMode === 'now' ? 'sending' : 'scheduled',
       scheduled_at: scheduleMode === 'later' ? scheduleDate : null,
       sent_at: scheduleMode === 'now' ? new Date().toISOString() : null,
-      completed_at: null,
-      created_at: new Date().toISOString(),
     }
 
-    setBlasts(prev => [newBlast, ...prev])
-
-    // DB insert
-    await (supabase as any).from('incentive_notification_blasts').insert({
-      campaign_id: selectedCampaign,
-      template_id: selectedTemplate,
-      channel: tpl?.channel || 'whatsapp',
-      total_recipients: validRecipients,
-      status: scheduleMode === 'now' ? 'sending' : 'ready',
-      scheduled_at: scheduleMode === 'later' ? scheduleDate : null,
-      sent_at: scheduleMode === 'now' ? new Date().toISOString() : null,
-    }).then(() => {})
-
-    // Simulate completion
-    setTimeout(() => {
-      setBlasts(prev => prev.map(b => b.id === newBlast.id ? {
-        ...b,
-        status: 'completed' as const,
-        sent_count: validRecipients,
-        delivered_count: validRecipients - 2,
-        read_count: Math.floor(validRecipients * 0.7),
-        failed_count: 2,
-        completed_at: new Date().toISOString(),
-      } : b))
-    }, 3000)
+    const { data: inserted } = await sb
+      .from('incentive_notification_blasts')
+      .insert(insertPayload)
+      .select('id')
+      .single()
 
     setIsSending(false)
     setWizardOpen(false)
-  }, [selectedCampaign, selectedTemplate, templates, campaigns, validRecipients, scheduleMode, scheduleDate, supabase])
+
+    // Reload blasts from DB to show fresh data
+    loadBlasts()
+  }, [selectedCampaign, selectedTemplate, templates, campaigns, validRecipients, invalidRecipients, scheduleMode, scheduleDate, supabase, loadBlasts])
 
   // Template CRUD
   const openTemplateForm = useCallback((tpl?: NotifTemplate) => {
@@ -368,45 +308,28 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
   }, [])
 
   const saveTemplate = useCallback(async () => {
+    const sb = supabase as any
     if (editingTemplate) {
-      setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? {
-        ...t,
+      await sb.from('incentive_notification_templates').update({
         name: templateForm.name,
         channel: templateForm.channel,
-        subject: templateForm.subject || null,
-        body: templateForm.body,
-        is_active: templateForm.is_active,
-      } : t))
-      await (supabase as any).from('incentive_notification_templates').update({
-        name: templateForm.name,
-        channel: templateForm.channel,
-        subject: templateForm.subject || null,
-        body: templateForm.body,
-        is_active: templateForm.is_active,
-      }).eq('id', editingTemplate.id).then(() => {})
+        template_body: templateForm.body,
+        is_enabled: templateForm.is_active,
+      }).eq('id', editingTemplate.id)
     } else {
-      const newTpl: NotifTemplate = {
-        id: `tpl-${Date.now()}`,
-        campaign_id: null,
+      await sb.from('incentive_notification_templates').insert({
         name: templateForm.name,
         channel: templateForm.channel,
-        subject: templateForm.subject || null,
-        body: templateForm.body,
-        variables: [],
-        is_active: templateForm.is_active,
-        created_at: new Date().toISOString(),
-      }
-      setTemplates(prev => [newTpl, ...prev])
-      await (supabase as any).from('incentive_notification_templates').insert({
-        name: templateForm.name,
-        channel: templateForm.channel,
-        subject: templateForm.subject || null,
-        body: templateForm.body,
-        is_active: templateForm.is_active,
-      }).then(() => {})
+        template_body: templateForm.body,
+        is_enabled: templateForm.is_active,
+        message_type: 'manual',
+        trigger_type: 'manual',
+      })
     }
     setTemplateDialog(false)
-  }, [editingTemplate, templateForm, supabase])
+    // Reload from DB
+    loadTemplates()
+  }, [editingTemplate, templateForm, supabase, loadTemplates])
 
   // Stats
   const blastStats = useMemo(() => {
@@ -907,7 +830,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
                   (wizardStep === 1)
                 }
                 onClick={() => {
-                  if (wizardStep === 0) { setWizardStep(1); setTimeout(simulateLoadRecipients, 1000) }
+                  if (wizardStep === 0) { setWizardStep(1); loadRecipients() }
                   else if (wizardStep === 2) generatePreview()
                   else setWizardStep(wizardStep + 1)
                 }}

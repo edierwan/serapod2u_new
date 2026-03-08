@@ -306,46 +306,64 @@ function computeTierDistribution(distributors: DistributorPerformance[]) {
   ].filter(t => t.value > 0)
 }
 
-// ── Static campaign data (kept until incentive_campaigns table exists) ──
-function getStaticCampaigns(): Campaign[] {
-  return [
-    {
-      id: 'camp-001', name: 'Q1 Volume Blitz', type: 'volume', status: 'active',
-      startDate: '2025-01-01', endDate: '2025-03-31', targetMetric: 'Total cases ordered',
-      targetValue: 500, rewardType: 'cash', rewardValue: 2000, eligibleDistributors: 24,
-      participatingDistributors: 18, achievedCount: 7, totalSpend: 14000, budgetCap: 48000,
-    },
-    {
-      id: 'camp-002', name: 'Monthly Growth Sprint', type: 'growth', status: 'active',
-      startDate: '2025-01-01', endDate: '2025-06-30', targetMetric: 'MoM growth %',
-      targetValue: 15, rewardType: 'credit', rewardValue: 500, eligibleDistributors: 24,
-      participatingDistributors: 22, achievedCount: 12, totalSpend: 6000, budgetCap: 12000,
-    },
-    {
-      id: 'camp-003', name: 'Streak Warrior', type: 'streak', status: 'active',
-      startDate: '2025-02-01', endDate: '2025-07-31', targetMetric: 'Consecutive monthly orders',
-      targetValue: 6, rewardType: 'gift', rewardValue: 1500, eligibleDistributors: 24,
-      participatingDistributors: 20, achievedCount: 0, totalSpend: 0, budgetCap: 36000,
-    },
-    {
-      id: 'camp-004', name: 'New SKU Push', type: 'product-mix', status: 'draft',
-      startDate: '2025-04-01', endDate: '2025-06-30', targetMetric: 'Min 5 SKU diversity',
-      targetValue: 5, rewardType: 'points', rewardValue: 1000, eligibleDistributors: 24,
-      participatingDistributors: 0, achievedCount: 0, totalSpend: 0, budgetCap: 24000,
-    },
-    {
-      id: 'camp-005', name: 'Tiered Excellence', type: 'tiered', status: 'paused',
-      startDate: '2025-01-01', endDate: '2025-12-31', targetMetric: 'Cumulative revenue',
-      targetValue: 100000, rewardType: 'cash', rewardValue: 5000, eligibleDistributors: 24,
-      participatingDistributors: 15, achievedCount: 3, totalSpend: 15000, budgetCap: 120000,
-    },
-    {
-      id: 'camp-006', name: 'Holiday Push 2024', type: 'volume', status: 'ended',
-      startDate: '2024-11-01', endDate: '2024-12-31', targetMetric: 'Total cases ordered',
-      targetValue: 300, rewardType: 'cash', rewardValue: 1500, eligibleDistributors: 20,
-      participatingDistributors: 18, achievedCount: 14, totalSpend: 21000, budgetCap: 30000,
-    },
-  ]
+// ── Fetch campaigns from DB ──────────────────────────────────────
+async function fetchCampaignsFromDB(
+  supabase: ReturnType<typeof createClient>
+): Promise<Campaign[]> {
+  const sb = supabase as any
+
+  // Fetch campaigns with related data
+  const { data: campaigns } = await sb
+    .from('incentive_campaigns')
+    .select(`
+      *,
+      qualification:incentive_qualification_rules(target_metric, target_value),
+      reward:incentive_reward_rules(reward_type, reward_value),
+      budget:incentive_budgets(budget_cap, total_spend),
+      participants:incentive_participants(id, qualified)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (!campaigns || campaigns.length === 0) return []
+
+  // Count eligible distributors (active DIST orgs)
+  const { count: eligibleCount } = await sb
+    .from('organizations')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_type_code', 'DIST')
+    .eq('is_active', true)
+
+  return campaigns.map((c: any) => {
+    const qual = Array.isArray(c.qualification) ? c.qualification[0] : c.qualification
+    const rew = Array.isArray(c.reward) ? c.reward[0] : c.reward
+    const bud = Array.isArray(c.budget) ? c.budget[0] : c.budget
+    const parts = Array.isArray(c.participants) ? c.participants : []
+    const achievedCount = parts.filter((p: any) => p.qualified).length
+
+    // Map DB reward_type to frontend rewardType
+    const rewardTypeMap: Record<string, string> = {
+      'cash': 'cash', 'cash_tiered': 'cash', 'rebate_percent': 'credit',
+      'credit_note': 'credit', 'gift': 'gift', 'points': 'points',
+    }
+
+    return {
+      id: c.id,
+      name: c.name,
+      type: c.type || 'volume',
+      status: c.status || 'draft',
+      startDate: c.start_date,
+      endDate: c.end_date,
+      targetMetric: qual?.target_metric || '',
+      targetValue: Number(qual?.target_value || 0),
+      rewardType: (rewardTypeMap[rew?.reward_type] || 'cash') as Campaign['rewardType'],
+      rewardValue: Number(rew?.reward_value || 0),
+      eligibleDistributors: eligibleCount || 0,
+      participatingDistributors: parts.length,
+      achievedCount,
+      totalSpend: Number(bud?.total_spend || 0),
+      budgetCap: Number(bud?.budget_cap || 0),
+    }
+  })
 }
 
 // ── Sub-Components ──────────────────────────────────────────────
@@ -566,25 +584,30 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
 
   const supabase = createClient()
 
-  // ── Data Fetch (real data from orders + organizations) ──────
+  // ── Data Fetch (real data from orders + organizations + campaigns) ──
   const loadData = useCallback(async (period?: string) => {
     setLoading(true)
     try {
       const p = period ?? leaderboardPeriod
-      const [dists, trend] = await Promise.all([
+      const [dists, trend, dbCampaigns] = await Promise.all([
         fetchDistributorPerformance(supabase, p),
         fetchMonthlyTrend(supabase),
+        fetchCampaignsFromDB(supabase),
       ])
       setDistributors(dists)
       setTierDist(computeTierDistribution(dists))
       setMonthlyTrend(trend.map(t => ({
         month: t.month,
-        reward: t.revenue, // mapped to "reward" key to match chart dataKey
+        reward: t.revenue,
         participation: t.distributors,
         achievement: t.orders,
       })))
-      setROIData([]) // No campaign ROI data until incentive_campaigns table exists
-      setCampaigns(getStaticCampaigns())
+      setROIData(dbCampaigns.filter(c => c.totalSpend > 0).map(c => ({
+        name: c.name.length > 15 ? c.name.substring(0, 15) + '…' : c.name,
+        spend: c.totalSpend,
+        revenueGenerated: 0, // will be populated when order-campaign linking exists
+      })))
+      setCampaigns(dbCampaigns)
     } finally {
       setLoading(false)
     }
@@ -659,58 +682,80 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
     setCampaignDialogOpen(true)
   }, [])
 
-  const handleSaveCampaign = useCallback(() => {
+  const handleSaveCampaign = useCallback(async () => {
+    const sb = supabase as any
+    const rewardTypeMap: Record<string, string> = {
+      'cash': 'cash', 'credit': 'credit_note', 'gift': 'gift', 'points': 'points',
+    }
+
     if (editingCampaign) {
-      // Update existing
-      setCampaigns(prev => prev.map(cp =>
-        cp.id === editingCampaign.id
-          ? {
-              ...cp,
-              name: campaignForm.name,
-              type: campaignForm.type,
-              status: campaignForm.status,
-              startDate: campaignForm.startDate,
-              endDate: campaignForm.endDate,
-              targetMetric: campaignForm.targetMetric,
-              targetValue: campaignForm.targetValue,
-              rewardType: campaignForm.rewardType,
-              rewardValue: campaignForm.rewardValue,
-              budgetCap: campaignForm.budgetCap,
-            }
-          : cp
-      ))
-    } else {
-      // Create new
-      const newCampaign: Campaign = {
-        id: `camp-${Date.now()}`,
+      // Update existing campaign in DB
+      await sb.from('incentive_campaigns').update({
         name: campaignForm.name,
         type: campaignForm.type,
         status: campaignForm.status,
-        startDate: campaignForm.startDate,
-        endDate: campaignForm.endDate,
-        targetMetric: campaignForm.targetMetric,
-        targetValue: campaignForm.targetValue,
-        rewardType: campaignForm.rewardType,
-        rewardValue: campaignForm.rewardValue,
-        eligibleDistributors: distributors.length,
-        participatingDistributors: 0,
-        achievedCount: 0,
-        totalSpend: 0,
-        budgetCap: campaignForm.budgetCap,
+        start_date: campaignForm.startDate,
+        end_date: campaignForm.endDate,
+      }).eq('id', editingCampaign.id)
+
+      // Update qualification rule
+      await sb.from('incentive_qualification_rules')
+        .update({ target_metric: campaignForm.targetMetric || 'revenue', target_value: campaignForm.targetValue })
+        .eq('campaign_id', editingCampaign.id)
+
+      // Update reward rule
+      await sb.from('incentive_reward_rules')
+        .update({ reward_type: rewardTypeMap[campaignForm.rewardType] || 'cash', reward_value: campaignForm.rewardValue })
+        .eq('campaign_id', editingCampaign.id)
+
+      // Update budget
+      await sb.from('incentive_budgets')
+        .update({ budget_cap: campaignForm.budgetCap })
+        .eq('campaign_id', editingCampaign.id)
+    } else {
+      // Create new campaign in DB
+      const { data: newCamp } = await sb.from('incentive_campaigns').insert({
+        name: campaignForm.name,
+        type: campaignForm.type,
+        status: campaignForm.status,
+        start_date: campaignForm.startDate,
+        end_date: campaignForm.endDate,
+      }).select('id').single()
+
+      if (newCamp) {
+        // Create child records
+        await Promise.all([
+          sb.from('incentive_qualification_rules').insert({
+            campaign_id: newCamp.id,
+            target_metric: campaignForm.targetMetric || 'revenue',
+            target_value: campaignForm.targetValue,
+          }),
+          sb.from('incentive_reward_rules').insert({
+            campaign_id: newCamp.id,
+            reward_type: rewardTypeMap[campaignForm.rewardType] || 'cash',
+            reward_value: campaignForm.rewardValue,
+          }),
+          sb.from('incentive_budgets').insert({
+            campaign_id: newCamp.id,
+            budget_cap: campaignForm.budgetCap,
+          }),
+        ])
       }
-      setCampaigns(prev => [...prev, newCampaign])
     }
+
     setCampaignDialogOpen(false)
     setEditingCampaign(null)
-  }, [editingCampaign, campaignForm, distributors.length])
+    // Reload from DB
+    loadData()
+  }, [editingCampaign, campaignForm, supabase, loadData])
 
-  const handleToggleCampaign = useCallback((c: Campaign) => {
+  const handleToggleCampaign = useCallback(async (c: Campaign) => {
+    const newStatus = c.status === 'active' ? 'paused' : 'active'
+    await (supabase as any).from('incentive_campaigns').update({ status: newStatus }).eq('id', c.id)
     setCampaigns(prev => prev.map(cp =>
-      cp.id === c.id
-        ? { ...cp, status: cp.status === 'active' ? 'paused' : 'active' }
-        : cp
+      cp.id === c.id ? { ...cp, status: newStatus } : cp
     ))
-  }, [])
+  }, [supabase])
 
   // ── Render ────────────────────────────────────────────────────
   return (
