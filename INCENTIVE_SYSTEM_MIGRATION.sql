@@ -592,7 +592,6 @@ SELECT
   t.is_enabled,
   t.trigger_type
 FROM public.organizations c
-WHERE c.org_type_code = 'HQ'
 CROSS JOIN (VALUES
   (
     'Campaign Launch Announcement',
@@ -655,7 +654,8 @@ CROSS JOIN (VALUES
     'event'
   )
 ) AS t(name, description, message_type, channel, template_body, variables, is_enabled, trigger_type)
-WHERE NOT EXISTS (
+WHERE c.org_type_code = 'HQ'
+AND NOT EXISTS (
   SELECT 1 FROM public.incentive_notification_templates nt 
   WHERE nt.company_id = c.id AND nt.message_type = t.message_type
 );
