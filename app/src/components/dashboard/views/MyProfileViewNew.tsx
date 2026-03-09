@@ -1636,9 +1636,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         </CardContent>
       </Card>
 
-      {/* Digital Signature Card - Hidden for Warehouse users */}
-      {userProfile?.organizations?.org_type_code !== 'WAREHOUSE' && userProfile?.organizations?.org_type_code !== 'WH' && (
-        <Card className="shadow-lg md:col-span-2">
+      {/* Digital Signature Card - Visible for all users who may create/approve orders */}
+      <Card className="shadow-lg md:col-span-2">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -1680,7 +1679,6 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             />
           </CardContent>
         </Card>
-      )}
 
       {/* Change Password Card */}
       <ChangePasswordCard userEmail={userProfile.email} userPhone={userProfile.phone} />
