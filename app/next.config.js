@@ -77,6 +77,7 @@ const nextConfig = {
     'exceljs',
     'pdfkit',
     'googleapis',
+    'pg',
   ],
 
   experimental: {
