@@ -101,15 +101,10 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Auth check (skip in development)
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    const isDevelopment = process.env.NODE_ENV === 'development'
-
-    if (!isDevelopment && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn('⚠️ Unauthorized worker access attempt')
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    // Centralized cron auth check
+    const { verifyCronAuth } = await import('@/lib/cron-auth')
+    const authResult = verifyCronAuth(request)
+    if (!authResult.ok) return authResult.response
 
     const supabase = await createClient()
 

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import { getWhatsAppConfig, callGateway, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
+import { envGuard } from '@/lib/env-guard';
 
 // Normalize phone number to E.164 format for Malaysian/Chinese numbers
 function normalizePhone(phone: string): string {

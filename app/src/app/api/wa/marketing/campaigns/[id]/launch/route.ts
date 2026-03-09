@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils';
+import { envGuard } from '@/lib/env-guard';
 
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        // Safety: block campaign launches in dev unless messaging is enabled
+        if (!envGuard.messagingEnabled()) {
+            return NextResponse.json({
+                error: 'Campaign launch disabled in development',
+                hint: 'Set DEV_MESSAGING_ENABLED=true to enable'
+            }, { status: 403 });
+        }
+
         const { id: campaignId } = await params;
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();

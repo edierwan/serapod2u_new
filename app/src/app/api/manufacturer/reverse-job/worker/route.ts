@@ -5,17 +5,10 @@ import { NextRequest, NextResponse } from 'next/server'
 // Can be called by a cron job or triggered manually
 export async function POST(request: NextRequest) {
   try {
-    // Verify this is an authorized request
-    const authHeader = request.headers.get('authorization')
-    const expectedToken = process.env.CRON_SECRET || process.env.WORKER_SECRET || 'dev-worker-secret'
-    
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      console.error('Unauthorized worker attempt')
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Centralized cron auth check
+    const { verifyCronAuth } = await import('@/lib/cron-auth')
+    const authResult = verifyCronAuth(request)
+    if (!authResult.ok) return authResult.response
 
     // Create admin/service client with elevated permissions
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

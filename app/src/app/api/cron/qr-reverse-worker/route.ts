@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { verifyCronAuth } from '@/lib/cron-auth'
 
 /**
  * Mode C Background Worker - Intelligent Buffer Assignment
@@ -140,30 +141,9 @@ async function processJobs(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify authorization for Vercel Cron
-    const authHeader = request.headers.get('authorization')
-    const isDevelopment = process.env.NODE_ENV === 'development'
-    
-    // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
-    // Check if it's from Vercel Cron (has authorization header) or manual trigger
-    if (!isDevelopment && authHeader) {
-      const cronSecret = process.env.CRON_SECRET
-      
-      // If CRON_SECRET is set, validate it
-      if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-        console.warn('⚠️ Unauthorized worker access attempt - invalid CRON_SECRET')
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        )
-      }
-      
-      console.log('✅ Authorized: Vercel Cron job')
-    } else if (isDevelopment) {
-      console.log('🔓 Development mode: Auth check skipped')
-    } else {
-      console.log('ℹ️ Manual trigger (no auth header)')
-    }
+    // Centralized cron auth check
+    const authResult = verifyCronAuth(request)
+    if (!authResult.ok) return authResult.response
 
     const supabase = await createClient()
 

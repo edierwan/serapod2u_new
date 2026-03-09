@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { envGuard } from '@/lib/env-guard'
 
 /**
  * POST /api/admin/send-deletion-notification
  * Send email notification after deletion operations
  * SUPER ADMIN ONLY (role_level = 1)
+ *
+ * SAFETY: Blocked in development unless DEV_MESSAGING_ENABLED=true
  */
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
   try {
+    // Development messaging safety check
+    if (!envGuard.messagingEnabled()) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: 'Messaging disabled in development'
+      })
+    }
+
     const supabase = await createClient()
 
     // Get current user

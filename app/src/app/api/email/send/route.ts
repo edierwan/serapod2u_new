@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { envGuard } from '@/lib/env-guard'
 
 /**
  * POST /api/email/send
  * Send email using configured provider
  * Supports Gmail OAuth2, SendGrid, AWS SES, etc.
+ *
+ * SAFETY: In development, email sending is blocked by default
+ * unless DEV_MESSAGING_ENABLED=true is set.
  */
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +23,14 @@ interface EmailRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    // Development messaging safety check
+    if (!envGuard.messagingEnabled()) {
+      return NextResponse.json({
+        error: 'Email sending disabled in development',
+        hint: 'Set DEV_MESSAGING_ENABLED=true to enable'
+      }, { status: 403 })
+    }
+
     const supabase = await createClient()
 
     // Get current user

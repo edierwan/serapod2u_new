@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { verifyCronAuth, shouldSendMessages } from '@/lib/cron-auth'
 
 /**
  * CRON: /api/cron/notification-outbox-worker
@@ -9,6 +10,9 @@ import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_uti
  * renders templates, and sends via WhatsApp/SMS/Email.
  * 
  * Runs every minute via Vercel Cron or can be called manually.
+ *
+ * SAFETY: In development, outbound messaging is disabled by default
+ * unless DEV_MESSAGING_ENABLED=true is set.
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -25,6 +29,20 @@ function renderTemplate(template: string, payload: Record<string, any>): string 
 export async function GET(request: NextRequest) {
     const startTime = Date.now()
     const supabase = createAdminClient()
+
+    // Cron auth check
+    const authResult = verifyCronAuth(request)
+    if (!authResult.ok) return authResult.response
+
+    // Development messaging safety check
+    if (!shouldSendMessages()) {
+        console.log('[NotifWorker] Messaging disabled in development (set DEV_MESSAGING_ENABLED=true to enable)')
+        return NextResponse.json({
+            processed: 0,
+            message: 'Messaging disabled in development environment',
+            environment: authResult.environment
+        })
+    }
 
     try {
         // 1. Fetch pending notifications from outbox (uses FOR UPDATE SKIP LOCKED)

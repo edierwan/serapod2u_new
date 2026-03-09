@@ -1,24 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { verifyCronAuth } from '@/lib/cron-auth'
 
 // This endpoint should be called by a cron job or background worker
-// Protected by CRON_SECRET environment variable
+// Protected by CRON_SECRET via centralized cron auth
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
   
   try {
-    // Verify cron secret
-    const authHeader = request.headers.get('authorization')
-    const cronSecret = process.env.CRON_SECRET
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn('⚠️ Unauthorized worker access attempt')
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Centralized cron auth check
+    const authResult = verifyCronAuth(request)
+    if (!authResult.ok) return authResult.response
     
     const supabase = await createClient()
     
