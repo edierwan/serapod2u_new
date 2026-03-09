@@ -6,18 +6,23 @@
  *
  * Supported patterns:
  *   client.from('table').select('*').eq('id', x).single()
- *   client.from('table').insert({ ... })
+ *   client.from('table').insert({ ... }).select('id')
  *   client.from('table').update({ ... }).eq('id', x)
  *   client.from('table').delete().eq('id', x)
  *   client.from('table').upsert({ ... }, { onConflict: 'col' })
  *   client.rpc('function_name', { param1: val1 })
  *   client.from('table').select('id', { count: 'exact', head: true })
+ *   .or('and(start_date.lte.X,end_date.gte.Y)')  — nested and()
+ *   .or('foreign_table.col.eq.X')                 — dotted column refs
  *
- * Limitations (documented, intentional for Phase 1):
- *   - Nested foreign key joins (the `!` syntax) are NOT resolved into JOINs.
- *     Instead, the parent columns are fetched and the join portion is ignored.
- *     This means related data will be null/missing. Callers that depend on
- *     nested joins will need per-query migration or a view on the DB side.
+ * Nested FK joins (e.g. `roles!user_roles(role_level)`):
+ *   Detected automatically. When DATA_BACKEND=postgres and a query uses
+ *   unsupported relational select syntax, the query is automatically
+ *   routed to the Supabase client via the fallback mechanism. This
+ *   prevents silent partial data — every query either fully runs on
+ *   PostgreSQL or fully runs on Supabase.
+ *
+ * Limitations (Phase 1):
  *   - No RLS enforcement (use PostgreSQL roles/policies if needed).
  *   - Realtime subscriptions (.channel/.on) are not supported. Those remain
  *     on Supabase even in hybrid mode.
@@ -183,10 +188,30 @@ function parseSingleCondition(
   cond: string,
   paramIdx: number
 ): { sql: string; params: any[] } | null {
-  // Handle .in.(...) syntax
-  const inMatch = cond.match(/^(\w+)\.in\.\((.+)\)$/)
+  // Handle nested and(...) groups: and(col1.op.val,col2.op.val)
+  const andMatch = cond.match(/^and\((.+)\)$/)
+  if (andMatch) {
+    const inner = splitOrConditions(andMatch[1])
+    const andParts: { sql: string; params: any[] }[] = []
+    let idx = paramIdx
+    for (const c of inner) {
+      const parsed = parseSingleCondition(c.trim(), idx)
+      if (parsed) {
+        andParts.push(parsed)
+        idx += parsed.params.length
+      }
+    }
+    if (andParts.length === 0) return null
+    return {
+      sql: `(${andParts.map((p) => p.sql).join(' AND ')})`,
+      params: andParts.flatMap((p) => p.params),
+    }
+  }
+
+  // Handle .in.(...) syntax — supports dotted table.col references
+  const inMatch = cond.match(/^([\w.]+)\.in\.\((.+)\)$/)
   if (inMatch) {
-    const col = quoteIdent(inMatch[1])
+    const col = quoteIdentDotted(inMatch[1])
     const vals = inMatch[2].split(',').map((v) => v.trim())
     const placeholders = vals.map((_, i) => `$${paramIdx + i + 1}`)
     return {
@@ -195,20 +220,20 @@ function parseSingleCondition(
     }
   }
 
-  // Handle .is.null / .is.true / .is.false
-  const isMatch = cond.match(/^(\w+)\.is\.(null|true|false)$/i)
+  // Handle .is.null / .is.true / .is.false — supports dotted refs
+  const isMatch = cond.match(/^([\w.]+)\.is\.(null|true|false)$/i)
   if (isMatch) {
-    const col = quoteIdent(isMatch[1])
+    const col = quoteIdentDotted(isMatch[1])
     const val = isMatch[2].toLowerCase()
     if (val === 'null') return { sql: `${col} IS NULL`, params: [] }
     if (val === 'true') return { sql: `${col} IS TRUE`, params: [] }
     return { sql: `${col} IS FALSE`, params: [] }
   }
 
-  // Handle standard ops: col.op.value
-  const stdMatch = cond.match(/^(\w+)\.(eq|neq|gt|gte|lt|lte|like|ilike)\.(.+)$/)
+  // Handle standard ops: col.op.value (or table.col.op.value)
+  const stdMatch = cond.match(/^([\w]+(?:\.[\w]+)??)\.(eq|neq|gt|gte|lt|lte|like|ilike)\.(.+)$/)
   if (stdMatch) {
-    const col = quoteIdent(stdMatch[1])
+    const col = quoteIdentDotted(stdMatch[1])
     const op = stdMatch[2]
     const val = stdMatch[3]
     const sqlOp = mapOp(op)
@@ -218,10 +243,10 @@ function parseSingleCondition(
     }
   }
 
-  // Handle negation: not.col.op.value
-  const notMatch = cond.match(/^not\.(\w+)\.(eq|neq|gt|gte|lt|lte|like|ilike)\.(.+)$/)
+  // Handle negation: not.col.op.value (or not.table.col.op.value)
+  const notMatch = cond.match(/^not\.([\w]+(?:\.[\w]+)??)\.(eq|neq|gt|gte|lt|lte|like|ilike)\.(.+)$/)
   if (notMatch) {
-    const col = quoteIdent(notMatch[1])
+    const col = quoteIdentDotted(notMatch[1])
     const op = notMatch[2]
     const val = notMatch[3]
     const sqlOp = mapOp(op)
@@ -261,6 +286,14 @@ function quoteIdent(name: string): string {
   return `"${cleaned}"`
 }
 
+/** Quote a possibly-dotted identifier like "table.column" → "table"."column" */
+function quoteIdentDotted(name: string): string {
+  if (name.includes('.')) {
+    return name.split('.').map(quoteIdent).join('.')
+  }
+  return quoteIdent(name)
+}
+
 /** Parse select columns — strip foreign key join syntax */
 function parseSelectColumns(select: string): string[] {
   if (select === '*') return ['*']
@@ -296,6 +329,23 @@ function parseSelectColumns(select: string): string[] {
     })
 }
 
+/**
+ * Detect whether a select string contains Supabase relational/FK join syntax.
+ *
+ * Returns true if the select uses any of:
+ *   - Embedded relation: "relation_name(col1, col2)"
+ *   - FK hint: "relation!fk_name(col)"
+ *   - Inner join: "relation!inner(col)"
+ *   - Alias: "alias:relation!fk(col)"
+ *
+ * This is used to trigger automatic Supabase fallback in PG mode.
+ */
+export function selectHasNestedJoins(select: string): boolean {
+  if (!select || select === '*') return false
+  // Match: word( or word!word( or word:word( or word:word!word(
+  return /[\w]\s*\(/.test(select) || /!\w+/.test(select) || /\w+:\w+/.test(select)
+}
+
 // ── Query Builder ────────────────────────────────────────────────────────
 
 export class PgQueryBuilder<T = any> {
@@ -323,7 +373,12 @@ export class PgQueryBuilder<T = any> {
   // ── SELECT ─────────────────────────────────────────────────────────
 
   select(columns: string = '*', options?: SelectOptions): this {
-    this._operation = 'select'
+    // Only set operation to 'select' when no prior operation exists.
+    // This preserves insert/update/upsert operations that chain .select()
+    // to specify RETURNING columns (e.g. .insert({...}).select('id')).
+    if (!this._operation || this._operation === 'select') {
+      this._operation = 'select'
+    }
     this._select = columns
     if (options) this._selectOptions = options
     return this

@@ -7,7 +7,8 @@ import { isPostgresMode } from '@/lib/db/backend'
  * Creates a server-side data client.
  *
  * - DATA_BACKEND=supabase (default) → Supabase JS SDK with cookie auth
- * - DATA_BACKEND=postgres           → Direct PostgreSQL via pg adapter
+ * - DATA_BACKEND=postgres           → Hybrid: PG for simple queries,
+ *                                     Supabase fallback for nested FK joins.
  *
  * In PG mode, auth operations (.auth.getUser etc.) are proxied to a
  * lightweight Supabase client so hybrid auth continues to work.
@@ -15,18 +16,20 @@ import { isPostgresMode } from '@/lib/db/backend'
 export async function createClient() {
   // ── PostgreSQL mode ──────────────────────────────────────────────
   if (isPostgresMode()) {
-    // Dynamic import to prevent pg (Node.js native) from leaking into client bundles
+    // Dynamic imports to prevent pg (Node.js native) from leaking into client bundles
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { createPgClient } = require('@/lib/db/pg-adapter') as typeof import('@/lib/db/pg-adapter')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createHybridClient } = require('@/lib/db/hybrid-client') as typeof import('@/lib/db/hybrid-client')
     const pgClient = createPgClient()
 
-    // Hybrid auth: proxy .auth to Supabase when SUPABASE_URL is available
+    // Build a Supabase client for hybrid auth AND for nested-join fallback
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (supabaseUrl && supabaseAnonKey) {
       try {
         const cookieStore = await cookies()
-        const supabaseAuth = createServerClient<Database>(
+        const supabaseClient = createServerClient<Database>(
           supabaseUrl,
           supabaseAnonKey,
           {
@@ -42,10 +45,13 @@ export async function createClient() {
           }
         )
         // Replace auth and storage stubs with real Supabase auth/storage
-        ;(pgClient as any).auth = supabaseAuth.auth
-        ;(pgClient as any).storage = supabaseAuth.storage
+        ;(pgClient as any).auth = supabaseClient.auth
+        ;(pgClient as any).storage = supabaseClient.storage
+
+        // Return hybrid client: PG for simple queries, Supabase for nested joins
+        return createHybridClient(pgClient, supabaseClient, 'server') as any
       } catch {
-        // cookies() may fail outside of request context; stubs remain
+        // cookies() may fail outside of request context; return PG-only
       }
     }
 
