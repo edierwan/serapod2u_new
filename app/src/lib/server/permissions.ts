@@ -132,10 +132,14 @@ export const computeEffectivePermissions = async (userId: string) => {
 
 export const checkPermissionForUser = async (userId: string, permissionKey: string) => {
     const evaluation = await computeEffectivePermissions(userId)
-    const allowed = evaluation.allowed.has(permissionKey)
+
+    // Super Admin (role_level 1) has all permissions unconditionally
+    const isSuperAdmin = evaluation.context?.role_level === 1
+    const allowed = isSuperAdmin || evaluation.allowed.has(permissionKey)
+
     return {
         allowed,
-        reason: evaluation.explain(permissionKey),
+        reason: isSuperAdmin ? 'Super Admin' : evaluation.explain(permissionKey),
         context: evaluation.context
     }
 }
