@@ -66,8 +66,11 @@ export function getPool(): Pool {
       max: 10,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
-      // Prefer SSL when not connecting to localhost
-      ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
+      // Disable SSL for local/Docker connections; enable (permissive) for external
+      ssl: connectionString.includes('localhost')
+        || connectionString.includes('127.0.0.1')
+        || connectionString.includes('sslmode=disable')
+        || !connectionString.includes('.')  // Docker hostnames have no dots
         ? false
         : { rejectUnauthorized: false },
     }
