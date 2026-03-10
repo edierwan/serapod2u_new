@@ -509,7 +509,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
     let hasLevelAuthority = false
 
-    if (creatorLevel === 10) {
+    if (userLevel === 1) {
+      // Super Admin can approve any order (self-approval is blocked separately)
+      hasLevelAuthority = true
+    } else if (creatorLevel === 10) {
       // Special condition: If creator is Level 10, only Level 10 or 20 can approve
       hasLevelAuthority = (userLevel === 10 || userLevel === 20)
     } else {
