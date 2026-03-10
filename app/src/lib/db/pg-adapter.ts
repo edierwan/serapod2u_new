@@ -67,12 +67,15 @@ export function getPool(): Pool {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
       // Disable SSL for local/Docker connections; enable (permissive) for external
-      ssl: connectionString.includes('localhost')
-        || connectionString.includes('127.0.0.1')
-        || connectionString.includes('sslmode=disable')
-        || !connectionString.includes('.')  // Docker hostnames have no dots
-        ? false
-        : { rejectUnauthorized: false },
+      ssl: (() => {
+        if (connectionString.includes('sslmode=disable')) return false
+        // Extract hostname from connection string
+        const hostMatch = connectionString.match(/@([^:/?]+)/)
+        const host = hostMatch?.[1] || ''
+        // Docker hostnames, localhost, private IPs don't need SSL
+        if (host === 'localhost' || host === '127.0.0.1' || !host.includes('.')) return false
+        return { rejectUnauthorized: false }
+      })(),
     }
 
     const { Pool: PgPool } = loadPg()
