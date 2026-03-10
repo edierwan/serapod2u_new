@@ -16,7 +16,11 @@ export type DataBackend = 'supabase' | 'postgres'
 export function getDataBackend(): DataBackend {
   const backend = process.env.DATA_BACKEND?.toLowerCase()
   if (backend === 'postgres' || backend === 'pg') {
-    return 'postgres'
+    // Require DATABASE_URL to actually use postgres mode;
+    // falls back to supabase during build (SSG) when URL isn't available
+    if (process.env.DATABASE_URL || process.env.DATABASE_POOL_URL) {
+      return 'postgres'
+    }
   }
   return 'supabase'
 }
