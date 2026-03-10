@@ -1138,7 +1138,25 @@ export class PgQueryBuilder<T = any> {
 
         // Build base column SQL (embeds are handled separately)
         const baseCols = parsed.baseColumns.length > 0 ? parsed.baseColumns : ['*']
-        const colSQL = baseCols.includes('*') ? '*' : baseCols.map(quoteIdent).join(', ')
+
+        // If not using *, pre-resolve FK columns needed by embeds and inject them
+        // so the embed stitcher can read the FK values from base rows
+        const extraFkCols: string[] = []
+        if (!baseCols.includes('*') && parsed.embeds.length > 0) {
+            const fks = await getFkRelations(this._pool)
+            for (const embed of parsed.embeds) {
+                const resolved = resolveEmbed(fks, this._table, embed.table, embed.fkHint)
+                if (resolved && resolved.direction === 'forward' && !baseCols.includes(resolved.fkColumn)) {
+                    extraFkCols.push(resolved.fkColumn)
+                }
+                if (resolved && resolved.direction === 'reverse' && !baseCols.includes(resolved.pkColumn)) {
+                    extraFkCols.push(resolved.pkColumn)
+                }
+            }
+        }
+
+        const allCols = baseCols.includes('*') ? ['*'] : [...baseCols, ...extraFkCols]
+        const colSQL = allCols.includes('*') ? '*' : allCols.map(quoteIdent).join(', ')
 
         const params: any[] = []
         let sql = `SELECT ${colSQL} FROM ${quoteIdent(this._table)}`
@@ -1191,6 +1209,15 @@ export class PgQueryBuilder<T = any> {
             } catch (embedErr: any) {
                 console.error(`[PgEmbed] Error resolving embeds for ${this._table}:`, embedErr.message)
                 // Continue with base data — embeds will be null/empty
+            }
+
+            // Strip injected FK columns that weren't in the original select
+            if (extraFkCols.length > 0) {
+                for (const row of rows) {
+                    for (const col of extraFkCols) {
+                        delete row[col]
+                    }
+                }
             }
         }
 
