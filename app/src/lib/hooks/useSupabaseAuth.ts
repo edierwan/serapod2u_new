@@ -82,7 +82,15 @@ export function useSupabaseAuth() {
 
         console.log('🔔 useSupabaseAuth - Auth event:', event)
 
-        if (event === 'SIGNED_IN' && session?.user) {
+        if (event === 'INITIAL_SESSION') {
+          // PG browser client fires this after first getUser() call
+          // Supabase also fires this on session init
+          if (session?.user) {
+            setUser(session.user)
+          }
+          setError(null)
+          setIsReady(true)
+        } else if (event === 'SIGNED_IN' && session?.user) {
           setUser(session.user)
           setError(null)
           setIsReady(true)

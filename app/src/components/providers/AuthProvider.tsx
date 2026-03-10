@@ -58,7 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('🔔 Auth state changed:', event)
 
-      if (event === 'SIGNED_IN') {
+      if (event === 'INITIAL_SESSION') {
+        console.log('🔑 Initial session event received')
+        setIsInitialized(true)
+      } else if (event === 'SIGNED_IN') {
         console.log('✅ User signed in, session established for RLS policies')
         setIsInitialized(true)
       } else if (event === 'SIGNED_OUT') {
