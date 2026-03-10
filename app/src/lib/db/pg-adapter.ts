@@ -440,7 +440,8 @@ function parseSelectWithEmbeds(select: string): ParsedSelect {
 
     for (const part of parts) {
         // Match embed: [alias:]table[!hint] (sub-select)  — allows optional whitespace before (
-        const m = part.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\s*\((.+)\)$/)
+        // Use [\s\S] instead of . to match newlines without the /s flag
+        const m = part.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\s*\(([\s\S]+)\)$/)
         if (m) {
             embeds.push({
                 alias: m[1] || m[2],
