@@ -495,7 +495,71 @@ function resolveEmbed(
         embedTable.replace(/s$/, ''),  // Try removing trailing s
     ]
 
-    // 0) FK Column Hint: embedTable is actually an FK column name (Supabase alias:fk_col syntax)
+    // Helper: extract FK column from Supabase constraint name hint
+    // Pattern: {table}_{column}_fkey → column
+    // e.g. "orders_buyer_org_id_fkey" with baseTable="orders" → "buyer_org_id"
+    function extractColumnFromHint(hint: string, table: string): string | null {
+        const suffix = '_fkey'
+        const prefix = table + '_'
+        if (hint.endsWith(suffix) && hint.startsWith(prefix)) {
+            return hint.slice(prefix.length, -suffix.length)
+        }
+        return null
+    }
+
+    // 0a) FK constraint name hint: derive column from {table}_{column}_fkey pattern
+    //     e.g. organizations!orders_buyer_org_id_fkey → column "buyer_org_id"
+    //     Works even when no actual FK constraints exist in the DB
+    if (fkHint && fkHint !== 'inner') {
+        const hintCol = extractColumnFromHint(fkHint, baseTable)
+        if (hintCol) {
+            // First try with actual FK constraint
+            const fk = fks.find(f => f.source_table === baseTable && f.source_column === hintCol)
+            if (fk) {
+                return {
+                    direction: 'forward',
+                    fkTable: baseTable,
+                    fkColumn: fk.source_column,
+                    pkTable: fk.target_table,
+                    pkColumn: fk.target_column,
+                }
+            }
+            // No FK constraint, but column name derived — assume forward FK to embedTable.id
+            return {
+                direction: 'forward',
+                fkTable: baseTable,
+                fkColumn: hintCol,
+                pkTable: embedTable,
+                pkColumn: 'id',
+            }
+        }
+        // Also try extracting column from reverse hint: {embedTable}_{column}_fkey
+        for (const candidate of candidates) {
+            const revHintCol = extractColumnFromHint(fkHint, candidate)
+            if (revHintCol) {
+                const fk = fks.find(f => f.source_table === candidate && f.source_column === revHintCol)
+                if (fk) {
+                    return {
+                        direction: 'reverse',
+                        fkTable: candidate,
+                        fkColumn: fk.source_column,
+                        pkTable: baseTable,
+                        pkColumn: fk.target_column,
+                    }
+                }
+                // No FK constraint — assume reverse FK: embedTable.{column} → baseTable.id
+                return {
+                    direction: 'reverse',
+                    fkTable: candidate,
+                    fkColumn: revHintCol,
+                    pkTable: baseTable,
+                    pkColumn: 'id',
+                }
+            }
+        }
+    }
+
+    // 0b) FK Column Hint: embedTable is actually an FK column name (Supabase alias:fk_col syntax)
     //    e.g. roles:role_code(...) → embedTable="role_code", resolve via FK on baseTable.role_code
     {
         const fk = fks.find(f => f.source_table === baseTable && f.source_column === embedTable)
@@ -511,8 +575,11 @@ function resolveEmbed(
     }
 
     // 1) Forward: base table has FK → embed table (many-to-one, returns object)
+    //    When fkHint is provided, use it to filter for the specific constraint
     for (const candidate of candidates) {
-        const fk = fks.find(f => f.source_table === baseTable && f.target_table === candidate)
+        const fk = fkHint && fkHint !== 'inner'
+            ? fks.find(f => f.source_table === baseTable && f.target_table === candidate && f.source_column === extractColumnFromHint(fkHint, baseTable))
+            : fks.find(f => f.source_table === baseTable && f.target_table === candidate)
         if (fk) {
             return {
                 direction: 'forward',
