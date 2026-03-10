@@ -362,9 +362,11 @@ interface FkRelation {
 }
 
 let _fkCache: FkRelation[] | null = null
+let _fkCacheTime = 0
+const FK_CACHE_TTL = 60_000 // 60 seconds
 
 async function getFkRelations(pgPool: Pool): Promise<FkRelation[]> {
-  if (_fkCache) return _fkCache
+  if (_fkCache && (Date.now() - _fkCacheTime) < FK_CACHE_TTL) return _fkCache
   try {
     const result = await pgPool.query(`
       SELECT
@@ -381,6 +383,7 @@ async function getFkRelations(pgPool: Pool): Promise<FkRelation[]> {
       AND tc.table_schema = 'public'
     `)
     _fkCache = result.rows
+    _fkCacheTime = Date.now()
   } catch (err) {
     console.error('[PgAdapter] Failed to load FK relations:', err)
     _fkCache = []
@@ -490,6 +493,21 @@ function resolveEmbed(
     embedTable.replace(/y$/, 'ies'),
     embedTable.replace(/s$/, ''),  // Try removing trailing s
   ]
+
+  // 0) FK Column Hint: embedTable is actually an FK column name (Supabase alias:fk_col syntax)
+  //    e.g. roles:role_code(...) → embedTable="role_code", resolve via FK on baseTable.role_code
+  {
+    const fk = fks.find(f => f.source_table === baseTable && f.source_column === embedTable)
+    if (fk) {
+      return {
+        direction: 'forward',
+        fkTable: baseTable,
+        fkColumn: fk.source_column,
+        pkTable: fk.target_table,
+        pkColumn: fk.target_column,
+      }
+    }
+  }
 
   // 1) Forward: base table has FK → embed table (many-to-one, returns object)
   for (const candidate of candidates) {
