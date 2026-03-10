@@ -439,15 +439,15 @@ function parseSelectWithEmbeds(select: string): ParsedSelect {
   if (current.trim()) parts.push(current.trim())
 
   for (const part of parts) {
-    // Match embed: [alias:]table[!hint](sub-select)
-    const m = part.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\((.+)\)$/s)
+    // Match embed: [alias:]table[!hint] (sub-select)  — allows optional whitespace before (
+    const m = part.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\s*\((.+)\)$/s)
     if (m) {
       embeds.push({
         alias: m[1] || m[2],
         table: m[2],
         fkHint: m[3],
         innerJoin: m[3] === 'inner',
-        selectStr: m[4],
+        selectStr: m[4].trim(),
       })
     } else {
       // Regular column — strip !hint syntax
