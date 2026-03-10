@@ -40,7 +40,7 @@ PROD_DB="postgres"
 # These may need adjustment based on your VPS PostgreSQL configuration
 DEV_VPS_HOST="72.62.253.182"
 DEV_VPS_PORT="5432"
-DEV_VPS_USER="postgres"
+DEV_VPS_USER="getouch_admin"
 DEV_VPS_DB="serapod2u.dev"
 # If PostgreSQL is not exposed externally, we'll use SSH tunnel
 
