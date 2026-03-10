@@ -1638,47 +1638,47 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
 
       {/* Digital Signature Card - Visible for all users who may create/approve orders */}
       <Card className="shadow-lg md:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Digital Signature</CardTitle>
-                <CardDescription>Upload your signature for document acknowledgement</CardDescription>
-              </div>
-              {userProfile.signature_url && (
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Uploaded
-                </Badge>
-              )}
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Digital Signature</CardTitle>
+              <CardDescription>Upload your signature for document acknowledgement</CardDescription>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert className="border-blue-200 bg-blue-50">
-              <AlertCircle className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800">
-                <strong>Required for Document Acknowledgement:</strong> Upload your digital signature to acknowledge Purchase Orders, Invoices, Payments, and other documents.
-                <div className="mt-2 text-sm">
-                  <p className="font-medium mb-1">Tips for best results:</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Sign on white paper with dark ink</li>
-                    <li>Take a clear photo or scan the signature</li>
-                    <li>Use transparent PNG format (recommended)</li>
-                    <li>Ensure signature is clearly visible</li>
-                  </ul>
-                </div>
-              </AlertDescription>
-            </Alert>
+            {userProfile.signature_url && (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Uploaded
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="border-blue-200 bg-blue-50">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Required for Document Acknowledgement:</strong> Upload your digital signature to acknowledge Purchase Orders, Invoices, Payments, and other documents.
+              <div className="mt-2 text-sm">
+                <p className="font-medium mb-1">Tips for best results:</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Sign on white paper with dark ink</li>
+                  <li>Take a clear photo or scan the signature</li>
+                  <li>Use transparent PNG format (recommended)</li>
+                  <li>Ensure signature is clearly visible</li>
+                </ul>
+              </div>
+            </AlertDescription>
+          </Alert>
 
-            <SignatureUpload
-              userId={userProfile.id}
-              currentSignatureUrl={userProfile.signature_url}
-              onSignatureUpdated={(url) => {
-                setUserProfile(prev => ({ ...prev, signature_url: url || null }))
-                loadUserProfile() // Refresh the entire profile
-              }}
-            />
-          </CardContent>
-        </Card>
+          <SignatureUpload
+            userId={userProfile.id}
+            currentSignatureUrl={userProfile.signature_url}
+            onSignatureUpdated={(url) => {
+              setUserProfile(prev => ({ ...prev, signature_url: url || null }))
+              loadUserProfile() // Refresh the entire profile
+            }}
+          />
+        </CardContent>
+      </Card>
 
       {/* Change Password Card */}
       <ChangePasswordCard userEmail={userProfile.email} userPhone={userProfile.phone} />

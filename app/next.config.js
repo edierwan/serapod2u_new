@@ -78,6 +78,7 @@ const nextConfig = {
     'pdfkit',
     'googleapis',
     'pg',
+    'bcryptjs',
   ],
 
   experimental: {

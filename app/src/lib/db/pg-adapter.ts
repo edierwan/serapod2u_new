@@ -346,6 +346,370 @@ export function selectHasNestedJoins(select: string): boolean {
   return /[\w]\s*\(/.test(select) || /!\w+/.test(select) || /\w+:\w+/.test(select)
 }
 
+// ── FK Relationship Cache ────────────────────────────────────────────────
+
+interface FkRelation {
+  source_table: string
+  source_column: string
+  target_table: string
+  target_column: string
+}
+
+let _fkCache: FkRelation[] | null = null
+
+async function getFkRelations(pgPool: Pool): Promise<FkRelation[]> {
+  if (_fkCache) return _fkCache
+  try {
+    const result = await pgPool.query(`
+      SELECT
+        kcu.table_name AS source_table,
+        kcu.column_name AS source_column,
+        ccu.table_name AS target_table,
+        ccu.column_name AS target_column
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+      JOIN information_schema.constraint_column_usage ccu
+        ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+    `)
+    _fkCache = result.rows
+  } catch (err) {
+    console.error('[PgAdapter] Failed to load FK relations:', err)
+    _fkCache = []
+  }
+  return _fkCache!
+}
+
+/** Clear FK cache (useful when schema changes) */
+export function clearFkCache(): void { _fkCache = null }
+
+// ── Embed Types & Parser ─────────────────────────────────────────────────
+
+interface EmbedSpec {
+  alias: string       // Property name in result
+  table: string       // Actual table to query
+  fkHint?: string     // Explicit FK hint (e.g., "user_roles" in roles!user_roles)
+  innerJoin: boolean  // !inner hint
+  selectStr: string   // Raw sub-select string (may contain nested embeds)
+}
+
+interface ParsedSelect {
+  baseColumns: string[]
+  embeds: EmbedSpec[]
+}
+
+/**
+ * Parse a Supabase-style select string into base columns and embedded relations.
+ *
+ * Examples:
+ *   "*, organization(name)"
+ *     → baseColumns: ['*'], embeds: [{ alias: 'organization', table: 'organization', selectStr: 'name' }]
+ *
+ *   "id, items:order_items(*, product:products(name))"
+ *     → baseColumns: ['id'], embeds: [{ alias: 'items', table: 'order_items', selectStr: '*, product:products(name)' }]
+ */
+function parseSelectWithEmbeds(select: string): ParsedSelect {
+  const baseColumns: string[] = []
+  const embeds: EmbedSpec[] = []
+
+  // Split at top-level commas (depth 0)
+  const parts: string[] = []
+  let depth = 0, current = ''
+  for (const ch of select) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (ch === ',' && depth === 0) {
+      parts.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  if (current.trim()) parts.push(current.trim())
+
+  for (const part of parts) {
+    // Match embed: [alias:]table[!hint](sub-select)
+    const m = part.match(/^(?:(\w+):)?(\w+)(?:!(\w+))?\((.+)\)$/s)
+    if (m) {
+      embeds.push({
+        alias: m[1] || m[2],
+        table: m[2],
+        fkHint: m[3],
+        innerJoin: m[3] === 'inner',
+        selectStr: m[4],
+      })
+    } else {
+      // Regular column — strip !hint syntax
+      const col = part.replace(/!\w+/g, '').trim()
+      if (col && /^[\w*.:]+$/.test(col)) {
+        baseColumns.push(col)
+      }
+    }
+  }
+
+  return { baseColumns, embeds }
+}
+
+// ── FK Resolver ──────────────────────────────────────────────────────────
+
+interface ResolvedFk {
+  direction: 'forward' | 'reverse'
+  fkTable: string       // Table that has the FK column
+  fkColumn: string      // FK column name
+  pkTable: string       // Referenced table
+  pkColumn: string      // Referenced PK column
+  junctionTable?: string // For many-to-many through junction
+  junctionFkToBase?: string
+  junctionFkToEmbed?: string
+  junctionTargetTable?: string
+}
+
+/**
+ * Resolve FK relationship between baseTable and embedTable.
+ * Returns the FK info with direction (forward = many-to-one, reverse = one-to-many).
+ */
+function resolveEmbed(
+  fks: FkRelation[],
+  baseTable: string,
+  embedTable: string,
+  fkHint?: string
+): ResolvedFk | null {
+  // Table name candidates: as-is, +s, +es, y→ies
+  const candidates = [
+    embedTable,
+    embedTable + 's',
+    embedTable + 'es',
+    embedTable.replace(/y$/, 'ies'),
+    embedTable.replace(/s$/, ''),  // Try removing trailing s
+  ]
+
+  // 1) Forward: base table has FK → embed table (many-to-one, returns object)
+  for (const candidate of candidates) {
+    const fk = fks.find(f => f.source_table === baseTable && f.target_table === candidate)
+    if (fk) {
+      return {
+        direction: 'forward',
+        fkTable: baseTable,
+        fkColumn: fk.source_column,
+        pkTable: fk.target_table,
+        pkColumn: fk.target_column,
+      }
+    }
+  }
+
+  // 2) Reverse: embed table has FK → base table (one-to-many, returns array)
+  for (const candidate of candidates) {
+    const fk = fks.find(f => f.source_table === candidate && f.target_table === baseTable)
+    if (fk) {
+      return {
+        direction: 'reverse',
+        fkTable: fk.source_table,
+        fkColumn: fk.source_column,
+        pkTable: baseTable,
+        pkColumn: fk.target_column,
+      }
+    }
+  }
+
+  // 3) FK hint: junction table (many-to-many)
+  if (fkHint && fkHint !== 'inner') {
+    const jToBase = fks.find(f => f.source_table === fkHint && f.target_table === baseTable)
+    for (const candidate of candidates) {
+      const jToEmbed = fks.find(f => f.source_table === fkHint && f.target_table === candidate)
+      if (jToBase && jToEmbed) {
+        return {
+          direction: 'reverse',
+          fkTable: fkHint,
+          fkColumn: jToBase.source_column,
+          pkTable: baseTable,
+          pkColumn: jToBase.target_column,
+          junctionTable: fkHint,
+          junctionFkToBase: jToBase.source_column,
+          junctionFkToEmbed: jToEmbed.source_column,
+          junctionTargetTable: jToEmbed.target_table,
+        }
+      }
+    }
+  }
+
+  // 4) Guess from naming convention: embed_table_id
+  const singularEmbed = embedTable.replace(/s$/, '')
+  const guessCol = singularEmbed + '_id'
+  const guessFk = fks.find(f => f.source_table === baseTable && f.source_column === guessCol)
+  if (guessFk) {
+    return {
+      direction: 'forward',
+      fkTable: baseTable,
+      fkColumn: guessFk.source_column,
+      pkTable: guessFk.target_table,
+      pkColumn: guessFk.target_column,
+    }
+  }
+
+  // Reverse guess: base_table_id in embed table
+  const singularBase = baseTable.replace(/s$/, '')
+  const guessRevCol = singularBase + '_id'
+  for (const candidate of candidates) {
+    const revFk = fks.find(f => f.source_table === candidate && f.source_column === guessRevCol)
+    if (revFk) {
+      return {
+        direction: 'reverse',
+        fkTable: candidate,
+        fkColumn: guessRevCol,
+        pkTable: baseTable,
+        pkColumn: revFk.target_column,
+      }
+    }
+  }
+
+  return null
+}
+
+// ── Embed Resolution & Stitching ─────────────────────────────────────────
+
+/**
+ * Resolve an embed: fetch related rows and attach them to base rows.
+ * Handles nested embeds recursively.
+ */
+async function resolveAndStitchEmbed(
+  pgPool: Pool,
+  fks: FkRelation[],
+  baseTable: string,
+  rows: any[],
+  embed: EmbedSpec
+): Promise<void> {
+  const resolved = resolveEmbed(fks, baseTable, embed.table, embed.fkHint)
+  if (!resolved) {
+    console.warn(`[PgEmbed] No FK found: ${baseTable} → ${embed.table} — setting ${embed.alias} to null`)
+    for (const row of rows) row[embed.alias] = null
+    return
+  }
+
+  const subParsed = parseSelectWithEmbeds(embed.selectStr)
+  const needCols = subParsed.baseColumns
+  const colSQL = needCols.includes('*') ? '*' : needCols.map(quoteIdent).join(', ')
+
+  // Junction table (many-to-many through junction)
+  if (resolved.junctionTable && resolved.junctionTargetTable) {
+    const pkValues = [...new Set(rows.map(r => r[resolved.pkColumn]).filter(v => v != null))]
+    if (pkValues.length === 0) {
+      for (const row of rows) row[embed.alias] = []
+      return
+    }
+
+    const jt = quoteIdent(resolved.junctionTable)
+    const et = quoteIdent(resolved.junctionTargetTable)
+    const jfkBase = quoteIdent(resolved.junctionFkToBase!)
+    const jfkEmbed = quoteIdent(resolved.junctionFkToEmbed!)
+
+    // Find the PK column of the embed target table (usually 'id')
+    const embedPkFk = fks.find(f =>
+      f.source_table === resolved.junctionTable && f.target_table === resolved.junctionTargetTable
+    )
+    const embedPkCol = embedPkFk ? quoteIdent(embedPkFk.target_column) : '"id"'
+
+    const sql = `SELECT _e.*, _j.${jfkBase} AS _junction_fk
+      FROM ${jt} _j
+      JOIN ${et} _e ON _e.${embedPkCol} = _j.${jfkEmbed}
+      WHERE _j.${jfkBase} = ANY($1)`
+    const result = await pgPool.query(sql, [pkValues])
+
+    // Recursively resolve nested embeds
+    if (subParsed.embeds.length > 0 && result.rows.length > 0) {
+      for (const nestedEmbed of subParsed.embeds) {
+        await resolveAndStitchEmbed(pgPool, fks, resolved.junctionTargetTable, result.rows, nestedEmbed)
+      }
+    }
+
+    // Group by junction FK
+    const groups = new Map<any, any[]>()
+    for (const subRow of result.rows) {
+      const key = subRow._junction_fk
+      delete subRow._junction_fk
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(subRow)
+    }
+
+    for (const row of rows) {
+      row[embed.alias] = groups.get(row[resolved.pkColumn]) ?? []
+    }
+    return
+  }
+
+  if (resolved.direction === 'forward') {
+    // Many-to-one: base table has FK → embed table (returns single object)
+    const fkValues = [...new Set(rows.map(r => r[resolved.fkColumn]).filter(v => v != null))]
+    if (fkValues.length === 0) {
+      for (const row of rows) row[embed.alias] = null
+      return
+    }
+
+    // Ensure we fetch the PK column for lookup
+    let selectSQL = colSQL
+    if (colSQL !== '*' && !needCols.includes(resolved.pkColumn)) {
+      selectSQL += `, ${quoteIdent(resolved.pkColumn)}`
+    }
+
+    const sql = `SELECT ${selectSQL} FROM ${quoteIdent(resolved.pkTable)} WHERE ${quoteIdent(resolved.pkColumn)} = ANY($1)`
+    const result = await pgPool.query(sql, [fkValues])
+
+    // Recursively resolve nested embeds
+    if (subParsed.embeds.length > 0 && result.rows.length > 0) {
+      for (const nestedEmbed of subParsed.embeds) {
+        await resolveAndStitchEmbed(pgPool, fks, resolved.pkTable, result.rows, nestedEmbed)
+      }
+    }
+
+    // Build lookup: pkValue → row
+    const map = new Map<any, any>()
+    for (const subRow of result.rows) {
+      map.set(subRow[resolved.pkColumn], subRow)
+    }
+
+    for (const row of rows) {
+      row[embed.alias] = map.get(row[resolved.fkColumn]) ?? null
+    }
+
+  } else {
+    // One-to-many: embed table has FK → base table (returns array)
+    const pkValues = [...new Set(rows.map(r => r[resolved.pkColumn]).filter(v => v != null))]
+    if (pkValues.length === 0) {
+      for (const row of rows) row[embed.alias] = []
+      return
+    }
+
+    // Ensure we fetch the FK column for grouping
+    let selectSQL = colSQL
+    if (colSQL !== '*' && !needCols.includes(resolved.fkColumn)) {
+      selectSQL += `, ${quoteIdent(resolved.fkColumn)}`
+    }
+
+    const sql = `SELECT ${selectSQL} FROM ${quoteIdent(resolved.fkTable)} WHERE ${quoteIdent(resolved.fkColumn)} = ANY($1)`
+    const result = await pgPool.query(sql, [pkValues])
+
+    // Recursively resolve nested embeds
+    if (subParsed.embeds.length > 0 && result.rows.length > 0) {
+      for (const nestedEmbed of subParsed.embeds) {
+        await resolveAndStitchEmbed(pgPool, fks, resolved.fkTable, result.rows, nestedEmbed)
+      }
+    }
+
+    // Group by FK value
+    const groups = new Map<any, any[]>()
+    for (const subRow of result.rows) {
+      const key = subRow[resolved.fkColumn]
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(subRow)
+    }
+
+    for (const row of rows) {
+      row[embed.alias] = groups.get(row[resolved.pkColumn]) ?? []
+    }
+  }
+}
+
 // ── Query Builder ────────────────────────────────────────────────────────
 
 export class PgQueryBuilder<T = any> {
@@ -586,6 +950,11 @@ export class PgQueryBuilder<T = any> {
   // ── SELECT execution ───────────────────────────────────────────────
 
   private async _execSelect(): Promise<PgResult<T>> {
+    // Delegate to embed-aware execution when relational selects are detected
+    if (selectHasNestedJoins(this._select)) {
+      return this._execSelectWithEmbeds()
+    }
+
     const params: any[] = []
     const columns = parseSelectColumns(this._select)
     const colSQL = columns.includes('*') ? '*' : columns.map(quoteIdent).join(', ')
@@ -659,6 +1028,97 @@ export class PgQueryBuilder<T = any> {
     // .maybeSingle() — return one row or null
     if (this._maybeSingle) {
       data = result.rows[0] || null
+    }
+
+    return {
+      data,
+      error: null,
+      count: totalCount ?? result.rowCount,
+      status: 200,
+      statusText: 'OK',
+    }
+  }
+
+  // ── SELECT with Embedded Relations ─────────────────────────────────
+
+  private async _execSelectWithEmbeds(): Promise<PgResult<T>> {
+    const parsed = parseSelectWithEmbeds(this._select)
+
+    // Build base column SQL (embeds are handled separately)
+    const baseCols = parsed.baseColumns.length > 0 ? parsed.baseColumns : ['*']
+    const colSQL = baseCols.includes('*') ? '*' : baseCols.map(quoteIdent).join(', ')
+
+    const params: any[] = []
+    let sql = `SELECT ${colSQL} FROM ${quoteIdent(this._table)}`
+
+    const where = this._buildWhere(params)
+    if (where) sql += ` WHERE ${where}`
+
+    if (this._orders.length > 0) {
+      const orderParts = this._orders.map((o) => {
+        const dir = o.ascending ? 'ASC' : 'DESC'
+        const nulls = o.nullsFirst !== undefined
+          ? (o.nullsFirst ? 'NULLS FIRST' : 'NULLS LAST')
+          : ''
+        return `${quoteIdent(o.column)} ${dir} ${nulls}`.trim()
+      })
+      sql += ` ORDER BY ${orderParts.join(', ')}`
+    }
+
+    if (this._rangeFrom !== null && this._rangeTo !== null) {
+      const limit = this._rangeTo - this._rangeFrom + 1
+      sql += ` LIMIT ${limit} OFFSET ${this._rangeFrom}`
+    } else if (this._limit !== null) {
+      sql += ` LIMIT ${this._limit}`
+      if (this._offset !== null) sql += ` OFFSET ${this._offset}`
+    }
+
+    // Count query
+    let totalCount: number | null = null
+    if (this._selectOptions.count === 'exact') {
+      const countSQL = `SELECT COUNT(*) AS cnt FROM ${quoteIdent(this._table)}`
+        + (where ? ` WHERE ${where}` : '')
+      const countResult = await this._pool.query(countSQL, params)
+      totalCount = parseInt(countResult.rows[0]?.cnt || '0', 10)
+    }
+
+    if (this._selectOptions.head) {
+      return { data: null, error: null, count: totalCount, status: 200, statusText: 'OK' }
+    }
+
+    const result = await this._pool.query(sql, params)
+    let rows = result.rows
+
+    // Resolve embedded relations
+    if (rows.length > 0 && parsed.embeds.length > 0) {
+      try {
+        const fks = await getFkRelations(this._pool)
+        for (const embed of parsed.embeds) {
+          await resolveAndStitchEmbed(this._pool, fks, this._table, rows, embed)
+        }
+      } catch (embedErr: any) {
+        console.error(`[PgEmbed] Error resolving embeds for ${this._table}:`, embedErr.message)
+        // Continue with base data — embeds will be null/empty
+      }
+    }
+
+    let data: any = rows
+
+    if (this._single) {
+      if (rows.length === 0) {
+        return {
+          data: null,
+          error: { message: 'No rows returned', code: 'PGRST116' },
+          count: totalCount,
+          status: 406,
+          statusText: 'Not Acceptable',
+        }
+      }
+      data = rows[0]
+    }
+
+    if (this._maybeSingle) {
+      data = rows[0] || null
     }
 
     return {

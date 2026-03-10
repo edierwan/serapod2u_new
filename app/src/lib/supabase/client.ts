@@ -1,8 +1,13 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/types/database'
 
-// Singleton instance to prevent multiple Supabase clients
-let client: ReturnType<typeof createBrowserClient<Database>> | null = null
+// Check if PG mode is active (NEXT_PUBLIC_ vars are available in browser)
+function isPgBrowserMode(): boolean {
+  return process.env.NEXT_PUBLIC_DATA_BACKEND === 'postgres' || process.env.NEXT_PUBLIC_DATA_BACKEND === 'pg'
+}
+
+// Singleton instance to prevent multiple clients
+let client: any = null
 
 export function createClient() {
   // Return existing client if already created
@@ -10,11 +15,17 @@ export function createClient() {
     return client
   }
 
-  // Get environment variables with validation
+  // ── PG Browser Mode ──────────────────────────────────────────────
+  if (isPgBrowserMode()) {
+    const { createPgBrowserClient } = require('@/lib/db/pg-browser-client') as typeof import('@/lib/db/pg-browser-client')
+    client = createPgBrowserClient()
+    return client
+  }
+
+  // ── Supabase Browser Mode (production) ───────────────────────────
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Validate environment variables are present
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
       'Missing Supabase environment variables. ' +
@@ -22,7 +33,6 @@ export function createClient() {
     )
   }
 
-  // Create new client with proper configuration
   client = createBrowserClient<Database>(
     supabaseUrl,
     supabaseAnonKey
@@ -33,16 +43,25 @@ export function createClient() {
 
 // Export a function to reset the client (useful for testing or logout)
 export function resetClient() {
+  if (isPgBrowserMode() && client) {
+    const { resetPgBrowserClient } = require('@/lib/db/pg-browser-client') as typeof import('@/lib/db/pg-browser-client')
+    resetPgBrowserClient()
+  }
   client = null
 }
 
 /**
- * Force clear all Supabase storage data from browser
- * This is more aggressive than signOut() and clears all cached session data
+ * Force clear all auth storage data from browser
  */
 export function forceCleanStorage() {
   if (typeof window === 'undefined') return
-  
+
+  if (isPgBrowserMode()) {
+    const { forceCleanPgStorage } = require('@/lib/db/pg-browser-client') as typeof import('@/lib/db/pg-browser-client')
+    forceCleanPgStorage()
+    return
+  }
+
   try {
     // Clear all Supabase-related localStorage items
     const localKeys = Object.keys(localStorage)
@@ -51,7 +70,7 @@ export function forceCleanStorage() {
         localStorage.removeItem(key)
       }
     })
-    
+
     // Clear all Supabase-related sessionStorage items
     const sessionKeys = Object.keys(sessionStorage)
     sessionKeys.forEach(key => {
@@ -59,8 +78,8 @@ export function forceCleanStorage() {
         sessionStorage.removeItem(key)
       }
     })
-    
-    console.log('🧹 Supabase storage cleaned')
+
+    console.log('🧹 Auth storage cleaned')
   } catch (error) {
     console.error('Error cleaning storage:', error)
   }

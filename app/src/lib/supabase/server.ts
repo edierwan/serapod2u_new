@@ -7,53 +7,40 @@ import { isPostgresMode } from '@/lib/db/backend'
  * Creates a server-side data client.
  *
  * - DATA_BACKEND=supabase (default) → Supabase JS SDK with cookie auth
- * - DATA_BACKEND=postgres           → Hybrid: PG for simple queries,
- *                                     Supabase fallback for nested FK joins.
- *
- * In PG mode, auth operations (.auth.getUser etc.) are proxied to a
- * lightweight Supabase client so hybrid auth continues to work.
+ * - DATA_BACKEND=postgres           → PG-only: direct PostgreSQL for data,
+ *                                     PG-backed auth, PG-backed storage.
+ *                                     No Supabase runtime dependency.
  */
 export async function createClient() {
   // ── PostgreSQL mode ──────────────────────────────────────────────
   if (isPostgresMode()) {
     // Dynamic imports to prevent pg (Node.js native) from leaking into client bundles
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { createPgClient } = require('@/lib/db/pg-adapter') as typeof import('@/lib/db/pg-adapter')
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { createHybridClient } = require('@/lib/db/hybrid-client') as typeof import('@/lib/db/hybrid-client')
+    const { createPgAuth } = require('@/lib/db/pg-auth') as typeof import('@/lib/db/pg-auth')
+    const { createPgStorage } = require('@/lib/db/pg-storage') as typeof import('@/lib/db/pg-storage')
+
     const pgClient = createPgClient()
 
-    // Build a Supabase client for hybrid auth AND for nested-join fallback
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (supabaseUrl && supabaseAnonKey) {
-      try {
-        const cookieStore = await cookies()
-        const supabaseClient = createServerClient<Database>(
-          supabaseUrl,
-          supabaseAnonKey,
-          {
-            cookies: {
-              get(name: string) { return cookieStore.get(name)?.value },
-              set(name: string, value: string, options: CookieOptions) {
-                try { cookieStore.set({ name, value, ...options }) } catch {}
-              },
-              remove(name: string, options: CookieOptions) {
-                try { cookieStore.set({ name, value: '', ...options }) } catch {}
-              },
-            },
-          }
-        )
-        // Replace auth and storage stubs with real Supabase auth/storage
-        ;(pgClient as any).auth = supabaseClient.auth
-        ;(pgClient as any).storage = supabaseClient.storage
-
-        // Return hybrid client: PG for simple queries, Supabase for nested joins
-        return createHybridClient(pgClient, supabaseClient, 'server') as any
-      } catch {
-        // cookies() may fail outside of request context; return PG-only
-      }
+    // Wire PG auth with Next.js cookie access
+    try {
+      const cookieStore = await cookies()
+      const pgAuth = createPgAuth(
+        (name: string) => cookieStore.get(name)?.value,
+        (name: string, value: string, options: any) => {
+          try { cookieStore.set({ name, value, ...options }) } catch {}
+        },
+        (name: string, options: any) => {
+          try { cookieStore.set({ name, value: '', ...options }) } catch {}
+        }
+      )
+      ;(pgClient as any).auth = pgAuth
+    } catch {
+      // cookies() may fail outside of request context (e.g., during build)
     }
+
+    // Wire PG storage
+    const pgStorage = createPgStorage()
+    ;(pgClient as any).storage = pgStorage
 
     return pgClient as any
   }

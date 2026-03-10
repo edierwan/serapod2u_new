@@ -7,8 +7,15 @@ import {
   splitSecurityToken,
   writeSecurityMappingCookie
 } from './src/utils/qrSecurity'
+import { getEdgeUser, PG_AUTH_COOKIE_NAME } from './src/lib/db/pg-auth-edge'
 
 const QR_TRACK_PREFIX = "/track/product/";
+
+/** Check if running in PG-only mode */
+function isPgMode(): boolean {
+  const backend = process.env.DATA_BACKEND?.toLowerCase()
+  return (backend === 'postgres' || backend === 'pg') && !!(process.env.DATABASE_URL || process.env.DATABASE_POOL_URL)
+}
 
 /**
  * Handle QR security redirect for journeys that require security codes
@@ -140,11 +147,16 @@ async function handleQRSecurityRedirect(
 
 export async function middleware(request: NextRequest) {
   // 1) QR security redirect – may return a redirect response
-  const qrRedirect = await handleQRSecurityRedirect(request);
-  if (qrRedirect) return qrRedirect;
+  // In PG mode, QR security redirect is skipped because it requires Edge Runtime
+  // Supabase calls. QR tracking still works; only the security-code-stripping
+  // redirect is bypassed. This is a known limitation of the PG-only dev path.
+  if (!isPgMode()) {
+    const qrRedirect = await handleQRSecurityRedirect(request);
+    if (qrRedirect) return qrRedirect;
+  }
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/pg-auth', '/api/pg-data', '/api/storage']
 
   // Check if current path is public
   const isPublicPath = PUBLIC_PATHS.some((path) =>
@@ -171,6 +183,58 @@ export async function middleware(request: NextRequest) {
   response.headers.set('Pragma', 'no-cache')
   response.headers.set('Expires', '0')
 
+  // ── PG Auth Mode ─────────────────────────────────────────────────────
+  if (isPgMode()) {
+    try {
+      const token = request.cookies.get(PG_AUTH_COOKIE_NAME)?.value
+      const { data: { user }, error: authError } = await getEdgeUser(token)
+
+      // Business route protection
+      const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings']
+      const isBusinessRoute = BUSINESS_PREFIXES.some(p =>
+        request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/')
+      )
+
+      if (!user && isBusinessRoute) {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+
+      // Authenticated user on business route — check scope via JWT metadata
+      if (user && isBusinessRoute) {
+        // account_scope is fetched at login and can be checked via a lightweight
+        // query to the pg-data API. For middleware speed, we allow through and
+        // let the server component do the scope check.
+      }
+
+      // Handle login redirect for authenticated users
+      if (user && request.nextUrl.pathname === '/login') {
+        return NextResponse.redirect(new URL('/dashboard', request.url))
+      }
+
+      if (authError) {
+        if (authError.message?.includes('Token has expired') || authError.status === 401) {
+          if (request.nextUrl.pathname.startsWith('/api/')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+          }
+          if (request.nextUrl.pathname !== '/login') {
+            response = NextResponse.redirect(new URL('/login', request.url))
+            response.cookies.delete(PG_AUTH_COOKIE_NAME)
+            response.cookies.delete('pg-refresh-token')
+            return response
+          }
+        }
+      }
+    } catch (error) {
+      console.error('PG Middleware error:', error)
+      if (request.nextUrl.pathname.startsWith('/dashboard')) {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+    }
+
+    return response
+  }
+
+  // ── Supabase Auth Mode (production) ──────────────────────────────────
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
