@@ -148,7 +148,7 @@ async function getGitSha(projectRoot: string): Promise<string | null> {
  */
 function detectEnvironment(): 'local' | 'ci' | 'production' {
   if (process.env.CI) return 'ci'
-  if (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV?.includes('preview')) {
+  if (process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'preview') {
     return 'production'
   }
   return 'local'

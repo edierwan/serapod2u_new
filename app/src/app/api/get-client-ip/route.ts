@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     ip = cfConnecting
   } else {
     // Fallback to remote address (may be proxy IP)
-    ip = request.headers.get('x-vercel-forwarded-for') || 
+    ip = request.headers.get('x-forwarded-host') || 
          request.headers.get('x-real-ip') ||
          'Unknown'
   }

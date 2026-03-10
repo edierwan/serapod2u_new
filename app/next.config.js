@@ -8,9 +8,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
 
-  // Set output file tracing root for both local dev and Vercel deployment
-  // This tells Next.js where the project root is for proper dependency tracing
-  // Works in both environments: __dirname points to /app locally and on Vercel
+  // Set output file tracing root for dependency tracing in production builds
   outputFileTracingRoot: __dirname,
 
   // Turbopack configuration - must match outputFileTracingRoot

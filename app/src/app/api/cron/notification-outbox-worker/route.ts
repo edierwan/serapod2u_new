@@ -8,7 +8,7 @@ import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_uti
  * Picks up pending items from notifications_outbox, resolves recipients,
  * renders templates, and sends via WhatsApp/SMS/Email.
  * 
- * Runs every minute via Vercel Cron or can be called manually.
+ * Runs every minute via internal cron scheduler or can be called manually.
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30

@@ -140,12 +140,12 @@ async function processJobs(request: NextRequest) {
   const startTime = Date.now()
 
   try {
-    // Verify authorization for Vercel Cron
+    // Verify cron authorization
     const authHeader = request.headers.get('authorization')
     const isDevelopment = process.env.NODE_ENV === 'development'
     
-    // Vercel Cron sends: Authorization: Bearer <CRON_SECRET>
-    // Check if it's from Vercel Cron (has authorization header) or manual trigger
+    // Cron scheduler sends: Authorization: Bearer <CRON_SECRET>
+    // Check if it's from cron scheduler (has authorization header) or manual trigger
     if (!isDevelopment && authHeader) {
       const cronSecret = process.env.CRON_SECRET
       
@@ -904,11 +904,10 @@ async function processJobs(request: NextRequest) {
 }
 
 /**
- * GET handler - Called by Vercel Cron Jobs
- * Vercel cron jobs use GET requests by default
+ * GET handler - Called by cron scheduler (Coolify internal or external trigger)
  */
 export async function GET(request: NextRequest) {
-  console.log('🔔 Cron trigger: GET request from Vercel')
+  console.log('🔔 Cron trigger: GET request')
   return processJobs(request)
 }
 

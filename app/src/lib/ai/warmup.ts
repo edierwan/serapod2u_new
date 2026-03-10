@@ -68,12 +68,12 @@ export async function ensureWarm(): Promise<boolean> {
 
 /**
  * Start a background keep-warm interval (self-hosted Node only).
- * On Vercel / edge, this is a no-op because intervals are unreliable.
+ * On serverless platforms, this is a no-op because intervals are unreliable.
  * Call once at server boot.
  */
 export function startKeepWarmInterval(): (() => void) | null {
   // Only run if we detect a long-running Node process (not serverless)
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.SERVERLESS === 'true') {
     console.log('[Warmup] Serverless detected — using opportunistic warmup only')
     return null
   }

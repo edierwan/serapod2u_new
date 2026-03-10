@@ -6,7 +6,7 @@ import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
 /**
  * CRON: /api/cron/qr-generation-worker
  * Background worker to process queued QR batches
- * Runs every minute via Vercel Cron
+ * Runs every minute via internal cron scheduler
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // Keep each run short to avoid timeouts

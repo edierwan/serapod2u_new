@@ -382,7 +382,7 @@ export default function AiProviderSettingsCard({
                 disabled={!canEdit}
               />
               <p className="text-xs text-muted-foreground">
-                Ollama proxy URL. Use <strong>https://bot.serapod2u.com/ollama</strong> for production (Vercel → VPS proxy). Use http://127.0.0.1:11434 only when running locally on VPS.
+                Ollama proxy URL. Use <strong>https://bot.serapod2u.com/ollama</strong> for production. Use http://127.0.0.1:11434 only when running locally on VPS.
               </p>
             </div>
 
@@ -479,7 +479,7 @@ export default function AiProviderSettingsCard({
             {/* Architecture info */}
             <div className="flex items-start gap-1.5 text-xs text-muted-foreground rounded-lg border p-3 bg-blue-50 dark:bg-blue-900/10">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-blue-600" />
-              <span>This app runs on Vercel. An authenticated HTTPS proxy on your VPS forwards requests to the local Ollama instance. Set the proxy URL and token above.</span>
+              <span>An authenticated HTTPS proxy on your VPS forwards requests to the local Ollama instance. Set the proxy URL and token above.</span>
             </div>
           </>
         )}

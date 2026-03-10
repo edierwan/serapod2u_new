@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const forwarded = request.headers.get('x-forwarded-for')
     const real = request.headers.get('x-real-ip')
     const cfConnecting = request.headers.get('cf-connecting-ip') // Cloudflare
-  const vercelForwarded = request.headers.get('x-vercel-forwarded-for')
+  const proxyForwarded = request.headers.get('x-vercel-forwarded-for') || request.headers.get('x-forwarded-host')
 
     let clientIp: string | null = null
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       clientIp = cfConnecting
     } else {
       // Fallback options
-      clientIp = vercelForwarded
+      clientIp = proxyForwarded
     }
 
     const normalizeIp = (input: string | null) => {
