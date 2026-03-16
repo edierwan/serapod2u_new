@@ -491,45 +491,22 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
   const { day, date, time } = formatDateTime()
 
   // Filter menu items based on user role and organization
+  // While permissions are loading, use a permissive checker (returns true for all)
+  // so items appear immediately; once loaded, exact permissions apply.
+  const permissiveCheck = useMemo(() => () => true, [])
+
   const filteredNavigationItems = useMemo(() => {
-    // Don't filter items while permissions are loading - this prevents premature filtering
-    if (permissionsLoading) {
-      console.log('[Sidebar] Permissions still loading, showing empty menus temporarily')
-      return []
-    }
-
-    console.log('[Sidebar] Filtering navigation items with permissions:', Object.keys(permissions).length, 'permissions loaded')
-    let items = filterMenuItems(navigationItems, userProfile, hasPermission)
-
+    const checker = permissionsLoading ? permissiveCheck : hasPermission
+    const items = filterMenuItems(navigationItems, userProfile, checker)
     return items
-  }, [userProfile, qrTrackingVisibility, hasPermission, permissionsLoading, permissions])
+  }, [userProfile, qrTrackingVisibility, hasPermission, permissionsLoading, permissions, permissiveCheck])
 
   const filteredSecondaryItems = useMemo(() => {
-    // Don't filter items while permissions are loading
-    if (permissionsLoading) {
-      console.log('[Sidebar] Permissions still loading for secondary items')
-      return []
-    }
-
-    // Debug logs for secondary items
-    console.log('[Sidebar Debug] User Profile Role:', {
-      role_level: userProfile?.roles?.role_level,
-      role_id: userProfile?.roles?.role_id,
-      role_code: userProfile?.roles?.role_code,
-      id: userProfile?.roles?.id
-    })
-    console.log('[Sidebar Debug] permissionsLoading:', permissionsLoading)
-    console.log('[Sidebar Debug] hasPermission("view_users"):', hasPermission('view_users'))
-    if (permissions && typeof permissions === 'object') {
-      console.log('[Sidebar Debug] Permissions keys:', Object.keys(permissions))
-    }
-
-    const items = filterMenuItems(secondaryItems, userProfile, hasPermission)
-    console.log('[Sidebar Debug] Filtered Secondary Items:', items.map(i => i.id))
-
+    const checker = permissionsLoading ? permissiveCheck : hasPermission
+    const items = filterMenuItems(secondaryItems, userProfile, checker)
     return items
   },
-    [userProfile, hasPermission, permissionsLoading, permissions]
+    [userProfile, hasPermission, permissionsLoading, permissions, permissiveCheck]
   )
 
   const handleSignOut = async (e?: React.MouseEvent) => {

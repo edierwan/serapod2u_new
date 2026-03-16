@@ -133,8 +133,22 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                     await supabase.auth.signOut({ scope: 'local' })
                     resetClient()
                 } else if (user) {
-                    // User is already logged in — redirect via centralized API
-                    doPostLoginRedirect()
+                    // Check if user is a portal (business) user
+                    const { data: profile } = await supabase
+                        .from('users')
+                        .select('account_scope, organization_id')
+                        .eq('id', user.id)
+                        .single()
+
+                    if (profile?.account_scope === 'portal' && profile?.organization_id) {
+                        // Portal user already logged in — redirect to dashboard
+                        doPostLoginRedirect()
+                    } else {
+                        // Non-portal user (storefront/consumer) visiting login page:
+                        // Sign them out so they can enter business credentials
+                        await supabase.auth.signOut({ scope: 'local' })
+                        resetClient()
+                    }
                 }
             } catch {
                 forceCleanStorage()

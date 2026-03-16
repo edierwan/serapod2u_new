@@ -337,7 +337,9 @@ export async function middleware(request: NextRequest) {
       if (profile?.account_scope === 'portal' && profile?.organization_id) {
         return NextResponse.redirect(new URL('/dashboard', request.url))
       }
-      return NextResponse.redirect(new URL('/store', request.url))
+      // Non-portal users (storefront/consumer): let them through to /login
+      // so they can access Business Login from the store page.
+      // The login page will handle sign-out / account switching if needed.
     }
   } catch (error) {
     console.error('Middleware error:', error)
