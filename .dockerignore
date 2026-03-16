@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.github
+.vscode
+
+# Other workspaces not needed for app build
+baileys-gateway
+moltbot
+supabase
+
+# Misc
+*.md
+*.sql
+docker-compose.yaml
+.env*
+!app/.env.production

@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Standalone output for optimized Docker/self-hosted deployments
+  output: 'standalone',
+
   // Temporarily ignore TypeScript errors during build
   // Types are generated and available for editor autocomplete
   typescript: {
@@ -18,7 +21,7 @@ const nextConfig = {
   },
 
   allowedDevOrigins: ['192.168.1.5', 'localhost'],
-  
+
   images: {
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
@@ -60,6 +63,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'sb-stg-serapod.getouch.co',
       },
     ],
   },
