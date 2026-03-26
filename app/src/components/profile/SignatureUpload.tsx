@@ -23,6 +23,7 @@ export default function SignatureUpload({
   currentSignatureUrl,
   onSignatureUpdated,
 }: SignatureUploadProps) {
+  const SIGNATURE_BUCKET = 'avatars';
   const [signatureUrl, setSignatureUrl] = useState<string | null>(currentSignatureUrl || null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,12 +145,12 @@ export default function SignatureUpload({
       });
 
       // Generate unique filename
-      const fileName = `${userId}_${Date.now()}.png`;
-      const filePath = `signatures/${fileName}`;
+      const fileName = `${Date.now()}.png`;
+      const filePath = `${userId}/signatures/${fileName}`;
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from('documents')
+        .from(SIGNATURE_BUCKET)
         .upload(filePath, blob, {
           cacheControl: '3600',
           upsert: true,
@@ -163,7 +164,7 @@ export default function SignatureUpload({
       // Get public URL
       const {
         data: { publicUrl },
-      } = supabase.storage.from('documents').getPublicUrl(filePath);
+      } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
 
       // Update user record
       const { error: updateError } = await supabase
@@ -218,12 +219,13 @@ export default function SignatureUpload({
 
       // Generate unique filename
       const fileExt = file.name.split('.').pop();
-      const fileName = `${userId}_${Date.now()}.${fileExt}`;
-      const filePath = `signatures/${fileName}`;
+      const normalizedExt = (fileExt || 'png').toLowerCase();
+      const fileName = `${Date.now()}.${normalizedExt}`;
+      const filePath = `${userId}/signatures/${fileName}`;
 
       // Upload to Supabase Storage
       const { error: uploadError, data } = await supabase.storage
-        .from('documents')
+        .from(SIGNATURE_BUCKET)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true,
@@ -236,7 +238,7 @@ export default function SignatureUpload({
       // Get public URL
       const {
         data: { publicUrl },
-      } = supabase.storage.from('documents').getPublicUrl(filePath);
+      } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
 
       // Update user record
       const { error: updateError } = await supabase
