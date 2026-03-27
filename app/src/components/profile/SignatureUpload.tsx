@@ -7,6 +7,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { updateUserWithAuth } from '@/lib/actions';
 import { Upload, X, Check, AlertCircle, Pencil, Eraser, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -23,14 +24,14 @@ export default function SignatureUpload({
   currentSignatureUrl,
   onSignatureUpdated,
 }: SignatureUploadProps) {
-  const SIGNATURE_BUCKET = 'avatars';
+  const SIGNATURE_BUCKET = 'documents';
   const [signatureUrl, setSignatureUrl] = useState<string | null>(currentSignatureUrl || null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'draw'>('draw');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Canvas drawing state
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -146,7 +147,7 @@ export default function SignatureUpload({
 
       // Generate unique filename
       const fileName = `${Date.now()}.png`;
-      const filePath = `${userId}/signatures/${fileName}`;
+      const filePath = `signatures/${userId}/${fileName}`;
 
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
@@ -166,14 +167,15 @@ export default function SignatureUpload({
         data: { publicUrl },
       } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
 
-      // Update user record
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ signature_url: publicUrl })
-        .eq('id', userId);
+      // Persist signature URL via server action (admin-backed update avoids client-side RLS pitfalls)
+      const updateResult = await updateUserWithAuth(
+        userId,
+        { signature_url: publicUrl },
+        { id: userId, role_code: 'USER' }
+      );
 
-      if (updateError) {
-        throw updateError;
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Failed to update signature URL');
       }
 
       setSignatureUrl(publicUrl);
@@ -221,7 +223,7 @@ export default function SignatureUpload({
       const fileExt = file.name.split('.').pop();
       const normalizedExt = (fileExt || 'png').toLowerCase();
       const fileName = `${Date.now()}.${normalizedExt}`;
-      const filePath = `${userId}/signatures/${fileName}`;
+      const filePath = `signatures/${userId}/${fileName}`;
 
       // Upload to Supabase Storage
       const { error: uploadError, data } = await supabase.storage
@@ -240,19 +242,20 @@ export default function SignatureUpload({
         data: { publicUrl },
       } = supabase.storage.from(SIGNATURE_BUCKET).getPublicUrl(filePath);
 
-      // Update user record
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ signature_url: publicUrl })
-        .eq('id', userId);
+      // Persist signature URL via server action (admin-backed update avoids client-side RLS pitfalls)
+      const updateResult = await updateUserWithAuth(
+        userId,
+        { signature_url: publicUrl },
+        { id: userId, role_code: 'USER' }
+      );
 
-      if (updateError) {
-        throw updateError;
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Failed to update signature URL');
       }
 
       setSignatureUrl(publicUrl);
       setSuccess(true);
-      
+
       if (onSignatureUpdated) {
         onSignatureUpdated(publicUrl);
       }
@@ -278,14 +281,15 @@ export default function SignatureUpload({
     try {
       const supabase = createClient();
 
-      // Update user record to remove signature
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ signature_url: null })
-        .eq('id', userId);
+      // Remove signature URL via server action for consistency with save path
+      const updateResult = await updateUserWithAuth(
+        userId,
+        { signature_url: null },
+        { id: userId, role_code: 'USER' }
+      );
 
-      if (updateError) {
-        throw updateError;
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Failed to remove signature URL');
       }
 
       setSignatureUrl(null);
@@ -389,7 +393,7 @@ export default function SignatureUpload({
                 className="w-full border border-gray-200 rounded cursor-crosshair bg-white"
                 style={{ touchAction: 'none' }}
               />
-              
+
               <div className="flex items-center gap-4 mt-4">
                 <div className="flex items-center gap-2">
                   <label className="text-xs text-gray-600">Color:</label>

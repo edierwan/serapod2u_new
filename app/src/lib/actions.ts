@@ -110,6 +110,7 @@ export async function updateUserWithAuth(userId: string, userData: {
   role_code?: string
   organization_id?: string
   phone?: string
+  signature_url?: string | null
   is_active?: boolean
   avatar_url?: string
   location?: string
