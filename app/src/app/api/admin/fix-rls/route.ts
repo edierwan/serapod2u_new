@@ -1,11 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 export const dynamic = 'force-dynamic'
 
 // Temporary endpoint to fix RLS policy - REMOVE AFTER USE
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    // Centralized environment + auth + role guard
+    const guard = await assertDestructiveOpsAllowed(request, 'fix-rls')
+    if (guard.blocked) return guard.response
+
     // Use service role key to bypass RLS
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

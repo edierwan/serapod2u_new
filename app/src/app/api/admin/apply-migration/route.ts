@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 /**
  * POST /api/admin/apply-migration
@@ -136,6 +137,10 @@ $$;
 
 export async function POST(request: NextRequest) {
   try {
+    // Centralized environment + auth + role guard
+    const guard = await assertDestructiveOpsAllowed(request, 'apply-migration')
+    if (guard.blocked) return guard.response
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -154,40 +159,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Get current user from the request
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Verify user is Super Admin
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role_code, roles(role_level)')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
-      return NextResponse.json(
-        { error: 'Access denied. Super Admin only.' },
-        { status: 403 }
-      )
-    }
-
-    console.log('🔄 Applying migration - Started by:', user.email)
+    console.log('🔄 Applying migration - Started by:', guard.userEmail)
 
     // Execute the migration SQL
     // Split into statements and execute each one

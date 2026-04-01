@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 /**
  * POST /api/admin/delete-transactions-v2
@@ -112,32 +113,13 @@ async function deleteFilesInFolder(supabase: any, bucketName: string, folderPath
 
 export async function POST(request: NextRequest) {
   try {
+    // Centralized environment + auth + role guard
+    const guard = await assertDestructiveOpsAllowed(request, 'delete-transactions-v2')
+    if (guard.blocked) return guard.response
+
     const supabase = await createClient()
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Check if user is Super Admin
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role_code, roles(role_level)')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !(profile as any).roles || (profile as any).roles.role_level !== 1) {
-      return NextResponse.json(
-        { error: 'Access denied. Super Admin only.' },
-        { status: 403 }
-      )
-    }
-
-    console.log('🚨 DELETING ALL TRANSACTION DATA + INVENTORY (V2) - Started by:', user.email)
+    console.log('🚨 DELETING ALL TRANSACTION DATA + INVENTORY (V2) - Started by:', guard.userEmail)
 
     // Step 1: Delete storage files FIRST (before DB records are gone)
     console.log('\n📁 Step 1: Cleaning up storage files...')

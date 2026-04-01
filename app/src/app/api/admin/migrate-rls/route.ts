@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 // This endpoint runs database migrations - USE WITH CAUTION
 // Only accessible in development mode
-export async function POST(request: Request) {
-  // Only allow in development
-  if (process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Migration endpoint only available in development' }, { status: 403 })
-  }
+export async function POST(request: NextRequest) {
+  // Centralized environment + auth + role guard
+  const guard = await assertDestructiveOpsAllowed(request, 'migrate-rls')
+  if (guard.blocked) return guard.response
 
   try {
     const supabase = createClient(

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 // Configure route to be dynamic
 export const dynamic = "force-dynamic";
@@ -109,6 +110,10 @@ async function batchDeleteUsersFromAuth(
 }
 
 export async function POST(request: NextRequest) {
+    // Centralized environment + auth + role guard (checked before streaming starts)
+    const guard = await assertDestructiveOpsAllowed(request, 'bulk-delete-users')
+    if (guard.blocked) return guard.response
+
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({

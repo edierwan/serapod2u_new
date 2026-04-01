@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { useToast } from '@/components/ui/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,6 +52,15 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
   // Only Super Admin can access (role_level = 1)
   const isSuperAdmin = userProfile.roles.role_level === 1
   
+  // Environment gate – hides destructive ops in production unless ALLOW_DESTRUCTIVE_DB_OPS=true
+  const [destructiveAllowed, setDestructiveAllowed] = useState<boolean | null>(null)
+  useEffect(() => {
+    fetch('/api/admin/destructive-ops-status')
+      .then(r => r.json())
+      .then(d => setDestructiveAllowed(d.allowed === true))
+      .catch(() => setDestructiveAllowed(false)) // fail-closed
+  }, [])
+
   // Internal tab state
   const [activeSubTab, setActiveSubTab] = useState<'data' | 'cleanup'>('data')
   
@@ -96,7 +105,26 @@ export default function DangerZoneTab({ userProfile }: DangerZoneTabProps) {
     )
   }
 
-
+  // Production environment gate (fail-closed while loading)
+  if (destructiveAllowed !== true) {
+    return (
+      <Card className="border-yellow-200 bg-yellow-50">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-yellow-600" />
+            <CardTitle className="text-yellow-900">
+              {destructiveAllowed === null ? 'Checking environment…' : 'Disabled in Production'}
+            </CardTitle>
+          </div>
+          <CardDescription className="text-yellow-700">
+            {destructiveAllowed === null
+              ? 'Verifying whether destructive operations are allowed in this environment.'
+              : 'Destructive database operations are disabled in this environment. Set ALLOW_DESTRUCTIVE_DB_OPS=true to enable.'}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
 
   const handleExportBackup = async () => {
     try {

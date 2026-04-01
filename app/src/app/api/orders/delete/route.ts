@@ -1,33 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Centralized environment + auth + role guard
+    const guard = await assertDestructiveOpsAllowed(request, 'hard-delete-order')
+    if (guard.blocked) return guard.response
+
     const adminSupabase = createAdminClient()
-
-    // Get authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if user is Super Admin (only super admins can delete orders)
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role_code, roles(role_level)')
-      .eq('id', user.id)
-      .single()
-
-    const isSuperAdmin = profile && (profile as any).roles && (profile as any).roles.role_level === 1
-
-    if (!isSuperAdmin) {
-      return NextResponse.json({
-        error: 'Permission denied. Only Super Admins can delete orders.'
-      }, { status: 403 })
-    }
 
     const body = await request.json()
     const { orderId } = body
@@ -48,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const displayOrderNo = order.display_doc_no || order.order_no
-    console.log(`🗑️ Super Admin ${user.email} deleting order ${displayOrderNo} (${orderId})`)
+    console.log(`🗑️ Super Admin ${guard.userEmail} deleting order ${displayOrderNo} (${orderId})`)
 
     // Queue notification BEFORE deletion (since order will be hard-deleted)
     try {
@@ -60,7 +42,7 @@ export async function POST(request: NextRequest) {
       const { data: deleterProfile } = await adminSupabase
         .from('users')
         .select('full_name')
-        .eq('id', user.id)
+        .eq('id', guard.userId)
         .single()
 
       const payload = {
@@ -68,7 +50,7 @@ export async function POST(request: NextRequest) {
         order_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         customer_name: customerName,
         status: order.status || 'deleted',
-        deleted_by: deleterProfile?.full_name || user.email || 'Super Admin',
+        deleted_by: deleterProfile?.full_name || guard.userEmail || 'Super Admin',
         deleted_at: new Date().toLocaleString('en-GB'),
         order_url: 'https://app.serapod2u.com/orders'
       }

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,8 +8,12 @@ export const dynamic = 'force-dynamic'
  * Apply RLS policy fix to allow shops to view their own QR scans
  * This fixes the issue where shops can't see their point balance
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    // Centralized environment + auth + role guard
+    const guard = await assertDestructiveOpsAllowed(request, 'apply-rls-fix')
+    if (guard.blocked) return guard.response
+
     // Use service role key to bypass RLS and execute admin commands
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
