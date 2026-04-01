@@ -22,6 +22,9 @@ export const createAdminClient = () => {
       auth: {
         autoRefreshToken: false,
         persistSession: false
+      },
+      global: {
+        fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(10_000) })
       }
     }
   )

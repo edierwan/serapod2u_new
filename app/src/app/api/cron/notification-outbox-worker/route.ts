@@ -32,8 +32,9 @@ export async function GET(request: NextRequest) {
             .rpc('get_pending_notifications', { p_limit: 20 })
 
         if (fetchError) {
-            console.error('[NotifWorker] Error fetching pending:', fetchError)
-            return NextResponse.json({ error: fetchError.message }, { status: 500 })
+            // Graceful handling: RPC may not exist on staging or network may be flaky
+            console.warn('[NotifWorker] Error fetching pending:', fetchError.message)
+            return NextResponse.json({ processed: 0, message: 'Skipped: ' + fetchError.message })
         }
 
         if (!pendingItems || pendingItems.length === 0) {
