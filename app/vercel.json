@@ -9,35 +9,6 @@
     }
   },
   "git": {
-    "deploymentEnabled": true
-  },
-  "functions": {
-    "src/app/api/admin/point-migration-stream/route.ts": {
-      "maxDuration": 600
-    },
-    "src/app/api/admin/point-migration/route.ts": {
-      "maxDuration": 300
-    },
-    "src/app/api/admin/bulk-delete-users/route.ts": {
-      "maxDuration": 600
-    }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/qr-reverse-worker",
-      "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/cron/qr-generation-worker",
-      "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/cron/manufacturer-packing-worker",
-      "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/cron/notification-outbox-worker",
-      "schedule": "*/1 * * * *"
-    }
-  ]
+    "deploymentEnabled": false
+  }
 }
