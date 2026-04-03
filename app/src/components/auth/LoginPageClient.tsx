@@ -92,10 +92,10 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         try {
             const res = await fetch('/api/auth/post-login-redirect')
             const data = await res.json()
-            router.replace(data.redirectTo || '/store')
+            window.location.href = data.redirectTo || '/store'
         } catch {
             // Fallback if API is unreachable
-            router.replace('/store')
+            window.location.href = '/store'
         }
     }
 
@@ -243,10 +243,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             // Capture IP (fire and forget)
             fetch('/api/update-login-ip', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => { })
 
-            await new Promise(resolve => setTimeout(resolve, 500))
-            router.refresh()
-
-            // Route via centralized post-login redirect API
+            // Route via centralized post-login redirect API (hard navigation)
             await doPostLoginRedirect()
         } catch (err) {
             console.error('Login error:', err)
