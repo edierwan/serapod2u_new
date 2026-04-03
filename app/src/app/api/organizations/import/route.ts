@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Papa from 'papaparse'
 import ExcelJS from 'exceljs'
+import { ORG_CODE_REGEX, ORG_CODE_PREFIX_MAP } from '@/lib/utils/orgValidation'
 
 // CSV/Excel column → DB field mapping with known aliases
 const COLUMN_MAP: Record<string, string> = {
@@ -205,10 +206,7 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true) as { data: any[] | null }
 
     // Generate org codes: find max existing
-    const prefixMap: Record<string, string> = {
-      HQ: 'HQ', MANU: 'MN', DIST: 'DT', WH: 'WH', SHOP: 'SH'
-    }
-    const prefix = prefixMap[orgTypeCode] || orgTypeCode.substring(0, 2)
+    const prefix = ORG_CODE_PREFIX_MAP[orgTypeCode] || orgTypeCode.substring(0, 2).toUpperCase()
     const { data: allCodes } = await supabase
       .from('organizations')
       .select('org_code')
@@ -310,7 +308,13 @@ export async function POST(request: NextRequest) {
         }
       } else {
         maxCode++
-        orgData.org_code = `${prefix}${String(maxCode).padStart(3, '0')}`
+        const generatedCode = `${prefix}${String(maxCode).padStart(3, '0')}`
+        // Validate generated org_code against DB constraint
+        if (!ORG_CODE_REGEX.test(generatedCode)) {
+          errors.push(`Generated code "${generatedCode}" is invalid — must be 3-20 uppercase alphanumeric chars`)
+        }
+        if (errors.length > 0) continue
+        orgData.org_code = generatedCode
         orgData.org_type_code = orgTypeCode
         orgData.parent_org_id = parentOrgId || null
         orgData.country_code = 'MY'

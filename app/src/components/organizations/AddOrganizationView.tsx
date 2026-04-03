@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowLeft, Building2, Save, AlertCircle, Info, MapPin, Loader2 } from 'lucide-react'
+import { ArrowLeft, Building2, Save, AlertCircle, Info, MapPin, Loader2, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import OrganizationImport from './OrganizationImport'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
@@ -19,10 +19,16 @@ import {
   isParentRequired, 
   getParentHelpText,
   getParentFieldLabel,
-  parseHierarchyError,
   validateOrgHierarchy,
   type OrgType
 } from '@/lib/utils/orgHierarchy'
+import {
+  validateOrgCode,
+  validateOrgForm,
+  translateOrgError,
+  getFieldRules,
+  ORG_CODE_PREFIX_MAP,
+} from '@/lib/utils/orgValidation'
 
 interface AddOrganizationViewProps {
   userProfile: any
@@ -113,6 +119,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoError, setLogoError] = useState('')
   const [gettingLocation, setGettingLocation] = useState(false)
+  const [orgCodeStatus, setOrgCodeStatus] = useState<'idle' | 'generating' | 'ready' | 'error'>('idle')
+  const [orgCodeError, setOrgCodeError] = useState('')
+  const [formWarnings, setFormWarnings] = useState<string[]>([])
 
   const { isReady, supabase } = useSupabaseAuth()
 
@@ -302,20 +311,11 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
   const generateOrgCode = async (typeCode: string) => {
     try {
-      // Define prefix mapping for different org types
-      const prefixMap: { [key: string]: string } = {
-        'HQ': 'HQ',
-        'MANU': 'MN',
-        'DIST': 'DT',
-        'WH': 'WH',
-        'SHOP': 'SH'
-      }
+      setOrgCodeStatus('generating')
+      setOrgCodeError('')
 
-      const prefix = prefixMap[typeCode] || typeCode.substring(0, 2)
+      const prefix = ORG_CODE_PREFIX_MAP[typeCode] || typeCode.substring(0, 2).toUpperCase()
 
-      // Get ALL codes for this type to find the true maximum
-      // Ordering by created_at is not reliable if data was imported or created out of order
-      // or if non-standard codes exist (like 'SHOPDEV')
       const { data, error } = await (supabase as any)
         .from('organizations')
         .select('org_code')
@@ -327,20 +327,11 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       
       if (data && data.length > 0) {
         data.forEach((org: any) => {
-          // Check if code starts with the expected prefix
-          // We use startsWith to ensure we're looking at the right series
           if (org.org_code && org.org_code.startsWith(prefix)) {
-            // Extract the number part
             const numberPart = org.org_code.substring(prefix.length)
-            // ParseInt will stop at non-numeric characters, but we want to be strict
-            // to avoid parsing "SHOPDEV" as "OPDEV" -> NaN, which is fine.
-            // But what if we have "SH123ABC"? parseInt("123ABC") -> 123.
-            // This is probably acceptable.
             const number = parseInt(numberPart)
-            if (!isNaN(number)) {
-              if (number > maxNumber) {
-                maxNumber = number
-              }
+            if (!isNaN(number) && number > maxNumber) {
+              maxNumber = number
             }
           }
         })
@@ -348,9 +339,21 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
       const nextNumber = maxNumber + 1
       const newCode = `${prefix}${String(nextNumber).padStart(3, '0')}`
+
+      // Validate the generated code before setting it
+      const codeErr = validateOrgCode(newCode)
+      if (codeErr) {
+        throw new Error(codeErr)
+      }
+
       handleInputChange('org_code', newCode)
+      setOrgCodeStatus('ready')
     } catch (error: any) {
       console.error('Error generating org code:', error)
+      setOrgCodeStatus('error')
+      setOrgCodeError(error?.message || 'Failed to generate organization code')
+      // Set a fallback code so the form isn't stuck with empty value
+      // User can retry via the retry button
     }
   }
 
@@ -372,39 +375,11 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
   }
 
   const validateForm = (): string | null => {
-    if (!formData.org_type_code.trim()) {
-      return 'Organization type is required'
+    const result = validateOrgForm(formData as any)
+    setFormWarnings(result.warnings)
+    if (!result.valid) {
+      return result.errors[0] // Show first error
     }
-    if (!formData.org_name.trim()) {
-      return 'Organization name is required'
-    }
-
-    // Validate email if provided
-    if (formData.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contact_email)) {
-      return 'Invalid email format'
-    }
-
-    // Validate postal code if provided
-    if (formData.postal_code && !/^\d{5}$/.test(formData.postal_code)) {
-      return 'Postal code must be exactly 5 digits'
-    }
-
-    // Validate latitude if provided
-    if (formData.latitude) {
-      const lat = parseFloat(formData.latitude)
-      if (isNaN(lat) || lat < -90 || lat > 90) {
-        return 'Latitude must be between -90 and 90'
-      }
-    }
-
-    // Validate longitude if provided
-    if (formData.longitude) {
-      const lon = parseFloat(formData.longitude)
-      if (isNaN(lon) || lon < -180 || lon > 180) {
-        return 'Longitude must be between -180 and 180'
-      }
-    }
-
     return null
   }
 
@@ -673,7 +648,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
     } catch (error: any) {
       console.error('Error creating organization:', error)
-      const friendlyError = parseHierarchyError(error)
+      const friendlyError = translateOrgError(error)
       setError(friendlyError)
     } finally {
       setLoading(false)
@@ -868,16 +843,52 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
               <div>
                 <Label htmlFor="org_code">Organization Code</Label>
-                <Input
-                  id="org_code"
-                  value={formData.org_code}
-                  disabled
-                  placeholder="Auto-generated by system"
-                  className="bg-gray-100 cursor-not-allowed"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Auto-generated based on organization type
-                </p>
+                <div className="relative">
+                  <Input
+                    id="org_code"
+                    value={formData.org_code}
+                    disabled
+                    placeholder={orgCodeStatus === 'generating' ? 'Generating...' : 'Select org type to auto-generate'}
+                    className={`bg-gray-100 cursor-not-allowed pr-10 ${
+                      orgCodeStatus === 'error' ? 'border-red-300 bg-red-50' :
+                      orgCodeStatus === 'ready' ? 'border-green-300 bg-green-50' : ''
+                    }`}
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {orgCodeStatus === 'generating' && (
+                      <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                    )}
+                    {orgCodeStatus === 'ready' && (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    )}
+                    {orgCodeStatus === 'error' && (
+                      <button
+                        type="button"
+                        onClick={() => formData.org_type_code && generateOrgCode(formData.org_type_code)}
+                        className="p-0.5 rounded hover:bg-red-100 transition-colors"
+                        title="Retry code generation"
+                      >
+                        <RefreshCw className="w-4 h-4 text-red-500" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {orgCodeStatus === 'error' && orgCodeError && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    {orgCodeError} — <button type="button" onClick={() => formData.org_type_code && generateOrgCode(formData.org_type_code)} className="underline hover:text-red-800">click to retry</button>
+                  </p>
+                )}
+                {orgCodeStatus === 'ready' && (
+                  <p className="text-xs text-green-600 mt-1">
+                    Auto-generated based on organization type
+                  </p>
+                )}
+                {orgCodeStatus === 'idle' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select an organization type to auto-generate code
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1235,6 +1246,47 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
           </CardContent>
         </Card>
 
+        {/* Warnings */}
+        {formWarnings.length > 0 && (
+          <Alert className="border-amber-200 bg-amber-50">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="text-amber-800 ml-2">
+              <ul className="list-disc list-inside space-y-0.5">
+                {formWarnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Readiness Check */}
+        {formData.org_type_code && (
+          <Card className="border-dashed">
+            <CardContent className="py-3">
+              <p className="text-xs font-medium text-gray-600 mb-2">Readiness Check</p>
+              <div className="flex flex-wrap gap-3 text-xs">
+                <span className={`flex items-center gap-1 ${formData.org_type_code ? 'text-green-600' : 'text-gray-400'}`}>
+                  {formData.org_type_code ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                  Type
+                </span>
+                <span className={`flex items-center gap-1 ${orgCodeStatus === 'ready' ? 'text-green-600' : orgCodeStatus === 'error' ? 'text-red-500' : 'text-gray-400'}`}>
+                  {orgCodeStatus === 'ready' ? <CheckCircle2 className="w-3 h-3" /> : orgCodeStatus === 'generating' ? <Loader2 className="w-3 h-3 animate-spin" /> : <AlertCircle className="w-3 h-3" />}
+                  Code
+                </span>
+                <span className={`flex items-center gap-1 ${formData.org_name.trim() ? 'text-green-600' : 'text-gray-400'}`}>
+                  {formData.org_name.trim() ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                  Name
+                </span>
+                {isParentRequired(formData.org_type_code as OrgType) && (
+                  <span className={`flex items-center gap-1 ${formData.parent_org_id ? 'text-green-600' : 'text-gray-400'}`}>
+                    {formData.parent_org_id ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                    Parent
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Form Actions */}
         <div className="flex justify-end gap-4">
           <Button
@@ -1245,7 +1297,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
+          <Button
+            type="submit"
+            disabled={loading || orgCodeStatus === 'generating' || orgCodeStatus === 'error'}
+            className="bg-blue-600 hover:bg-blue-700"
+            title={orgCodeStatus === 'error' ? 'Fix the organization code error first' : undefined}
+          >
             <Save className="w-4 h-4 mr-2" />
             {loading ? 'Creating...' : 'Create Organization'}
           </Button>
