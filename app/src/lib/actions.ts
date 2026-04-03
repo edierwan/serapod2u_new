@@ -262,6 +262,17 @@ export async function updateUserWithAuth(userId: string, userData: {
       updateData.phone_verified_at = null
     }
 
+    // Auto-set account_scope when organization_id changes
+    // Users with an org and a business role should be 'portal'; without org → 'store'
+    if (updateData.organization_id !== undefined) {
+      const effectiveRole = updateData.role_code
+      if (updateData.organization_id && (!effectiveRole || !['GUEST', 'CONSUMER'].includes(effectiveRole))) {
+        updateData.account_scope = 'portal'
+      } else if (!updateData.organization_id) {
+        updateData.account_scope = 'store'
+      }
+    }
+
     if (updateData.department_id || updateData.manager_user_id || updateData.position_id) {
       const { data: targetUser, error: targetError } = await adminClient
         .from('users')
