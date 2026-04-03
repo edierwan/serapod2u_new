@@ -9,7 +9,6 @@ import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { updateUserWithAuth } from '@/lib/actions';
 import { Upload, X, Check, AlertCircle, Pencil, Eraser, RotateCcw } from 'lucide-react';
-import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -26,6 +25,7 @@ export default function SignatureUpload({
 }: SignatureUploadProps) {
   const SIGNATURE_BUCKET = 'documents';
   const [signatureUrl, setSignatureUrl] = useState<string | null>(currentSignatureUrl || null);
+  const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -38,6 +38,29 @@ export default function SignatureUpload({
   const [hasDrawn, setHasDrawn] = useState(false);
   const [penColor, setPenColor] = useState('#000000');
   const [penWidth, setPenWidth] = useState(2);
+
+  // Generate a signed URL for display (self-hosted Kong requires API key for all storage requests)
+  useEffect(() => {
+    if (!signatureUrl) {
+      setDisplayUrl(null);
+      return;
+    }
+    const supabase = createClient();
+    // Extract file path from the full public URL
+    const marker = `/storage/v1/object/public/${SIGNATURE_BUCKET}/`;
+    const idx = signatureUrl.indexOf(marker);
+    const filePath = idx !== -1 ? signatureUrl.slice(idx + marker.length) : null;
+    if (!filePath) {
+      setDisplayUrl(signatureUrl);
+      return;
+    }
+    supabase.storage
+      .from(SIGNATURE_BUCKET)
+      .createSignedUrl(filePath, 3600)
+      .then(({ data }) => {
+        setDisplayUrl(data?.signedUrl ?? signatureUrl);
+      });
+  }, [signatureUrl]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -336,13 +359,17 @@ export default function SignatureUpload({
             </button>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-center min-h-[120px]">
-            <Image
-              src={signatureUrl}
-              alt="Digital Signature"
-              width={300}
-              height={100}
-              className="max-w-full h-auto"
-            />
+            {displayUrl ? (
+              <img
+                src={displayUrl}
+                alt="Digital Signature"
+                width={300}
+                height={100}
+                className="max-w-full h-auto"
+              />
+            ) : (
+              <span className="text-gray-400 text-sm">Loading...</span>
+            )}
           </div>
           <button
             onClick={() => {
