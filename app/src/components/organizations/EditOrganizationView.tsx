@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon } from 'lucide-react'
+import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon, Store } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
@@ -443,6 +443,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (formData.warranty_bonus !== undefined) updatePayload.warranty_bonus = formData.warranty_bonus
       if (formData.signature_type !== undefined) updatePayload.signature_type = formData.signature_type
       if (formData.signature_url !== undefined) updatePayload.signature_url = formData.signature_url
+
+      // Shop-specific fields
+      if (organization?.org_type_code === 'SHOP') {
+        if ((formData as any).branch !== undefined) updatePayload.branch = (formData as any).branch || null
+        if ((formData as any).sells_serapod_flavour !== undefined) updatePayload.sells_serapod_flavour = !!(formData as any).sells_serapod_flavour
+        if ((formData as any).sells_sbox !== undefined) updatePayload.sells_sbox = !!(formData as any).sells_sbox
+        if ((formData as any).sells_sbox_special_edition !== undefined) updatePayload.sells_sbox_special_edition = !!(formData as any).sells_sbox_special_edition
+        if ((formData as any).hot_flavour_brands !== undefined) updatePayload.hot_flavour_brands = (formData as any).hot_flavour_brands || null
+      }
 
       // Handle parent_org_id - include if changed OR if org type requires parent and it's missing
       const needsParent = isParentRequired(organization?.org_type_code as OrgType)
@@ -944,6 +953,93 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                   To manage distributor relationships, close this page and click the &quot;Distributors&quot; button on the organization card.
                 </AlertDescription>
               </Alert>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Shop Information - Only show for SHOP organizations */}
+      {organization.org_type_code === 'SHOP' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="w-5 h-5 text-orange-600" />
+              Shop Information
+            </CardTitle>
+            <CardDescription>Shop-specific details from field survey</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="branch">Branch</Label>
+                <Input
+                  id="branch"
+                  value={(formData as any).branch || ''}
+                  onChange={(e) => handleInputChange('branch', e.target.value)}
+                  placeholder="Branch name or location variant"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="hot_flavour_brands">Hot Flavour Brands</Label>
+                <Input
+                  id="hot_flavour_brands"
+                  value={(formData as any).hot_flavour_brands || ''}
+                  onChange={(e) => handleInputChange('hot_flavour_brands', e.target.value)}
+                  placeholder="Comma-separated brand names"
+                />
+                <p className="text-xs text-gray-500">e.g. Brand A, Brand B</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Sells Flavour Serapod</Label>
+                <Select
+                  value={(formData as any).sells_serapod_flavour ? 'true' : 'false'}
+                  onValueChange={(v) => handleInputChange('sells_serapod_flavour', v === 'true')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Ya</SelectItem>
+                    <SelectItem value="false">Tidak</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Sells S.Box</Label>
+                <Select
+                  value={(formData as any).sells_sbox ? 'true' : 'false'}
+                  onValueChange={(v) => handleInputChange('sells_sbox', v === 'true')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Ya</SelectItem>
+                    <SelectItem value="false">Tidak</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Sells S.Box Special Edition</Label>
+                <Select
+                  value={(formData as any).sells_sbox_special_edition ? 'true' : 'false'}
+                  onValueChange={(v) => handleInputChange('sells_sbox_special_edition', v === 'true')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Ya</SelectItem>
+                    <SelectItem value="false">Tidak</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -26,6 +26,12 @@ export interface Organization {
   warranty_bonus?: number | null
   signature_type?: 'none' | 'upload' | 'electronic'
   signature_url?: string | null
+  // Shop-specific fields (from CSV import)
+  branch?: string | null
+  sells_serapod_flavour?: boolean
+  sells_sbox?: boolean
+  sells_sbox_special_edition?: boolean
+  hot_flavour_brands?: string | null
 }
 
 export type OrganizationFormData = Partial<Organization>

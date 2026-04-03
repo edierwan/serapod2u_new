@@ -93,6 +93,7 @@ interface Organization {
   created_at: string
   updated_at: string
   logo_url: string | null
+  branch?: string | null
   org_types: {
     type_name: string
     description: string
@@ -937,11 +938,17 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
                 {/* Organization Name and Code */}
                 <div className="mt-4">
-                  <h3 className="font-semibold text-gray-900 text-base leading-tight line-clamp-1">
+                  <button
+                    onClick={() => handleEditOrganization(org)}
+                    className="font-semibold text-gray-900 text-base leading-tight line-clamp-1 hover:text-blue-600 hover:underline text-left"
+                  >
                     {org.org_name}
-                  </h3>
+                  </button>
                   <p className="text-sm text-gray-500 mt-0.5">
                     {org.org_code}
+                    {org.branch && (
+                      <span className="text-gray-600 ml-1.5">• {org.branch}</span>
+                    )}
                     {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
                       (org as any).payment_terms && (
                         <span className="text-purple-600 ml-1.5">
@@ -1238,6 +1245,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       )}
                     </button>
                   </TableHead>
+                  {filterType === 'SHOP' && (
+                    <TableHead className="text-xs">Branch</TableHead>
+                  )}
                   <TableHead>
                     <button
                       onClick={() => handleSort('org_type_code')}
@@ -1288,12 +1298,21 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        {/* Removed Avatar */}
                         <div>
-                          <div className="font-medium text-xs">{org.org_name}</div>
+                          <button
+                            onClick={() => handleEditOrganization(org)}
+                            className="font-medium text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
+                          >
+                            {org.org_name}
+                          </button>
                         </div>
                       </div>
                     </TableCell>
+                    {filterType === 'SHOP' && (
+                      <TableCell className="text-xs text-gray-600">
+                        {org.branch || '-'}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Badge className={`${getOrgTypeColor(org.org_type_code)} text-[10px] px-1.5 py-0.5`}>
                         {org.org_types?.type_name || org.org_type_code}

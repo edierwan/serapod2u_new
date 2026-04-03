@@ -113,7 +113,13 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     contact_phone: '',
     contact_email: '',
     payment_term_id: '',
-    is_active: true
+    is_active: true,
+    // Shop-specific fields
+    branch: '',
+    sells_serapod_flavour: false,
+    sells_sbox: false,
+    sells_sbox_special_edition: false,
+    hot_flavour_brands: '',
   })
 
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -502,6 +508,15 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         created_by: userProfile.id,
         // Always include parent_org_id (required for SHOP and DIST, optional for others)
         parent_org_id: formData.parent_org_id || null
+      }
+
+      // Add shop-specific fields for SHOP type
+      if (formData.org_type_code === 'SHOP') {
+        insertData.branch = formData.branch || null
+        insertData.sells_serapod_flavour = !!formData.sells_serapod_flavour
+        insertData.sells_sbox = !!formData.sells_sbox
+        insertData.sells_sbox_special_edition = !!formData.sells_sbox_special_edition
+        insertData.hot_flavour_brands = formData.hot_flavour_brands || null
       }
 
       const { data, error: insertError } = await (supabase as any)
@@ -1163,6 +1178,89 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                     <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
                     It determines the deposit and balance payment split in the document workflow.
                   </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Shop Information - Only show for SHOP type */}
+        {formData.org_type_code === 'SHOP' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Shop Information</CardTitle>
+              <CardDescription>Shop-specific details for field survey data</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="branch">Branch</Label>
+                  <Input
+                    id="branch"
+                    value={formData.branch}
+                    onChange={(e) => handleInputChange('branch', e.target.value)}
+                    placeholder="Branch name or location variant"
+                    className="placeholder:text-gray-400 placeholder:italic"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="hot_flavour_brands">Hot Flavour Brands</Label>
+                  <Input
+                    id="hot_flavour_brands"
+                    value={formData.hot_flavour_brands}
+                    onChange={(e) => handleInputChange('hot_flavour_brands', e.target.value)}
+                    placeholder="Comma-separated brand names"
+                    className="placeholder:text-gray-400 placeholder:italic"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">e.g. Brand A, Brand B</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label>Sells Flavour Serapod</Label>
+                  <Select
+                    value={formData.sells_serapod_flavour ? 'true' : 'false'}
+                    onValueChange={(v) => handleInputChange('sells_serapod_flavour', v === 'true')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Ya</SelectItem>
+                      <SelectItem value="false">Tidak</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Sells S.Box</Label>
+                  <Select
+                    value={formData.sells_sbox ? 'true' : 'false'}
+                    onValueChange={(v) => handleInputChange('sells_sbox', v === 'true')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Ya</SelectItem>
+                      <SelectItem value="false">Tidak</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Sells S.Box Special Edition</Label>
+                  <Select
+                    value={formData.sells_sbox_special_edition ? 'true' : 'false'}
+                    onValueChange={(v) => handleInputChange('sells_sbox_special_edition', v === 'true')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Ya</SelectItem>
+                      <SelectItem value="false">Tidak</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardContent>
