@@ -89,6 +89,21 @@ export async function createUserWithAuth(userData: {
       }
     }
 
+    // Step 2b: Set account_scope to 'portal' for business users (those with an org)
+    // sync_user_profile doesn't set account_scope, so it defaults to 'store'.
+    // Without this, admin-created business users can't access /dashboard.
+    if (userData.organization_id) {
+      const { error: scopeError } = await adminClient
+        .from('users')
+        .update({ account_scope: 'portal' })
+        .eq('id', authUser.user.id)
+
+      if (scopeError) {
+        console.error('Failed to set account_scope:', scopeError.message)
+        // Non-fatal: user is created but may need manual scope fix
+      }
+    }
+
     // Step 3: Return success
     revalidatePath('/dashboard')
     return {

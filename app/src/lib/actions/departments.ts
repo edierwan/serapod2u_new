@@ -1167,6 +1167,16 @@ export async function createUserForDepartment(
       return { success: false, error: syncError.message }
     }
 
+    // Set account_scope to 'portal' since department users are always business users
+    const { error: scopeError } = await adminClient
+      .from('users')
+      .update({ account_scope: 'portal' })
+      .eq('id', authUser.user.id)
+
+    if (scopeError) {
+      console.error('Failed to set account_scope:', scopeError.message)
+    }
+
     const { error: updateError } = await supabase
       .from('users')
       .update({
