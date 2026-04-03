@@ -10,8 +10,41 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
 
+/**
+ * Extract bucket and path from a Supabase storage public URL.
+ * Returns null if the URL is not a recognized Supabase storage URL.
+ */
+function parseSupabaseStorageUrl(url: string): { bucket: string; path: string } | null {
+  // Match: .../storage/v1/object/public/<bucket>/<path>
+  const m = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?.*)?$/)
+  if (m) return { bucket: m[1], path: decodeURIComponent(m[2]) }
+  return null
+}
+
+let _fetchSupabaseClient: SupabaseClient | null = null
+function setFetchSupabaseClient(client: SupabaseClient) {
+  _fetchSupabaseClient = client
+}
+
 async function fetchImageAsDataUrl(url: string): Promise<string | null> {
   try {
+    // For Supabase storage URLs, use the Supabase client to download
+    // (self-hosted Kong requires apikey header which raw fetch doesn't include)
+    const parsed = parseSupabaseStorageUrl(url)
+    if (parsed && _fetchSupabaseClient) {
+      const { data, error } = await _fetchSupabaseClient.storage
+        .from(parsed.bucket)
+        .download(parsed.path)
+      if (error || !data) {
+        console.warn('Supabase storage download failed, falling back to fetch:', url, error?.message)
+      } else {
+        const arrayBuffer = await data.arrayBuffer()
+        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        const contentType = data.type || 'image/png'
+        return `data:${contentType};base64,${base64}`
+      }
+    }
+
     const response = await fetch(url)
     if (!response.ok) {
       console.warn('Unable to fetch signature image:', url, response.status)
@@ -76,6 +109,7 @@ export async function generatePdfForOrderDocument(
   }
 
   const supabase = options.supabaseClient ?? (await createClient())
+  setFetchSupabaseClient(supabase)
 
   // Fetch order data with all relationships
   const { data: orderData, error: orderError } = await supabase

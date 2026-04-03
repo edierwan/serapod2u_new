@@ -64,7 +64,7 @@ const fetchManagersById = async (supabase: any, managerIds: string[]) => {
     return map
   }
 
-  ;(data || []).forEach((m: any) => {
+  ; (data || []).forEach((m: any) => {
     map.set(m.id, {
       id: m.id,
       full_name: m.full_name || null,

@@ -11,7 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ArrowLeft, Building2, Save, AlertCircle, Info, MapPin, Loader2 } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
+import OrganizationImport from './OrganizationImport'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
   getValidParentOrgs, 
   isParentRequired, 
@@ -722,6 +724,17 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         </Alert>
       )}
 
+      <Tabs defaultValue="manual" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+          <TabsTrigger value="import">Import CSV/Excel</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="import" className="mt-6">
+          <OrganizationImport parentOrgs={parentOrgs} />
+        </TabsContent>
+
+        <TabsContent value="manual" className="mt-6">
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
@@ -1238,6 +1251,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
           </Button>
         </div>
       </form>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
