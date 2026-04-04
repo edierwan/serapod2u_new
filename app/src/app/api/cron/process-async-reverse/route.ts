@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // This endpoint should be called by a cron job or background worker
 // Protected by CRON_SECRET environment variable
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     
     // Fetch all queued jobs
     const { data: queuedJobs, error: fetchError } = await supabase

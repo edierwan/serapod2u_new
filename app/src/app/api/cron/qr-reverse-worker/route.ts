@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
  * Mode C Background Worker - Intelligent Buffer Assignment
@@ -165,7 +165,7 @@ async function processJobs(request: NextRequest) {
       console.log('ℹ️ Manual trigger (no auth header)')
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Fetch queued jobs (exclude cancelled)
     // Increased from 10 to 100 to process more jobs per run (large batch support)

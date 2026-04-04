@@ -574,24 +574,26 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       const orgName = org?.org_name || 'Organization'
       const orgCode = org?.org_code || 'Unknown'
 
-      // Call the hard delete function
-      const { data, error } = await (supabase as any)
-        .rpc('hard_delete_organization', { p_org_id: orgId })
+      // Call server-side API route (uses service_role + destructive-ops guard)
+      const response = await fetch('/api/organizations/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId }),
+      })
 
-      if (error) {
-        console.error('Delete function error:', error)
+      const data = await response.json()
+
+      if (!response.ok) {
         toast({
           title: "Delete Failed",
-          description: error.message || 'Failed to delete organization',
+          description: data.error || 'Failed to delete organization',
           variant: "destructive"
         })
         return
       }
 
       // Check the response from the function
-      if (!data || !data.success) {
-        console.error('Delete failed:', data || 'No response data')
-
+      if (!data?.success) {
         // Handle null or missing data
         if (!data) {
           toast({
