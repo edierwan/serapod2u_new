@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 const BUCKET_NAME = 'qr-codes'
 
@@ -70,43 +71,19 @@ export async function POST(request: NextRequest) {
 
   const downloadName = `QR_Batch_${orderNo || batch.id}.xlsx`
 
-    // Increase timeout to 3600 seconds (1 hour) for slower networks/large files
-    // Add retry logic for network stability
-    let signedUrlData = null
-    let signedUrlError = null
-    let attempts = 0
-    const maxAttempts = 3
+    // Use admin client for storage operations — the qr-codes bucket has no
+    // RLS policies for authenticated users, so the session client cannot
+    // create signed URLs. Service-role bypasses storage RLS.
+    const adminSupabase = createAdminClient()
 
-    while (attempts < maxAttempts) {
-      try {
-        const result = await supabase.storage
-          .from(BUCKET_NAME)
-          .createSignedUrl(storagePath, 3600, {
-            download: downloadName
-          })
-        
-        signedUrlData = result.data
-        signedUrlError = result.error
-
-        if (!signedUrlError && signedUrlData?.signedUrl) {
-          break // Success
-        }
-        
-        // If we got an error object but no exception, log it and retry
-        console.warn(`Attempt ${attempts + 1} failed to create signed URL (error returned):`, signedUrlError)
-      } catch (e) {
-        console.warn(`Attempt ${attempts + 1} failed to create signed URL (exception):`, e)
-        // Only throw on the last attempt if we haven't succeeded
-      }
-      
-      attempts++
-      if (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)) // Exponential backoff: 1s, 2s
-      }
-    }
+    const { data: signedUrlData, error: signedUrlError } = await adminSupabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(storagePath, 3600, {
+        download: downloadName
+      })
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error('Failed to create signed URL after retries:', signedUrlError)
+      console.error('Failed to create signed URL:', signedUrlError)
       return NextResponse.json({ error: 'Unable to create download link' }, { status: 500 })
     }
 
