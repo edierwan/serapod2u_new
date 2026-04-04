@@ -87,9 +87,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unable to create download link' }, { status: 500 })
     }
 
+    // Self-hosted Supabase uses Kong as API gateway which requires an apikey
+    // query param on direct browser requests. Append the public anon key.
+    let finalUrl = signedUrlData.signedUrl
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (anonKey) {
+      const sep = finalUrl.includes('?') ? '&' : '?'
+      finalUrl = `${finalUrl}${sep}apikey=${anonKey}`
+    }
+
     // Return with proper CORS and download headers for Vercel
     return NextResponse.json(
-      { success: true, url: signedUrlData.signedUrl, filename: downloadName },
+      { success: true, url: finalUrl, filename: downloadName },
       { 
         status: 200,
         headers: {
