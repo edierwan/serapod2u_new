@@ -77,6 +77,7 @@ import dynamic from 'next/dynamic'
 const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr: false })
 import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
+import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 
 // Types
 interface JourneyConfig {
@@ -513,6 +514,7 @@ export default function PremiumLoyaltyTemplate({
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
+    const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -6189,7 +6191,18 @@ export default function PremiumLoyaltyTemplate({
                             </button>
                         </div>
 
-                        <div className="text-center mt-2">
+                        <div className="text-center mt-2 space-y-1">
+                            <button
+                                onClick={() => {
+                                    setShowPointsLoginModal(false)
+                                    setShowForgotPasswordModal(true)
+                                }}
+                                className="text-sm font-medium hover:underline"
+                                style={{ color: config.primary_color }}
+                            >
+                                Forgot Password?
+                            </button>
+                            <br />
                             <button
                                 onClick={() => {
                                     setShowPointsLoginModal(false)
@@ -6206,6 +6219,18 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 </div>
             )}
+
+            {/* Forgot Password Modal */}
+            <ForgotPasswordModal
+                isOpen={showForgotPasswordModal}
+                onClose={() => setShowForgotPasswordModal(false)}
+                onBackToLogin={() => {
+                    setShowForgotPasswordModal(false)
+                    setShowPointsLoginModal(true)
+                }}
+                primaryColor={config.primary_color}
+                buttonColor={config.button_color}
+            />
 
             {/* Collect Points Success Animation */}
             <PointEarnedAnimation

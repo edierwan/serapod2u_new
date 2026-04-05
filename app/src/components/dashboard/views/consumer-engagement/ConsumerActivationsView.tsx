@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye, Trash2, ExternalLink } from 'lucide-react'
+import { Scan, Users, TrendingUp, Calendar, MapPin, Filter, ArrowUpDown, ChevronLeft, ChevronRight, Trophy, MessageSquare, Clock, CheckCircle2, Eye, Trash2, ExternalLink, MessageCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -44,7 +44,7 @@ interface ConsumerActivationsViewProps {
 
 export default function ConsumerActivationsView({ userProfile, onViewChange }: ConsumerActivationsViewProps) {
   const organizationId = userProfile.organization_id
-  const [activeTab, setActiveTab] = useState<'activations' | 'feedback'>('activations')
+  const [activeTab, setActiveTab] = useState<'activations' | 'feedback' | 'whatsapp'>('activations')
   const [activations, setActivations] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
@@ -80,8 +80,54 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [feedbackToDelete, setFeedbackToDelete] = useState<any>(null)
   const [deletingFeedback, setDeletingFeedback] = useState(false)
 
+  // Load WhatsApp activity events
+  async function loadWhatsAppActivity() {
+    setWaLoading(true)
+    try {
+      const supabase = createClient()
+      let query = supabase
+        .from('notification_events')
+        .select('*', { count: 'exact' })
+        .eq('channel', 'whatsapp')
+        .order('created_at', { ascending: false })
+        .range((waPage - 1) * waPageSize, waPage * waPageSize - 1)
+
+      if (waFilterPurpose !== 'all') query = query.eq('purpose', waFilterPurpose)
+      if (waFilterStatus !== 'all') query = query.eq('status', waFilterStatus)
+      if (waFilterPhone.trim()) query = query.ilike('recipient_phone', `%${waFilterPhone.trim()}%`)
+
+      const { data, count, error } = await query
+      if (error) {
+        console.error('Error loading WhatsApp activity:', error)
+        return
+      }
+      setWaEvents(data || [])
+      setWaTotal(count || 0)
+    } catch (err) {
+      console.error('Error loading WhatsApp activity:', err)
+    } finally {
+      setWaLoading(false)
+    }
+  }
+
+  // Reload WA events when tab or filters change
+  useEffect(() => {
+    if (activeTab === 'whatsapp') loadWhatsAppActivity()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, waPage, waFilterPurpose, waFilterStatus, waFilterPhone])
+
   // Check if user is super admin (role_level = 1)
   const isSuperAdmin = userProfile.roles?.role_level === 1
+
+  // WhatsApp Activity state
+  const [waEvents, setWaEvents] = useState<any[]>([])
+  const [waLoading, setWaLoading] = useState(false)
+  const [waPage, setWaPage] = useState(1)
+  const [waTotal, setWaTotal] = useState(0)
+  const [waFilterPurpose, setWaFilterPurpose] = useState('all')
+  const [waFilterStatus, setWaFilterStatus] = useState('all')
+  const [waFilterPhone, setWaFilterPhone] = useState('')
+  const waPageSize = 20
 
   const [stats, setStats] = useState({
     total_scans: 0,
@@ -707,6 +753,10 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <MessageSquare className="h-4 w-4" />
             Consumer Feedback
           </TabsTrigger>
+          <TabsTrigger value="whatsapp" className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4" />
+            WhatsApp Activity
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="activations">
@@ -1045,6 +1095,143 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     </div>
                   ))}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* WhatsApp Activity Tab */}
+        <TabsContent value="whatsapp">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-green-600" />
+                WhatsApp Activity
+              </CardTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                <Select value={waFilterPurpose} onValueChange={(v) => { setWaFilterPurpose(v); setWaPage(1) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Purposes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Purposes</SelectItem>
+                    <SelectItem value="password_reset">Password Reset</SelectItem>
+                    <SelectItem value="registration_verification">Registration</SelectItem>
+                    <SelectItem value="phone_verification">Phone Verification</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={waFilterStatus} onValueChange={(v) => { setWaFilterStatus(v); setWaPage(1) }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="sent">Sent</SelectItem>
+                    <SelectItem value="delivered">Delivered</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="rate_limited">Rate Limited</SelectItem>
+                    <SelectItem value="no_account">No Account</SelectItem>
+                    <SelectItem value="send_failed">Send Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Filter by phone..."
+                  value={waFilterPhone}
+                  onChange={(e) => { setWaFilterPhone(e.target.value); setWaPage(1) }}
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {waLoading ? (
+                <div className="text-center py-8 text-gray-500">Loading WhatsApp activity...</div>
+              ) : waEvents.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">No WhatsApp activity found</div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date & Time</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Phone</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Event</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Purpose</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Status</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Provider</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Error</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {waEvents.map((evt: any) => (
+                          <tr key={evt.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                              {new Date(evt.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-900 font-mono">
+                              {evt.recipient_phone || '-'}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-700">
+                              {(evt.event_type || '').replace(/_/g, ' ')}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                {(evt.purpose || '').replace(/_/g, ' ')}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                evt.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                evt.status === 'failed' || evt.status === 'send_failed' ? 'bg-red-100 text-red-800' :
+                                evt.status === 'verified' ? 'bg-blue-100 text-blue-800' :
+                                evt.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                evt.status === 'rate_limited' ? 'bg-orange-100 text-orange-800' :
+                                evt.status === 'no_account' ? 'bg-gray-100 text-gray-600' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {evt.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-500">{evt.provider || '-'}</td>
+                            <td className="px-3 py-2 text-xs text-red-600 max-w-[200px] truncate" title={evt.error_message || ''}>
+                              {evt.error_message || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <p className="text-sm text-gray-500">
+                      Showing {(waPage - 1) * waPageSize + 1} to {Math.min(waPage * waPageSize, waTotal)} of {waTotal} results
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={waPage <= 1}
+                        onClick={() => setWaPage((p) => Math.max(1, p - 1))}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm text-gray-700">
+                        Page {waPage} of {Math.max(1, Math.ceil(waTotal / waPageSize))}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={waPage * waPageSize >= waTotal}
+                        onClick={() => setWaPage((p) => p + 1)}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
