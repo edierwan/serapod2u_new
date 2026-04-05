@@ -68,14 +68,28 @@ export async function GET(request: NextRequest) {
         config.tenantId
       );
 
+      // Map gateway response fields:
+      // getouch-wa returns { state, authenticated, phone, uptime, ... }
+      // baileys-gateway returns { connected, pairing_state, phone_number, ... }
+      const isGetouch = gatewayStatus.state !== undefined;
+      const connected = isGetouch
+        ? gatewayStatus.state === 'open' && gatewayStatus.authenticated === true
+        : !!gatewayStatus.connected;
+      const phoneNumber = isGetouch
+        ? gatewayStatus.phone || null
+        : gatewayStatus.phone_number || null;
+      const pairingState = isGetouch
+        ? (connected ? 'connected' : gatewayStatus.state || 'disconnected')
+        : gatewayStatus.pairing_state;
+
       return NextResponse.json({
         configured: true,
-        connected: gatewayStatus.connected,
-        pairing_state: gatewayStatus.pairing_state,
-        phone_number: gatewayStatus.phone_number,
-        push_name: gatewayStatus.push_name,
-        last_connected_at: gatewayStatus.last_connected_at,
-        last_error: gatewayStatus.last_error,
+        connected,
+        pairing_state: pairingState,
+        phone_number: phoneNumber,
+        push_name: gatewayStatus.push_name || null,
+        last_connected_at: gatewayStatus.last_connected_at || null,
+        last_error: gatewayStatus.last_error || null,
         last_disconnect_code: gatewayStatus.last_disconnect_code || null,
         last_disconnect_reason: gatewayStatus.last_disconnect_reason || null,
         has_qr: gatewayStatus.has_qr,
