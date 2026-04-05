@@ -8,7 +8,7 @@ export const maxDuration = 300 // 5 minutes max
 // CONFIGURATION - Optimized for large batches (1500+ master codes)
 // ============================================================================
 const CHUNK_SIZE = parseInt(process.env.RECEIVE_CHUNK_SIZE || '500', 10) // Lowered to 500
-const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '500', 10) // Lowered to 500 for better stability
+const IN_CLAUSE_SIZE = parseInt(process.env.RECEIVE_IN_CLAUSE_SIZE || '50', 10) // Keep small to avoid URL length limits with UUID .in() filters
 const MAX_RUNTIME_MS = parseInt(process.env.MAX_RUNTIME_PER_RUN_MS || '270000', 10) // 4.5 minutes default
 const STALE_THRESHOLD_MS = 120 * 1000 // 2 minutes - more tolerance for large batches
 const HEARTBEAT_INTERVAL = 1 // Update heartbeat every chunk (more frequent for large batches)
@@ -257,6 +257,7 @@ export async function GET(request: NextRequest) {
           }
 
           lastError = error
+          await dbLog(`Update error at offset ${i}, batch size ${batchIds.length}: ${JSON.stringify(lastError)}`)
 
           // Check if it's a statement timeout - this is recoverable
           if (error.code === '57014' || error.message?.includes('timeout')) {
