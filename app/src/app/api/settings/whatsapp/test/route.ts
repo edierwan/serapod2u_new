@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      success: result.ok,
-      message_id: result.jid,
+      success: result.success ?? result.ok ?? false,
+      message_id: result.messageId ?? result.jid ?? null,
       sent_to: recipientNumber,
       error: result.error,
     });
