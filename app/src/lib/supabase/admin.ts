@@ -2,7 +2,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
 
 // Create admin client with service role key for database setup operations
-export const createAdminClient = () => {
+export const createAdminClient = (timeoutMs: number = 10_000) => {
   // Get environment variables with validation
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -24,7 +24,7 @@ export const createAdminClient = () => {
         persistSession: false
       },
       global: {
-        fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(10_000) })
+        fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) })
       }
     }
   )

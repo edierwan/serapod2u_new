@@ -33,7 +33,7 @@ function generateWorkerId(): string {
 export async function GET(request: NextRequest) {
   const workerId = generateWorkerId()
   const startTime = Date.now()
-  const supabase = createAdminClient()
+  const supabase = createAdminClient(120_000) // 2-minute timeout for batch operations
 
   console.log(`🚀 [${workerId}] Warehouse Receiving Worker started (chunk=${CHUNK_SIZE}, in_clause=${IN_CLAUSE_SIZE}, heartbeat_interval=${HEARTBEAT_INTERVAL})`)
 
@@ -352,6 +352,20 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error(`❌ [${workerId}] Worker error:`, error)
+    // Mark batch as failed so it doesn't stay stuck in 'processing'
+    try {
+      const { data: stuckBatch } = await supabase
+        .from('qr_batches')
+        .select('id')
+        .eq('receiving_worker_id', workerId)
+        .eq('receiving_status', 'processing')
+        .single()
+      if (stuckBatch) {
+        await markFailed(supabase, stuckBatch.id, `Worker crash: ${error.message || error}`)
+      }
+    } catch (cleanupErr) {
+      console.error(`❌ [${workerId}] Failed to mark batch as failed:`, cleanupErr)
+    }
     return NextResponse.json({
       error: error.message || 'Worker failed',
       worker_id: workerId
