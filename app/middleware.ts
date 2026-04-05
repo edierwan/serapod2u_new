@@ -251,8 +251,11 @@ export async function middleware(request: NextRequest) {
         authError.message?.includes('Token has expired') ||
         authError.status === 400
       ) {
-        // Return 401 for API routes instead of redirecting
-        if (request.nextUrl.pathname.startsWith('/api/')) {
+        // Public API routes that don't require authentication
+        const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth/password-reset/')
+
+        // Return 401 for API routes instead of redirecting (except public ones)
+        if (request.nextUrl.pathname.startsWith('/api/') && !isPublicApi) {
           return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
