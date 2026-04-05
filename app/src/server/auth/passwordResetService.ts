@@ -65,19 +65,33 @@ export async function lookupConsumerByPhone(
   phoneRaw: string
 ): Promise<ConsumerLookupResult | null> {
   const phone = normalizePhoneE164(phoneRaw)
-
-  // Try exact match on users table with both +60 and without-prefix forms
   const phoneDigits = phone.replace(/^\+/, '')
 
-  const { data, error } = await admin
+  // Query with both +60 and 60 formats (separate queries to avoid PostgREST .or() encoding issues)
+  let data: any = null
+
+  const { data: d1 } = await admin
     .from('users')
     .select('id, email, full_name, phone')
-    .or(`phone.eq.${phone},phone.eq.${phoneDigits}`)
+    .eq('phone', phone)
     .eq('is_active', true)
     .limit(1)
     .maybeSingle()
 
-  if (error || !data) return null
+  data = d1
+
+  if (!data) {
+    const { data: d2 } = await admin
+      .from('users')
+      .select('id, email, full_name, phone')
+      .eq('phone', phoneDigits)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+    data = d2
+  }
+
+  if (!data) return null
   return {
     userId: data.id,
     email: data.email,

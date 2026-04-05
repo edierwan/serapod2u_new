@@ -94,7 +94,14 @@ export default function ForgotPasswordModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phone.trim() }),
       })
-      const data = await res.json()
+
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError('Server error. Please try again later.')
+        return
+      }
 
       if (!res.ok && data.error) {
         setError(data.error)
@@ -127,7 +134,14 @@ export default function ForgotPasswordModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phone.trim(), code }),
       })
-      const data = await res.json()
+
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError('Server error. Please try again later.')
+        return
+      }
 
       if (!res.ok) {
         setError(data.error || 'Verification failed.')
@@ -159,7 +173,14 @@ export default function ForgotPasswordModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phone.trim() }),
       })
-      const data = await res.json()
+
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError('Server error. Please try again later.')
+        return
+      }
 
       setResendCooldown(data.resendCooldown || 60)
       setResendCount((prev) => prev + 1)
@@ -198,7 +219,14 @@ export default function ForgotPasswordModal({
           confirmPassword,
         }),
       })
-      const data = await res.json()
+
+      let data: any
+      try {
+        data = await res.json()
+      } catch {
+        setError('Server error. Please try again later.')
+        return
+      }
 
       if (!res.ok) {
         setError(data.error || 'Failed to update password.')
