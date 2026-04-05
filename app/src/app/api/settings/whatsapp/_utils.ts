@@ -119,6 +119,20 @@ function buildGatewayUrl(baseUrl: string, endpoint: string): string {
 }
 
 /**
+ * Translate Serapod2U endpoint paths to wa.getouch.co equivalents.
+ * wa.getouch.co uses /api/* routes with different naming conventions.
+ */
+const GETOUCH_ENDPOINT_MAP: Record<string, string> = {
+  '/status':          '/api/status',
+  '/session/qr':      '/api/qr-code',
+  '/messages/send':   '/api/send-text',
+  '/session/start':   '/api/reset',
+  '/session/logout':  '/api/logout',
+  '/session/clear':   '/api/logout',
+  '/session/reset':   '/api/reset',
+};
+
+/**
  * Call the gateway API
  * Uses legacy single-tenant endpoints (no /tenants/ prefix)
  */
@@ -130,20 +144,19 @@ export async function callGateway(
   body?: Record<string, any>,
   _tenantId: string = DEFAULT_TENANT_ID // Ignored in single-tenant mode
 ): Promise<any> {
-  // Build single-tenant endpoint
-  const url = buildGatewayUrl(baseUrl, endpoint);
+  // Translate endpoint for Getouch gateway
+  const isGetouchGateway = baseUrl.includes('getouch.co');
+  const resolvedEndpoint = isGetouchGateway
+    ? (GETOUCH_ENDPOINT_MAP[endpoint] || endpoint)
+    : endpoint;
 
-  // Headers setup
+  // Build single-tenant endpoint
+  const url = buildGatewayUrl(baseUrl, resolvedEndpoint);
+
+  // Headers — both gateways use x-api-key
   const headers: Record<string, string> = {};
   if (apiKey) {
-    // Use Bearer token for Getouch gateway (wa.getouch.co),
-    // fallback to x-api-key for legacy self-hosted gateways
-    const isGetouchGateway = baseUrl.includes('getouch.co');
-    if (isGetouchGateway) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    } else {
-      headers['x-api-key'] = apiKey;
-    }
+    headers['x-api-key'] = apiKey;
   }
   // Only add Content-Type for requests with body (POST, PUT, PATCH)
   if (method !== 'GET' && method !== 'DELETE') {
