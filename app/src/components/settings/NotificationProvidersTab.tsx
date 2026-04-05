@@ -60,7 +60,8 @@ const PROVIDERS = {
     { value: 'twilio', label: 'Twilio', description: 'Twilio WhatsApp Business API' },
     { value: 'whatsapp_business', label: 'WhatsApp Business API', description: 'Meta WhatsApp Business API (Direct)' },
     { value: 'messagebird', label: 'MessageBird', description: 'MessageBird Programmable Conversations' },
-    { value: 'baileys', label: 'Baileys (Self-hosted)', description: 'Self-hosted WhatsApp Gateway' }
+    { value: 'baileys', label: 'Baileys (Self-hosted) - Hostinger', description: 'Self-hosted WhatsApp Gateway (Hostinger VPS)' },
+    { value: 'baileys_home', label: 'Baileys (Self-hosted) - Home', description: 'Self-hosted WhatsApp Gateway (Home VPS)' }
   ],
   sms: [
     { value: 'twilio', label: 'Twilio SMS', description: 'Twilio Programmable SMS' },
@@ -203,7 +204,7 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       setSaving(true)
 
       // Auto-sanitize Baileys URL if needed
-      if (channel === 'whatsapp' && config.provider_name === 'baileys' && config.config_public.base_url) {
+      if (channel === 'whatsapp' && (config.provider_name === 'baileys' || config.provider_name === 'baileys_home') && config.config_public.base_url) {
         let url = config.config_public.base_url.trim();
         // Enforce HTTPS
         if (url.startsWith('http://')) {

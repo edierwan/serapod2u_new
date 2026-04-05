@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get WhatsApp config from DB
-    const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
+    const provider = request.nextUrl.searchParams.get('provider') || undefined;
+    const config = await getWhatsAppConfig(supabase, userProfile.organization_id, provider);
 
     if (!config || !config.baseUrl) {
       return NextResponse.json({

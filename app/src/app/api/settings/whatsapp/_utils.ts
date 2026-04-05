@@ -10,17 +10,32 @@ import { SupabaseClient } from '@supabase/supabase-js';
 // Default tenant ID for Serapod2u
 const DEFAULT_TENANT_ID = 'serapod2u';
 
+// All Baileys provider variants
+const BAILEYS_PROVIDERS = ['baileys', 'baileys_home'] as const;
+
+/** Check if a provider name is a Baileys variant */
+export function isBaileysProvider(name: string | undefined | null): boolean {
+  return BAILEYS_PROVIDERS.includes(name as any);
+}
+
 /**
  * Get WhatsApp configuration from database
+ * @param providerName - specific provider to query, or undefined to find any active baileys provider
  */
-export async function getWhatsAppConfig(supabase: SupabaseClient, orgId: string) {
-  const { data, error } = await supabase
+export async function getWhatsAppConfig(supabase: SupabaseClient, orgId: string, providerName?: string) {
+  let query = supabase
     .from('notification_provider_configs')
     .select('config_public, config_encrypted')
     .eq('org_id', orgId)
-    .eq('channel', 'whatsapp')
-    .eq('provider_name', 'baileys')
-    .single();
+    .eq('channel', 'whatsapp');
+
+  if (providerName) {
+    query = query.eq('provider_name', providerName);
+  } else {
+    query = query.in('provider_name', [...BAILEYS_PROVIDERS]);
+  }
+
+  const { data, error } = await query.limit(1).single();
 
   if (error || !data) {
     return null;

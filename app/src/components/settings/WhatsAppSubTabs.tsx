@@ -44,8 +44,13 @@ const WHATSAPP_PROVIDERS = [
     { value: 'twilio', label: 'Twilio', description: 'Twilio WhatsApp Business API' },
     { value: 'whatsapp_business', label: 'WhatsApp Business API', description: 'Meta WhatsApp Business API (Direct)' },
     { value: 'messagebird', label: 'MessageBird', description: 'MessageBird Programmable Conversations' },
-    { value: 'baileys', label: 'Baileys (Self-hosted)', description: 'Self-hosted WhatsApp Gateway' }
+    { value: 'baileys', label: 'Baileys (Self-hosted) - Hostinger', description: 'Self-hosted WhatsApp Gateway (Hostinger VPS)' },
+    { value: 'baileys_home', label: 'Baileys (Self-hosted) - Home', description: 'Self-hosted WhatsApp Gateway (Home VPS)' }
 ]
+
+/** Check if a provider name is a Baileys variant */
+const isBaileysProvider = (name: string | undefined | null): boolean =>
+    name === 'baileys' || name === 'baileys_home'
 
 interface ProviderConfig {
     id?: string
@@ -96,6 +101,12 @@ export default function WhatsAppSubTabs({
     const router = useRouter()
     const searchParams = useSearchParams()
     const supabase = createClient()
+
+    /** Build API URL with provider query param */
+    const waApi = (path: string) => {
+        const p = whatsappConfig?.provider_name
+        return p ? `${path}?provider=${encodeURIComponent(p)}` : path
+    }
 
     // Get initial tab from URL or default to 'status'
     const urlTab = searchParams.get('whatsapp_tab')
@@ -283,7 +294,7 @@ export default function WhatsAppSubTabs({
     // Fetch gateway status
     const fetchGatewayStatus = useCallback(async () => {
         if (!userProfile) return
-        if (!whatsappConfig?.provider_name || whatsappConfig.provider_name !== 'baileys') {
+        if (!whatsappConfig?.provider_name || !isBaileysProvider(whatsappConfig.provider_name)) {
             return
         }
 
@@ -295,7 +306,7 @@ export default function WhatsAppSubTabs({
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 8000)
 
-            const response = await fetch('/api/settings/whatsapp/status', {
+            const response = await fetch(waApi('/api/settings/whatsapp/status'), {
                 signal: controller.signal
             })
             clearTimeout(timeoutId)
@@ -362,7 +373,7 @@ export default function WhatsAppSubTabs({
     // Fetch QR code (uses enriched gateway response with PNG base64)
     const fetchQRCode = async () => {
         try {
-            const response = await fetch('/api/settings/whatsapp/qr')
+            const response = await fetch(waApi('/api/settings/whatsapp/qr'))
             const data = await response.json()
 
             if (!response.ok) {
@@ -418,7 +429,7 @@ export default function WhatsAppSubTabs({
 
             // Step 1: Logout (safe, prevents auto-reconnect)
             try {
-                const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+                const logoutRes = await fetch(waApi('/api/settings/whatsapp/logout'), { method: 'POST' })
                 if (!logoutRes.ok) {
                     const logoutData = await logoutRes.json()
                     console.warn('Logout warning:', logoutData.error || 'Logout returned non-OK')
@@ -433,7 +444,7 @@ export default function WhatsAppSubTabs({
 
             // Step 2: Clear auth state
             try {
-                const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+                const clearRes = await fetch(waApi('/api/settings/whatsapp/clear'), { method: 'POST' })
                 if (!clearRes.ok) {
                     const clearData = await clearRes.json()
                     console.warn('Clear warning:', clearData.error || 'Clear returned non-OK')
@@ -446,7 +457,7 @@ export default function WhatsAppSubTabs({
             await new Promise(resolve => setTimeout(resolve, 1000))
 
             // Step 3: Start new session
-            const startRes = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
+            const startRes = await fetch(waApi('/api/settings/whatsapp/start'), { method: 'POST' })
             if (!startRes.ok) {
                 const startData = await startRes.json()
                 throw new Error(startData.error || 'Start session failed')
@@ -462,7 +473,7 @@ export default function WhatsAppSubTabs({
             for (let i = 0; i < 20; i++) {
                 await new Promise(resolve => setTimeout(resolve, 1000))
                 try {
-                    const qrRes = await fetch('/api/settings/whatsapp/qr')
+                    const qrRes = await fetch(waApi('/api/settings/whatsapp/qr'))
                     const qrData = await qrRes.json()
 
                     if (qrRes.ok && (qrData.qr_png_base64 || qrData.qr)) {
@@ -515,7 +526,7 @@ export default function WhatsAppSubTabs({
 
             // Step 1: Logout
             try {
-                const logoutRes = await fetch('/api/settings/whatsapp/logout', { method: 'POST' })
+                const logoutRes = await fetch(waApi('/api/settings/whatsapp/logout'), { method: 'POST' })
                 if (!logoutRes.ok) {
                     const logoutData = await logoutRes.json()
                     console.warn('Logout warning:', logoutData.error)
@@ -529,7 +540,7 @@ export default function WhatsAppSubTabs({
 
             // Step 2: Clear auth so next connect shows fresh QR
             try {
-                const clearRes = await fetch('/api/settings/whatsapp/clear', { method: 'POST' })
+                const clearRes = await fetch(waApi('/api/settings/whatsapp/clear'), { method: 'POST' })
                 if (!clearRes.ok) {
                     console.warn('Clear failed after logout, continuing anyway')
                 }
@@ -564,7 +575,7 @@ export default function WhatsAppSubTabs({
             setQrCode(null)
 
             // Use start endpoint to initiate fresh connection
-            const response = await fetch('/api/settings/whatsapp/start', { method: 'POST' })
+            const response = await fetch(waApi('/api/settings/whatsapp/start'), { method: 'POST' })
             const data = await response.json()
 
             if (response.ok) {
@@ -596,7 +607,7 @@ export default function WhatsAppSubTabs({
 
             for (const number of savedTestNumbers) {
                 try {
-                    const response = await fetch('/api/settings/whatsapp/test', {
+                    const response = await fetch(waApi('/api/settings/whatsapp/test'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -655,7 +666,7 @@ export default function WhatsAppSubTabs({
 
     // Start/stop polling for gateway status
     useEffect(() => {
-        if (whatsappConfig?.provider_name === 'baileys') {
+        if (isBaileysProvider(whatsappConfig?.provider_name)) {
             fetchGatewayStatus()
 
             if (whatsappConfig.config_public.test_number) {
@@ -1084,7 +1095,7 @@ export default function WhatsAppSubTabs({
                             </div>
 
                             {/* Baileys-specific fields */}
-                            {whatsappConfig.provider_name === 'baileys' && (
+                            {isBaileysProvider(whatsappConfig.provider_name) && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
                                     <div className="space-y-2 md:col-span-2">
                                         <Label className="flex items-center gap-2">
@@ -1302,7 +1313,7 @@ export default function WhatsAppSubTabs({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {!gatewayStatus?.connected && whatsappConfig?.provider_name === 'baileys' ? (
+                    {!gatewayStatus?.connected && isBaileysProvider(whatsappConfig?.provider_name) ? (
                         <div className="text-center py-8 text-gray-500">
                             <WifiOff className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                             <p className="font-medium">WhatsApp not connected</p>
@@ -1479,7 +1490,7 @@ export default function WhatsAppSubTabs({
     const renderBotControlTab = () => <BotAdminSection />
 
     // Only show Baileys-specific tabs when using Baileys provider
-    const isBaileys = whatsappConfig?.provider_name === 'baileys'
+    const isBaileys = isBaileysProvider(whatsappConfig?.provider_name)
 
     return (
         <div className="space-y-6">
