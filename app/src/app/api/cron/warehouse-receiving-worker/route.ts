@@ -35,6 +35,15 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now()
   const supabase = createAdminClient(120_000) // 2-minute timeout for batch operations
 
+  // DB-based logging since container stdout doesn't capture API route logs
+  let _dbLogBatchId: string | null = null
+  const dbLog = async (msg: string) => {
+    console.log(msg)
+    if (_dbLogBatchId) {
+      await supabase.from('qr_batches').update({ last_error: `[${workerId}] ${msg} [${new Date().toISOString()}]` }).eq('id', _dbLogBatchId)
+    }
+  }
+
   console.log(`🚀 [${workerId}] Warehouse Receiving Worker started (chunk=${CHUNK_SIZE}, in_clause=${IN_CLAUSE_SIZE}, heartbeat_interval=${HEARTBEAT_INTERVAL})`)
 
   try {
@@ -58,10 +67,12 @@ export async function GET(request: NextRequest) {
     }
 
     const batch = claimResult.batch
-    console.log(`📦 [${workerId}] Claimed batch ${batch.id} (Order: ${(batch.orders as any)?.order_no})`)
+    _dbLogBatchId = batch.id as string
+    await dbLog(`Claimed batch ${batch.id}`)
 
     const order = batch.orders as any
     const warehouseOrgId = await resolveWarehouseOrgId(supabase, order?.buyer_org_id)
+    await dbLog(`resolveWarehouseOrgId: ${warehouseOrgId}`)
     const manufacturerOrgId = order?.seller_org_id
     const companyId = order?.company_id
     const orderId = order?.id
@@ -116,11 +127,12 @@ export async function GET(request: NextRequest) {
     console.log(`📊 [${workerId}] Starting with actual progress: ${totalProcessed} already received`)
 
     // Step 3: Process Master Codes (if not done)
+    await dbLog('Starting processMasterCodes...')
     const masterResult = await processMasterCodes(supabase, batch.id, warehouseOrgId, manufacturerOrgId, companyId, orderId, receivedBy)
-    console.log(`📦 [${workerId}] Master codes: ${masterResult.processed} processed`)
+    await dbLog(`Master codes done: ${masterResult.processed}`)
 
     // Step 4: Process Unique Codes in chunks (optimized for high throughput)
-    console.log(`🔄 [${workerId}] Starting unique code processing. Current progress: ${totalProcessed}`)
+    await dbLog(`Starting unique code loop. Progress: ${totalProcessed}`)
 
     const cumulativeVariantCounts = new Map<string, number>()
     let chunksProcessed = 0
@@ -213,6 +225,7 @@ export async function GET(request: NextRequest) {
       }
 
       consecutiveZeroChunks = 0
+      await dbLog(`Fetched ${uniqueCodes.length} codes, updating...`)
 
       // Update this chunk using sub-batches with retry logic
       const chunkIds = uniqueCodes.map(c => c.id)
