@@ -36,6 +36,7 @@ interface MigrationUser {
   current_shop_name: string | null
   current_org_id: string | null
   current_org_name: string | null
+  current_org_branch: string | null
   matched_org_id: string | null
   matched_org_name: string | null
   matched_org_branch: string | null
@@ -55,6 +56,7 @@ interface Summary {
 interface ShopOrg {
   id: string
   org_name: string
+  branch: string | null
 }
 
 interface UserShopMigrationProps {
@@ -111,10 +113,10 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
     const supabase = createClient()
     const { data } = await supabase
       .from('organizations')
-      .select('id, org_name')
+      .select('id, org_name, branch')
       .eq('org_type_code', 'SHOP')
       .order('org_name')
-    setShops(data || [])
+    setShops((data as unknown as ShopOrg[]) || [])
   }, [])
 
   useEffect(() => {
@@ -406,7 +408,7 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                           </td>
                           <td className="px-3 py-2.5 text-sm">
                             {user.match_status === 'linked' && (
-                              <span className="text-green-700 font-medium">{user.current_org_name}</span>
+                              <span className="text-green-700 font-medium">{user.current_org_name}{user.current_org_branch && ` (${user.current_org_branch})`}</span>
                             )}
                             {user.match_status === 'auto_matchable' && (
                               <span className="text-blue-700">{user.matched_org_name}{user.matched_org_branch && ` (${user.matched_org_branch})`}</span>
@@ -421,7 +423,7 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                                     <SelectContent>
                                       {shops.map(s => (
                                         <SelectItem key={s.id} value={s.id}>
-                                          {s.org_name}
+                                          {s.org_name}{s.branch ? ` (${s.branch})` : ''}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>

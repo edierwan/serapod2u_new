@@ -4,100 +4,13 @@
 -- ============================================================================
 
 -- ============================================================================
--- STEP 1: Create view for shop points reporting
--- This view aggregates consumer points by their linked shop (organization)
+-- STEP 1: Drop dependent views first, then recreate v_consumer_points_balance
+-- (Cannot use CREATE OR REPLACE when adding new columns mid-list)
 -- ============================================================================
-CREATE OR REPLACE VIEW public.v_shop_points_summary AS
-WITH consumer_balances AS (
-  SELECT
-    user_id,
-    consumer_name,
-    consumer_phone,
-    consumer_shop_name,
-    current_balance,
-    total_collected_system,
-    total_collected_manual,
-    total_migration,
-    total_redeemed,
-    transaction_count,
-    last_transaction_date
-  FROM v_consumer_points_balance
-)
-SELECT
-  o.id AS shop_id,
-  o.org_name AS shop_name,
-  o.branch AS branch_name,
-  o.contact_name,
-  o.contact_phone,
-  o.state_id AS state,
-  COUNT(cb.user_id) AS total_consumers,
-  COALESCE(SUM(cb.current_balance), 0) AS total_points_balance,
-  COALESCE(SUM(cb.total_collected_system), 0) AS total_collected_system,
-  COALESCE(SUM(cb.total_collected_manual), 0) AS total_collected_manual,
-  COALESCE(SUM(cb.total_migration), 0) AS total_migration_points,
-  COALESCE(SUM(cb.total_redeemed), 0) AS total_redeemed,
-  COALESCE(SUM(cb.transaction_count), 0) AS total_transactions,
-  MAX(cb.last_transaction_date) AS last_activity
-FROM organizations o
-LEFT JOIN users u ON u.organization_id = o.id
-  AND u.role_code IN ('CONSUMER', 'GUEST')
-  AND u.is_active = true
-LEFT JOIN consumer_balances cb ON cb.user_id = u.id
-WHERE o.org_type_code = 'SHOP'
-GROUP BY o.id, o.org_name, o.branch, o.contact_name, o.contact_phone, o.state_id
-ORDER BY total_points_balance DESC;
+DROP VIEW IF EXISTS public.v_shop_points_summary CASCADE;
+DROP VIEW IF EXISTS public.v_consumer_points_balance CASCADE;
 
--- Grant access
-GRANT SELECT ON v_shop_points_summary TO authenticated;
-GRANT SELECT ON v_shop_points_summary TO anon;
-
--- ============================================================================
--- STEP 2: Create view for user-shop migration assessment
--- Shows all consumers with match status against organizations
--- ============================================================================
-CREATE OR REPLACE VIEW public.v_user_shop_migration AS
-SELECT
-  u.id AS user_id,
-  u.full_name,
-  u.phone,
-  u.email,
-  u.shop_name AS current_shop_name,
-  u.organization_id AS current_org_id,
-  o_current.org_name AS current_org_name,
-  -- Try to find matching org by shop_name (case-insensitive)
-  o_match.id AS matched_org_id,
-  o_match.org_name AS matched_org_name,
-  o_match.branch AS matched_org_branch,
-  -- Classification
-  CASE
-    WHEN u.organization_id IS NOT NULL THEN 'linked'
-    WHEN u.shop_name IS NOT NULL AND u.shop_name != '' AND o_match.id IS NOT NULL THEN 'auto_matchable'
-    WHEN u.shop_name IS NOT NULL AND u.shop_name != '' AND o_match.id IS NULL THEN 'unmatched'
-    ELSE 'no_shop'
-  END AS match_status,
-  u.created_at,
-  u.is_active
-FROM users u
-LEFT JOIN organizations o_current ON u.organization_id = o_current.id
-LEFT JOIN organizations o_match ON LOWER(TRIM(u.shop_name)) = LOWER(TRIM(o_match.org_name))
-  AND o_match.org_type_code = 'SHOP'
-WHERE u.role_code IN ('CONSUMER', 'GUEST');
-
--- Grant access
-GRANT SELECT ON v_user_shop_migration TO authenticated;
-
--- ============================================================================
--- STEP 3: RLS policy for the new views (already inherits from base tables)
--- The views use base table data so RLS on users/organizations applies.
--- No additional RLS needed for views themselves.
--- ============================================================================
-
--- ============================================================================
--- STEP 4: Update v_consumer_points_balance to include organization_id
--- We add organization_id and org_name so the User Points Monitor can
--- group/filter by shop organization
--- ============================================================================
-CREATE OR REPLACE VIEW public.v_consumer_points_balance AS
+CREATE VIEW public.v_consumer_points_balance AS
 WITH scan_points AS (
   SELECT
     cqs.consumer_id,
@@ -168,6 +81,93 @@ WHERE u.role_code IN ('CONSUMER', 'GUEST')
    OR sp.consumer_id IS NOT NULL
    OR tp.user_id IS NOT NULL;
 
--- Re-grant access after view recreation
 GRANT SELECT ON v_consumer_points_balance TO authenticated;
 GRANT SELECT ON v_consumer_points_balance TO anon;
+
+-- ============================================================================
+-- STEP 2: Create view for shop points reporting
+-- ============================================================================
+CREATE OR REPLACE VIEW public.v_shop_points_summary AS
+WITH consumer_balances AS (
+  SELECT
+    user_id,
+    consumer_name,
+    consumer_phone,
+    consumer_shop_name,
+    current_balance,
+    total_collected_system,
+    total_collected_manual,
+    total_migration,
+    total_redeemed,
+    transaction_count,
+    last_transaction_date
+  FROM v_consumer_points_balance
+)
+SELECT
+  o.id AS shop_id,
+  o.org_name AS shop_name,
+  o.branch AS branch_name,
+  o.contact_name,
+  o.contact_phone,
+  s.state_name AS state,
+  COUNT(cb.user_id) AS total_consumers,
+  COALESCE(SUM(cb.current_balance), 0) AS total_points_balance,
+  COALESCE(SUM(cb.total_collected_system), 0) AS total_collected_system,
+  COALESCE(SUM(cb.total_collected_manual), 0) AS total_collected_manual,
+  COALESCE(SUM(cb.total_migration), 0) AS total_migration_points,
+  COALESCE(SUM(cb.total_redeemed), 0) AS total_redeemed,
+  COALESCE(SUM(cb.transaction_count), 0) AS total_transactions,
+  MAX(cb.last_transaction_date) AS last_activity
+FROM organizations o
+LEFT JOIN states s ON o.state_id = s.id
+LEFT JOIN users u ON u.organization_id = o.id
+  AND u.role_code IN ('CONSUMER', 'GUEST')
+  AND u.is_active = true
+LEFT JOIN consumer_balances cb ON cb.user_id = u.id
+WHERE o.org_type_code = 'SHOP'
+GROUP BY o.id, o.org_name, o.branch, o.contact_name, o.contact_phone, s.state_name
+ORDER BY total_points_balance DESC;
+
+-- Grant access
+GRANT SELECT ON v_shop_points_summary TO authenticated;
+GRANT SELECT ON v_shop_points_summary TO anon;
+
+-- ============================================================================
+-- STEP 2: Create view for user-shop migration assessment
+-- Shows all consumers with match status against organizations
+-- ============================================================================
+CREATE OR REPLACE VIEW public.v_user_shop_migration AS
+SELECT
+  u.id AS user_id,
+  u.full_name,
+  u.phone,
+  u.email,
+  u.shop_name AS current_shop_name,
+  u.organization_id AS current_org_id,
+  o_current.org_name AS current_org_name,
+  o_current.branch AS current_org_branch,
+  -- Try to find matching org by shop_name (case-insensitive)
+  o_match.id AS matched_org_id,
+  o_match.org_name AS matched_org_name,
+  o_match.branch AS matched_org_branch,
+  -- Classification
+  CASE
+    WHEN u.organization_id IS NOT NULL THEN 'linked'
+    WHEN u.shop_name IS NOT NULL AND u.shop_name != '' AND o_match.id IS NOT NULL THEN 'auto_matchable'
+    WHEN u.shop_name IS NOT NULL AND u.shop_name != '' AND o_match.id IS NULL THEN 'unmatched'
+    ELSE 'no_shop'
+  END AS match_status,
+  u.created_at,
+  u.is_active
+FROM users u
+LEFT JOIN organizations o_current ON u.organization_id = o_current.id
+LEFT JOIN organizations o_match ON LOWER(TRIM(u.shop_name)) = LOWER(TRIM(o_match.org_name))
+  AND o_match.org_type_code = 'SHOP'
+WHERE u.role_code IN ('CONSUMER', 'GUEST');
+
+-- Grant access
+GRANT SELECT ON v_user_shop_migration TO authenticated;
+
+-- ============================================================================
+-- STEP 3: RLS — no additional policies needed (views inherit from base tables)
+-- ============================================================================
