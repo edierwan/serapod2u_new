@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
         // Fetch both health endpoints in parallel with timeout
         const [gatewayResult, moltbotResult] = await Promise.allSettled([
-            fetchWithTimeout(`${GATEWAY_URL}/health`, 5000),
+            fetchWithTimeout(`${GATEWAY_URL}/healthz`, 5000),
             fetchWithTimeout(`${MOLTBOT_URL}/health`, 5000)
         ])
 
