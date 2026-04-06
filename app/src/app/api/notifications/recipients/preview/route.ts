@@ -46,15 +46,22 @@ export async function GET(request: NextRequest) {
         type: string
     }> = []
 
+    // Org type codes per dynamic target
+    const ORG_TYPE_CODES: Record<string, string[]> = {
+        warehouse: ['WH', 'WAREHOUSE'],
+        distributor: ['DIST', 'DISTRIBUTOR'],
+        manufacturer: ['MFG', 'MANUFACTURER', 'MFR'],
+    }
+
     try {
-        // 1. Resolve by roles
+        // 1. Resolve by roles — search system-wide (not restricted to one org)
+        //    Roles like 'super_admin', 'admin' may exist across multiple orgs
         if (rolesParam) {
             const roles = rolesParam.split(',').map(r => r.trim()).filter(Boolean)
             if (roles.length > 0) {
                 const { data: users } = await supabase
                     .from('users')
                     .select('id, full_name, email, phone, role_code')
-                    .eq('organization_id', orgId)
                     .in('role_code', roles)
                     .order('full_name')
 
@@ -64,46 +71,45 @@ export async function GET(request: NextRequest) {
                         full_name: u.full_name || u.email || 'Unknown',
                         email: u.email,
                         phone: u.phone,
-                        type: `Role: ${(u.role_code || '').replace('_', ' ')}`
+                        type: `Role: ${(u.role_code || '').replace(/_/g, ' ')}`
                     })))
                 }
             }
         }
 
-        // 2. Resolve by dynamic target (related organization users)
-        if (dynamicTarget) {
-            // For dynamic, we show all users from the current org matching the target role concept
-            // Since we don't have a specific order, we show org-level users whose role matches
-            // or we show a helpful message that it's resolved at send time
-            if (dynamicTarget === 'warehouse') {
+        // 2. Resolve by dynamic target — find all orgs of the target type, then their users
+        if (dynamicTarget && ORG_TYPE_CODES[dynamicTarget]) {
+            const typeCodes = ORG_TYPE_CODES[dynamicTarget]
+            const label = dynamicTarget.charAt(0).toUpperCase() + dynamicTarget.slice(1)
+
+            // Find all organisations matching the target type
+            const { data: orgs } = await supabase
+                .from('organizations')
+                .select('id, org_name')
+                .in('org_type_code', typeCodes)
+
+            if (orgs && orgs.length > 0) {
+                const orgIds = orgs.map(o => o.id)
+
                 const { data: users } = await supabase
                     .from('users')
-                    .select('id, full_name, email, phone, role_code')
-                    .eq('organization_id', orgId)
-                    .eq('role_code', 'warehouse')
+                    .select('id, full_name, email, phone, organization_id')
+                    .in('organization_id', orgIds)
                     .order('full_name')
 
                 if (users) {
+                    // Build a map for org name lookup
+                    const orgNameMap = Object.fromEntries(orgs.map(o => [o.id, o.org_name]))
                     recipients.push(...users.map(u => ({
                         user_id: u.id,
                         full_name: u.full_name || u.email || 'Unknown',
                         email: u.email,
                         phone: u.phone,
-                        type: 'Dynamic: Warehouse'
+                        type: `Dynamic: ${label} (${orgNameMap[u.organization_id] || label})`
                     })))
                 }
-            } else if (dynamicTarget === 'manufacturer' || dynamicTarget === 'distributor') {
-                // For manufacturer/distributor dynamic, recipients depend on the order context.
-                // We cannot resolve specific users without a sample order.
-                // Return a placeholder indicating it's resolved at delivery time.
-                recipients.push({
-                    user_id: `dynamic-${dynamicTarget}`,
-                    full_name: `Resolved at send time`,
-                    email: null,
-                    phone: null,
-                    type: `Dynamic: ${dynamicTarget.charAt(0).toUpperCase() + dynamicTarget.slice(1)}`
-                })
             }
+            // If no orgs found for this type, return empty (handled by UI "No recipients found")
         }
 
         // 3. Resolve specific users by ID
