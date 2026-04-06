@@ -1,17 +1,35 @@
-node_modules
-.next
+# ===== Build artifacts & dependencies (any depth) =====
+**/node_modules
+**/.next
+**/.turbo
+
+# ===== Version control & IDE =====
 .git
 .github
-.vscode
+**/.vscode
+**/.DS_Store
 
-# Other workspaces not needed for app build
+# ===== Other workspaces not needed for app build =====
 baileys-gateway
 moltbot
 supabase
 
-# Misc
+# ===== Documentation, scripts, SQL (not needed at build time) =====
 *.md
 *.sql
+*.csv
+docs/
+app/docs/
+app/sql/
+app/scripts/
+app/phone-list-output.txt
+
+# ===== Config files not needed in build =====
 docker-compose.yaml
+.vercelignore
+.gitignore
+**/.nvmrc
+
+# ===== Environment files (exclude all, then allow production) =====
 .env*
 !app/.env.production
