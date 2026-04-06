@@ -16,6 +16,8 @@ import { formatNumber, formatDateLabel } from "./catalog-utils"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PointMigration } from "./PointMigration"
 import { MigrationHistory } from "./MigrationHistory"
+import { UserShopMigration } from "./UserShopMigration"
+import { ShopPointsReport } from "./ShopPointsReport"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // ── Types ────────────────────────────────────────────────────────
@@ -375,6 +377,8 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
         <TabsTrigger value="monitor">Monitor Points</TabsTrigger>
         <TabsTrigger value="migration">Point Migration</TabsTrigger>
         <TabsTrigger value="history">Migration History</TabsTrigger>
+        <TabsTrigger value="user-shop">User ↔ Shop</TabsTrigger>
+        <TabsTrigger value="shop-report">Shop Report</TabsTrigger>
       </TabsList>
 
       <TabsContent value="monitor" className="space-y-4">
@@ -621,6 +625,14 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
 
       <TabsContent value="history">
         <MigrationHistory onRefresh={onRefresh} />
+      </TabsContent>
+
+      <TabsContent value="user-shop">
+        <UserShopMigration onMigrationComplete={onRefresh} />
+      </TabsContent>
+
+      <TabsContent value="shop-report">
+        <ShopPointsReport />
       </TabsContent>
     </Tabs>
   )
