@@ -40,7 +40,6 @@ export function RecipientsPreviewPopover({
     const [open, setOpen] = useState(false)
 
     const fetchPreview = useCallback(async () => {
-        if (data) return // Already fetched
         setLoading(true)
         setError(null)
         try {
@@ -58,7 +57,7 @@ export function RecipientsPreviewPopover({
         } finally {
             setLoading(false)
         }
-    }, [queryParams, data])
+    }, [queryParams])
 
     const handleOpenChange = (isOpen: boolean) => {
         setOpen(isOpen)
@@ -98,15 +97,23 @@ export function RecipientsPreviewPopover({
                             Recipients Preview
                         </h4>
                         {data && (
-                            <span className="text-xs text-gray-500">
-                                {data.total} {data.total === 1 ? 'user' : 'users'}
+                            <span className="text-xs font-semibold text-gray-700 bg-gray-200 px-2 py-0.5 rounded-full">
+                                {data.hasPhone}/{data.total}
                             </span>
                         )}
                     </div>
-                    {data && data.missingPhone > 0 && (
-                        <div className="flex items-center gap-1 mt-1.5 text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">
-                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                            {data.missingPhone} without phone number
+                    {data && (
+                        <div className="flex items-center gap-3 mt-1.5 text-xs">
+                            <span className="flex items-center gap-1 text-green-700">
+                                <Phone className="w-3 h-3" />
+                                {data.hasPhone} {data.hasPhone === 1 ? 'has' : 'have'} contact
+                            </span>
+                            {data.missingPhone > 0 && (
+                                <span className="flex items-center gap-1 text-amber-700">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {data.missingPhone} contact not updated
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>
@@ -173,10 +180,10 @@ export function RecipientsPreviewPopover({
                     ))}
                 </div>
 
-                {/* Footer hint */}
-                {data && data.recipients.some(r => r.user_id.startsWith('dynamic-')) && (
-                    <div className="px-4 py-2 border-t bg-gray-50/80 text-xs text-gray-500">
-                        Dynamic recipients are resolved per order at delivery time.
+                {/* Footer: note if any orgs returned no users */}
+                {data && data.total === 0 && (
+                    <div className="px-4 py-2 border-t bg-gray-50/80 text-xs text-gray-500 text-center">
+                        No users found for this selection.
                     </div>
                 )}
             </PopoverContent>
