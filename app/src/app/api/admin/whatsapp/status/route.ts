@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 // Gateway and Moltbot URLs from env
-const GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://wa.serapod2u.com'
+const GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://wa.getouch.cloud'
 const MOLTBOT_URL = process.env.MOLTBOT_URL || 'http://localhost:4000'
 
 // Type for user data query result

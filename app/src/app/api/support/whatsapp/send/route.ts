@@ -17,7 +17,7 @@ import { normalizePhoneE164, phoneToJid } from '@/utils/phone'
 export const dynamic = 'force-dynamic'
 
 // Baileys Gateway configuration
-const BAILEYS_GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || 'https://wa.serapod2u.com'
+const BAILEYS_GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || 'https://wa.getouch.cloud'
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || process.env.WHATSAPP_AGENT_KEY
 const DEFAULT_TENANT_ID = process.env.BAILEYS_TENANT_ID || 'serapod2u'
 

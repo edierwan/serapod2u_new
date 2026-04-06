@@ -145,7 +145,7 @@ export async function callGateway(
   _tenantId: string = DEFAULT_TENANT_ID // Ignored in single-tenant mode
 ): Promise<any> {
   // Translate endpoint for Getouch gateway
-  const isGetouchGateway = baseUrl.includes('getouch.co');
+  const isGetouchGateway = baseUrl.includes('getouch.co') || baseUrl.includes('getouch.cloud');
   const resolvedEndpoint = isGetouchGateway
     ? (GETOUCH_ENDPOINT_MAP[endpoint] || endpoint)
     : endpoint;
