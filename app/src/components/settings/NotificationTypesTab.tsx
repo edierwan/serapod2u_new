@@ -245,6 +245,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       // Prepare settings for upsert
       const settingsArray = Array.from(settings.values()).map(setting => {
         const record: any = {
+          id: setting.id || crypto.randomUUID(),
           org_id: setting.org_id,
           event_code: setting.event_code,
           enabled: setting.enabled,
@@ -258,11 +259,6 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           recipient_config: setting.recipient_config,
           retry_enabled: true,
           max_retries: 3
-        }
-
-        // Only include id if it exists (for updates)
-        if (setting.id) {
-          record.id = setting.id
         }
 
         return record

@@ -80,6 +80,7 @@ import { CategorySettingsDialog } from './CategorySettingsDialog'
 import { ReferralMonitor } from './ReferralMonitor'
 import { ReferenceChangeLog } from './ReferenceChangeLog'
 import { ReferralDetail } from './ReferralDetail'
+import { ShopPointsReport } from './ShopPointsReport'
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -157,6 +158,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
   const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback" | "referral">("rewards")
+  const [shopSubTab, setShopSubTab] = useState<"balances" | "shop-report">("balances")
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
 
@@ -1365,6 +1367,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* SHOP POINTS MONITOR TAB */}
         <TabsContent value="users" className="space-y-4">
+          <Tabs value={shopSubTab} onValueChange={(v) => setShopSubTab(v as typeof shopSubTab)}>
+            <TabsList>
+              <TabsTrigger value="balances">Shop Balances</TabsTrigger>
+              <TabsTrigger value="shop-report">Shop Report</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="balances" className="space-y-4">
           {/* Info Banner */}
           <Card className="border-blue-200 bg-blue-50/50">
             <CardContent className="pt-6">
@@ -1506,6 +1515,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+
+            <TabsContent value="shop-report" className="space-y-4">
+              <ShopPointsReport />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {/* CONSUMER POINTS MONITOR TAB */}

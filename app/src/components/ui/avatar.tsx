@@ -17,14 +17,28 @@ export interface AvatarImageProps
   extends React.ImgHTMLAttributes<HTMLImageElement> {}
 
 const AvatarImage = React.forwardRef<HTMLImageElement, AvatarImageProps>(
-  (props, ref) => (
-    // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
-    <img
-      ref={ref}
-      className="aspect-square h-full w-full object-cover"
-      {...props}
-    />
-  )
+  (props, ref) => {
+    const [hasError, setHasError] = React.useState(false)
+    const [loaded, setLoaded] = React.useState(false)
+
+    React.useEffect(() => {
+      setHasError(false)
+      setLoaded(false)
+    }, [props.src])
+
+    if (hasError || !props.src) return null
+
+    return (
+      // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
+      <img
+        ref={ref}
+        className={`aspect-square h-full w-full object-cover ${loaded ? '' : 'invisible absolute'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setHasError(true)}
+        {...props}
+      />
+    )
+  }
 )
 AvatarImage.displayName = "AvatarImage"
 

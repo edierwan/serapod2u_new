@@ -931,7 +931,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 <Avatar className="h-24 w-24 cursor-pointer border-4 border-gray-100" onClick={handleAvatarClick}>
                   {(avatarPreview || userProfile.avatar_url) && (
                     <AvatarImage
-                      src={avatarPreview || getStorageUrl(`${userProfile.avatar_url?.split('?')[0]}?v=${Date.now()}`) || userProfile.avatar_url}
+                      src={avatarPreview || (userProfile.avatar_url ? getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?v=${Date.now()}`) : undefined)}
                       alt={userProfile.full_name || 'User'}
                     />
                   )}
