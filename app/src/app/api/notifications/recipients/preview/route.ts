@@ -55,9 +55,18 @@ export async function GET(request: NextRequest) {
 
     try {
         // 1. Resolve by roles — search system-wide (not restricted to one org)
-        //    Roles like 'super_admin', 'admin' may exist across multiple orgs
+        //    Role codes match DB: SUPER, HQ_ADMIN, DIST_ADMIN, WH_MANAGER, USER, etc.
+        //    Also handle legacy lowercase codes from old saved configs.
         if (rolesParam) {
-            const roles = rolesParam.split(',').map(r => r.trim()).filter(Boolean)
+            const rawRoles = rolesParam.split(',').map(r => r.trim()).filter(Boolean)
+            // Normalise: map any legacy lowercase UI codes to real DB codes
+            const LEGACY_MAP: Record<string, string> = {
+                super_admin: 'SUPER',
+                admin: 'HQ_ADMIN',
+                distributor: 'DIST_ADMIN',
+                warehouse: 'WH_MANAGER',
+            }
+            const roles = rawRoles.map(r => LEGACY_MAP[r.toLowerCase()] || r)
             if (roles.length > 0) {
                 const { data: users } = await supabase
                     .from('users')
@@ -66,12 +75,17 @@ export async function GET(request: NextRequest) {
                     .order('full_name')
 
                 if (users) {
+                    const ROLE_LABELS: Record<string, string> = {
+                        SUPER: 'Super Admin', HQ_ADMIN: 'Admin', MANU_ADMIN: 'Manufacturer Admin',
+                        DIST_ADMIN: 'Distributor Admin', WH_MANAGER: 'Warehouse Mgr',
+                        USER: 'Staff User', GUEST: 'Guest',
+                    }
                     recipients.push(...users.map(u => ({
                         user_id: u.id,
                         full_name: u.full_name || u.email || 'Unknown',
                         email: u.email,
                         phone: u.phone,
-                        type: `Role: ${(u.role_code || '').replace(/_/g, ' ')}`
+                        type: ROLE_LABELS[u.role_code || ''] || (u.role_code || '').replace(/_/g, ' ')
                     })))
                 }
             }
