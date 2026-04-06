@@ -269,13 +269,19 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       })
 
       // Upsert all settings
-      const { error } = await (supabase as any)
+      const { data: upserted, error } = await (supabase as any)
         .from('notification_settings')
         .upsert(settingsArray, {
           onConflict: 'org_id,event_code'
         })
+        .select('id')
 
       if (error) throw error
+
+      // Verify rows were actually written (RLS can silently drop rows)
+      if (!upserted || upserted.length === 0) {
+        throw new Error('Settings were not saved — check your permissions (HQ Admin required)')
+      }
 
       setSaveStatus('success')
       setTimeout(() => setSaveStatus('idle'), 3000)

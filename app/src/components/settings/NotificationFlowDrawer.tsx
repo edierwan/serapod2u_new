@@ -187,7 +187,7 @@ export default function NotificationFlowDrawer({
                 closed_at: new Date().toLocaleDateString('en-GB'),
                 action: 'Cancelled',
                 reason: 'N/A',
-                order_url: typeof window !== 'undefined' ? `${window.location.origin}/orders` : 'https://app.serapod.com/orders',
+                order_url: typeof window !== 'undefined' ? `${window.location.origin}/supply-chain` : 'https://app.serapod2u.com/supply-chain',
                 item_list: '• Cellera Hero – Deluxe Cellera Cartridge [Keladi Cheese] × 100 units (1 case) — RM 1,400.00',
                 total_cases: '1',
                 total_items: '1',
@@ -203,6 +203,12 @@ export default function NotificationFlowDrawer({
                 production_completed_at: new Date().toLocaleString('en-GB'),
                 completed_by: 'Manufacturing Operator',
                 balance_document_no: 'PR26000012',
+                // QR Batch Generated variables
+                generated_at: new Date().toLocaleString('en-GB'),
+                // Warehouse Received variables
+                total_received: '5,000',
+                warehouse_name: 'Main Warehouse KL',
+                received_at: new Date().toLocaleString('en-GB'),
                 // Document Workflow variables
                 doc_no: 'PO26000015',
                 doc_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -217,7 +223,7 @@ export default function NotificationFlowDrawer({
                 receipt_no: 'REC26000015',
                 acknowledged_by: 'Factory Manager',
                 acknowledged_at: new Date().toLocaleString('en-GB'),
-                document_url: typeof window !== 'undefined' ? `${window.location.origin}/orders` : 'https://app.serapod.com/orders',
+                document_url: typeof window !== 'undefined' ? `${window.location.origin}/supply-chain` : 'https://app.serapod2u.com/supply-chain',
                 // Inventory variables
                 product_name: 'Cellera Hero',
                 variant_name: 'Deluxe Cartridge [Keladi Cheese]',
@@ -672,7 +678,7 @@ export default function NotificationFlowDrawer({
                                                 closed_at: new Date().toLocaleDateString('en-GB'),
                                                 action: 'Cancelled',
                                                 reason: 'Out of stock',
-                                                order_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/orders`,
+                                                order_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod2u.com'}/supply-chain`,
                                                 item_list: '• Cellera Hero – Deluxe Cellera Cartridge [Keladi Cheese] × 100 units (1 case) — RM 1,400.00\n• Super Pod V2 – Classic Mint × 200 units (2 cases) — RM 1,400.00',
                                                 total_cases: '3',
                                                 total_items: '2',
@@ -688,6 +694,12 @@ export default function NotificationFlowDrawer({
                                                 production_completed_at: new Date().toLocaleString('en-GB'),
                                                 completed_by: 'Manufacturing Operator',
                                                 balance_document_no: 'PR26000012',
+                                                // QR Batch Generated variables
+                                                generated_at: new Date().toLocaleString('en-GB'),
+                                                // Warehouse Received variables
+                                                total_received: '5,000',
+                                                warehouse_name: 'Main Warehouse KL',
+                                                received_at: new Date().toLocaleString('en-GB'),
                                                 // Document Workflow variables
                                                 doc_no: 'PO26000015',
                                                 doc_date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -702,7 +714,7 @@ export default function NotificationFlowDrawer({
                                                 receipt_no: 'REC26000015',
                                                 acknowledged_by: 'Factory Manager',
                                                 acknowledged_at: new Date().toLocaleString('en-GB'),
-                                                document_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/orders`,
+                                                document_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod2u.com'}/supply-chain`,
                                                 // Inventory variables
                                                 product_name: 'Cellera Hero',
                                                 variant_name: 'Deluxe Cartridge [Keladi Cheese]',

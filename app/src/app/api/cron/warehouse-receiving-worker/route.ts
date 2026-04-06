@@ -355,6 +355,38 @@ export async function GET(request: NextRequest) {
     const totalTime = Math.round((Date.now() - startTime) / 1000)
     console.log(`🎉 [${workerId}] Batch ${batch.id} completed! Processed: ${totalProcessed} in ${totalTime}s`)
 
+    // Queue notification for warehouse received
+    try {
+      const displayOrderNo = order?.display_doc_no || order?.order_no || orderNo
+      const warehouseName = warehouseOrgId
+        ? (await supabase.from('organizations').select('org_name').eq('id', warehouseOrgId).single()).data?.org_name || 'Warehouse'
+        : 'Warehouse'
+      const notifPayload = {
+        order_no: displayOrderNo,
+        batch_id: batch.id,
+        total_received: totalProcessed.toString(),
+        warehouse_name: warehouseName,
+        received_at: new Date().toLocaleString('en-GB'),
+        order_url: 'https://app.serapod2u.com/supply-chain'
+      }
+      for (const channel of ['whatsapp', 'sms', 'email']) {
+        await supabase.from('notifications_outbox').insert({
+          org_id: companyId || order?.buyer_org_id,
+          event_code: 'warehouse_received',
+          channel,
+          payload_json: notifPayload,
+          priority: 'normal',
+          status: 'queued',
+          retry_count: 0,
+          max_retries: 3,
+          created_at: new Date().toISOString()
+        })
+      }
+      console.log(`📨 [${workerId}] Warehouse received notification queued`)
+    } catch (notifErr) {
+      console.warn(`⚠️ [${workerId}] Failed to queue warehouse notification (non-blocking):`, notifErr)
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Batch receiving completed',

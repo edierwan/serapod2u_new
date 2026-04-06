@@ -6,6 +6,8 @@ export type NotificationKey =
     | 'order_closed'
     | 'order_deleted'
     | 'manufacturer_scan_complete'
+    | 'qr_batch_generated'
+    | 'warehouse_received'
     | 'low_stock_alert'
     | 'out_of_stock'
     | 'stock_received'
@@ -272,6 +274,74 @@ export const notificationTemplates: Record<string, Template[]> = {
             channel: 'email',
             subject: 'Manufacturing Complete — Order #{{order_no}}',
             body: `Dear Team,\n\nThe manufacturing process for Order #{{order_no}} has been completed.\n\nBatch: {{batch_id}}\nMaster Cases: {{total_master_codes}}\nUnique QR Codes: {{total_unique_codes}}\nCompleted at: {{production_completed_at}}\nCompleted by: {{completed_by}}\n\nAll QR codes have been generated, packed, and marked as ready for shipment.\n\nPlease coordinate warehouse receiving and logistics.\n\n{{order_url}}\n\nRegards,\nSerapod2U System`
+        }
+    ],
+
+    // ══════════════════════════════════════════════════════════
+    // QR BATCH GENERATED
+    // ══════════════════════════════════════════════════════════
+
+    'qr_batch_generated': [
+        {
+            id: 'qbg_wa_1',
+            name: 'QR Batch Generated — Admin',
+            description: 'Notifies admin that QR code batch generation is complete',
+            channel: 'whatsapp',
+            body: `📱 *QR Batch Generated*\n━━━━━━━━━━━━━━━━━━\n\n*Order:* #{{order_no}}\n*Batch:* {{batch_id}}\n*Status:* QR Codes Ready ✓\n\n📊 *Generation Summary*\n• Master Cases: {{total_master_codes}}\n• Unique QR Codes: {{total_unique_codes}}\n• Completed at: {{generated_at}}\n\nAll QR codes have been generated and the Excel file is ready for download. The order can now proceed to manufacturing.\n\n🔗 {{order_url}}`
+        },
+        {
+            id: 'qbg_wa_2',
+            name: 'Quick QR Generation Alert',
+            description: 'Brief QR batch notification',
+            channel: 'whatsapp',
+            body: `📱 Order *#{{order_no}}* — QR Batch Generated!\n\n{{total_master_codes}} master cases · {{total_unique_codes}} QR codes\nExcel file ready for download.\n\n🔗 {{order_url}}`
+        },
+        {
+            id: 'qbg_sms_1',
+            name: 'SMS QR Generated',
+            channel: 'sms',
+            body: `[Serapod2U] QR batch generated: Order #{{order_no}} — {{total_master_codes}} cases, {{total_unique_codes}} QR codes. Ready for manufacturing.`
+        },
+        {
+            id: 'qbg_email_1',
+            name: 'QR Batch Generated Email',
+            channel: 'email',
+            subject: 'QR Batch Generated — Order #{{order_no}}',
+            body: `Dear Team,\n\nThe QR batch for Order #{{order_no}} has been generated successfully.\n\nBatch: {{batch_id}}\nMaster Cases: {{total_master_codes}}\nUnique QR Codes: {{total_unique_codes}}\nGenerated at: {{generated_at}}\n\nThe Excel file is ready for download and the order can proceed to manufacturing.\n\n{{order_url}}\n\nRegards,\nSerapod2U System`
+        }
+    ],
+
+    // ══════════════════════════════════════════════════════════
+    // WAREHOUSE RECEIVED
+    // ══════════════════════════════════════════════════════════
+
+    'warehouse_received': [
+        {
+            id: 'wr_wa_1',
+            name: 'Warehouse Receive — Admin',
+            description: 'Notifies admin that warehouse receiving is complete',
+            channel: 'whatsapp',
+            body: `📦 *Warehouse Receiving Complete*\n━━━━━━━━━━━━━━━━━━\n\n*Order:* #{{order_no}}\n*Batch:* {{batch_id}}\n*Status:* Received at Warehouse ✓\n\n📊 *Receiving Summary*\n• Total Codes Received: {{total_received}}\n• Warehouse: {{warehouse_name}}\n• Received at: {{received_at}}\n\nAll QR codes have been received and inventory has been updated. Products are now available for distribution.\n\n🔗 {{order_url}}`
+        },
+        {
+            id: 'wr_wa_2',
+            name: 'Quick Warehouse Receive Alert',
+            description: 'Brief warehouse receiving notification',
+            channel: 'whatsapp',
+            body: `📦 Order *#{{order_no}}* — Warehouse Received!\n\n{{total_received}} QR codes received at {{warehouse_name}}.\nInventory updated.\n\n🔗 {{order_url}}`
+        },
+        {
+            id: 'wr_sms_1',
+            name: 'SMS Warehouse Received',
+            channel: 'sms',
+            body: `[Serapod2U] Warehouse received: Order #{{order_no}} — {{total_received}} codes. Inventory updated at {{warehouse_name}}.`
+        },
+        {
+            id: 'wr_email_1',
+            name: 'Warehouse Received Email',
+            channel: 'email',
+            subject: 'Warehouse Receiving Complete — Order #{{order_no}}',
+            body: `Dear Team,\n\nWarehouse receiving for Order #{{order_no}} has been completed.\n\nBatch: {{batch_id}}\nTotal Codes Received: {{total_received}}\nWarehouse: {{warehouse_name}}\nReceived at: {{received_at}}\n\nInventory has been updated. Products are now available for distribution.\n\n{{order_url}}\n\nRegards,\nSerapod2U System`
         }
     ],
 

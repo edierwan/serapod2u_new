@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
         completed_by: user.email || 'Manufacturer',
         customer_name: customerName,
         balance_document_no: balanceDocumentNo || 'N/A',
-        order_url: 'https://app.serapod2u.com/orders'
+        order_url: 'https://app.serapod2u.com/supply-chain'
       }
 
       for (const channel of ['whatsapp', 'sms', 'email']) {

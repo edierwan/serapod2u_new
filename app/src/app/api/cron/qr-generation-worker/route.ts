@@ -297,6 +297,35 @@ export async function GET(request: NextRequest) {
           })
           .eq('id', batch.id)
 
+        // Queue notification for QR batch generated
+        try {
+          const displayOrderNo = order.display_doc_no || order.order_no
+          const notifPayload = {
+            order_no: displayOrderNo,
+            batch_id: batch.id,
+            total_master_codes: qrBatch.totalMasterCodes.toString(),
+            total_unique_codes: qrBatch.totalUniqueCodes.toString(),
+            generated_at: new Date().toLocaleString('en-GB'),
+            order_url: 'https://app.serapod2u.com/supply-chain'
+          }
+          for (const channel of ['whatsapp', 'sms', 'email']) {
+            await supabase.from('notifications_outbox').insert({
+              org_id: order.company_id || order.buyer_org_id,
+              event_code: 'qr_batch_generated',
+              channel,
+              payload_json: notifPayload,
+              priority: 'normal',
+              status: 'queued',
+              retry_count: 0,
+              max_retries: 3,
+              created_at: new Date().toISOString()
+            })
+          }
+          console.log('📨 QR batch generated notification queued')
+        } catch (notifErr) {
+          console.warn('⚠️ Failed to queue QR batch notification (non-blocking):', notifErr)
+        }
+
         console.log('🎉 Batch processing COMPLETED!')
         return NextResponse.json({ success: true, message: 'Batch processing COMPLETED!', hasMore: false })
       } else {

@@ -72,10 +72,10 @@ export async function POST(request: NextRequest) {
                     config.tenantId
                 )
 
-                if (gwResult.ok || gwResult.jid) {
-                    result = { status: 'sent', provider_id: gwResult.jid || 'sent', message: 'WhatsApp message sent successfully' }
+                if (gwResult.ok || gwResult.success || gwResult.jid) {
+                    result = { status: 'sent', provider_id: gwResult.jid || gwResult.messageId || 'sent', message: 'WhatsApp message sent successfully' }
                 } else {
-                    result = { status: 'failed', error: gwResult.error || 'Gateway returned error' }
+                    result = { status: 'failed', error: gwResult.error || gwResult.message || 'Gateway returned error' }
                 }
             } catch (err: any) {
                 result = { status: 'failed', error: err.message || 'Failed to reach WhatsApp gateway' }

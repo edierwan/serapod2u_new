@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         status: order.status || 'deleted',
         deleted_by: deleterProfile?.full_name || guard.userEmail || 'Super Admin',
         deleted_at: new Date().toLocaleString('en-GB'),
-        order_url: 'https://app.serapod2u.com/orders'
+        order_url: 'https://app.serapod2u.com/supply-chain'
       }
 
       // Queue for each channel

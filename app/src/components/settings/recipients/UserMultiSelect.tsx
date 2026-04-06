@@ -186,6 +186,7 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                         <Badge variant="secondary" className="pl-2 pr-1 py-1 flex items-center gap-1 cursor-help">
                             <UserIcon className="w-3 h-3 text-gray-500" />
                             <span>{user.full_name}</span>
+                            {user.phone && <span className="text-xs text-muted-foreground">({user.phone})</span>}
                             <button
                                 onClick={() => handleRemove(user.id)}
                                 className="ml-1 hover:bg-gray-200 rounded-full p-0.5"
