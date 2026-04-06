@@ -90,6 +90,7 @@ import SettingsLandingView from '@/modules/settings/components/SettingsLandingVi
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
+import { WhatsAppActivityTab } from '@/components/settings/WhatsAppActivityTab'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
 import AuthorizationTab from '@/components/settings/AuthorizationTab'
@@ -487,6 +488,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationTypesTab userProfile={userProfile} />
       case 'settings/notifications/providers':
         return <NotificationProvidersTab userProfile={userProfile} />
+      case 'settings/notifications/whatsapp-activity':
+        return <WhatsAppActivityTab userProfile={userProfile} />
       case 'settings/preferences':
         return <SettingsView userProfile={userProfile} initialTab="preferences" />
       case 'settings/preferences/document-template':

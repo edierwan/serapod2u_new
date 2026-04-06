@@ -105,6 +105,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
         children: [
             { id: 'settings/notifications/types', label: 'Notification Types', icon: Megaphone, href: toHref('settings/notifications/types'), description: 'Configure notification categories' },
             { id: 'settings/notifications/providers', label: 'Notification Providers', icon: MessageSquare, href: toHref('settings/notifications/providers'), description: 'Email, SMS, WhatsApp channels' },
+            { id: 'settings/notifications/whatsapp-activity', label: 'WhatsApp Activity', icon: MessageSquare, href: toHref('settings/notifications/whatsapp-activity'), description: 'Monitor WhatsApp notification events' },
         ],
     },
     {

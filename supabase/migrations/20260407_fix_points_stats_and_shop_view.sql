@@ -152,7 +152,10 @@ BEGIN
         )
       ELSE 0 END
     ), 0)::bigint AS total_points,
-    count(*) FILTER (WHERE (q.updated_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date = v_today)::bigint AS today_scans
+    count(*) FILTER (WHERE (
+      COALESCE(q.first_consumer_scan_at, q.points_collected_at, q.redeemed_at, q.lucky_draw_entered_at, q.activated_at)
+      AT TIME ZONE 'Asia/Kuala_Lumpur'
+    )::date = v_today)::bigint AS today_scans
   FROM qr_codes q
   WHERE q.company_id = p_company_id
     AND (q.is_redeemed = true OR q.is_lucky_draw_entered = true OR q.is_points_collected = true)

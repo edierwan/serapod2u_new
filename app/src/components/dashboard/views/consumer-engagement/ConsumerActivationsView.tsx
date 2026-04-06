@@ -216,6 +216,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           consumer_email,
           updated_at,
           redeemed_at,
+          points_collected_at,
+          lucky_draw_entered_at,
+          first_consumer_scan_at,
           is_redeemed,
           is_lucky_draw_entered,
           is_points_collected,
@@ -386,7 +389,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           consumer_phone: qr.consumer_phone,
           consumer_email: qr.consumer_email,
           consumer_user_id: scanUser?.id || null,
-          activated_at: qr.redeemed_at || qr.updated_at,
+          activated_at: qr.first_consumer_scan_at || qr.points_collected_at || qr.redeemed_at || qr.lucky_draw_entered_at || qr.updated_at,
           points_awarded: points,
           lucky_draw_entered: qr.is_lucky_draw_entered,
           gift_redeemed: qr.is_redeemed,
@@ -752,10 +755,6 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           <TabsTrigger value="feedback" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             Consumer Feedback
-          </TabsTrigger>
-          <TabsTrigger value="whatsapp" className="flex items-center gap-2">
-            <MessageCircle className="h-4 w-4" />
-            WhatsApp Activity
           </TabsTrigger>
         </TabsList>
 
