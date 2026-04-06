@@ -80,6 +80,19 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   const [feedbackToDelete, setFeedbackToDelete] = useState<any>(null)
   const [deletingFeedback, setDeletingFeedback] = useState(false)
 
+  // WhatsApp Activity state
+  const [waEvents, setWaEvents] = useState<any[]>([])
+  const [waLoading, setWaLoading] = useState(false)
+  const [waPage, setWaPage] = useState(1)
+  const [waTotal, setWaTotal] = useState(0)
+  const [waFilterPurpose, setWaFilterPurpose] = useState('all')
+  const [waFilterStatus, setWaFilterStatus] = useState('all')
+  const [waFilterPhone, setWaFilterPhone] = useState('')
+  const waPageSize = 20
+
+  // Check if user is super admin (role_level = 1)
+  const isSuperAdmin = userProfile.roles?.role_level === 1
+
   // Load WhatsApp activity events
   async function loadWhatsAppActivity() {
     setWaLoading(true)
@@ -115,19 +128,6 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
     if (activeTab === 'whatsapp') loadWhatsAppActivity()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, waPage, waFilterPurpose, waFilterStatus, waFilterPhone])
-
-  // Check if user is super admin (role_level = 1)
-  const isSuperAdmin = userProfile.roles?.role_level === 1
-
-  // WhatsApp Activity state
-  const [waEvents, setWaEvents] = useState<any[]>([])
-  const [waLoading, setWaLoading] = useState(false)
-  const [waPage, setWaPage] = useState(1)
-  const [waTotal, setWaTotal] = useState(0)
-  const [waFilterPurpose, setWaFilterPurpose] = useState('all')
-  const [waFilterStatus, setWaFilterStatus] = useState('all')
-  const [waFilterPhone, setWaFilterPhone] = useState('')
-  const waPageSize = 20
 
   const [stats, setStats] = useState({
     total_scans: 0,
@@ -1182,15 +1182,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                               </Badge>
                             </td>
                             <td className="px-3 py-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                                evt.status === 'sent' ? 'bg-green-100 text-green-800' :
-                                evt.status === 'failed' || evt.status === 'send_failed' ? 'bg-red-100 text-red-800' :
-                                evt.status === 'verified' ? 'bg-blue-100 text-blue-800' :
-                                evt.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                                evt.status === 'rate_limited' ? 'bg-orange-100 text-orange-800' :
-                                evt.status === 'no_account' ? 'bg-gray-100 text-gray-600' :
-                                'bg-gray-100 text-gray-800'
-                              }`}>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${evt.status === 'sent' ? 'bg-green-100 text-green-800' :
+                                  evt.status === 'failed' || evt.status === 'send_failed' ? 'bg-red-100 text-red-800' :
+                                    evt.status === 'verified' ? 'bg-blue-100 text-blue-800' :
+                                      evt.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
+                                        evt.status === 'rate_limited' ? 'bg-orange-100 text-orange-800' :
+                                          evt.status === 'no_account' ? 'bg-gray-100 text-gray-600' :
+                                            'bg-gray-100 text-gray-800'
+                                }`}>
                                 {evt.status}
                               </span>
                             </td>
