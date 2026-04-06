@@ -16,9 +16,10 @@ interface User {
 interface UserMultiSelectProps {
     selectedUserIds: string[]
     onSelectionChange: (ids: string[]) => void
+    onUsersLoaded?: (users: User[]) => void
 }
 
-export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMultiSelectProps) {
+export function UserMultiSelect({ selectedUserIds, onSelectionChange, onUsersLoaded }: UserMultiSelectProps) {
     const [query, setQuery] = useState('')
     const debouncedQuery = useDebounce(query, 300)
     const [results, setResults] = useState<User[]>([])
@@ -115,7 +116,10 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
                 selectedUserIds.forEach(id => params.append('ids', id))
                 const res = await fetch(`/api/users/search?${params.toString()}`)
                 const data = await res.json()
-                if (data.users) setSelectedUsers(data.users)
+                if (data.users) {
+                    setSelectedUsers(data.users)
+                    onUsersLoaded?.(data.users)
+                }
             } else if (selectedUserIds.length === 0) {
                 setSelectedUsers([])
             }
@@ -127,7 +131,9 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
         if (!selectedUserIds.includes(user.id)) {
             const newIds = [...selectedUserIds, user.id]
             onSelectionChange(newIds)
-            setSelectedUsers([...selectedUsers, user])
+            const newUsers = [...selectedUsers, user]
+            setSelectedUsers(newUsers)
+            onUsersLoaded?.(newUsers)
         }
         setQuery('')
         setOpen(false)
@@ -135,7 +141,9 @@ export function UserMultiSelect({ selectedUserIds, onSelectionChange }: UserMult
 
     const handleRemove = (userId: string) => {
         onSelectionChange(selectedUserIds.filter(id => id !== userId))
-        setSelectedUsers(selectedUsers.filter(u => u.id !== userId))
+        const newUsers = selectedUsers.filter(u => u.id !== userId)
+        setSelectedUsers(newUsers)
+        onUsersLoaded?.(newUsers)
     }
 
     return (

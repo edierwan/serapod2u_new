@@ -57,6 +57,9 @@ export default function NotificationFlowDrawer({
     const [testSending, setTestSending] = useState(false)
     const [testResult, setTestResult] = useState<any>(null)
 
+    // Selected user detail cache (from UserMultiSelect)
+    const [selectedUserDetails, setSelectedUserDetails] = useState<{id: string; full_name: string; phone?: string}[]>([])
+
     // Logs
     const [logs, setLogs] = useState<any[]>([])
     const [loadingLogs, setLoadingLogs] = useState(false)
@@ -471,6 +474,21 @@ export default function NotificationFlowDrawer({
                                             </>
                                         )}
                                     </div>
+                                    {/* Show selected user details with phone numbers */}
+                                    {localSetting.recipient_config?.recipient_targets?.users && selectedUserDetails.length > 0 && (
+                                        <div className="mt-2 space-y-1">
+                                            {selectedUserDetails.map(u => (
+                                                <div key={u.id} className="text-xs text-blue-800 flex items-center gap-1.5">
+                                                    <span className="font-medium">{u.full_name}</span>
+                                                    {u.phone ? (
+                                                        <span className="text-blue-600">({u.phone})</span>
+                                                    ) : (
+                                                        <span className="text-amber-600 italic">(no phone)</span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Rule Configuration */}
@@ -580,6 +598,7 @@ export default function NotificationFlowDrawer({
                                                             <UserMultiSelect
                                                                 selectedUserIds={localSetting.recipient_config?.recipient_users || []}
                                                                 onSelectionChange={(ids) => updateRecipientConfig({ recipient_users: ids })}
+                                                                onUsersLoaded={(users) => setSelectedUserDetails(users)}
                                                             />
                                                         </div>
                                                     )}
