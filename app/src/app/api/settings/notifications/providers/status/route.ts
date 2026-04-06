@@ -9,6 +9,7 @@ interface ServiceHealth {
     up: boolean
     latencyMs: number
     error?: string
+    waConnected?: boolean
 }
 
 interface StatusResponse {
@@ -33,8 +34,37 @@ export async function GET(request: NextRequest) {
             fetchWithTimeout(`${MOLTBOT_URL}/health`, 5000)
         ])
 
+        let gatewayHealth = processResult(gatewayResult)
+
+        // If healthz fails, try the WhatsApp status API as fallback
+        // The gateway might not expose /healthz but the connection works fine
+        if (!gatewayHealth.up) {
+            try {
+                const statusRes = await fetch(
+                    `${request.nextUrl.origin}/api/settings/whatsapp/status`,
+                    {
+                        headers: { cookie: request.headers.get('cookie') || '' },
+                        signal: AbortSignal.timeout(6000),
+                    }
+                )
+                if (statusRes.ok) {
+                    const waStatus = await statusRes.json()
+                    if (waStatus.connected) {
+                        // WhatsApp is actually connected - override the Down status
+                        gatewayHealth = {
+                            up: true,
+                            latencyMs: gatewayHealth.latencyMs,
+                            waConnected: true,
+                        }
+                    }
+                }
+            } catch {
+                // Fallback failed too, keep original result
+            }
+        }
+
         const response: StatusResponse = {
-            whatsappGateway: processResult(gatewayResult),
+            whatsappGateway: gatewayHealth,
             moltbot: processResult(moltbotResult),
             checkedAt: new Date().toISOString()
         }

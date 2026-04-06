@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
 import { UserMultiSelect } from "./recipients/UserMultiSelect"
+import { RecipientsPreviewPopover } from "./recipients/RecipientsPreviewPopover"
 import { getTemplatesForEvent, Template } from "../../config/notificationTemplates"
 
 interface NotificationFlowDrawerProps {
@@ -58,7 +59,7 @@ export default function NotificationFlowDrawer({
     const [testResult, setTestResult] = useState<any>(null)
 
     // Selected user detail cache (from UserMultiSelect)
-    const [selectedUserDetails, setSelectedUserDetails] = useState<{id: string; full_name: string; phone?: string}[]>([])
+    const [selectedUserDetails, setSelectedUserDetails] = useState<{ id: string; full_name: string; phone?: string }[]>([])
 
     // Logs
     const [logs, setLogs] = useState<any[]>([])
@@ -454,21 +455,40 @@ export default function NotificationFlowDrawer({
                                                 {localSetting.recipient_config?.recipient_targets?.consumer && (
                                                     <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">Consumer</Badge>
                                                 )}
-                                                {localSetting.recipient_config?.recipient_targets?.roles && (
+                                                {localSetting.recipient_config?.recipient_targets?.roles && (localSetting.recipient_config?.roles?.length || 0) > 0 && (
+                                                    <RecipientsPreviewPopover
+                                                        label={`Roles: ${localSetting.recipient_config?.roles?.length || 0}`}
+                                                        queryParams={{ roles: (localSetting.recipient_config?.roles || []).join(',') }}
+                                                        variant="roles"
+                                                    />
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.roles && !(localSetting.recipient_config?.roles?.length) && (
                                                     <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Roles: {localSetting.recipient_config?.roles?.length || 0}
+                                                        Roles: 0
                                                     </Badge>
                                                 )}
-                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && (
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && localSetting.recipient_config?.dynamic_target && (
+                                                    <RecipientsPreviewPopover
+                                                        label={`Dynamic: ${localSetting.recipient_config.dynamic_target.charAt(0).toUpperCase() + localSetting.recipient_config.dynamic_target.slice(1)}`}
+                                                        queryParams={{ dynamicTarget: localSetting.recipient_config.dynamic_target }}
+                                                        variant="dynamic"
+                                                    />
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && !localSetting.recipient_config?.dynamic_target && (
                                                     <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Dynamic: {localSetting.recipient_config?.dynamic_target ?
-                                                            localSetting.recipient_config.dynamic_target.charAt(0).toUpperCase() + localSetting.recipient_config.dynamic_target.slice(1)
-                                                            : 'None'}
+                                                        Dynamic: None
                                                     </Badge>
                                                 )}
-                                                {localSetting.recipient_config?.recipient_targets?.users && (
+                                                {localSetting.recipient_config?.recipient_targets?.users && (localSetting.recipient_config?.recipient_users?.length || 0) > 0 && (
+                                                    <RecipientsPreviewPopover
+                                                        label={`Users: ${localSetting.recipient_config?.recipient_users?.length || 0}`}
+                                                        queryParams={{ userIds: (localSetting.recipient_config?.recipient_users || []).join(',') }}
+                                                        variant="users"
+                                                    />
+                                                )}
+                                                {localSetting.recipient_config?.recipient_targets?.users && !(localSetting.recipient_config?.recipient_users?.length) && (
                                                     <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Users: {localSetting.recipient_config?.recipient_users?.length || 0}
+                                                        Users: 0
                                                     </Badge>
                                                 )}
                                             </>

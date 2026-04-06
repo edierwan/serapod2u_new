@@ -19,6 +19,7 @@ interface ServiceHealth {
     up: boolean
     latencyMs: number
     error?: string
+    waConnected?: boolean
 }
 
 interface StatusData {
@@ -118,7 +119,9 @@ export default function ServicesStatusSection() {
                                 {status && !loading && (
                                     <p className="text-xs text-gray-500">
                                         {status.whatsappGateway.up
-                                            ? `${formatLatency(status.whatsappGateway.latencyMs)} latency`
+                                            ? status.whatsappGateway.waConnected
+                                                ? 'WhatsApp connected'
+                                                : `${formatLatency(status.whatsappGateway.latencyMs)} latency`
                                             : status.whatsappGateway.error === 'timeout'
                                                 ? 'Request timed out'
                                                 : 'Connection failed'}
