@@ -552,19 +552,25 @@ export default function NotificationFlowDrawer({
                                                     </label>
                                                     {localSetting.recipient_config?.recipient_targets?.roles && (
                                                         <div className="ml-6 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded text-sm animate-in fade-in slide-in-from-top-1 duration-200">
-                                                            {['super_admin', 'admin', 'distributor', 'warehouse'].map(role => (
-                                                                <label key={role} className="flex items-center gap-2 cursor-pointer">
+                                                            {([
+                                                                { code: 'SUPER', label: 'Super Admin' },
+                                                                { code: 'HQ_ADMIN', label: 'Admin' },
+                                                                { code: 'DIST_ADMIN', label: 'Distributor' },
+                                                                { code: 'WH_MANAGER', label: 'Warehouse Mgr' },
+                                                                { code: 'USER', label: 'User (Staff)' },
+                                                            ] as {code:string,label:string}[]).map(({ code, label }) => (
+                                                                <label key={code} className="flex items-center gap-2 cursor-pointer">
                                                                     <Checkbox
-                                                                        checked={!!localSetting.recipient_config?.roles?.includes(role)}
+                                                                        checked={!!localSetting.recipient_config?.roles?.includes(code)}
                                                                         onCheckedChange={(c) => {
                                                                             const currentRoles = localSetting.recipient_config?.roles || []
                                                                             const newRoles = c
-                                                                                ? [...currentRoles, role]
-                                                                                : currentRoles.filter((r: string) => r !== role)
+                                                                                ? [...currentRoles, code]
+                                                                                : currentRoles.filter((r: string) => r !== code)
                                                                             updateRecipientConfig({ roles: newRoles })
                                                                         }}
                                                                     />
-                                                                    <span className="capitalize">{role.replace('_', ' ')}</span>
+                                                                    <span>{label}</span>
                                                                 </label>
                                                             ))}
                                                         </div>
