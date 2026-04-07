@@ -72,7 +72,8 @@ const nextConfig = {
   },
 
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
+    // Keep console logs in staging for debugging
+    removeConsole: process.env.NODE_ENV === 'production' && process.env.REMOVE_CONSOLE === 'true',
   },
 
   // Exclude problematic packages from being bundled as external modules

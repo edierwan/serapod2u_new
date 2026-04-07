@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       if (candidateUsers.length === 0) {
         console.error('Phone lookup failed for formats:', phonesToTry)
         return NextResponse.json(
-          { success: false, error: 'Invalid shop ID or password' }, // Generic error for security
+          { success: false, error: 'No account found for this phone number. Please register first.', noAccount: true },
           { status: 401 }
         )
       }
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
       if (!matchedAuthData?.user) {
         console.error('Authentication failed for all phone candidates:', matchedSignInError)
         return NextResponse.json(
-          { success: false, error: 'Invalid shop ID or password' },
+          { success: false, error: 'Incorrect password. Please try again or use Forgot Password.', wrongPassword: true },
           { status: 401 }
         )
       }
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       if (signInError || !authData.user) {
         console.error('Authentication failed:', signInError)
         return NextResponse.json(
-          { success: false, error: 'Invalid shop ID or password' },
+          { success: false, error: 'Incorrect password. Please try again or use Forgot Password.', wrongPassword: true },
           { status: 401 }
         )
       }
