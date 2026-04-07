@@ -95,23 +95,23 @@ export default function ServicesStatusSection() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* WhatsApp Gateway Card */}
                     <div className={`flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${loading
-                            ? 'bg-gray-50 border-gray-200'
-                            : status?.whatsappGateway.up
-                                ? 'bg-green-50 border-green-200'
-                                : 'bg-red-50 border-red-200'
+                        ? 'bg-gray-50 border-gray-200'
+                        : status?.whatsappGateway.up
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-red-50 border-red-200'
                         }`}>
                         <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-full ${loading
-                                    ? 'bg-gray-200'
-                                    : status?.whatsappGateway.up
-                                        ? 'bg-green-100'
-                                        : 'bg-red-100'
+                                ? 'bg-gray-200'
+                                : status?.whatsappGateway.up
+                                    ? 'bg-green-100'
+                                    : 'bg-red-100'
                                 }`}>
                                 <Wifi className={`w-5 h-5 ${loading
-                                        ? 'text-gray-500'
-                                        : status?.whatsappGateway.up
-                                            ? 'text-green-600'
-                                            : 'text-red-600'
+                                    ? 'text-gray-500'
+                                    : status?.whatsappGateway.up
+                                        ? 'text-green-600'
+                                        : 'text-red-600'
                                     }`} />
                             </div>
                             <div>
@@ -154,23 +154,23 @@ export default function ServicesStatusSection() {
 
                     {/* AI Bot (Moltbot) Card */}
                     <div className={`flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${loading
-                            ? 'bg-gray-50 border-gray-200'
-                            : status?.moltbot.up
-                                ? 'bg-blue-50 border-blue-200'
-                                : 'bg-red-50 border-red-200'
+                        ? 'bg-gray-50 border-gray-200'
+                        : status?.moltbot.up
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'bg-red-50 border-red-200'
                         }`}>
                         <div className="flex items-center gap-3">
                             <div className={`p-2 rounded-full ${loading
-                                    ? 'bg-gray-200'
-                                    : status?.moltbot.up
-                                        ? 'bg-blue-100'
-                                        : 'bg-red-100'
+                                ? 'bg-gray-200'
+                                : status?.moltbot.up
+                                    ? 'bg-blue-100'
+                                    : 'bg-red-100'
                                 }`}>
                                 <Bot className={`w-5 h-5 ${loading
-                                        ? 'text-gray-500'
-                                        : status?.moltbot.up
-                                            ? 'text-blue-600'
-                                            : 'text-red-600'
+                                    ? 'text-gray-500'
+                                    : status?.moltbot.up
+                                        ? 'text-blue-600'
+                                        : 'text-red-600'
                                     }`} />
                             </div>
                             <div>

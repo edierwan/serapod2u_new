@@ -443,9 +443,9 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                                       >
                                         {selectedOrgId
                                           ? (() => {
-                                              const s = shops.find(s => s.id === selectedOrgId)
-                                              return s ? `${s.org_name}${s.branch ? ` (${s.branch})` : ''}` : 'Select shop...'
-                                            })()
+                                            const s = shops.find(s => s.id === selectedOrgId)
+                                            return s ? `${s.org_name}${s.branch ? ` (${s.branch})` : ''}` : 'Select shop...'
+                                          })()
                                           : 'Search shop...'}
                                         <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                                       </Button>
