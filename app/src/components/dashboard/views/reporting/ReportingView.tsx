@@ -55,13 +55,15 @@ import {
     Clock,
     CheckCircle2,
     AlertCircle,
-    Zap
+    Zap,
+    Store
 } from 'lucide-react'
 import { format, subDays, startOfMonth, endOfMonth, differenceInDays } from 'date-fns'
 import ConsumerAnalyticsTab from './ConsumerAnalyticsTab'
 import DistributorReportsTab from './DistributorReportsTab'
 import OperationsTab from './OperationsTab'
 import ProductsTab from './ProductsTab'
+import ShopPerformanceTab from './ShopPerformanceTab'
 
 interface ReportingViewProps {
     userProfile: any
@@ -476,6 +478,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             <Users className="w-4 h-4 mr-2" />
                             Consumer Analytics
                         </TabsTrigger>
+                        <TabsTrigger value="shop-performance" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                            <Store className="w-4 h-4 mr-2" />
+                            Shop Performance
+                        </TabsTrigger>
                         <TabsTrigger value="distributors" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
                             <Building2 className="w-4 h-4 mr-2" />
                             Distributor
@@ -876,6 +882,16 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                     {/* Consumer Analytics Tab */}
                     <TabsContent value="consumer-analytics" className="space-y-6 animate-in fade-in-50 duration-500">
                         <ConsumerAnalyticsTab
+                            userProfile={userProfile}
+                            chartGridColor={chartGridColor}
+                            chartTickColor={chartTickColor}
+                            isDark={isDark}
+                        />
+                    </TabsContent>
+
+                    {/* Shop Performance Tab */}
+                    <TabsContent value="shop-performance" className="space-y-6 animate-in fade-in-50 duration-500">
+                        <ShopPerformanceTab
                             userProfile={userProfile}
                             chartGridColor={chartGridColor}
                             chartTickColor={chartTickColor}

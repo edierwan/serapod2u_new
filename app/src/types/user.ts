@@ -97,4 +97,5 @@ export interface Organization {
   org_name: string
   org_code: string
   org_type_code?: string
+  branch?: string | null
 }

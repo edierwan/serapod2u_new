@@ -1374,147 +1374,147 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             </TabsList>
 
             <TabsContent value="balances" className="space-y-4">
-          {/* Info Banner */}
-          <Card className="border-blue-200 bg-blue-50/50">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <div className="rounded-full bg-blue-100 p-2">
-                  <Trophy className="h-5 w-5 text-blue-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-blue-900">Shop Point Collection System</h3>
-                  <p className="mt-1 text-sm text-blue-800">
-                    Shops collect points through the mobile app by entering their Shop ID and password.
-                    All point collections are tracked here for monitoring and management.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                      ✓ Mobile Point Collection
-                    </Badge>
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                      ✓ Real-time Balance Updates
-                    </Badge>
-                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                      ✓ Transaction History
-                    </Badge>
+              {/* Info Banner */}
+              <Card className="border-blue-200 bg-blue-50/50">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-blue-100 p-2">
+                      <Trophy className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900">Shop Point Collection System</h3>
+                      <p className="mt-1 text-sm text-blue-800">
+                        Shops collect points through the mobile app by entering their Shop ID and password.
+                        All point collections are tracked here for monitoring and management.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                          ✓ Mobile Point Collection
+                        </Badge>
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                          ✓ Real-time Balance Updates
+                        </Badge>
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                          ✓ Transaction History
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Users className="h-4 w-4" /> Shop Point Balances
-                  </CardTitle>
-                  <CardDescription>Monitor shop point collections and balances. Adjust points or transfer from old system if needed.</CardDescription>
-                </div>
-                <div className="relative sm:min-w-[280px]">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={userSearchTerm}
-                    onChange={(e) => setUserSearchTerm(e.target.value)}
-                    placeholder="Search by shop name, phone, or email..."
-                    className="pl-9"
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {usersLoading ? (
-                <div className="flex items-center justify-center py-16 text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading shop users…
-                </div>
-              ) : filteredUsers.length === 0 ? (
-                <div className="py-16 text-center text-sm text-muted-foreground">
-                  {shopUsers.length === 0
-                    ? "No shop points collected yet. Shops can collect points through the mobile app."
-                    : "No users match your search."}
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-border text-sm">
-                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Shop User</th>
-                        <th className="px-4 py-3">Current Balance</th>
-                        <th className="px-4 py-3">Collected (System)</th>
-                        <th className="px-4 py-3">Collected (Manual)</th>
-                        <th className="px-4 py-3">Total Redeemed</th>
-                        <th className="px-4 py-3">Transactions</th>
-                        <th className="px-4 py-3">Last Activity</th>
-                        <th className="px-4 py-3">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {filteredUsers.map((user) => (
-                        <tr key={user.user_id} className="hover:bg-muted/40">
-                          <td className="px-4 py-4">
-                            <div className="font-semibold text-foreground">{user.shop_name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {user.shop_phone}
-                            </div>
-                            {user.shop_email && (
-                              <div className="text-xs text-muted-foreground">{user.shop_email}</div>
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <Trophy className="h-4 w-4 text-blue-500" />
-                              <span className="text-lg font-semibold text-blue-600">
-                                {formatNumber(user.current_balance)}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-1 text-emerald-600">
-                              <CheckCircle2 className="h-3 w-3" />
-                              <span>+{formatNumber(user.total_collected_system)}</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground">via QR scans</div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-1 text-blue-600">
-                              <Edit className="h-3 w-3" />
-                              <span>+{formatNumber(user.total_collected_manual)}</span>
-                            </div>
-                            <div className="text-xs text-muted-foreground">by admin</div>
-                          </td>
-                          <td className="px-4 py-4 text-amber-600">
-                            -{formatNumber(user.total_redeemed)}
-                          </td>
-                          <td className="px-4 py-4 text-muted-foreground">
-                            {user.transaction_count}
-                          </td>
-                          <td className="px-4 py-4 text-xs text-muted-foreground">
-                            {user.last_transaction_date
-                              ? formatRelative(new Date(user.last_transaction_date))
-                              : 'Never'}
-                          </td>
-                          <td className="px-4 py-4">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1"
-                              onClick={() => {
-                                setSelectedUser(user)
-                                setShowAdjustPointsModal(true)
-                              }}
-                            >
-                              <Edit className="h-4 w-4" /> Adjust Points
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Users className="h-4 w-4" /> Shop Point Balances
+                      </CardTitle>
+                      <CardDescription>Monitor shop point collections and balances. Adjust points or transfer from old system if needed.</CardDescription>
+                    </div>
+                    <div className="relative sm:min-w-[280px]">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={userSearchTerm}
+                        onChange={(e) => setUserSearchTerm(e.target.value)}
+                        placeholder="Search by shop name, phone, or email..."
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {usersLoading ? (
+                    <div className="flex items-center justify-center py-16 text-muted-foreground">
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading shop users…
+                    </div>
+                  ) : filteredUsers.length === 0 ? (
+                    <div className="py-16 text-center text-sm text-muted-foreground">
+                      {shopUsers.length === 0
+                        ? "No shop points collected yet. Shops can collect points through the mobile app."
+                        : "No users match your search."}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-border text-sm">
+                        <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-3">Shop User</th>
+                            <th className="px-4 py-3">Current Balance</th>
+                            <th className="px-4 py-3">Collected (System)</th>
+                            <th className="px-4 py-3">Collected (Manual)</th>
+                            <th className="px-4 py-3">Total Redeemed</th>
+                            <th className="px-4 py-3">Transactions</th>
+                            <th className="px-4 py-3">Last Activity</th>
+                            <th className="px-4 py-3">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {filteredUsers.map((user) => (
+                            <tr key={user.user_id} className="hover:bg-muted/40">
+                              <td className="px-4 py-4">
+                                <div className="font-semibold text-foreground">{user.shop_name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {user.shop_phone}
+                                </div>
+                                {user.shop_email && (
+                                  <div className="text-xs text-muted-foreground">{user.shop_email}</div>
+                                )}
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Trophy className="h-4 w-4 text-blue-500" />
+                                  <span className="text-lg font-semibold text-blue-600">
+                                    {formatNumber(user.current_balance)}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-1 text-emerald-600">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  <span>+{formatNumber(user.total_collected_system)}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">via QR scans</div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-1 text-blue-600">
+                                  <Edit className="h-3 w-3" />
+                                  <span>+{formatNumber(user.total_collected_manual)}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">by admin</div>
+                              </td>
+                              <td className="px-4 py-4 text-amber-600">
+                                -{formatNumber(user.total_redeemed)}
+                              </td>
+                              <td className="px-4 py-4 text-muted-foreground">
+                                {user.transaction_count}
+                              </td>
+                              <td className="px-4 py-4 text-xs text-muted-foreground">
+                                {user.last_transaction_date
+                                  ? formatRelative(new Date(user.last_transaction_date))
+                                  : 'Never'}
+                              </td>
+                              <td className="px-4 py-4">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1"
+                                  onClick={() => {
+                                    setSelectedUser(user)
+                                    setShowAdjustPointsModal(true)
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4" /> Adjust Points
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="shop-report" className="space-y-4">

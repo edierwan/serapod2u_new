@@ -140,6 +140,7 @@ export async function POST(request: NextRequest) {
       }
 
       let assigned = 0
+      let scansBackfilled = 0
       let errors: string[] = []
 
       for (const { user_id, org_id } of assignments) {
@@ -152,15 +153,27 @@ export async function POST(request: NextRequest) {
           errors.push(`${user_id}: ${updateErr.message}`)
         } else {
           assigned++
+          // Retroactively link existing scans to this shop
+          const { count, error: scanErr } = await admin
+            .from('consumer_qr_scans')
+            .update({ shop_id: org_id })
+            .eq('consumer_id', user_id)
+            .is('shop_id', null)
+          if (scanErr) {
+            console.warn(`Scan backfill warning for ${user_id}:`, scanErr.message)
+          } else {
+            scansBackfilled += (count ?? 0)
+          }
         }
       }
 
       return NextResponse.json({
         success: true,
         assigned,
+        scansBackfilled,
         total: assignments.length,
         errors: errors.length > 0 ? errors : undefined,
-        message: `Assigned ${assigned} of ${assignments.length} consumers`
+        message: `Assigned ${assigned} of ${assignments.length} consumers. ${scansBackfilled} scan(s) retroactively linked.`
       })
     }
 
