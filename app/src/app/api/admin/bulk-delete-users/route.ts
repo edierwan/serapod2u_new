@@ -18,7 +18,8 @@ const KEEP_ALIVE_INTERVAL = 10000; // Send keep-alive ping every 10 seconds
  */
 async function batchDeleteRelatedData(
     userIds: string[],
-    supabaseAdmin: any
+    supabaseAdmin: any,
+    transferUserId: string
 ): Promise<void> {
     // Get all user emails and phones in one query
     const { data: users } = await supabaseAdmin
@@ -49,6 +50,14 @@ async function batchDeleteRelatedData(
         
         // Set null on consumer_qr_scans (batch)
         supabaseAdmin.from("consumer_qr_scans").update({ consumer_id: null }).in("consumer_id", userIds),
+
+        // Transfer retained business records to the deleting admin.
+        supabaseAdmin.from("documents").update({ created_by: transferUserId }).in("created_by", userIds),
+        supabaseAdmin.from("documents").update({ acknowledged_by: null }).in("acknowledged_by", userIds),
+        supabaseAdmin.from("document_files").update({ uploaded_by: transferUserId }).in("uploaded_by", userIds),
+        supabaseAdmin.from("orders").update({ created_by: transferUserId }).in("created_by", userIds),
+        supabaseAdmin.from("orders").update({ approved_by: null }).in("approved_by", userIds),
+        supabaseAdmin.from("orders").update({ updated_by: null }).in("updated_by", userIds),
     ]);
 }
 
@@ -206,7 +215,7 @@ export async function POST(request: NextRequest) {
                 const RELATED_DATA_BATCH_SIZE = 100;
                 for (let i = 0; i < usersToDelete.length; i += RELATED_DATA_BATCH_SIZE) {
                     const batch = usersToDelete.slice(i, i + RELATED_DATA_BATCH_SIZE);
-                    await batchDeleteRelatedData(batch, supabaseAdmin);
+                    await batchDeleteRelatedData(batch, supabaseAdmin, callerId);
                     
                     const progress = Math.round(5 + ((i + batch.length) / usersToDelete.length) * 25);
                     sendEvent("progress", {

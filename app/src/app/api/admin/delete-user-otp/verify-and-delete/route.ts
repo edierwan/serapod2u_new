@@ -158,9 +158,9 @@ export async function POST(request: NextRequest) {
         const { error: e5 } = await admin.from('consumer_qr_scans').update({ consumer_id: null }).eq('consumer_id', targetUserId)
         if (e5) cleanupErrors.push(`consumer_qr_scans: ${e5.message}`)
 
-        // Nullify documents.created_by (the FK that was causing the original error)
-        const { error: e6 } = await db.from('documents').update({ created_by: null }).eq('created_by', targetUserId)
-        if (e6) cleanupErrors.push(`documents: ${e6.message}`)
+        // Reassign retained business records so hard delete does not break foreign keys.
+        const ownershipTransferErrors = await transferOwnedBusinessRecords(db, targetUserId, user.id)
+        cleanupErrors.push(...ownershipTransferErrors)
 
         // Nullify reference_assignments
         await admin.from('reference_assignments').update({ reference_user_id: null }).eq('reference_user_id', targetUserId)
@@ -250,4 +250,39 @@ async function logDeletionAudit(
             created_at: new Date().toISOString(),
         })
     } catch { /* best effort */ }
+}
+
+async function transferOwnedBusinessRecords(
+    admin: any,
+    fromUserId: string,
+    toUserId: string
+): Promise<string[]> {
+    const errors: string[] = []
+
+    const operations: Array<{
+        table: string
+        column: string
+        value: string | null
+        label: string
+    }> = [
+        { table: 'documents', column: 'created_by', value: toUserId, label: 'documents.created_by' },
+        { table: 'documents', column: 'acknowledged_by', value: null, label: 'documents.acknowledged_by' },
+        { table: 'document_files', column: 'uploaded_by', value: toUserId, label: 'document_files.uploaded_by' },
+        { table: 'orders', column: 'created_by', value: toUserId, label: 'orders.created_by' },
+        { table: 'orders', column: 'approved_by', value: null, label: 'orders.approved_by' },
+        { table: 'orders', column: 'updated_by', value: null, label: 'orders.updated_by' },
+    ]
+
+    for (const operation of operations) {
+        const { error } = await admin
+            .from(operation.table)
+            .update({ [operation.column]: operation.value })
+            .eq(operation.column, fromUserId)
+
+        if (error) {
+            errors.push(`${operation.label}: ${error.message}`)
+        }
+    }
+
+    return errors
 }
