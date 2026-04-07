@@ -6,7 +6,6 @@ import { useSupabaseAuth } from "@/lib/hooks/useSupabaseAuth";
 import { useToast } from "@/components/ui/use-toast";
 import {
   createUserWithAuth,
-  deleteUserWithAuth,
   updateUserWithAuth,
 } from "@/lib/actions";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,7 +39,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  AlertTriangle,
+  Shield,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import UserDialogNew from "./UserDialogNew";
 import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
@@ -959,55 +968,81 @@ export default function UserManagementNew({
     }
   };
 
+  // --- OTP-protected deletion state ---
+  const [deleteOtpOpen, setDeleteOtpOpen] = useState(false);
+  const [deleteOtpStep, setDeleteOtpStep] = useState<'confirm' | 'otp' | 'deleting'>('confirm');
+  const [deleteTargetUser, setDeleteTargetUser] = useState<{ id: string; name: string } | null>(null);
+  const [deleteOtpCode, setDeleteOtpCode] = useState('');
+  const [deleteOtpCodeId, setDeleteOtpCodeId] = useState('');
+  const [deleteOtpMaskedPhone, setDeleteOtpMaskedPhone] = useState('');
+  const [deleteOtpError, setDeleteOtpError] = useState('');
+  const [deleteOtpSending, setDeleteOtpSending] = useState(false);
+
   const handleDeleteUser = async (userId: string, userName: string) => {
-    // Check permission before confirm
     const currentUserLevel = resolveCurrentUserLevel();
-    const targetUser = users.find(u => u.id === userId);
-    const targetUserLevel = (targetUser as any)?.roles?.role_level || 999;
-
-    if (targetUserLevel < currentUserLevel) {
-      toast({
-        title: "Permission Denied",
-        description: "You cannot delete a user with a higher role level than your own.",
-        variant: "destructive"
-      });
+    if (currentUserLevel !== 1) {
+      toast({ title: "Access Denied", description: "Only Super Admin can delete users.", variant: "destructive" });
       return;
     }
-
-    if (
-      !confirm(
-        `Are you sure you want to delete user "${userName}"?\n\nThis will:\n• Remove user from database\n• Delete from Supabase Auth\n• Remove all related data\n\nThis action cannot be undone.`,
-      )
-    ) {
+    if (userId === userProfile.id) {
+      toast({ title: "Not Allowed", description: "Cannot delete your own account.", variant: "destructive" });
       return;
     }
+    setDeleteTargetUser({ id: userId, name: userName });
+    setDeleteOtpStep('confirm');
+    setDeleteOtpCode('');
+    setDeleteOtpCodeId('');
+    setDeleteOtpError('');
+    setDeleteOtpOpen(true);
+  };
 
+  const handleDeleteOtpRequest = async () => {
+    if (!deleteTargetUser) return;
+    setDeleteOtpSending(true);
+    setDeleteOtpError('');
     try {
-      setIsSaving(true);
-
-      const result = await deleteUserWithAuth(userId);
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to delete user");
-      }
-
-      toast({
-        title: "Success",
-        description: result.warning || `${userName} deleted successfully`,
+      const res = await fetch('/api/admin/delete-user-otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId: deleteTargetUser.id }),
       });
-
-      await loadUsers();
-    } catch (error) {
-      console.error("Error deleting user:", error);
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "Failed to delete user",
-        variant: "destructive",
-      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+      setDeleteOtpCodeId(data.codeId);
+      setDeleteOtpMaskedPhone(data.maskedPhone);
+      setDeleteOtpStep('otp');
+    } catch (err: any) {
+      setDeleteOtpError(err.message);
     } finally {
-      setIsSaving(false);
+      setDeleteOtpSending(false);
     }
+  };
+
+  const handleDeleteOtpVerify = async () => {
+    if (!deleteTargetUser || !deleteOtpCode || !deleteOtpCodeId) return;
+    setDeleteOtpSending(true);
+    setDeleteOtpError('');
+    try {
+      setDeleteOtpStep('deleting');
+      const res = await fetch('/api/admin/delete-user-otp/verify-and-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId: deleteTargetUser.id, code: deleteOtpCode, codeId: deleteOtpCodeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteOtpStep('otp');
+        throw new Error(data.error || 'Verification failed');
+      }
+      toast({ title: "User Deleted", description: data.message || `${deleteTargetUser.name} deleted successfully` });
+      setDeleteOtpOpen(false);
+      await loadUsers();
+    } catch (err: any) {
+      setDeleteOtpError(err.message);
+    } finally {
+      setDeleteOtpSending(false);
+    }
+  };
   };
 
   const filteredUsers = useMemo(() => {
@@ -1723,25 +1758,27 @@ export default function UserManagementNew({
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                handleDeleteUser(
-                                  user.id,
-                                  user.full_name || user.email,
-                                )
-                              }
-                              disabled={isSaving || user.id === userProfile.id}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              title={
-                                user.id === userProfile.id
-                                  ? "Cannot delete yourself"
-                                  : "Delete user"
-                              }
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {resolveCurrentUserLevel() === 1 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteUser(
+                                    user.id,
+                                    user.full_name || user.email,
+                                  )
+                                }
+                                disabled={isSaving || user.id === userProfile.id}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title={
+                                  user.id === userProfile.id
+                                    ? "Cannot delete yourself"
+                                    : "Delete user (OTP required)"
+                                }
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1835,6 +1872,101 @@ export default function UserManagementNew({
           )}
         </CardContent>
       </Card>
+
+      {/* OTP-Protected Delete User Dialog */}
+      <Dialog open={deleteOtpOpen} onOpenChange={(open) => { if (!deleteOtpSending) { setDeleteOtpOpen(open); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5" />
+              {deleteOtpStep === 'confirm' ? 'Delete User' : deleteOtpStep === 'otp' ? 'Enter Verification Code' : 'Deleting User...'}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteOtpStep === 'confirm' && (
+                <>This will permanently delete <strong>{deleteTargetUser?.name}</strong> and all related data. A WhatsApp verification code will be sent to the organization&apos;s registered phone.</>
+              )}
+              {deleteOtpStep === 'otp' && (
+                <>A 4-digit code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to confirm deletion.</>
+              )}
+              {deleteOtpStep === 'deleting' && 'Please wait while the user is being deleted...'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {deleteOtpStep === 'confirm' && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Shield className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium mb-1">This action cannot be undone.</p>
+                    <ul className="list-disc ml-4 space-y-0.5 text-xs">
+                      <li>User will be removed from database & auth</li>
+                      <li>All audit logs, points, and activations will be deleted</li>
+                      <li>QR scan records will be anonymized</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {deleteOtpStep === 'otp' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
+                  <Input
+                    type="text"
+                    maxLength={4}
+                    value={deleteOtpCode}
+                    onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="0000"
+                    className="text-center text-2xl tracking-widest font-mono h-12"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-gray-500 text-center">Code expires in 5 minutes</p>
+              </div>
+            )}
+
+            {deleteOtpStep === 'deleting' && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+              </div>
+            )}
+
+            {deleteOtpError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600 text-center">{deleteOtpError}</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            {deleteOtpStep !== 'deleting' && (
+              <Button variant="outline" onClick={() => setDeleteOtpOpen(false)} disabled={deleteOtpSending}>
+                Cancel
+              </Button>
+            )}
+            {deleteOtpStep === 'confirm' && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOtpRequest}
+                disabled={deleteOtpSending}
+              >
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : 'Send Verification Code'}
+              </Button>
+            )}
+            {deleteOtpStep === 'otp' && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOtpVerify}
+                disabled={deleteOtpSending || deleteOtpCode.length !== 4}
+              >
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</> : 'Verify & Delete'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
