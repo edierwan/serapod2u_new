@@ -138,6 +138,7 @@ export async function updateUserWithAuth(userId: string, userData: {
   department_id?: string | null
   manager_user_id?: string | null
   position_id?: string | null
+  can_be_reference?: boolean
 }, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()

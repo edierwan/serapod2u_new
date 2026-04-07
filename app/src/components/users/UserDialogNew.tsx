@@ -18,6 +18,8 @@ import {
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
+import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
+import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 
 interface Bank {
   id: string
@@ -160,6 +162,7 @@ export default function UserDialogNew({
     shop_name?: string;
     address?: string;
     referral_phone?: string;
+    can_be_reference?: boolean;
   }>(
     user || {
       email: '',
@@ -182,7 +185,8 @@ export default function UserDialogNew({
       employment_status: 'active',
       shop_name: '',
       address: '',
-      referral_phone: ''
+      referral_phone: '',
+      can_be_reference: false,
     }
   )
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
@@ -448,6 +452,7 @@ export default function UserDialogNew({
           bank_id: (user as any).bank_id || '',
           bank_account_number: (user as any).bank_account_number || '',
           bank_account_holder_name: (user as any).bank_account_holder_name || '',
+          can_be_reference: (user as any).can_be_reference || false,
         })
         // Clean avatar URL (remove cache-busting params for display)
         setAvatarPreview(user.avatar_url ? user.avatar_url.split('?')[0] : null)
@@ -474,6 +479,7 @@ export default function UserDialogNew({
           shop_name: '',
           address: '',
           referral_phone: '',
+          can_be_reference: false,
         })
         setAvatarPreview(null)
       }
@@ -1106,6 +1112,24 @@ export default function UserDialogNew({
                   {errors.role_code && <p className="text-[11px] text-red-500">{errors.role_code}</p>}
                 </div>
               )}
+
+              {/* Eligible as Reference toggle - visible to HQ admins (level <= 20) for any user */}
+              {user && currentUserRoleLevel <= 20 && (
+                <div className="space-y-1.5 pt-2 border-t border-gray-100 mt-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="w-3.5 h-3.5 text-green-500" />
+                      <Label className="text-xs font-medium text-gray-700">Eligible as Reference</Label>
+                    </div>
+                    <Checkbox
+                      checked={(formData as any).can_be_reference || false}
+                      onCheckedChange={(checked) => handleInputChange('can_be_reference', !!checked)}
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 pl-5">Allow this user to appear in Reference / Account Manager selection</p>
+                </div>
+              )}
             </TabsContent>
 
             {/* ==================== BUSINESS TAB (End User Only) ==================== */}
@@ -1118,13 +1142,13 @@ export default function UserDialogNew({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="shop_name" className="text-xs font-medium text-gray-700">Shop Name</Label>
-                  <Input
-                    id="shop_name"
-                    placeholder="Enter shop name"
+                  <ShopPicker
                     value={(formData as any).shop_name || ''}
-                    onChange={(e) => handleInputChange('shop_name', e.target.value)}
+                    onSelect={(_shop: ShopResult | null, displayName: string) => {
+                      handleInputChange('shop_name', displayName)
+                    }}
                     disabled={isSaving}
-                    className="h-9 text-sm placeholder:text-gray-400"
+                    placeholder="Search shop or type name..."
                   />
                 </div>
 
@@ -1149,18 +1173,18 @@ export default function UserDialogNew({
                   <Label htmlFor="referral_phone" className="text-xs font-medium text-gray-700">
                     <span className="flex items-center gap-1.5">
                       <Phone className="w-3.5 h-3.5 text-gray-400" />
-                      Reference / Referral Phone
+                      Reference / Account Manager
                     </span>
                   </Label>
-                  <Input
-                    id="referral_phone"
-                    placeholder="Referral phone number"
+                  <ReferencePicker
                     value={(formData as any).referral_phone || ''}
-                    onChange={(e) => handleInputChange('referral_phone', e.target.value)}
+                    onSelect={(_ref: ReferenceUser | null, phone: string) => {
+                      handleInputChange('referral_phone', phone)
+                    }}
                     disabled={isSaving}
-                    className="h-9 text-sm placeholder:text-gray-400"
+                    placeholder="Search reference by name, phone, or email..."
                   />
-                  <p className="text-[11px] text-gray-400">Phone number of the person who referred this user</p>
+                  <p className="text-[11px] text-gray-400">Only users marked as eligible references can be selected</p>
                 </div>
 
                 <div className="space-y-1.5">

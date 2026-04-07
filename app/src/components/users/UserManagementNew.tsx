@@ -566,6 +566,7 @@ export default function UserManagementNew({
         if ("shop_name" in userData) updateData.shop_name = (userData as any).shop_name || null;
         if ("address" in userData) updateData.address = (userData as any).address || null;
         if ("referral_phone" in userData) updateData.referral_phone = (userData as any).referral_phone || null;
+        if ("can_be_reference" in userData) updateData.can_be_reference = !!(userData as any).can_be_reference;
 
         // Handle password reset (Super Admin only)
         if (resetPassword && resetPassword.password) {
