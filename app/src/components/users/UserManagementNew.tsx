@@ -1044,928 +1044,928 @@ export default function UserManagementNew({
     }
   };
 
-const filteredUsers = useMemo(() => {
-  return users
-    .filter((user) => {
-      // Search filter with phone normalization
-      const normalizePhoneForSearch = (p: string) => {
-        if (!p) return '';
-        // Strip all non-digits for comparison
-        return p.replace(/\D/g, '');
-      };
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter((user) => {
+        // Search filter with phone normalization
+        const normalizePhoneForSearch = (p: string) => {
+          if (!p) return '';
+          // Strip all non-digits for comparison
+          return p.replace(/\D/g, '');
+        };
 
-      const searchLower = searchQuery.toLowerCase();
-      const searchDigits = normalizePhoneForSearch(searchQuery);
-      const userPhoneDigits = normalizePhoneForSearch(user.phone || '');
+        const searchLower = searchQuery.toLowerCase();
+        const searchDigits = normalizePhoneForSearch(searchQuery);
+        const userPhoneDigits = normalizePhoneForSearch(user.phone || '');
 
-      const matchesSearch =
-        user.full_name?.toLowerCase().includes(searchLower) ||
-        user.email.toLowerCase().includes(searchLower) ||
-        user.phone?.includes(searchQuery) ||
-        // Also match normalized phone (digits only)
-        (searchDigits.length >= 8 && userPhoneDigits.includes(searchDigits));
+        const matchesSearch =
+          user.full_name?.toLowerCase().includes(searchLower) ||
+          user.email.toLowerCase().includes(searchLower) ||
+          user.phone?.includes(searchQuery) ||
+          // Also match normalized phone (digits only)
+          (searchDigits.length >= 8 && userPhoneDigits.includes(searchDigits));
 
-      // Role filter
-      const matchesRole = !roleFilter || user.role_code === roleFilter;
+        // Role filter
+        const matchesRole = !roleFilter || user.role_code === roleFilter;
 
-      // Organization filter
-      const matchesOrg = !orgFilter || user.organization_id === orgFilter;
+        // Organization filter
+        const matchesOrg = !orgFilter || user.organization_id === orgFilter;
 
-      // Organization Type filter
-      const userOrg = organizations.find(
-        (o) => o.id === user.organization_id,
-      );
-      const matchesOrgType =
-        !orgTypeFilter ||
-        (orgTypeFilter === "END_USER" && !user.organization_id) ||
-        (userOrg && userOrg.org_type_code === orgTypeFilter);
+        // Organization Type filter
+        const userOrg = organizations.find(
+          (o) => o.id === user.organization_id,
+        );
+        const matchesOrgType =
+          !orgTypeFilter ||
+          (orgTypeFilter === "END_USER" && !user.organization_id) ||
+          (userOrg && userOrg.org_type_code === orgTypeFilter);
 
-      // Status filter
-      const matchesStatus =
-        !statusFilter ||
-        (statusFilter === "online" && isUserOnline(user.last_login_at)) ||
-        (statusFilter === "active" && user.is_active) ||
-        (statusFilter === "inactive" && !user.is_active) ||
-        (statusFilter === "verified" && user.is_verified) ||
-        (statusFilter === "unverified" && !user.is_verified);
+        // Status filter
+        const matchesStatus =
+          !statusFilter ||
+          (statusFilter === "online" && isUserOnline(user.last_login_at)) ||
+          (statusFilter === "active" && user.is_active) ||
+          (statusFilter === "inactive" && !user.is_active) ||
+          (statusFilter === "verified" && user.is_verified) ||
+          (statusFilter === "unverified" && !user.is_verified);
 
-      return (
-        matchesSearch &&
-        matchesRole &&
-        matchesOrg &&
-        matchesOrgType &&
-        matchesStatus
-      );
-    })
-    .sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
+        return (
+          matchesSearch &&
+          matchesRole &&
+          matchesOrg &&
+          matchesOrgType &&
+          matchesStatus
+        );
+      })
+      .sort((a, b) => {
+        let aVal: any = a[sortField];
+        let bVal: any = b[sortField];
 
-      // Handle null values
-      if (aVal === null || aVal === undefined) return 1;
-      if (bVal === null || bVal === undefined) return -1;
+        // Handle null values
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
 
-      // Handle different data types
-      if (sortField === "created_at" || sortField === "last_login_at") {
-        aVal = new Date(aVal).getTime();
-        bVal = new Date(bVal).getTime();
-      } else if (sortField === "is_active") {
-        aVal = aVal ? 1 : 0;
-        bVal = bVal ? 1 : 0;
-      } else if (sortField === "full_name") {
-        aVal = (aVal || "").toLowerCase();
-        bVal = (bVal || "").toLowerCase();
-      } else if (sortField === "role_code") {
-        aVal =
-          roles.find((r) => r.role_code === a.role_code)?.role_name ||
-          a.role_code;
-        bVal =
-          roles.find((r) => r.role_code === b.role_code)?.role_name ||
-          b.role_code;
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
-      } else if (sortField === "organization_id") {
-        aVal =
-          organizations.find((o) => o.id === a.organization_id)?.org_name ||
-          "";
-        bVal =
-          organizations.find((o) => o.id === b.organization_id)?.org_name ||
-          "";
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
-      }
+        // Handle different data types
+        if (sortField === "created_at" || sortField === "last_login_at") {
+          aVal = new Date(aVal).getTime();
+          bVal = new Date(bVal).getTime();
+        } else if (sortField === "is_active") {
+          aVal = aVal ? 1 : 0;
+          bVal = bVal ? 1 : 0;
+        } else if (sortField === "full_name") {
+          aVal = (aVal || "").toLowerCase();
+          bVal = (bVal || "").toLowerCase();
+        } else if (sortField === "role_code") {
+          aVal =
+            roles.find((r) => r.role_code === a.role_code)?.role_name ||
+            a.role_code;
+          bVal =
+            roles.find((r) => r.role_code === b.role_code)?.role_name ||
+            b.role_code;
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        } else if (sortField === "organization_id") {
+          aVal =
+            organizations.find((o) => o.id === a.organization_id)?.org_name ||
+            "";
+          bVal =
+            organizations.find((o) => o.id === b.organization_id)?.org_name ||
+            "";
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
 
-      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-      return 0;
-    });
-}, [
-  users,
-  searchQuery,
-  roleFilter,
-  orgFilter,
-  orgTypeFilter,
-  statusFilter,
-  sortField,
-  sortDirection,
-  organizations,
-  roles,
-]);
+        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+  }, [
+    users,
+    searchQuery,
+    roleFilter,
+    orgFilter,
+    orgTypeFilter,
+    statusFilter,
+    sortField,
+    sortDirection,
+    organizations,
+    roles,
+  ]);
 
-// Pagination calculations - handle "All" option when pageSize is -1
-const effectivePageSize = pageSize === -1 ? filteredUsers.length : pageSize;
-const totalPages = pageSize === -1 ? 1 : Math.ceil(filteredUsers.length / pageSize);
-const startIndex = (currentPage - 1) * effectivePageSize;
-const endIndex = startIndex + effectivePageSize;
-const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+  // Pagination calculations - handle "All" option when pageSize is -1
+  const effectivePageSize = pageSize === -1 ? filteredUsers.length : pageSize;
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(filteredUsers.length / pageSize);
+  const startIndex = (currentPage - 1) * effectivePageSize;
+  const endIndex = startIndex + effectivePageSize;
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
-// Reset to page 1 when filters change
-useEffect(() => {
-  setCurrentPage(1);
-}, [
-  searchQuery,
-  roleFilter,
-  orgFilter,
-  orgTypeFilter,
-  statusFilter,
-  pageSize,
-]);
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchQuery,
+    roleFilter,
+    orgFilter,
+    orgTypeFilter,
+    statusFilter,
+    pageSize,
+  ]);
 
-const stats = {
-  total: filteredUsers.length, // Show filtered count based on active filters
-  active: filteredUsers.filter((u) => u.is_active).length,
-  verified: filteredUsers.filter((u) => u.is_verified).length,
-  online: filteredUsers.filter((u) => isUserOnline(u.last_login_at)).length,
-};
-
-const getInitials = (name: string | null): string => {
-  if (!name) return "U";
-  const parts = name.trim().split(" ");
-  if (parts.length >= 2)
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.substring(0, 2).toUpperCase();
-};
-
-const getRoleBadgeColor = (roleCode: string): string => {
-  const colors: Record<string, string> = {
-    SUPER: "bg-purple-100 text-purple-800",
-    HQ_ADMIN: "bg-blue-100 text-blue-800",
-    MANU_ADMIN: "bg-indigo-100 text-indigo-800",
-    DIST_ADMIN: "bg-green-100 text-green-800",
-    WH_MANAGER: "bg-orange-100 text-orange-800",
-    SHOP_MANAGER: "bg-pink-100 text-pink-800",
-    USER: "bg-gray-100 text-gray-800",
+  const stats = {
+    total: filteredUsers.length, // Show filtered count based on active filters
+    active: filteredUsers.filter((u) => u.is_active).length,
+    verified: filteredUsers.filter((u) => u.is_verified).length,
+    online: filteredUsers.filter((u) => isUserOnline(u.last_login_at)).length,
   };
-  return colors[roleCode] || "bg-gray-100 text-gray-800";
-};
 
-// Use shared getOrgTypeName from @/lib/utils/orgHierarchy
+  const getInitials = (name: string | null): string => {
+    if (!name) return "U";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2)
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  };
 
-if (loading) {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-    </div>
-  );
-}
+  const getRoleBadgeColor = (roleCode: string): string => {
+    const colors: Record<string, string> = {
+      SUPER: "bg-purple-100 text-purple-800",
+      HQ_ADMIN: "bg-blue-100 text-blue-800",
+      MANU_ADMIN: "bg-indigo-100 text-indigo-800",
+      DIST_ADMIN: "bg-green-100 text-green-800",
+      WH_MANAGER: "bg-orange-100 text-orange-800",
+      SHOP_MANAGER: "bg-pink-100 text-pink-800",
+      USER: "bg-gray-100 text-gray-800",
+    };
+    return colors[roleCode] || "bg-gray-100 text-gray-800";
+  };
 
-return (
-  <div className="space-y-6">
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-        <p className="text-gray-600">
-          Manage system users and access permissions
-        </p>
+  // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
       </div>
-      <Button
-        onClick={() => {
-          setEditingUser(null);
-          setDialogOpen(true);
-        }}
-        className="bg-blue-600 hover:bg-blue-700"
-        disabled={isSaving}
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        Add User
-      </Button>
-    </div>
+    );
+  }
 
-    <UserDialogNew
-      user={editingUser}
-      roles={roles}
-      organizations={organizations}
-      open={dialogOpen}
-      isSaving={isSaving}
-      currentUserRoleLevel={currentUserLevel}
-      onOpenChange={setDialogOpen}
-      onSave={handleSaveUser}
-    />
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+          <p className="text-gray-600">
+            Manage system users and access permissions
+          </p>
+        </div>
+        <Button
+          onClick={() => {
+            setEditingUser(null);
+            setDialogOpen(true);
+          }}
+          className="bg-blue-600 hover:bg-blue-700"
+          disabled={isSaving}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Add User
+        </Button>
+      </div>
 
-    {/* Stats Cards */}
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Users</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {stats.total}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-              <Users className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Online Now</p>
-              <p className="text-3xl font-bold text-emerald-600">
-                {stats.online}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center relative">
-              <Circle className="w-6 h-6 text-emerald-600 fill-emerald-500" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Active Users</p>
-              <p className="text-3xl font-bold text-green-600">
-                {stats.active}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Verified Users</p>
-              <p className="text-3xl font-bold text-purple-600">
-                {stats.verified}
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      <UserDialogNew
+        user={editingUser}
+        roles={roles}
+        organizations={organizations}
+        open={dialogOpen}
+        isSaving={isSaving}
+        currentUserRoleLevel={currentUserLevel}
+        onOpenChange={setDialogOpen}
+        onSave={handleSaveUser}
+      />
 
-    {/* Filters and Search */}
-    <Card>
-      <CardContent className="pt-6 space-y-4">
-        {/* Filters Row */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Role Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by Role
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              onChange={(e) => setRoleFilter(e.target.value)}
-              value={roleFilter}
-            >
-              <option value="">All Roles</option>
-              {roles.map((role) => (
-                <option key={role.role_code} value={role.role_code}>
-                  {role.role_name}
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Total Users</p>
+                <p className="text-3xl font-bold text-gray-900">
+                  {stats.total}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Users className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Online Now</p>
+                <p className="text-3xl font-bold text-emerald-600">
+                  {stats.online}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center relative">
+                <Circle className="w-6 h-6 text-emerald-600 fill-emerald-500" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Active Users</p>
+                <p className="text-3xl font-bold text-green-600">
+                  {stats.active}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Verified Users</p>
+                <p className="text-3xl font-bold text-purple-600">
+                  {stats.verified}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Organization Type Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by Organization Type
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              onChange={(e) => setOrgTypeFilter(e.target.value)}
-              value={orgTypeFilter}
-            >
-              <option value="">All Types</option>
-              {Array.from(
-                new Set(organizations.map((org) => org.org_type_code)),
-              )
-                .filter((t): t is string => !!t)
-                .map((typeCode) => (
-                  <option key={typeCode} value={typeCode}>
-                    {getOrgTypeName(typeCode)}
+      {/* Filters and Search */}
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          {/* Filters Row */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Role Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Role
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setRoleFilter(e.target.value)}
+                value={roleFilter}
+              >
+                <option value="">All Roles</option>
+                {roles.map((role) => (
+                  <option key={role.role_code} value={role.role_code}>
+                    {role.role_name}
                   </option>
                 ))}
-            </select>
+              </select>
+            </div>
+
+            {/* Organization Type Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Organization Type
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setOrgTypeFilter(e.target.value)}
+                value={orgTypeFilter}
+              >
+                <option value="">All Types</option>
+                {Array.from(
+                  new Set(organizations.map((org) => org.org_type_code)),
+                )
+                  .filter((t): t is string => !!t)
+                  .map((typeCode) => (
+                    <option key={typeCode} value={typeCode}>
+                      {getOrgTypeName(typeCode)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {/* Organization Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Organization
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setOrgFilter(e.target.value)}
+                value={orgFilter}
+              >
+                <option value="">All Organizations</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.org_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Status
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                value={statusFilter}
+              >
+                <option value="">All Status</option>
+                <option value="online">🟢 Online Now</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="verified">Verified</option>
+                <option value="unverified">Unverified</option>
+              </select>
+            </div>
           </div>
 
-          {/* Organization Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by Organization
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              onChange={(e) => setOrgFilter(e.target.value)}
-              value={orgFilter}
-            >
-              <option value="">All Organizations</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.org_name}
-                </option>
-              ))}
-            </select>
+          {/* Search Box */}
+          <div className="flex items-center gap-2">
+            <Search className="w-5 h-5 text-gray-400" />
+            <Input
+              placeholder="Search users by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1"
+            />
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Status Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Filter by Status
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              onChange={(e) => setStatusFilter(e.target.value)}
-              value={statusFilter}
-            >
-              <option value="">All Status</option>
-              <option value="online">🟢 Online Now</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="verified">Verified</option>
-              <option value="unverified">Unverified</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Search Box */}
-        <div className="flex items-center gap-2">
-          <Search className="w-5 h-5 text-gray-400" />
-          <Input
-            placeholder="Search users by name or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1"
-          />
-        </div>
-      </CardContent>
-    </Card>
-
-    {/* Users Table */}
-    <Card>
-      <CardContent className="pt-6">
-        {/* Delete Progress Indicator */}
-        {deleteProgress && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {deleteProgress.isDeleting ? (
-                  <Loader2 className="w-5 h-5 text-red-600 animate-spin" />
-                ) : (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                )}
-                <span className="text-sm font-medium text-red-900">
-                  {deleteProgress.message}
+      {/* Users Table */}
+      <Card>
+        <CardContent className="pt-6">
+          {/* Delete Progress Indicator */}
+          {deleteProgress && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {deleteProgress.isDeleting ? (
+                    <Loader2 className="w-5 h-5 text-red-600 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  )}
+                  <span className="text-sm font-medium text-red-900">
+                    {deleteProgress.message}
+                  </span>
+                </div>
+                <span className="text-sm text-red-700">
+                  {deleteProgress.current} / {deleteProgress.total}
                 </span>
               </div>
-              <span className="text-sm text-red-700">
-                {deleteProgress.current} / {deleteProgress.total}
-              </span>
-            </div>
-            <Progress value={deleteProgress.progress} className="h-2" />
-            <div className="flex justify-between text-xs text-red-600">
-              <span>
-                ✓ {deleteProgress.success} success
-              </span>
-              {deleteProgress.errors > 0 && (
+              <Progress value={deleteProgress.progress} className="h-2" />
+              <div className="flex justify-between text-xs text-red-600">
                 <span>
-                  ✗ {deleteProgress.errors} errors
+                  ✓ {deleteProgress.success} success
                 </span>
-              )}
+                {deleteProgress.errors > 0 && (
+                  <span>
+                    ✗ {deleteProgress.errors} errors
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {selectedUsers.size > 0 && !deleteProgress && (
-          <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">
-                {selectedUsers.size} user{selectedUsers.size > 1 ? "s" : ""}{" "}
-                selected
-              </span>
+          {selectedUsers.size > 0 && !deleteProgress && (
+            <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedUsers.size} user{selectedUsers.size > 1 ? "s" : ""}{" "}
+                  selected
+                </span>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isSaving}
+                className="gap-2"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Delete {selectedUsers.size} User
+                {selectedUsers.size > 1 ? "s" : ""}
+              </Button>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleBulkDelete}
-              disabled={isSaving}
-              className="gap-2"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Trash2 className="w-4 h-4" />
-              )}
-              Delete {selectedUsers.size} User
-              {selectedUsers.size > 1 ? "s" : ""}
-            </Button>
-          </div>
-        )}
-        {filteredUsers.length > 0 ? (
-          <>
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <Checkbox
-                        checked={
-                          filteredUsers.filter((u) => u.id !== userProfile.id)
-                            .length > 0 &&
-                          filteredUsers
-                            .filter((u) => u.id !== userProfile.id)
-                            .every((u) => selectedUsers.has(u.id))
-                        }
-                        onCheckedChange={handleSelectAll}
-                        disabled={
-                          filteredUsers.filter((u) => u.id !== userProfile.id)
-                            .length === 0
-                        }
-                      />
-                    </TableHead>
-                    <TableHead className="w-12 text-center">#</TableHead>
-                    <TableHead>
-                      <button
-                        onClick={() => handleSort("full_name")}
-                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                      >
-                        User
-                        {sortField === "full_name" ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="w-4 h-4" />
-                          ) : (
-                            <ArrowDown className="w-4 h-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-4 h-4 opacity-30" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        onClick={() => handleSort("role_code")}
-                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                      >
-                        Role
-                        {sortField === "role_code" ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="w-4 h-4" />
-                          ) : (
-                            <ArrowDown className="w-4 h-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-4 h-4 opacity-30" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        onClick={() => handleSort("organization_id")}
-                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                      >
-                        Organization
-                        {sortField === "organization_id" ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="w-4 h-4" />
-                          ) : (
-                            <ArrowDown className="w-4 h-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-4 h-4 opacity-30" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        onClick={() => handleSort("created_at")}
-                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                      >
-                        Join Date
-                        {sortField === "created_at" ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="w-4 h-4" />
-                          ) : (
-                            <ArrowDown className="w-4 h-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-4 h-4 opacity-30" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead>
-                      <button
-                        onClick={() => handleSort("last_login_at")}
-                        className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
-                      >
-                        {isGuestShopView ? 'Last QR Scan' : 'Last Login'}
-                        {sortField === "last_login_at" ? (
-                          sortDirection === "asc" ? (
-                            <ArrowUp className="w-4 h-4" />
-                          ) : (
-                            <ArrowDown className="w-4 h-4" />
-                          )
-                        ) : (
-                          <ArrowUpDown className="w-4 h-4 opacity-30" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedUsers.map((user, index) => (
-                    <TableRow key={user.id} className="hover:bg-gray-50">
-                      <TableCell>
+          )}
+          {filteredUsers.length > 0 ? (
+            <>
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">
                         <Checkbox
-                          checked={selectedUsers.has(user.id)}
-                          onCheckedChange={(checked) =>
-                            handleSelectUser(user.id, checked as boolean)
+                          checked={
+                            filteredUsers.filter((u) => u.id !== userProfile.id)
+                              .length > 0 &&
+                            filteredUsers
+                              .filter((u) => u.id !== userProfile.id)
+                              .every((u) => selectedUsers.has(u.id))
                           }
-                          disabled={user.id === userProfile.id}
+                          onCheckedChange={handleSelectAll}
+                          disabled={
+                            filteredUsers.filter((u) => u.id !== userProfile.id)
+                              .length === 0
+                          }
                         />
-                      </TableCell>
-                      <TableCell className="text-center text-gray-500 text-sm">
-                        {startIndex + index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <Avatar className="w-10 h-10">
-                              {user.avatar_url && (
-                                <AvatarImage
-                                  src={
-                                    getStorageUrl(
-                                      `${user.avatar_url.split("?")[0]}?t=${new Date(user.updated_at).getTime()}`,
-                                    ) || user.avatar_url
-                                  }
-                                  alt={user.full_name || "User"}
-                                  key={`avatar-${user.id}-${user.updated_at}`}
+                      </TableHead>
+                      <TableHead className="w-12 text-center">#</TableHead>
+                      <TableHead>
+                        <button
+                          onClick={() => handleSort("full_name")}
+                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                        >
+                          User
+                          {sortField === "full_name" ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="w-4 h-4" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-30" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          onClick={() => handleSort("role_code")}
+                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                        >
+                          Role
+                          {sortField === "role_code" ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="w-4 h-4" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-30" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          onClick={() => handleSort("organization_id")}
+                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                        >
+                          Organization
+                          {sortField === "organization_id" ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="w-4 h-4" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-30" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          onClick={() => handleSort("created_at")}
+                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                        >
+                          Join Date
+                          {sortField === "created_at" ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="w-4 h-4" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-30" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          onClick={() => handleSort("last_login_at")}
+                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                        >
+                          {isGuestShopView ? 'Last QR Scan' : 'Last Login'}
+                          {sortField === "last_login_at" ? (
+                            sortDirection === "asc" ? (
+                              <ArrowUp className="w-4 h-4" />
+                            ) : (
+                              <ArrowDown className="w-4 h-4" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-4 h-4 opacity-30" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedUsers.map((user, index) => (
+                      <TableRow key={user.id} className="hover:bg-gray-50">
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedUsers.has(user.id)}
+                            onCheckedChange={(checked) =>
+                              handleSelectUser(user.id, checked as boolean)
+                            }
+                            disabled={user.id === userProfile.id}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center text-gray-500 text-sm">
+                          {startIndex + index + 1}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <Avatar className="w-10 h-10">
+                                {user.avatar_url && (
+                                  <AvatarImage
+                                    src={
+                                      getStorageUrl(
+                                        `${user.avatar_url.split("?")[0]}?t=${new Date(user.updated_at).getTime()}`,
+                                      ) || user.avatar_url
+                                    }
+                                    alt={user.full_name || "User"}
+                                    key={`avatar-${user.id}-${user.updated_at}`}
+                                  />
+                                )}
+                                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
+                                  {getInitials(user.full_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              {/* Online status indicator */}
+                              {isUserOnline(user.last_login_at) && (
+                                <span
+                                  className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"
+                                  title="Online now"
                                 />
                               )}
-                              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
-                                {getInitials(user.full_name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            {/* Online status indicator */}
-                            {isUserOnline(user.last_login_at) && (
-                              <span
-                                className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"
-                                title="Online now"
-                              />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <button
-                              onClick={() => {
-                                setEditingUser(user);
-                                setDialogOpen(true);
-                              }}
-                              className="text-gray-900 truncate font-medium hover:text-blue-600 hover:underline transition-colors text-left block max-w-full"
-                              title="Click to edit user"
-                            >
-                              {user.full_name || "No Name"}
-                            </button>
-                            <div className="text-xs text-gray-500 truncate">
-                              {user.email}
-                              {user.phone && (
-                                <span className="text-gray-400">
-                                  {" "}
-                                  | {user.phone}
-                                </span>
-                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <button
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setDialogOpen(true);
+                                }}
+                                className="text-gray-900 truncate font-medium hover:text-blue-600 hover:underline transition-colors text-left block max-w-full"
+                                title="Click to edit user"
+                              >
+                                {user.full_name || "No Name"}
+                              </button>
+                              <div className="text-xs text-gray-500 truncate">
+                                {user.email}
+                                {user.phone && (
+                                  <span className="text-gray-400">
+                                    {" "}
+                                    | {user.phone}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={getRoleBadgeColor(user.role_code)}
-                        >
-                          {roles.find((r) => r.role_code === user.role_code)
-                            ?.role_name || user.role_code}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="min-w-0">
-                          {(() => {
-                            const org = organizations.find(o => o.id === user.organization_id);
-                            if (!org) return <span className="text-gray-400 italic">End User</span>;
-                            if (org.org_type_code === 'SHOP') {
-                              return (
-                                <div>
-                                  <span className="text-gray-900 font-medium">{org.org_name}</span>
-                                  {org.branch && <span className="text-gray-500 text-xs ml-1">({org.branch})</span>}
-                                </div>
-                              );
-                            }
-                            return <span className="text-gray-900">{getOrgTypeName(org.org_type_code || "")}</span>;
-                          })()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-gray-900">
-                          {new Date(user.created_at).toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            },
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {isGuestShopView ? (
-                            /* Show last QR scan time */
-                            (() => {
-                              const lastScan = lastScanMap.get(user.id);
-                              return lastScan ? (
-                                <span className="text-gray-900">
-                                  {formatRelativeTime(lastScan)}
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 italic">No scans</span>
-                              );
-                            })()
-                          ) : (
-                            <>
-                              {isUserOnline(user.last_login_at) && (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
-                                  Online
-                                </span>
-                              )}
-                              <span
-                                className={
-                                  user.last_login_at
-                                    ? "text-gray-900"
-                                    : "text-gray-400 italic"
-                                }
-                              >
-                                {formatRelativeTime(user.last_login_at)}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              handleToggleActive(
-                                user.id,
-                                user.is_active,
-                                user.full_name || user.email,
-                              )
-                            }
-                            disabled={isSaving || user.id === userProfile.id}
-                            className={
-                              user.is_active
-                                ? "text-green-600 hover:text-green-700 hover:bg-green-50"
-                                : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-                            }
-                            title={
-                              user.id === userProfile.id
-                                ? "Cannot deactivate yourself"
-                                : user.is_active
-                                  ? "Deactivate user"
-                                  : "Activate user"
-                            }
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={getRoleBadgeColor(user.role_code)}
                           >
-                            <Power className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEditingUser(user);
-                              setDialogOpen(true);
-                            }}
-                            disabled={isSaving}
-                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            title="Edit user"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          {resolveCurrentUserLevel() === 1 && (
+                            {roles.find((r) => r.role_code === user.role_code)
+                              ?.role_name || user.role_code}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="min-w-0">
+                            {(() => {
+                              const org = organizations.find(o => o.id === user.organization_id);
+                              if (!org) return <span className="text-gray-400 italic">End User</span>;
+                              if (org.org_type_code === 'SHOP') {
+                                return (
+                                  <div>
+                                    <span className="text-gray-900 font-medium">{org.org_name}</span>
+                                    {org.branch && <span className="text-gray-500 text-xs ml-1">({org.branch})</span>}
+                                  </div>
+                                );
+                              }
+                              return <span className="text-gray-900">{getOrgTypeName(org.org_type_code || "")}</span>;
+                            })()}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-900">
+                            {new Date(user.created_at).toLocaleDateString(
+                              "en-US",
+                              {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              },
+                            )}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {isGuestShopView ? (
+                              /* Show last QR scan time */
+                              (() => {
+                                const lastScan = lastScanMap.get(user.id);
+                                return lastScan ? (
+                                  <span className="text-gray-900">
+                                    {formatRelativeTime(lastScan)}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 italic">No scans</span>
+                                );
+                              })()
+                            ) : (
+                              <>
+                                {isUserOnline(user.last_login_at) && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
+                                    Online
+                                  </span>
+                                )}
+                                <span
+                                  className={
+                                    user.last_login_at
+                                      ? "text-gray-900"
+                                      : "text-gray-400 italic"
+                                  }
+                                >
+                                  {formatRelativeTime(user.last_login_at)}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() =>
-                                handleDeleteUser(
+                                handleToggleActive(
                                   user.id,
+                                  user.is_active,
                                   user.full_name || user.email,
                                 )
                               }
                               disabled={isSaving || user.id === userProfile.id}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              className={
+                                user.is_active
+                                  ? "text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                              }
                               title={
                                 user.id === userProfile.id
-                                  ? "Cannot delete yourself"
-                                  : "Delete user (OTP required)"
+                                  ? "Cannot deactivate yourself"
+                                  : user.is_active
+                                    ? "Deactivate user"
+                                    : "Activate user"
                               }
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Power className="w-4 h-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Rows per page:</span>
-                <select
-                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size === -1 ? "All" : size}
-                    </option>
-                  ))}
-                </select>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingUser(user);
+                                setDialogOpen(true);
+                              }}
+                              disabled={isSaving}
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              title="Edit user"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            {resolveCurrentUserLevel() === 1 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteUser(
+                                    user.id,
+                                    user.full_name || user.email,
+                                  )
+                                }
+                                disabled={isSaving || user.id === userProfile.id}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title={
+                                  user.id === userProfile.id
+                                    ? "Cannot delete yourself"
+                                    : "Delete user (OTP required)"
+                                }
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
 
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600">
-                  Showing {startIndex + 1} to{" "}
-                  {Math.min(endIndex, filteredUsers.length)} of{" "}
-                  {filteredUsers.length} users
-                </span>
+              {/* Pagination Controls */}
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Rows per page:</span>
+                  <select
+                    className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size === -1 ? "All" : size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1 || pageSize === -1}
-                    className="hidden sm:flex"
-                  >
-                    First
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.max(1, prev - 1))
-                    }
-                    disabled={currentPage === 1 || pageSize === -1}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </Button>
-                  <span className="px-3 py-1 text-sm font-medium">
-                    {pageSize === -1 ? "All" : `Page ${currentPage} of ${totalPages || 1}`}
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-600">
+                    Showing {startIndex + 1} to{" "}
+                    {Math.min(endIndex, filteredUsers.length)} of{" "}
+                    {filteredUsers.length} users
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                    }
-                    disabled={currentPage >= totalPages || pageSize === -1}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage >= totalPages || pageSize === -1}
-                    className="hidden sm:flex"
-                  >
-                    Last
-                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1 || pageSize === -1}
+                      className="hidden sm:flex"
+                    >
+                      First
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={currentPage === 1 || pageSize === -1}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="px-3 py-1 text-sm font-medium">
+                      {pageSize === -1 ? "All" : `Page ${currentPage} of ${totalPages || 1}`}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                      }
+                      disabled={currentPage >= totalPages || pageSize === -1}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage >= totalPages || pageSize === -1}
+                      className="hidden sm:flex"
+                    >
+                      Last
+                    </Button>
+                  </div>
                 </div>
               </div>
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No users found
+              </h3>
+              <p className="text-gray-600">
+                {searchQuery
+                  ? "No users match your search"
+                  : "Start by adding your first user"}
+              </p>
             </div>
-          </>
-        ) : (
-          <div className="text-center py-12">
-            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No users found
-            </h3>
-            <p className="text-gray-600">
-              {searchQuery
-                ? "No users match your search"
-                : "Start by adding your first user"}
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
 
-    {/* OTP-Protected Delete User Dialog */}
-    <Dialog open={deleteOtpOpen} onOpenChange={(open) => { if (!deleteOtpSending) { setDeleteOtpOpen(open); } }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-700">
-            <AlertTriangle className="w-5 h-5" />
-            {deleteOtpStep === 'confirm' ? 'Delete User' : deleteOtpStep === 'otp' ? 'Enter Verification Code' : 'Deleting User...'}
-          </DialogTitle>
-          <DialogDescription>
+      {/* OTP-Protected Delete User Dialog */}
+      <Dialog open={deleteOtpOpen} onOpenChange={(open) => { if (!deleteOtpSending) { setDeleteOtpOpen(open); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5" />
+              {deleteOtpStep === 'confirm' ? 'Delete User' : deleteOtpStep === 'otp' ? 'Enter Verification Code' : 'Deleting User...'}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteOtpStep === 'confirm' && (
+                <>This will permanently delete <strong>{deleteTargetUser?.name}</strong> and all related data. A WhatsApp verification code will be sent to the organization&apos;s registered phone.</>
+              )}
+              {deleteOtpStep === 'otp' && (
+                <>A 4-digit code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to confirm deletion.</>
+              )}
+              {deleteOtpStep === 'deleting' && 'Please wait while the user is being deleted...'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
             {deleteOtpStep === 'confirm' && (
-              <>This will permanently delete <strong>{deleteTargetUser?.name}</strong> and all related data. A WhatsApp verification code will be sent to the organization&apos;s registered phone.</>
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Shield className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium mb-1">This action cannot be undone.</p>
+                    <ul className="list-disc ml-4 space-y-0.5 text-xs">
+                      <li>User will be removed from database & auth</li>
+                      <li>All audit logs, points, and activations will be deleted</li>
+                      <li>QR scan records will be anonymized</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {deleteOtpStep === 'otp' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
+                  <Input
+                    type="text"
+                    maxLength={4}
+                    value={deleteOtpCode}
+                    onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="0000"
+                    className="text-center text-2xl tracking-widest font-mono h-12"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-gray-500 text-center">Code expires in 5 minutes</p>
+              </div>
+            )}
+
+            {deleteOtpStep === 'deleting' && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+              </div>
+            )}
+
+            {deleteOtpError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600 text-center">{deleteOtpError}</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            {deleteOtpStep !== 'deleting' && (
+              <Button variant="outline" onClick={() => setDeleteOtpOpen(false)} disabled={deleteOtpSending}>
+                Cancel
+              </Button>
+            )}
+            {deleteOtpStep === 'confirm' && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOtpRequest}
+                disabled={deleteOtpSending}
+              >
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : 'Send Verification Code'}
+              </Button>
             )}
             {deleteOtpStep === 'otp' && (
-              <>A 4-digit code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to confirm deletion.</>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOtpVerify}
+                disabled={deleteOtpSending || deleteOtpCode.length !== 4}
+              >
+                {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</> : 'Verify & Delete'}
+              </Button>
             )}
-            {deleteOtpStep === 'deleting' && 'Please wait while the user is being deleted...'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          {deleteOtpStep === 'confirm' && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <Shield className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-red-800">
-                  <p className="font-medium mb-1">This action cannot be undone.</p>
-                  <ul className="list-disc ml-4 space-y-0.5 text-xs">
-                    <li>User will be removed from database & auth</li>
-                    <li>All audit logs, points, and activations will be deleted</li>
-                    <li>QR scan records will be anonymized</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deleteOtpStep === 'otp' && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
-                <Input
-                  type="text"
-                  maxLength={4}
-                  value={deleteOtpCode}
-                  onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="0000"
-                  className="text-center text-2xl tracking-widest font-mono h-12"
-                  autoFocus
-                />
-              </div>
-              <p className="text-xs text-gray-500 text-center">Code expires in 5 minutes</p>
-            </div>
-          )}
-
-          {deleteOtpStep === 'deleting' && (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-            </div>
-          )}
-
-          {deleteOtpError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600 text-center">{deleteOtpError}</p>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="flex gap-2 sm:gap-2">
-          {deleteOtpStep !== 'deleting' && (
-            <Button variant="outline" onClick={() => setDeleteOtpOpen(false)} disabled={deleteOtpSending}>
-              Cancel
-            </Button>
-          )}
-          {deleteOtpStep === 'confirm' && (
-            <Button
-              variant="destructive"
-              onClick={handleDeleteOtpRequest}
-              disabled={deleteOtpSending}
-            >
-              {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</> : 'Send Verification Code'}
-            </Button>
-          )}
-          {deleteOtpStep === 'otp' && (
-            <Button
-              variant="destructive"
-              onClick={handleDeleteOtpVerify}
-              disabled={deleteOtpSending || deleteOtpCode.length !== 4}
-            >
-              {deleteOtpSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</> : 'Verify & Delete'}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </div>
-);
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }

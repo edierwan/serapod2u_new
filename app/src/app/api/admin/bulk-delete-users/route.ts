@@ -34,20 +34,20 @@ async function batchDeleteRelatedData(
     await Promise.all([
         // Delete audit_logs for all users in batch
         supabaseAdmin.from("audit_logs").delete().in("user_id", userIds),
-        
+
         // Delete points_transactions for all users in batch
         supabaseAdmin.from("points_transactions").delete().in("user_id", userIds),
-        
+
         // Delete consumer_activations by email (batch)
-        emails.length > 0 
+        emails.length > 0
             ? supabaseAdmin.from("consumer_activations").delete().in("consumer_email", emails)
             : Promise.resolve(),
-        
+
         // Delete consumer_activations by phone (batch)
-        phones.length > 0 
+        phones.length > 0
             ? supabaseAdmin.from("consumer_activations").delete().in("consumer_phone", phones)
             : Promise.resolve(),
-        
+
         // Set null on consumer_qr_scans (batch)
         supabaseAdmin.from("consumer_qr_scans").update({ consumer_id: null }).in("consumer_id", userIds),
 
@@ -101,7 +101,7 @@ async function batchDeleteUsersFromAuth(
     const AUTH_BATCH_SIZE = 20;
     for (let i = 0; i < userIds.length; i += AUTH_BATCH_SIZE) {
         const batch = userIds.slice(i, i + AUTH_BATCH_SIZE);
-        
+
         const results = await Promise.allSettled(
             batch.map(userId => supabaseAdmin.auth.admin.deleteUser(userId))
         );
@@ -216,7 +216,7 @@ export async function POST(request: NextRequest) {
                 for (let i = 0; i < usersToDelete.length; i += RELATED_DATA_BATCH_SIZE) {
                     const batch = usersToDelete.slice(i, i + RELATED_DATA_BATCH_SIZE);
                     await batchDeleteRelatedData(batch, supabaseAdmin, callerId);
-                    
+
                     const progress = Math.round(5 + ((i + batch.length) / usersToDelete.length) * 25);
                     sendEvent("progress", {
                         current: i + batch.length,

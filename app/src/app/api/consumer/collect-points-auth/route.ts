@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') && 
+    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') &&
       (!shopUser.shop_name?.trim() || !shopUser.referral_phone?.trim())
 
     if (needsShopProfile) {

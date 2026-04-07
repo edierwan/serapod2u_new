@@ -265,13 +265,13 @@ async function transferOwnedBusinessRecords(
         value: string | null
         label: string
     }> = [
-        { table: 'documents', column: 'created_by', value: toUserId, label: 'documents.created_by' },
-        { table: 'documents', column: 'acknowledged_by', value: null, label: 'documents.acknowledged_by' },
-        { table: 'document_files', column: 'uploaded_by', value: toUserId, label: 'document_files.uploaded_by' },
-        { table: 'orders', column: 'created_by', value: toUserId, label: 'orders.created_by' },
-        { table: 'orders', column: 'approved_by', value: null, label: 'orders.approved_by' },
-        { table: 'orders', column: 'updated_by', value: null, label: 'orders.updated_by' },
-    ]
+            { table: 'documents', column: 'created_by', value: toUserId, label: 'documents.created_by' },
+            { table: 'documents', column: 'acknowledged_by', value: null, label: 'documents.acknowledged_by' },
+            { table: 'document_files', column: 'uploaded_by', value: toUserId, label: 'document_files.uploaded_by' },
+            { table: 'orders', column: 'created_by', value: toUserId, label: 'orders.created_by' },
+            { table: 'orders', column: 'approved_by', value: null, label: 'orders.approved_by' },
+            { table: 'orders', column: 'updated_by', value: null, label: 'orders.updated_by' },
+        ]
 
     for (const operation of operations) {
         const { error } = await admin
