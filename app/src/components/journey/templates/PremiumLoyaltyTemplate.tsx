@@ -5593,7 +5593,7 @@ export default function PremiumLoyaltyTemplate({
                                                 }}
                                                 placeholder="e.g., +60123456789"
                                                 className={`h-10 flex-1 ${referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
-                                                        referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
+                                                    referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
                                                     }`}
                                             />
                                             <Button
@@ -6827,8 +6827,8 @@ export default function PremiumLoyaltyTemplate({
                                                 key={idx}
                                                 onClick={() => setCurrentRewardImageIndex(idx)}
                                                 className={`w-2 h-2 rounded-full transition-colors ${idx === currentRewardImageIndex
-                                                        ? 'bg-gray-800'
-                                                        : 'bg-gray-300'
+                                                    ? 'bg-gray-800'
+                                                    : 'bg-gray-300'
                                                     }`}
                                             />
                                         ))}

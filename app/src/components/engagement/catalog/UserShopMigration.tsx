@@ -12,6 +12,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
   Search,
   Download,
   Loader2,
@@ -23,8 +36,10 @@ import {
   Store,
   Users,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  Check, ChevronsUpDown,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -416,18 +431,47 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                             {(user.match_status === 'unmatched' || user.match_status === 'no_shop') && (
                               isAssigning ? (
                                 <div className="flex items-center gap-2">
-                                  <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
-                                    <SelectTrigger className="h-8 w-[200px] text-xs">
-                                      <SelectValue placeholder="Select shop..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {shops.map(s => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                          {s.org_name}{s.branch ? ` (${s.branch})` : ''}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn(
+                                          "h-8 w-[240px] justify-between text-xs font-normal",
+                                          !selectedOrgId && "text-muted-foreground"
+                                        )}
+                                      >
+                                        {selectedOrgId
+                                          ? (() => {
+                                              const s = shops.find(s => s.id === selectedOrgId)
+                                              return s ? `${s.org_name}${s.branch ? ` (${s.branch})` : ''}` : 'Select shop...'
+                                            })()
+                                          : 'Search shop...'}
+                                        <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[280px] p-0" align="start">
+                                      <Command>
+                                        <CommandInput placeholder="Type shop name..." className="h-8 text-xs" />
+                                        <CommandList>
+                                          <CommandEmpty>No shop found.</CommandEmpty>
+                                          <CommandGroup>
+                                            {shops.map(s => (
+                                              <CommandItem
+                                                key={s.id}
+                                                value={`${s.org_name} ${s.branch || ''}`}
+                                                onSelect={() => setSelectedOrgId(s.id)}
+                                                className="text-xs"
+                                              >
+                                                <Check className={cn("mr-1.5 h-3 w-3", selectedOrgId === s.id ? "opacity-100" : "opacity-0")} />
+                                                {s.org_name}{s.branch ? ` (${s.branch})` : ''}
+                                              </CommandItem>
+                                            ))}
+                                          </CommandGroup>
+                                        </CommandList>
+                                      </Command>
+                                    </PopoverContent>
+                                  </Popover>
                                   <Button
                                     size="sm"
                                     className="h-8 text-xs"

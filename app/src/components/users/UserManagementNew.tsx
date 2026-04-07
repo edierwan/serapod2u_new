@@ -286,7 +286,7 @@ export default function UserManagementNew({
     try {
       const { data, error } = await supabase
         .from("organizations")
-        .select("id, org_name, org_code, org_type_code")
+        .select("id, org_name, org_code, org_type_code, branch")
         .eq("is_active", true)
         .order("org_name", { ascending: true });
 
@@ -296,6 +296,43 @@ export default function UserManagementNew({
       console.error("Error loading organizations:", error);
     }
   };
+
+  // ── Last QR Scan times for Guest/Shop view ──────────────────────────
+  const [lastScanMap, setLastScanMap] = useState<Map<string, string>>(new Map());
+
+  const isGuestShopView = roleFilter === 'GUEST' || roleFilter === 'USER' || orgTypeFilter === 'SHOP';
+
+  useEffect(() => {
+    if (!isGuestShopView || !isReady) {
+      setLastScanMap(new Map());
+      return;
+    }
+
+    const loadLastScans = async () => {
+      try {
+        // Fetch the latest scan per consumer
+        const { data, error } = await supabase
+          .from('consumer_qr_scans')
+          .select('consumer_id, scanned_at')
+          .eq('is_manual_adjustment', false)
+          .order('scanned_at', { ascending: false });
+
+        if (error) { console.error('Last scan fetch error:', error); return; }
+        // Build map: first occurrence per consumer_id = latest scan
+        const map = new Map<string, string>();
+        (data || []).forEach((row: any) => {
+          if (row.consumer_id && !map.has(row.consumer_id)) {
+            map.set(row.consumer_id, row.scanned_at);
+          }
+        });
+        setLastScanMap(map);
+      } catch (err) {
+        console.error('Last scan load error:', err);
+      }
+    };
+
+    loadLastScans();
+  }, [isGuestShopView, isReady, supabase]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1491,7 +1528,7 @@ export default function UserManagementNew({
                           onClick={() => handleSort("last_login_at")}
                           className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                         >
-                          Last Login
+                          {isGuestShopView ? 'Last QR Scan' : 'Last Login'}
                           {sortField === "last_login_at" ? (
                             sortDirection === "asc" ? (
                               <ArrowUp className="w-4 h-4" />
@@ -1582,21 +1619,19 @@ export default function UserManagementNew({
                         </TableCell>
                         <TableCell>
                           <div className="min-w-0">
-                            {organizations.find(
-                              (o) => o.id === user.organization_id,
-                            ) ? (
-                              <span className="text-gray-900">
-                                {getOrgTypeName(
-                                  organizations.find(
-                                    (o) => o.id === user.organization_id,
-                                  )?.org_type_code || "",
-                                )}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 italic">
-                                End User
-                              </span>
-                            )}
+                            {(() => {
+                              const org = organizations.find(o => o.id === user.organization_id);
+                              if (!org) return <span className="text-gray-400 italic">End User</span>;
+                              if (org.org_type_code === 'SHOP') {
+                                return (
+                                  <div>
+                                    <span className="text-gray-900 font-medium">{org.org_name}</span>
+                                    {org.branch && <span className="text-gray-500 text-xs ml-1">({org.branch})</span>}
+                                  </div>
+                                );
+                              }
+                              return <span className="text-gray-900">{getOrgTypeName(org.org_type_code || "")}</span>;
+                            })()}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1613,21 +1648,37 @@ export default function UserManagementNew({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {isUserOnline(user.last_login_at) && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
-                                Online
-                              </span>
+                            {isGuestShopView ? (
+                              /* Show last QR scan time */
+                              (() => {
+                                const lastScan = lastScanMap.get(user.id);
+                                return lastScan ? (
+                                  <span className="text-gray-900">
+                                    {formatRelativeTime(lastScan)}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 italic">No scans</span>
+                                );
+                              })()
+                            ) : (
+                              <>
+                                {isUserOnline(user.last_login_at) && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
+                                    Online
+                                  </span>
+                                )}
+                                <span
+                                  className={
+                                    user.last_login_at
+                                      ? "text-gray-900"
+                                      : "text-gray-400 italic"
+                                  }
+                                >
+                                  {formatRelativeTime(user.last_login_at)}
+                                </span>
+                              </>
                             )}
-                            <span
-                              className={
-                                user.last_login_at
-                                  ? "text-gray-900"
-                                  : "text-gray-400 italic"
-                              }
-                            >
-                              {formatRelativeTime(user.last_login_at)}
-                            </span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
