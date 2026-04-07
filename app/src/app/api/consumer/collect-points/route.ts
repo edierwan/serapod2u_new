@@ -77,13 +77,20 @@ export async function POST(request: NextRequest) {
       const phonesToTry = [rawPhone, withoutPlus, withPlus]
         .filter((v, i, a) => a.indexOf(v) === i) // unique
 
+      // Query candidates with org info to filter out HQ/non-consumer users
       const { data: usersByPhone } = await supabaseAdmin
         .from('users')
-        .select('id, email')
+        .select('id, email, organization_id, organizations!fk_users_organization(org_type_code)')
         .in('phone', phonesToTry)
         .eq('is_active', true)
 
-      const candidateUsers = (usersByPhone || []).filter((candidate: any) => !!candidate.email)
+      // Only keep users eligible to collect points: no org, SHOP org, or INDEP org
+      const candidateUsers = (usersByPhone || []).filter((candidate: any) => {
+        if (!candidate.email) return false
+        const org = candidate.organizations as any
+        if (!org) return true // No org = independent consumer
+        return org.org_type_code === 'SHOP' || org.org_type_code === 'INDEP'
+      })
 
       if (candidateUsers.length === 0) {
         console.error('Phone lookup failed for formats:', phonesToTry)
@@ -155,6 +162,7 @@ export async function POST(request: NextRequest) {
         phone, 
         full_name,
         shop_name,
+        referral_phone,
         avatar_url,
         organizations!fk_users_organization(
           id,
@@ -177,14 +185,18 @@ export async function POST(request: NextRequest) {
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
+    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') && 
+      (!shopUser.shop_name?.trim() || !shopUser.referral_phone?.trim())
 
     if (needsShopProfile) {
+      const missing: string[] = []
+      if (!shopUser.shop_name?.trim()) missing.push('Shop Name')
+      if (!shopUser.referral_phone?.trim()) missing.push('Reference')
       return NextResponse.json(
         {
           success: false,
           requiresProfileUpdate: true,
-          error: 'Please update your Shop Name and Reference in Profile before collecting points.'
+          error: `Please update your ${missing.join(' and ')} in Profile before collecting points.`
         },
         { status: 400 }
       )
