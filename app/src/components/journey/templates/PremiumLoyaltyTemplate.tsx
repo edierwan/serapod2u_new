@@ -517,6 +517,10 @@ export default function PremiumLoyaltyTemplate({
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
+    // Shop selection step in Collect Points flow
+    const [collectPointsStep, setCollectPointsStep] = useState<'shop' | 'login'>('shop')
+    const [selectedCollectShop, setSelectedCollectShop] = useState<{ org_id: string; display_label: string } | null>(null)
+    const [collectShopSearch, setCollectShopSearch] = useState('')
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -2485,6 +2489,9 @@ export default function PremiumLoyaltyTemplate({
                 // No valid session - show login modal
                 console.log('🔐 No valid session, showing login modal')
                 setPointsError('')
+                setCollectPointsStep('shop')
+                setSelectedCollectShop(null)
+                setCollectShopSearch('')
                 setShowPointsLoginModal(true)
                 break
             case 'lucky-draw':
@@ -2732,6 +2739,9 @@ export default function PremiumLoyaltyTemplate({
             // If session expired or user is not a shop user, fall back to login modal
             if (data.requiresLogin) {
                 setPointsError('')
+                setCollectPointsStep('shop')
+                setSelectedCollectShop(null)
+                setCollectShopSearch('')
                 setShowPointsLoginModal(true)
                 setCollectingPoints(false)
                 return
@@ -6077,114 +6087,221 @@ export default function PremiumLoyaltyTemplate({
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
                             >
-                                <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
+                                {collectPointsStep === 'shop' ? (
+                                    <Store className="w-8 h-8" style={{ color: config.primary_color }} />
+                                ) : (
+                                    <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
+                                )}
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">Collect Points</h3>
-                            <p className="text-sm text-gray-500 mt-1">Enter your credentials to collect points</p>
+                            <h3 className="text-xl font-bold text-gray-900">
+                                {collectPointsStep === 'shop' ? 'Select Your Shop' : 'Collect Points'}
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                                {collectPointsStep === 'shop'
+                                    ? 'Search and select the shop you work at'
+                                    : 'Enter your credentials to collect points'}
+                            </p>
                         </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
-                                <input
-                                    type="text"
-                                    value={shopId}
-                                    onChange={(e) => setShopId(e.target.value)}
-                                    placeholder="Enter your email or phone"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
-                                    style={{ '--tw-ring-color': config.primary_color } as any}
-                                    disabled={collectingPoints}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                <div className="relative">
-                                    <input
-                                        type={showShopPassword ? 'text' : 'password'}
-                                        value={shopPassword}
-                                        onChange={(e) => setShopPassword(e.target.value)}
-                                        placeholder="Enter your password"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 pr-10"
-                                        style={{ '--tw-ring-color': config.primary_color } as any}
-                                        disabled={collectingPoints}
-                                    />
+                        {collectPointsStep === 'shop' ? (
+                            <>
+                                {/* Shop Selection Step */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                                        <ShopPicker
+                                            value={collectShopSearch}
+                                            onSelect={(shop, displayName) => {
+                                                if (shop) {
+                                                    setSelectedCollectShop({ org_id: shop.org_id, display_label: shop.display_label })
+                                                } else {
+                                                    setSelectedCollectShop(null)
+                                                }
+                                                setCollectShopSearch(displayName)
+                                            }}
+                                            placeholder="Search shop by name..."
+                                        />
+                                    </div>
+
+                                    {selectedCollectShop && (
+                                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+                                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                            <span className="text-sm text-green-700 font-medium">{selectedCollectShop.display_label}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {pointsError && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                                        <p className="text-sm text-red-600 text-center">{pointsError}</p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
                                     <button
-                                        type="button"
-                                        onClick={() => setShowShopPassword(!showShopPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setPointsError('')
+                                            setCollectPointsStep('shop')
+                                            setSelectedCollectShop(null)
+                                            setCollectShopSearch('')
+                                        }}
+                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                     >
-                                        {showShopPassword ? (
-                                            <EyeOff className="w-5 h-5 text-gray-400" />
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setPointsError('')
+                                            setCollectPointsStep('login')
+                                        }}
+                                        disabled={!selectedCollectShop}
+                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+
+                                <div className="text-center mt-2">
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setCollectPointsStep('shop')
+                                            setSelectedCollectShop(null)
+                                            setCollectShopSearch('')
+                                            setShowFeedbackModal(true)
+                                        }}
+                                        className="text-sm font-medium hover:underline"
+                                        style={{ color: config.primary_color }}
+                                    >
+                                        Can&apos;t find your shop? Contact Support
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {/* Login Step */}
+                                {selectedCollectShop && (
+                                    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                                        <Store className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                                        <span className="text-sm text-gray-700 truncate">{selectedCollectShop.display_label}</span>
+                                        <button
+                                            onClick={() => {
+                                                setCollectPointsStep('shop')
+                                                setPointsError('')
+                                            }}
+                                            className="ml-auto text-xs font-medium flex-shrink-0"
+                                            style={{ color: config.primary_color }}
+                                        >
+                                            Change
+                                        </button>
+                                    </div>
+                                )}
+
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
+                                        <input
+                                            type="text"
+                                            value={shopId}
+                                            onChange={(e) => setShopId(e.target.value)}
+                                            placeholder="Enter your email or phone"
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
+                                            style={{ '--tw-ring-color': config.primary_color } as any}
+                                            disabled={collectingPoints}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showShopPassword ? 'text' : 'password'}
+                                                value={shopPassword}
+                                                onChange={(e) => setShopPassword(e.target.value)}
+                                                placeholder="Enter your password"
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 pr-10"
+                                                style={{ '--tw-ring-color': config.primary_color } as any}
+                                                disabled={collectingPoints}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowShopPassword(!showShopPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2"
+                                            >
+                                                {showShopPassword ? (
+                                                    <EyeOff className="w-5 h-5 text-gray-400" />
+                                                ) : (
+                                                    <Eye className="w-5 h-5 text-gray-400" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {pointsError && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                                        <p className="text-sm text-red-600 text-center">{pointsError}</p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={() => {
+                                            setCollectPointsStep('shop')
+                                            setPointsError('')
+                                            setShopId('')
+                                            setShopPassword('')
+                                            setCollectingPoints(false)
+                                        }}
+                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        onClick={handleCollectPoints}
+                                        disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
+                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        {collectingPoints ? (
+                                            <span className="flex items-center justify-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                Collecting...
+                                            </span>
                                         ) : (
-                                            <Eye className="w-5 h-5 text-gray-400" />
+                                            'Collect Points'
                                         )}
                                     </button>
                                 </div>
-                            </div>
-                        </div>
 
-                        {pointsError && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                                <p className="text-sm text-red-600 text-center">{pointsError}</p>
-                            </div>
+                                <div className="text-center mt-2 space-y-1">
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setShowForgotPasswordModal(true)
+                                        }}
+                                        className="text-sm font-medium hover:underline"
+                                        style={{ color: config.primary_color }}
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                    <br />
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setActiveTab('profile')
+                                            setShowLoginForm(true)
+                                            setIsSignUp(true)
+                                        }}
+                                        className="text-sm font-medium hover:underline"
+                                        style={{ color: config.primary_color }}
+                                    >
+                                        Do not have account? Register here
+                                    </button>
+                                </div>
+                            </>
                         )}
-
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setPointsError('')
-                                    setShopId('')
-                                    setShopPassword('')
-                                    setCollectingPoints(false)
-                                }}
-                                className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                            // Allow cancelling even during collection
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCollectPoints}
-                                disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
-                                className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
-                                style={{ backgroundColor: config.button_color }}
-                            >
-                                {collectingPoints ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        Collecting...
-                                    </span>
-                                ) : (
-                                    'Collect Points'
-                                )}
-                            </button>
-                        </div>
-
-                        <div className="text-center mt-2 space-y-1">
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setShowForgotPasswordModal(true)
-                                }}
-                                className="text-sm font-medium hover:underline"
-                                style={{ color: config.primary_color }}
-                            >
-                                Forgot Password?
-                            </button>
-                            <br />
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setActiveTab('profile')
-                                    setShowLoginForm(true)
-                                    setIsSignUp(true)
-                                }}
-                                className="text-sm font-medium hover:underline"
-                                style={{ color: config.primary_color }}
-                            >
-                                Do not have account? Register here
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}
@@ -6195,6 +6312,7 @@ export default function PremiumLoyaltyTemplate({
                 onClose={() => setShowForgotPasswordModal(false)}
                 onBackToLogin={() => {
                     setShowForgotPasswordModal(false)
+                    setCollectPointsStep('login')
                     setShowPointsLoginModal(true)
                 }}
                 primaryColor={config.primary_color}
@@ -6215,6 +6333,9 @@ export default function PremiumLoyaltyTemplate({
                     setPointsEarned(0)
                     setShopId('')
                     setShopPassword('')
+                    setCollectPointsStep('shop')
+                    setSelectedCollectShop(null)
+                    setCollectShopSearch('')
                 }}
             />
 
