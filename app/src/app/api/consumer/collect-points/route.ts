@@ -66,15 +66,30 @@ export async function POST(request: NextRequest) {
     if (!shop_id.includes('@')) {
       console.log('📱 Detected phone number login, looking up email...')
 
-      // Lookup user by phone number using admin client
-      const { data: userByPhone, error: phoneError } = await supabaseAdmin
-        .from('users')
-        .select('email')
-        .eq('phone', shop_id)
-        .single()
+      // Normalize phone to try multiple formats
+      const rawPhone = shop_id.replace(/[^0-9+]/g, '')
+      let withoutPlus = rawPhone.replace(/^\+/, '')
+      if (withoutPlus.startsWith('0')) {
+        withoutPlus = '60' + withoutPlus.substring(1)
+      }
+      const withPlus = '+' + withoutPlus
+      const phonesToTry = [rawPhone, withoutPlus, withPlus]
+        .filter((v, i, a) => a.indexOf(v) === i) // unique
 
-      if (phoneError || !userByPhone) {
-        console.error('Phone lookup failed:', phoneError)
+      // Lookup user by phone number using admin client - try all normalized formats
+      let userByPhone: { email: string } | null = null
+      for (const ph of phonesToTry) {
+        const { data } = await supabaseAdmin
+          .from('users')
+          .select('email')
+          .eq('phone', ph)
+          .eq('is_active', true)
+          .maybeSingle()
+        if (data) { userByPhone = data; break }
+      }
+
+      if (!userByPhone) {
+        console.error('Phone lookup failed for formats:', phonesToTry)
         return NextResponse.json(
           { success: false, error: 'Invalid shop ID or password' }, // Generic error for security
           { status: 401 }
