@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
         email, 
         phone, 
         full_name,
+        shop_name,
         avatar_url,
         organizations!fk_users_organization(
           id,
@@ -90,6 +91,18 @@ export async function POST(request: NextRequest) {
 
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
+    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
+
+    if (needsShopProfile) {
+      return NextResponse.json(
+        {
+          success: false,
+          requiresProfileUpdate: true,
+          error: 'Please update your Shop Name and Reference in Profile before collecting points.'
+        },
+        { status: 400 }
+      )
+    }
 
     // Allow if:
     // 1. User has no organization (legacy Independent Consumer)

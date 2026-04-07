@@ -517,10 +517,7 @@ export default function PremiumLoyaltyTemplate({
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
-    // Shop selection step in Collect Points flow
-    const [collectPointsStep, setCollectPointsStep] = useState<'shop' | 'login'>('shop')
-    const [selectedCollectShop, setSelectedCollectShop] = useState<{ org_id: string; display_label: string } | null>(null)
-    const [collectShopSearch, setCollectShopSearch] = useState('')
+    const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile'>('login')
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -2489,9 +2486,7 @@ export default function PremiumLoyaltyTemplate({
                 // No valid session - show login modal
                 console.log('🔐 No valid session, showing login modal')
                 setPointsError('')
-                setCollectPointsStep('shop')
-                setSelectedCollectShop(null)
-                setCollectShopSearch('')
+                setCollectPointsStep('login')
                 setShowPointsLoginModal(true)
                 break
             case 'lucky-draw':
@@ -2518,6 +2513,13 @@ export default function PremiumLoyaltyTemplate({
                 // Show free gift modal section (will be handled in rewards tab)
                 break
         }
+    }
+
+    const openCollectPointsProfilePrompt = (message: string) => {
+        setCollectingPoints(false)
+        setPointsError(message)
+        setCollectPointsStep('complete-profile')
+        setShowPointsLoginModal(true)
     }
 
     // Handle points collection
@@ -2635,6 +2637,11 @@ export default function PremiumLoyaltyTemplate({
 
             const data = await response.json()
 
+            if (data.requiresProfileUpdate) {
+                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                return
+            }
+
             if (!response.ok) {
                 if (data.already_collected) {
                     // Points already collected for this QR
@@ -2739,11 +2746,14 @@ export default function PremiumLoyaltyTemplate({
             // If session expired or user is not a shop user, fall back to login modal
             if (data.requiresLogin) {
                 setPointsError('')
-                setCollectPointsStep('shop')
-                setSelectedCollectShop(null)
-                setCollectShopSearch('')
+                setCollectPointsStep('login')
                 setShowPointsLoginModal(true)
                 setCollectingPoints(false)
+                return
+            }
+
+            if (data.requiresProfileUpdate) {
+                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
                 return
             }
 
@@ -6087,64 +6097,36 @@ export default function PremiumLoyaltyTemplate({
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
                             >
-                                {collectPointsStep === 'shop' ? (
-                                    <Store className="w-8 h-8" style={{ color: config.primary_color }} />
+                                {collectPointsStep === 'complete-profile' ? (
+                                    <AlertCircle className="w-8 h-8" style={{ color: config.primary_color }} />
                                 ) : (
                                     <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
                                 )}
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">
-                                {collectPointsStep === 'shop' ? 'Select Your Shop' : 'Collect Points'}
+                                {collectPointsStep === 'complete-profile' ? 'Complete Your Profile' : 'Collect Points'}
                             </h3>
                             <p className="text-sm text-gray-500 mt-1">
-                                {collectPointsStep === 'shop'
-                                    ? 'Search and select the shop you work at'
+                                {collectPointsStep === 'complete-profile'
+                                    ? 'Update your shop details before collecting points'
                                     : 'Enter your credentials to collect points'}
                             </p>
                         </div>
 
-                        {collectPointsStep === 'shop' ? (
+                        {collectPointsStep === 'complete-profile' ? (
                             <>
-                                {/* Shop Selection Step */}
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
-                                        <ShopPicker
-                                            value={collectShopSearch}
-                                            onSelect={(shop, displayName) => {
-                                                if (shop) {
-                                                    setSelectedCollectShop({ org_id: shop.org_id, display_label: shop.display_label })
-                                                } else {
-                                                    setSelectedCollectShop(null)
-                                                }
-                                                setCollectShopSearch(displayName)
-                                            }}
-                                            placeholder="Search shop by name..."
-                                        />
-                                    </div>
-
-                                    {selectedCollectShop && (
-                                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-                                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                            <span className="text-sm text-green-700 font-medium">{selectedCollectShop.display_label}</span>
-                                        </div>
-                                    )}
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-sm text-amber-700 text-center">
+                                        {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
+                                    </p>
                                 </div>
-
-                                {pointsError && (
-                                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                                        <p className="text-sm text-red-600 text-center">{pointsError}</p>
-                                    </div>
-                                )}
 
                                 <div className="flex gap-3 pt-2">
                                     <button
                                         onClick={() => {
                                             setShowPointsLoginModal(false)
                                             setPointsError('')
-                                            setCollectPointsStep('shop')
-                                            setSelectedCollectShop(null)
-                                            setCollectShopSearch('')
+                                            setCollectPointsStep('login')
                                         }}
                                         className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                     >
@@ -6152,53 +6134,20 @@ export default function PremiumLoyaltyTemplate({
                                     </button>
                                     <button
                                         onClick={() => {
+                                            setShowPointsLoginModal(false)
                                             setPointsError('')
-                                            setCollectPointsStep('login')
+                                            setActiveTab('profile')
                                         }}
-                                        disabled={!selectedCollectShop}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
-                                        Next
-                                    </button>
-                                </div>
-
-                                <div className="text-center mt-2">
-                                    <button
-                                        onClick={() => {
-                                            setShowPointsLoginModal(false)
-                                            setCollectPointsStep('shop')
-                                            setSelectedCollectShop(null)
-                                            setCollectShopSearch('')
-                                            setShowFeedbackModal(true)
-                                        }}
-                                        className="text-sm font-medium hover:underline"
-                                        style={{ color: config.primary_color }}
-                                    >
-                                        Can&apos;t find your shop? Contact Support
+                                        Go to Profile
                                     </button>
                                 </div>
                             </>
                         ) : (
                             <>
                                 {/* Login Step */}
-                                {selectedCollectShop && (
-                                    <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                                        <Store className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                        <span className="text-sm text-gray-700 truncate">{selectedCollectShop.display_label}</span>
-                                        <button
-                                            onClick={() => {
-                                                setCollectPointsStep('shop')
-                                                setPointsError('')
-                                            }}
-                                            className="ml-auto text-xs font-medium flex-shrink-0"
-                                            style={{ color: config.primary_color }}
-                                        >
-                                            Change
-                                        </button>
-                                    </div>
-                                )}
-
                                 <div className="space-y-3">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
@@ -6248,7 +6197,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="flex gap-3 pt-2">
                                     <button
                                         onClick={() => {
-                                            setCollectPointsStep('shop')
+                                            setShowPointsLoginModal(false)
                                             setPointsError('')
                                             setShopId('')
                                             setShopPassword('')
@@ -6333,9 +6282,7 @@ export default function PremiumLoyaltyTemplate({
                     setPointsEarned(0)
                     setShopId('')
                     setShopPassword('')
-                    setCollectPointsStep('shop')
-                    setSelectedCollectShop(null)
-                    setCollectShopSearch('')
+                    setCollectPointsStep('login')
                 }}
             />
 
@@ -6478,9 +6425,8 @@ export default function PremiumLoyaltyTemplate({
                                             const subject = `Enquiry: ${selectedVariantForDetail.product?.product_name} - ${selectedVariantForDetail.variant_name}${price ? ` (RM ${price.toFixed(2)})` : ''}`
                                             sessionStorage.setItem('prefill_chat_subject', subject)
                                             setSelectedVariantForDetail(null)
-                                            setShowFeedbackModal(true)
+                                            setCollectPointsStep('login')
                                         }}
-                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all"
                                         style={{ borderColor: config.primary_color, color: config.primary_color }}
                                     >
                                         <MessageSquare className="w-5 h-5" />
