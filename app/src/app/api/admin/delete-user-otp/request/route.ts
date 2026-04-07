@@ -4,12 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
     generateOtp,
     hashOtp,
-    invalidateExistingCodes,
-    createVerificationCode,
-    sendOtpViaWhatsApp,
     logNotificationEvent,
-    resolveOrgForWhatsApp,
 } from '@/server/auth/passwordResetService'
+import { maskPhone, normalizePhoneE164 } from '@/utils/phone'
 
 const PURPOSE = 'user_deletion'
 const MAX_SENDS_PER_15MIN = 3
@@ -100,9 +97,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Normalize phone
-        const orgPhone = org.contact_phone.replace(/[^0-9+]/g, '')
-        const phoneForSend = orgPhone.startsWith('+') ? orgPhone : orgPhone.startsWith('60') ? `+${orgPhone}` : `+60${orgPhone}`
+        const phoneForSend = normalizePhoneE164(org.contact_phone)
+        if (!phoneForSend) {
+            return NextResponse.json(
+                { error: 'Organization phone is invalid. Update it in Settings > Organization.' },
+                { status: 400 }
+            )
+        }
 
         // --- Rate limit ---
         const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
@@ -174,15 +175,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Send via WhatsApp
-        const waOrgId = await resolveOrgForWhatsApp(admin)
-        if (!waOrgId) {
-            return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 500 })
-        }
-
         const message = `⚠️ DELETION VERIFICATION\n\nCode: *${code}*\n\nUser: ${targetUser.full_name || targetUser.email}\nRequested by: ${user.email}\n\nThis code expires in 5 minutes. Only enter this code if you authorize this deletion.`
 
         const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-        const waConfig = await getWhatsAppConfig(admin, waOrgId)
+        const waConfig = await getWhatsAppConfig(admin, orgId)
 
         if (!waConfig?.baseUrl || !waConfig?.apiKey) {
             return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 500 })
@@ -219,7 +215,7 @@ export async function POST(request: NextRequest) {
         })
 
         // Mask phone for display
-        const masked = phoneForSend.replace(/^(\+?\d{4})\d+(\d{4})$/, '$1****$2')
+        const masked = maskPhone(phoneForSend)
 
         return NextResponse.json({
             success: true,
