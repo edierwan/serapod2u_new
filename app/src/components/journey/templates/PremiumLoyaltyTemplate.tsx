@@ -78,6 +78,8 @@ const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr:
 import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
+import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
+import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 
 // Types
 interface JourneyConfig {
@@ -5568,7 +5570,6 @@ export default function PremiumLoyaltyTemplate({
                                             onClick={() => {
                                                 setEditingReferralPhone(true)
                                                 setNewReferralPhone(userReferralPhone)
-                                                if (userReferralPhone) checkReferralPhone(userReferralPhone)
                                             }}
                                             className="text-sm font-medium"
                                             style={{ color: config.primary_color }}
@@ -5579,23 +5580,23 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                                 {editingReferralPhone ? (
                                     <div className="space-y-2">
-                                        <div className="flex gap-2">
-                                            <Input
-                                                type="tel"
-                                                value={newReferralPhone}
-                                                onChange={(e) => {
-                                                    setNewReferralPhone(e.target.value)
-                                                    if (e.target.value.length >= 8) {
-                                                        checkReferralPhone(e.target.value)
-                                                    } else {
-                                                        setReferralCheckStatus('idle')
-                                                    }
-                                                }}
-                                                placeholder="e.g., +60123456789"
-                                                className={`h-10 flex-1 ${referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
-                                                    referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
-                                                    }`}
-                                            />
+                                        <div className="flex gap-2 items-start">
+                                            <div className="flex-1">
+                                                <ReferencePicker
+                                                    value={userReferralPhone}
+                                                    onSelect={(ref: ReferenceUser | null, phone: string) => {
+                                                        setNewReferralPhone(phone)
+                                                        if (ref) {
+                                                            setReferralCheckStatus('valid')
+                                                            setReferralName(ref.full_name)
+                                                        } else if (!phone) {
+                                                            setReferralCheckStatus('idle')
+                                                            setReferralName('')
+                                                        }
+                                                    }}
+                                                    placeholder="Search by name, phone, or email..."
+                                                />
+                                            </div>
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -5608,32 +5609,6 @@ export default function PremiumLoyaltyTemplate({
                                                 <X className="w-4 h-4" />
                                             </Button>
                                         </div>
-                                        {/* Status Message */}
-                                        {referralCheckStatus === 'checking' && (
-                                            <div className="flex items-center gap-2 text-xs text-blue-600">
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                                Looking up reference...
-                                            </div>
-                                        )}
-                                        {referralCheckStatus === 'valid' && (
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-2 text-xs text-green-600">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    Valid Serapod Reference
-                                                </div>
-                                                {referralName && (
-                                                    <div className="ml-5 text-xs text-gray-500">
-                                                        {referralName}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        {referralCheckStatus === 'invalid' && (
-                                            <div className="flex items-center gap-2 text-xs text-red-600">
-                                                <XCircle className="w-3 h-3" />
-                                                Invalid Reference (Must be a Serapod Representative)
-                                            </div>
-                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
@@ -5727,23 +5702,17 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                     {editingShopName ? (
                                         <div className="space-y-2">
-                                            <input
-                                                type="text"
-                                                value={newShopName}
-                                                onChange={(e) => {
-                                                    const value = e.target.value
-                                                    // Convert to title case as user types
-                                                    const titleCased = value.replace(/\b\w/g, (char) => char.toUpperCase())
-                                                    if (titleCased.length <= 50) {
-                                                        setNewShopName(titleCased)
-                                                    }
-                                                }}
-                                                placeholder="Enter your shop name"
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                maxLength={50}
-                                            />
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs text-gray-500">{newShopName.length}/50</span>
+                                            <div className="flex gap-2 items-start">
+                                                <div className="flex-1">
+                                                    <ShopPicker
+                                                        value={userShopName}
+                                                        onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                            setNewShopName(displayName)
+                                                        }}
+                                                        placeholder="Search shop by name..."
+                                                        maxLength={50}
+                                                    />
+                                                </div>
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
