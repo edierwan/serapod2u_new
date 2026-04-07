@@ -2557,6 +2557,25 @@ export default function PremiumLoyaltyTemplate({
             const data = await response.json()
 
             if (data.requiresProfileUpdate) {
+                // Establish client-side session so profile page doesn't require re-login
+                if (data.email && shopPassword) {
+                    try {
+                        const { error: signInError } = await supabase.auth.signInWithPassword({
+                            email: data.email,
+                            password: shopPassword
+                        })
+                        if (!signInError) {
+                            console.log('✅ Session established for profile update')
+                            setIsAuthenticated(true)
+                            setUserEmail(data.email)
+                            const { data: { user } } = await supabase.auth.getUser()
+                            if (user) setUserId(user.id)
+                            sessionStorage.setItem('serapod_active_session', 'logged_in')
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Could not establish session for profile:', e)
+                    }
+                }
                 openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
                 return
             }
@@ -5555,6 +5574,9 @@ export default function PremiumLoyaltyTemplate({
                                         <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
                                     </div>
                                 )}
+                                {!userReferralPhone && (
+                                    <p className="text-xs text-red-500 italic mt-1">* Required — please set your reference to collect points</p>
+                                )}
                             </div>
 
                             {/* Email (Read-only) */}
@@ -5669,6 +5691,9 @@ export default function PremiumLoyaltyTemplate({
                                             <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
                                             <span className="text-gray-900 text-sm">{userShopName || 'Not set'}</span>
                                         </div>
+                                    )}
+                                    {!userShopName && (
+                                        <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                     )}
                                 </div>
                             )}
@@ -6052,9 +6077,26 @@ export default function PremiumLoyaltyTemplate({
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={() => {
+                                        onClick={async () => {
                                             setShowPointsLoginModal(false)
                                             setPointsError('')
+                                            // Load profile data before navigating
+                                            if (userId) {
+                                                const profileResult = await checkUserOrganization(userId) as any
+                                                if (profileResult?.success) {
+                                                    setUserName(profileResult.fullName || '')
+                                                    setNewName(profileResult.fullName || '')
+                                                    setUserPhone(profileResult.phone || '')
+                                                    setNewPhone(profileResult.phone || '')
+                                                    setUserAddress(profileResult.address || '')
+                                                    setNewAddress(profileResult.address || '')
+                                                    setUserShopName(profileResult.shop_name || '')
+                                                    setNewShopName(profileResult.shop_name || '')
+                                                    setUserReferralPhone(profileResult.referralPhone || '')
+                                                    setNewReferralPhone(profileResult.referralPhone || '')
+                                                    if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
+                                                }
+                                            }
                                             setActiveTab('profile')
                                         }}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"

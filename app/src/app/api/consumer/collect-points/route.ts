@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           requiresProfileUpdate: true,
+          email: emailToAuth,
           error: `Please update your ${missing.join(' and ')} in Profile before collecting points.`
         },
         { status: 400 }
