@@ -2539,87 +2539,6 @@ export default function PremiumLoyaltyTemplate({
 
         try {
             console.log('🔐 handleCollectPoints - Starting...')
-            let emailToUse = shopId
-
-            // Check if input looks like a phone number (doesn't contain @)
-            if (!shopId.includes('@')) {
-                console.log('📱 Phone detected, looking up email...')
-                // Normalize and lookup email by phone
-                const normalizedPhone = normalizePhone(shopId)
-
-                // Use the RPC function to find the email associated with this phone number
-                // Add retry logic with timeout
-                let userEmailData = null
-                let lookupError = null
-
-                for (let i = 0; i < 3; i++) {
-                    try {
-                        console.log(`📱 Phone lookup attempt ${i + 1}...`)
-
-                        const rpcPromise = supabase
-                            .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-
-                        // Increase timeout to 10 seconds (was 5s which is too short)
-                        const timeoutPromise = new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('Phone lookup timed out. Please try again.')), 10000)
-                        )
-
-                        const result = await Promise.race([rpcPromise, timeoutPromise]) as any
-
-                        if (!result.error) {
-                            userEmailData = result.data
-                            lookupError = null
-                            console.log('✅ Phone lookup successful')
-                            break
-                        }
-
-                        lookupError = result.error
-                        console.warn(`Phone lookup attempt ${i + 1} failed:`, result.error)
-                    } catch (err: any) {
-                        console.warn(`Phone lookup attempt ${i + 1} exception:`, err)
-                        lookupError = err
-
-                        // If it's a timeout error, show user-friendly message
-                        if (err?.message?.includes('timed out')) {
-                            // Continue to retry
-                        }
-                    }
-
-                    // Wait before retry if not the last attempt
-                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1500))
-                }
-
-                if (lookupError) {
-                    console.error('❌ Phone lookup error after retries:', lookupError)
-                    const errorMsg = lookupError?.message?.includes('timed out')
-                        ? 'Connection timed out. Please check your internet connection and try again.'
-                        : 'Error verifying phone number. Please check your connection and try again.'
-                    setPointsError(errorMsg)
-                    setCollectingPoints(false)
-                    return
-                }
-
-                // Handle different response formats safely
-                let userEmail = userEmailData
-                if (Array.isArray(userEmailData)) {
-                    if (userEmailData.length > 0) {
-                        userEmail = userEmailData[0].email || userEmailData[0]
-                    } else {
-                        userEmail = null
-                    }
-                } else if (typeof userEmailData === 'object' && userEmailData !== null) {
-                    userEmail = (userEmailData as any).email || userEmailData
-                }
-
-                if (!userEmail) {
-                    setPointsError('Phone number not found')
-                    setCollectingPoints(false)
-                    return
-                }
-
-                emailToUse = userEmail
-            }
-
             console.log('📡 Calling collect points API...')
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
@@ -2629,7 +2548,7 @@ export default function PremiumLoyaltyTemplate({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     qr_code: qrCode,
-                    shop_id: emailToUse,
+                    shop_id: shopId.trim(),
                     password: shopPassword
                 }),
                 signal: controller.signal
