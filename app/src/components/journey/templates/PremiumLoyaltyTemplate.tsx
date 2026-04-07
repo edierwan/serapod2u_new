@@ -78,6 +78,8 @@ const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr:
 import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
+import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
+import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 
 // Types
 interface JourneyConfig {
@@ -515,6 +517,7 @@ export default function PremiumLoyaltyTemplate({
     const [pointsError, setPointsError] = useState('')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
+    const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile'>('login')
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -2483,6 +2486,7 @@ export default function PremiumLoyaltyTemplate({
                 // No valid session - show login modal
                 console.log('🔐 No valid session, showing login modal')
                 setPointsError('')
+                setCollectPointsStep('login')
                 setShowPointsLoginModal(true)
                 break
             case 'lucky-draw':
@@ -2511,6 +2515,13 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    const openCollectPointsProfilePrompt = (message: string) => {
+        setCollectingPoints(false)
+        setPointsError(message)
+        setCollectPointsStep('complete-profile')
+        setShowPointsLoginModal(true)
+    }
+
     // Handle points collection
     const handleCollectPoints = async () => {
         if (!shopId || !shopPassword) {
@@ -2528,87 +2539,6 @@ export default function PremiumLoyaltyTemplate({
 
         try {
             console.log('🔐 handleCollectPoints - Starting...')
-            let emailToUse = shopId
-
-            // Check if input looks like a phone number (doesn't contain @)
-            if (!shopId.includes('@')) {
-                console.log('📱 Phone detected, looking up email...')
-                // Normalize and lookup email by phone
-                const normalizedPhone = normalizePhone(shopId)
-
-                // Use the RPC function to find the email associated with this phone number
-                // Add retry logic with timeout
-                let userEmailData = null
-                let lookupError = null
-
-                for (let i = 0; i < 3; i++) {
-                    try {
-                        console.log(`📱 Phone lookup attempt ${i + 1}...`)
-
-                        const rpcPromise = supabase
-                            .rpc('get_email_by_phone' as any, { p_phone: normalizedPhone })
-
-                        // Increase timeout to 10 seconds (was 5s which is too short)
-                        const timeoutPromise = new Promise((_, reject) =>
-                            setTimeout(() => reject(new Error('Phone lookup timed out. Please try again.')), 10000)
-                        )
-
-                        const result = await Promise.race([rpcPromise, timeoutPromise]) as any
-
-                        if (!result.error) {
-                            userEmailData = result.data
-                            lookupError = null
-                            console.log('✅ Phone lookup successful')
-                            break
-                        }
-
-                        lookupError = result.error
-                        console.warn(`Phone lookup attempt ${i + 1} failed:`, result.error)
-                    } catch (err: any) {
-                        console.warn(`Phone lookup attempt ${i + 1} exception:`, err)
-                        lookupError = err
-
-                        // If it's a timeout error, show user-friendly message
-                        if (err?.message?.includes('timed out')) {
-                            // Continue to retry
-                        }
-                    }
-
-                    // Wait before retry if not the last attempt
-                    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1500))
-                }
-
-                if (lookupError) {
-                    console.error('❌ Phone lookup error after retries:', lookupError)
-                    const errorMsg = lookupError?.message?.includes('timed out')
-                        ? 'Connection timed out. Please check your internet connection and try again.'
-                        : 'Error verifying phone number. Please check your connection and try again.'
-                    setPointsError(errorMsg)
-                    setCollectingPoints(false)
-                    return
-                }
-
-                // Handle different response formats safely
-                let userEmail = userEmailData
-                if (Array.isArray(userEmailData)) {
-                    if (userEmailData.length > 0) {
-                        userEmail = userEmailData[0].email || userEmailData[0]
-                    } else {
-                        userEmail = null
-                    }
-                } else if (typeof userEmailData === 'object' && userEmailData !== null) {
-                    userEmail = (userEmailData as any).email || userEmailData
-                }
-
-                if (!userEmail) {
-                    setPointsError('Phone number not found')
-                    setCollectingPoints(false)
-                    return
-                }
-
-                emailToUse = userEmail
-            }
-
             console.log('📡 Calling collect points API...')
             const controller = new AbortController()
             const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s timeout
@@ -2618,13 +2548,37 @@ export default function PremiumLoyaltyTemplate({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     qr_code: qrCode,
-                    shop_id: emailToUse,
+                    shop_id: shopId.trim(),
                     password: shopPassword
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
 
             const data = await response.json()
+
+            if (data.requiresProfileUpdate) {
+                // Establish client-side session so profile page doesn't require re-login
+                if (data.email && shopPassword) {
+                    try {
+                        const { error: signInError } = await supabase.auth.signInWithPassword({
+                            email: data.email,
+                            password: shopPassword
+                        })
+                        if (!signInError) {
+                            console.log('✅ Session established for profile update')
+                            setIsAuthenticated(true)
+                            setUserEmail(data.email)
+                            const { data: { user } } = await supabase.auth.getUser()
+                            if (user) setUserId(user.id)
+                            sessionStorage.setItem('serapod_active_session', 'logged_in')
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Could not establish session for profile:', e)
+                    }
+                }
+                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                return
+            }
 
             if (!response.ok) {
                 if (data.already_collected) {
@@ -2730,8 +2684,14 @@ export default function PremiumLoyaltyTemplate({
             // If session expired or user is not a shop user, fall back to login modal
             if (data.requiresLogin) {
                 setPointsError('')
+                setCollectPointsStep('login')
                 setShowPointsLoginModal(true)
                 setCollectingPoints(false)
+                return
+            }
+
+            if (data.requiresProfileUpdate) {
+                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
                 return
             }
 
@@ -5568,7 +5528,6 @@ export default function PremiumLoyaltyTemplate({
                                             onClick={() => {
                                                 setEditingReferralPhone(true)
                                                 setNewReferralPhone(userReferralPhone)
-                                                if (userReferralPhone) checkReferralPhone(userReferralPhone)
                                             }}
                                             className="text-sm font-medium"
                                             style={{ color: config.primary_color }}
@@ -5579,23 +5538,23 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                                 {editingReferralPhone ? (
                                     <div className="space-y-2">
-                                        <div className="flex gap-2">
-                                            <Input
-                                                type="tel"
-                                                value={newReferralPhone}
-                                                onChange={(e) => {
-                                                    setNewReferralPhone(e.target.value)
-                                                    if (e.target.value.length >= 8) {
-                                                        checkReferralPhone(e.target.value)
-                                                    } else {
-                                                        setReferralCheckStatus('idle')
-                                                    }
-                                                }}
-                                                placeholder="e.g., +60123456789"
-                                                className={`h-10 flex-1 ${referralCheckStatus === 'valid' ? 'border-green-500 focus-visible:ring-green-500' :
-                                                    referralCheckStatus === 'invalid' ? 'border-red-500 focus-visible:ring-red-500' : ''
-                                                    }`}
-                                            />
+                                        <div className="flex gap-2 items-start">
+                                            <div className="flex-1">
+                                                <ReferencePicker
+                                                    value={userReferralPhone}
+                                                    onSelect={(ref: ReferenceUser | null, phone: string) => {
+                                                        setNewReferralPhone(phone)
+                                                        if (ref) {
+                                                            setReferralCheckStatus('valid')
+                                                            setReferralName(ref.full_name)
+                                                        } else if (!phone) {
+                                                            setReferralCheckStatus('idle')
+                                                            setReferralName('')
+                                                        }
+                                                    }}
+                                                    placeholder="Search by name, phone, or email..."
+                                                />
+                                            </div>
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -5608,38 +5567,15 @@ export default function PremiumLoyaltyTemplate({
                                                 <X className="w-4 h-4" />
                                             </Button>
                                         </div>
-                                        {/* Status Message */}
-                                        {referralCheckStatus === 'checking' && (
-                                            <div className="flex items-center gap-2 text-xs text-blue-600">
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                                Looking up reference...
-                                            </div>
-                                        )}
-                                        {referralCheckStatus === 'valid' && (
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-2 text-xs text-green-600">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    Valid Serapod Reference
-                                                </div>
-                                                {referralName && (
-                                                    <div className="ml-5 text-xs text-gray-500">
-                                                        {referralName}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                        {referralCheckStatus === 'invalid' && (
-                                            <div className="flex items-center gap-2 text-xs text-red-600">
-                                                <XCircle className="w-3 h-3" />
-                                                Invalid Reference (Must be a Serapod Representative)
-                                            </div>
-                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2">
                                         <Shield className="w-4 h-4 text-gray-400" />
                                         <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
                                     </div>
+                                )}
+                                {!userReferralPhone && (
+                                    <p className="text-xs text-red-500 italic mt-1">* Required — please set your reference to collect points</p>
                                 )}
                             </div>
 
@@ -5727,23 +5663,17 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                     {editingShopName ? (
                                         <div className="space-y-2">
-                                            <input
-                                                type="text"
-                                                value={newShopName}
-                                                onChange={(e) => {
-                                                    const value = e.target.value
-                                                    // Convert to title case as user types
-                                                    const titleCased = value.replace(/\b\w/g, (char) => char.toUpperCase())
-                                                    if (titleCased.length <= 50) {
-                                                        setNewShopName(titleCased)
-                                                    }
-                                                }}
-                                                placeholder="Enter your shop name"
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                maxLength={50}
-                                            />
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs text-gray-500">{newShopName.length}/50</span>
+                                            <div className="flex gap-2 items-start">
+                                                <div className="flex-1">
+                                                    <ShopPicker
+                                                        value={userShopName}
+                                                        onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                            setNewShopName(displayName)
+                                                        }}
+                                                        placeholder="Search shop by name..."
+                                                        maxLength={50}
+                                                    />
+                                                </div>
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
@@ -5761,6 +5691,9 @@ export default function PremiumLoyaltyTemplate({
                                             <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
                                             <span className="text-gray-900 text-sm">{userShopName || 'Not set'}</span>
                                         </div>
+                                    )}
+                                    {!userShopName && (
+                                        <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                     )}
                                 </div>
                             )}
@@ -6108,114 +6041,177 @@ export default function PremiumLoyaltyTemplate({
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
                             >
-                                <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
+                                {collectPointsStep === 'complete-profile' ? (
+                                    <AlertCircle className="w-8 h-8" style={{ color: config.primary_color }} />
+                                ) : (
+                                    <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
+                                )}
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">Collect Points</h3>
-                            <p className="text-sm text-gray-500 mt-1">Enter your credentials to collect points</p>
+                            <h3 className="text-xl font-bold text-gray-900">
+                                {collectPointsStep === 'complete-profile' ? 'Complete Your Profile' : 'Collect Points'}
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                                {collectPointsStep === 'complete-profile'
+                                    ? 'Update your shop details before collecting points'
+                                    : 'Enter your credentials to collect points'}
+                            </p>
                         </div>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
-                                <input
-                                    type="text"
-                                    value={shopId}
-                                    onChange={(e) => setShopId(e.target.value)}
-                                    placeholder="Enter your email or phone"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
-                                    style={{ '--tw-ring-color': config.primary_color } as any}
-                                    disabled={collectingPoints}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                <div className="relative">
-                                    <input
-                                        type={showShopPassword ? 'text' : 'password'}
-                                        value={shopPassword}
-                                        onChange={(e) => setShopPassword(e.target.value)}
-                                        placeholder="Enter your password"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 pr-10"
-                                        style={{ '--tw-ring-color': config.primary_color } as any}
-                                        disabled={collectingPoints}
-                                    />
+                        {collectPointsStep === 'complete-profile' ? (
+                            <>
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-sm text-amber-700 text-center">
+                                        {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
+                                    </p>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
                                     <button
-                                        type="button"
-                                        onClick={() => setShowShopPassword(!showShopPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2"
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setPointsError('')
+                                            setCollectPointsStep('login')
+                                        }}
+                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                     >
-                                        {showShopPassword ? (
-                                            <EyeOff className="w-5 h-5 text-gray-400" />
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            setShowPointsLoginModal(false)
+                                            setPointsError('')
+                                            // Load profile data before navigating
+                                            if (userId) {
+                                                const profileResult = await checkUserOrganization(userId) as any
+                                                if (profileResult?.success) {
+                                                    setUserName(profileResult.fullName || '')
+                                                    setNewName(profileResult.fullName || '')
+                                                    setUserPhone(profileResult.phone || '')
+                                                    setNewPhone(profileResult.phone || '')
+                                                    setUserAddress(profileResult.address || '')
+                                                    setNewAddress(profileResult.address || '')
+                                                    setUserShopName(profileResult.shop_name || '')
+                                                    setNewShopName(profileResult.shop_name || '')
+                                                    setUserReferralPhone(profileResult.referralPhone || '')
+                                                    setNewReferralPhone(profileResult.referralPhone || '')
+                                                    if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
+                                                }
+                                            }
+                                            setActiveTab('profile')
+                                        }}
+                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        Go to Profile
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {/* Login Step */}
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
+                                        <input
+                                            type="text"
+                                            value={shopId}
+                                            onChange={(e) => setShopId(e.target.value)}
+                                            placeholder="Enter your email or phone"
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
+                                            style={{ '--tw-ring-color': config.primary_color } as any}
+                                            disabled={collectingPoints}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showShopPassword ? 'text' : 'password'}
+                                                value={shopPassword}
+                                                onChange={(e) => setShopPassword(e.target.value)}
+                                                placeholder="Enter your password"
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 pr-10"
+                                                style={{ '--tw-ring-color': config.primary_color } as any}
+                                                disabled={collectingPoints}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowShopPassword(!showShopPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2"
+                                            >
+                                                {showShopPassword ? (
+                                                    <EyeOff className="w-5 h-5 text-gray-400" />
+                                                ) : (
+                                                    <Eye className="w-5 h-5 text-gray-400" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {pointsError && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                                        <p className="text-sm text-red-600 text-center">{pointsError}</p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setPointsError('')
+                                            setShopId('')
+                                            setShopPassword('')
+                                            setCollectingPoints(false)
+                                        }}
+                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        onClick={handleCollectPoints}
+                                        disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
+                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        {collectingPoints ? (
+                                            <span className="flex items-center justify-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                Collecting...
+                                            </span>
                                         ) : (
-                                            <Eye className="w-5 h-5 text-gray-400" />
+                                            'Collect Points'
                                         )}
                                     </button>
                                 </div>
-                            </div>
-                        </div>
 
-                        {pointsError && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                                <p className="text-sm text-red-600 text-center">{pointsError}</p>
-                            </div>
+                                <div className="text-center mt-2 space-y-1">
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setShowForgotPasswordModal(true)
+                                        }}
+                                        className="text-sm font-medium hover:underline"
+                                        style={{ color: config.primary_color }}
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                    <br />
+                                    <button
+                                        onClick={() => {
+                                            setShowPointsLoginModal(false)
+                                            setActiveTab('profile')
+                                            setShowLoginForm(true)
+                                            setIsSignUp(true)
+                                        }}
+                                        className="text-sm font-medium hover:underline"
+                                        style={{ color: config.primary_color }}
+                                    >
+                                        Do not have account? Register here
+                                    </button>
+                                </div>
+                            </>
                         )}
-
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setPointsError('')
-                                    setShopId('')
-                                    setShopPassword('')
-                                    setCollectingPoints(false)
-                                }}
-                                className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                            // Allow cancelling even during collection
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCollectPoints}
-                                disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
-                                className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
-                                style={{ backgroundColor: config.button_color }}
-                            >
-                                {collectingPoints ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        Collecting...
-                                    </span>
-                                ) : (
-                                    'Collect Points'
-                                )}
-                            </button>
-                        </div>
-
-                        <div className="text-center mt-2 space-y-1">
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setShowForgotPasswordModal(true)
-                                }}
-                                className="text-sm font-medium hover:underline"
-                                style={{ color: config.primary_color }}
-                            >
-                                Forgot Password?
-                            </button>
-                            <br />
-                            <button
-                                onClick={() => {
-                                    setShowPointsLoginModal(false)
-                                    setActiveTab('profile')
-                                    setShowLoginForm(true)
-                                    setIsSignUp(true)
-                                }}
-                                className="text-sm font-medium hover:underline"
-                                style={{ color: config.primary_color }}
-                            >
-                                Do not have account? Register here
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}
@@ -6226,6 +6222,7 @@ export default function PremiumLoyaltyTemplate({
                 onClose={() => setShowForgotPasswordModal(false)}
                 onBackToLogin={() => {
                     setShowForgotPasswordModal(false)
+                    setCollectPointsStep('login')
                     setShowPointsLoginModal(true)
                 }}
                 primaryColor={config.primary_color}
@@ -6246,6 +6243,7 @@ export default function PremiumLoyaltyTemplate({
                     setPointsEarned(0)
                     setShopId('')
                     setShopPassword('')
+                    setCollectPointsStep('login')
                 }}
             />
 
@@ -6388,9 +6386,8 @@ export default function PremiumLoyaltyTemplate({
                                             const subject = `Enquiry: ${selectedVariantForDetail.product?.product_name} - ${selectedVariantForDetail.variant_name}${price ? ` (RM ${price.toFixed(2)})` : ''}`
                                             sessionStorage.setItem('prefill_chat_subject', subject)
                                             setSelectedVariantForDetail(null)
-                                            setShowFeedbackModal(true)
+                                            setCollectPointsStep('login')
                                         }}
-                                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 font-semibold transition-all"
                                         style={{ borderColor: config.primary_color, color: config.primary_color }}
                                     >
                                         <MessageSquare className="w-5 h-5" />

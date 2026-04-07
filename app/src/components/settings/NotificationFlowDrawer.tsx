@@ -558,7 +558,7 @@ export default function NotificationFlowDrawer({
                                                                 { code: 'DIST_ADMIN', label: 'Distributor' },
                                                                 { code: 'WH_MANAGER', label: 'Warehouse Mgr' },
                                                                 { code: 'USER', label: 'User (Staff)' },
-                                                            ] as {code:string,label:string}[]).map(({ code, label }) => (
+                                                            ] as { code: string, label: string }[]).map(({ code, label }) => (
                                                                 <label key={code} className="flex items-center gap-2 cursor-pointer">
                                                                     <Checkbox
                                                                         checked={!!localSetting.recipient_config?.roles?.includes(code)}

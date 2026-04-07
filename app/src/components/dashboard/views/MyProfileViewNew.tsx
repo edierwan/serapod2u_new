@@ -21,6 +21,8 @@ import { updateUserWithAuth } from '@/lib/actions'
 import { normalizePhone, validatePhoneNumber, getStorageUrl, type PhoneValidationResult } from '@/lib/utils'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
+import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 
 interface UserProfile {
   id: string
@@ -1034,36 +1036,26 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
 
                   <div>
                     <Label htmlFor="referral_phone" className="text-sm font-medium">Referred By</Label>
-                    <div className="relative">
-                      <Input
-                        id="referral_phone"
-                        value={formData.referral_phone}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setFormData({ ...formData, referral_phone: val })
+                    <ReferencePicker
+                      value={formData.referral_phone}
+                      onSelect={(_ref: ReferenceUser | null, phone: string) => {
+                        setFormData({ ...formData, referral_phone: phone })
+                        if (_ref) {
+                          setReferralCheckStatus('valid')
+                          setReferralName(_ref.full_name)
+                          setValidationErrors(prev => {
+                            const newErrors = { ...prev }
+                            delete newErrors.referral_phone
+                            return newErrors
+                          })
+                        } else if (!phone) {
                           setReferralCheckStatus('idle')
                           setReferralName('')
-
-                          if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
-                          referralCheckTimeoutRef.current = setTimeout(() => {
-                            checkReferralPhone(val)
-                          }, 500)
-                        }}
-                        placeholder="Enter phone number or email"
-                        disabled={isSaving}
-                        className={`mt-1 pr-10 ${validationErrors.referral_phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                      />
-                      <div className="absolute right-3 top-3">
-                        {referralCheckStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
-                        {referralCheckStatus === 'valid' && <CheckCircle className="h-4 w-4 text-green-500" />}
-                        {referralCheckStatus === 'invalid' && <XCircle className="h-4 w-4 text-red-500" />}
-                      </div>
-                    </div>
-                    {referralCheckStatus === 'valid' && referralName && (
-                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" /> Representative found: {referralName}
-                      </p>
-                    )}
+                        }
+                      }}
+                      disabled={isSaving}
+                      placeholder="Search reference by name, phone, or email..."
+                    />
                     {validationErrors.referral_phone && <p className="text-xs text-red-500 mt-1">{validationErrors.referral_phone}</p>}
                   </div>
                   <div>
@@ -1110,22 +1102,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   {(!userProfile.organizations || !userProfile.organizations.org_name) && (
                     <div>
                       <Label htmlFor="shop_name" className="text-sm font-medium">Shop Name</Label>
-                      <Input
-                        id="shop_name"
+                      <ShopPicker
                         value={formData.shop_name}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          const titleCased = toTitleCase(value)
-                          if (titleCased.length <= 50) {
-                            setFormData({ ...formData, shop_name: titleCased })
-                          }
+                        onSelect={(_shop: ShopResult | null, displayName: string) => {
+                          setFormData({ ...formData, shop_name: displayName })
                         }}
-                        placeholder="Enter your shop name"
                         disabled={isSaving}
-                        className="mt-1"
+                        placeholder="Search shop or type name..."
                         maxLength={50}
                       />
-                      <p className="text-xs text-gray-500 mt-1">{formData.shop_name.length}/50 characters</p>
                     </div>
                   )}
 

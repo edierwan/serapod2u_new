@@ -61,48 +61,95 @@ export async function POST(request: NextRequest) {
     console.log('🔐 Authenticating shop user:', shop_id)
 
     let emailToAuth = shop_id
+    let authenticatedUserId: string | null = null
 
     // Check if shop_id is a phone number (simple check: doesn't contain @)
     if (!shop_id.includes('@')) {
       console.log('📱 Detected phone number login, looking up email...')
 
-      // Lookup user by phone number using admin client
-      const { data: userByPhone, error: phoneError } = await supabaseAdmin
-        .from('users')
-        .select('email')
-        .eq('phone', shop_id)
-        .single()
+      // Normalize phone to try multiple formats
+      const rawPhone = shop_id.replace(/[^0-9+]/g, '')
+      let withoutPlus = rawPhone.replace(/^\+/, '')
+      if (withoutPlus.startsWith('0')) {
+        withoutPlus = '60' + withoutPlus.substring(1)
+      }
+      const withPlus = '+' + withoutPlus
+      const phonesToTry = [rawPhone, withoutPlus, withPlus]
+        .filter((v, i, a) => a.indexOf(v) === i) // unique
 
-      if (phoneError || !userByPhone) {
-        console.error('Phone lookup failed:', phoneError)
+      // Query candidates with org info to filter out HQ/non-consumer users
+      const { data: usersByPhone } = await supabaseAdmin
+        .from('users')
+        .select('id, email, organization_id, organizations!fk_users_organization(org_type_code)')
+        .in('phone', phonesToTry)
+        .eq('is_active', true)
+
+      // Only keep users eligible to collect points: no org, SHOP org, or INDEP org
+      const candidateUsers = (usersByPhone || []).filter((candidate: any) => {
+        if (!candidate.email) return false
+        const org = candidate.organizations as any
+        if (!org) return true // No org = independent consumer
+        return org.org_type_code === 'SHOP' || org.org_type_code === 'INDEP'
+      })
+
+      if (candidateUsers.length === 0) {
+        console.error('Phone lookup failed for formats:', phonesToTry)
         return NextResponse.json(
-          { success: false, error: 'Invalid shop ID or password' }, // Generic error for security
+          { success: false, error: 'No account found for this phone number. Please register first.', noAccount: true },
           { status: 401 }
         )
       }
 
-      emailToAuth = userByPhone.email
-      console.log('📱 Found email for phone login:', emailToAuth)
+      let matchedAuthData: any = null
+      let matchedSignInError: any = null
+
+      for (const candidate of candidateUsers) {
+        const attempt = await supabaseAuth.auth.signInWithPassword({
+          email: candidate.email,
+          password,
+        })
+
+        if (!attempt.error && attempt.data.user) {
+          matchedAuthData = attempt.data
+          matchedSignInError = null
+          emailToAuth = candidate.email
+          authenticatedUserId = attempt.data.user.id
+          console.log('📱 Phone login matched email:', emailToAuth)
+          break
+        }
+
+        matchedSignInError = attempt.error
+      }
+
+      if (!matchedAuthData?.user) {
+        console.error('Authentication failed for all phone candidates:', matchedSignInError)
+        return NextResponse.json(
+          { success: false, error: 'Incorrect password. Please try again or use Forgot Password.', wrongPassword: true },
+          { status: 401 }
+        )
+      }
+
+      await supabaseAuth.auth.signOut()
+    } else {
+      const { data: authData, error: signInError } = await supabaseAuth.auth.signInWithPassword({
+        email: emailToAuth,
+        password: password
+      })
+
+      if (signInError || !authData.user) {
+        console.error('Authentication failed:', signInError)
+        return NextResponse.json(
+          { success: false, error: 'Incorrect password. Please try again or use Forgot Password.', wrongPassword: true },
+          { status: 401 }
+        )
+      }
+
+      console.log('✅ User authenticated:', authData.user.email)
+      authenticatedUserId = authData.user.id
+
+      // Clear session to avoid keeping auth active (no need for persistent session)
+      await supabaseAuth.auth.signOut()
     }
-
-    // Try to sign in with Supabase Auth
-    const { data: authData, error: signInError } = await supabaseAuth.auth.signInWithPassword({
-      email: emailToAuth,
-      password: password
-    })
-
-    if (signInError || !authData.user) {
-      console.error('Authentication failed:', signInError)
-      return NextResponse.json(
-        { success: false, error: 'Invalid shop ID or password' },
-        { status: 401 }
-      )
-    }
-
-    console.log('✅ User authenticated:', authData.user.email)
-
-    // Clear session to avoid keeping auth active (no need for persistent session)
-    await supabaseAuth.auth.signOut()
 
     // 2. Get shop user profile with organization details
     const { data: shopUser, error: profileError } = await supabaseAdmin
@@ -114,6 +161,8 @@ export async function POST(request: NextRequest) {
         email, 
         phone, 
         full_name,
+        shop_name,
+        referral_phone,
         avatar_url,
         organizations!fk_users_organization(
           id,
@@ -123,7 +172,7 @@ export async function POST(request: NextRequest) {
           parent_org_id
         )
       `)
-      .eq('id', authData.user.id)
+      .eq('id', authenticatedUserId)
       .single()
 
     if (profileError || !shopUser) {
@@ -136,11 +185,29 @@ export async function POST(request: NextRequest) {
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
+    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') &&
+      (!shopUser.shop_name?.trim() || !shopUser.referral_phone?.trim())
+
+    if (needsShopProfile) {
+      const missing: string[] = []
+      if (!shopUser.shop_name?.trim()) missing.push('Shop Name')
+      if (!shopUser.referral_phone?.trim()) missing.push('Reference')
+      return NextResponse.json(
+        {
+          success: false,
+          requiresProfileUpdate: true,
+          email: emailToAuth,
+          error: `Please update your ${missing.join(' and ')} in Profile before collecting points.`
+        },
+        { status: 400 }
+      )
+    }
 
     // Allow if:
     // 1. User has no organization (Independent Consumer)
     // 2. User belongs to a SHOP organization
-    if (organization && organization.org_type_code !== 'SHOP') {
+    // 3. User belongs to an INDEP organization
+    if (organization && organization.org_type_code !== 'SHOP' && organization.org_type_code !== 'INDEP') {
       console.error('User is from non-shop organization:', organization?.org_type_code)
       return NextResponse.json(
         {
@@ -400,14 +467,14 @@ export async function POST(request: NextRequest) {
     })
     console.log('⚠️ PASSING TO RPC:', {
       p_raw_qr_code: qr_code,
-      p_shop_id: authData.user.id,
+      p_shop_id: authenticatedUserId,
       p_points_amount: pointsToAward
     })
 
     // 5. Call RPC to collect points securely
     const { data: result, error: rpcError } = await supabaseAdmin.rpc('consumer_collect_points', {
       p_raw_qr_code: qr_code,
-      p_shop_id: authData.user.id, // Pass user ID, RPC will look up org
+      p_shop_id: authenticatedUserId, // Pass user ID, RPC will look up org
       p_points_amount: pointsToAward
     })
 
@@ -430,7 +497,7 @@ export async function POST(request: NextRequest) {
         const { data: consumerBalance } = await supabaseAdmin
           .from('v_consumer_points_balance')
           .select('current_balance')
-          .eq('user_id', authData.user.id)
+          .eq('user_id', authenticatedUserId)
           .maybeSingle()
         return consumerBalance?.current_balance || 0
       }

@@ -138,6 +138,7 @@ export async function updateUserWithAuth(userId: string, userData: {
   department_id?: string | null
   manager_user_id?: string | null
   position_id?: string | null
+  can_be_reference?: boolean
 }, callerInfo?: { id: string, role_code: string }) {
   try {
     const adminClient = createAdminClient()
@@ -502,6 +503,28 @@ export async function deleteUserWithAuth(userId: string, callerInfo?: { id: stri
 
     if (scansError) {
       console.error('Failed to nullify consumer_qr_scans:', scansError)
+    }
+
+    const transferOperations = [
+      { table: 'documents', column: 'created_by', value: currentUser?.id || callerInfo?.id, label: 'documents.created_by' },
+      { table: 'documents', column: 'acknowledged_by', value: null, label: 'documents.acknowledged_by' },
+      { table: 'document_files', column: 'uploaded_by', value: currentUser?.id || callerInfo?.id, label: 'document_files.uploaded_by' },
+      { table: 'orders', column: 'created_by', value: currentUser?.id || callerInfo?.id, label: 'orders.created_by' },
+      { table: 'orders', column: 'approved_by', value: null, label: 'orders.approved_by' },
+      { table: 'orders', column: 'updated_by', value: null, label: 'orders.updated_by' },
+    ]
+
+    for (const operation of transferOperations) {
+      if (operation.value === undefined) continue
+
+      const { error } = await adminClient
+        .from(operation.table)
+        .update({ [operation.column]: operation.value })
+        .eq(operation.column, userId)
+
+      if (error) {
+        console.error(`Failed to transfer ${operation.label}:`, error)
+      }
     }
 
     // Step 5: Delete user from public.users table using admin client to bypass RLS

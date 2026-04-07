@@ -65,14 +65,28 @@ export async function POST(request: Request) {
 
             // Check if shop_id is a phone number (simple check: doesn't contain @)
             if (!shopId.includes('@')) {
-                // Lookup user by phone number using admin client
-                const { data: userByPhone, error: phoneError } = await supabaseAdmin
-                    .from('users')
-                    .select('email')
-                    .eq('phone', shopId)
-                    .single()
-                
-                if (phoneError || !userByPhone) {
+                // Normalize phone to try multiple formats
+                const rawPhone = shopId.replace(/[^0-9+]/g, '')
+                let withoutPlus = rawPhone.replace(/^\+/, '')
+                if (withoutPlus.startsWith('0')) {
+                    withoutPlus = '60' + withoutPlus.substring(1)
+                }
+                const withPlus = '+' + withoutPlus
+                const phonesToTry = [rawPhone, withoutPlus, withPlus]
+                    .filter((v, i, a) => a.indexOf(v) === i)
+
+                let userByPhone: { email: string } | null = null
+                for (const ph of phonesToTry) {
+                    const { data } = await supabaseAdmin
+                        .from('users')
+                        .select('email')
+                        .eq('phone', ph)
+                        .eq('is_active', true)
+                        .maybeSingle()
+                    if (data) { userByPhone = data; break }
+                }
+
+                if (!userByPhone) {
                     return NextResponse.json({ error: 'Invalid shop ID or password' }, { status: 401 })
                 }
                 emailToAuth = userByPhone.email
@@ -106,7 +120,7 @@ export async function POST(request: Request) {
             if (profileError || !shopUser || !shopUser.organization_id) {
                 return NextResponse.json({ error: 'User profile or organization not found.' }, { status: 403 })
             }
-            
+
             const organizationId = shopUser.organization_id
             // --- AUTHENTICATION LOGIC END ---
 
@@ -126,7 +140,7 @@ export async function POST(request: Request) {
             // @ts-ignore - Supabase types might not infer the join correctly
             const reward = play.scratch_card_rewards
             const rewardPoints = reward?.value_points || 0
-            
+
             if (rewardPoints > 0) {
                 // 1. Get current balance
                 const { data: balanceData } = await supabaseAdmin
@@ -134,7 +148,7 @@ export async function POST(request: Request) {
                     .select('current_balance')
                     .eq('shop_id', organizationId)
                     .maybeSingle()
-                
+
                 const currentBalance = balanceData?.current_balance || 0
                 const newBalance = currentBalance + rewardPoints
 
@@ -158,9 +172,9 @@ export async function POST(request: Request) {
                     throw new Error('Failed to credit points: ' + txnError.message)
                 }
 
-                return NextResponse.json({ 
-                    success: true, 
-                    points_earned: rewardPoints, 
+                return NextResponse.json({
+                    success: true,
+                    points_earned: rewardPoints,
                     new_balance: newBalance,
                     session: authData.session
                 })
