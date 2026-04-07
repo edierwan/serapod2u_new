@@ -61,7 +61,7 @@ export function ShopPicker({
     }, [])
 
     const doSearch = useCallback(async (term: string) => {
-        if (!term || term.length < 2) {
+        if (!term || term.trim().length < 1) {
             setResults([])
             setIsOpen(false)
             return
@@ -69,7 +69,7 @@ export function ShopPicker({
 
         setIsSearching(true)
         try {
-            const res = await fetch(`/api/shops/search?q=${encodeURIComponent(term)}&limit=10`)
+            const res = await fetch(`/api/shops/search?q=${encodeURIComponent(term.trim())}&limit=10`)
             const data = await res.json()
             if (data.success) {
                 setResults(data.results || [])
@@ -206,7 +206,7 @@ export function ShopPicker({
             )}
 
             {/* No results */}
-            {isOpen && !isSearching && results.length === 0 && searchTerm.length >= 2 && (
+            {isOpen && !isSearching && results.length === 0 && searchTerm.trim().length >= 1 && (
                 <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">No shops found</p>
                     <p className="text-xs text-muted-foreground/70 mt-1">You can still type a custom shop name</p>
