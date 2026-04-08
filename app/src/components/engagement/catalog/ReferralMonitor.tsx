@@ -17,7 +17,7 @@ import {
   Search, Users, TrendingUp, ArrowUpDown, Eye, Download,
   CheckCircle, XCircle, Clock, Banknote, UserCheck, AlertCircle,
   Loader2, ChevronLeft, ChevronRight, RefreshCw, DollarSign,
-  UserMinus, ArrowRightLeft
+  UserMinus, ArrowRightLeft, Store
 } from 'lucide-react'
 import { formatNumber } from './catalog-utils'
 
@@ -47,6 +47,14 @@ interface PendingClaim {
   reference_name?: string
 }
 
+interface ShopEntry {
+  id: string
+  shop_user_id: string
+  effective_from: string
+  shop_name: string
+  shop_phone: string
+}
+
 interface ReferralMonitorProps {
   userProfile: any
   onViewDetail?: (referenceUserId: string) => void
@@ -72,6 +80,12 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
   const [claimAction, setClaimAction] = useState<'approve' | 'reject' | null>(null)
   const [claimReason, setClaimReason] = useState('')
   const [processing, setProcessing] = useState(false)
+
+  // Shop list dialog
+  const [showShopsDialog, setShowShopsDialog] = useState(false)
+  const [shopsDialogTitle, setShopsDialogTitle] = useState('')
+  const [shopsLoading, setShopsLoading] = useState(false)
+  const [shopsList, setShopsList] = useState<ShopEntry[]>([])
 
   // Bulk reassign dialog
   const [showReassignDialog, setShowReassignDialog] = useState(false)
@@ -199,6 +213,44 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
       console.error('Error reassigning:', error)
     } finally {
       setProcessing(false)
+    }
+  }
+
+  const loadShopsForReference = async (referenceUserId: string, referenceName: string) => {
+    try {
+      setShopsLoading(true)
+      setShopsDialogTitle(referenceName || 'Unknown')
+      setShowShopsDialog(true)
+
+      const { data: assignments } = await supabase
+        .from('reference_assignments')
+        .select('id, shop_user_id, effective_from')
+        .eq('reference_user_id', referenceUserId)
+        .is('effective_to', null)
+        .order('effective_from', { ascending: false })
+
+      if (assignments && assignments.length > 0) {
+        const shopIds = [...new Set(assignments.map(a => a.shop_user_id))]
+        const { data: shops } = await supabase
+          .from('users')
+          .select('id, full_name, phone')
+          .in('id', shopIds)
+        const shopMap = Object.fromEntries((shops || []).map(s => [s.id, s]))
+
+        setShopsList(assignments.map(a => ({
+          id: a.id,
+          shop_user_id: a.shop_user_id,
+          effective_from: a.effective_from,
+          shop_name: shopMap[a.shop_user_id]?.full_name || 'Unknown',
+          shop_phone: shopMap[a.shop_user_id]?.phone || '',
+        })))
+      } else {
+        setShopsList([])
+      }
+    } catch (error: any) {
+      console.error('Error loading shops:', error)
+    } finally {
+      setShopsLoading(false)
     }
   }
 
@@ -409,7 +461,18 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
                         {row.employment_status}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2 text-right font-medium">{row.assigned_shops_count}</td>
+                    <td className="px-3 py-2 text-right font-medium">
+                      {(row.assigned_shops_count ?? 0) > 0 ? (
+                        <button
+                          className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer font-medium"
+                          onClick={() => loadShopsForReference(row.reference_user_id!, row.reference_name || 'Unknown')}
+                        >
+                          {row.assigned_shops_count}
+                        </button>
+                      ) : (
+                        <span>{row.assigned_shops_count ?? 0}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right">
                       <span className="text-green-600">+{formatNumber(row.total_accrued_points ?? 0)}</span>
                     </td>
@@ -521,6 +584,46 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
               {claimAction === 'approve' ? 'Approve' : 'Reject'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Shop List Dialog */}
+      <Dialog open={showShopsDialog} onOpenChange={setShowShopsDialog}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Store className="h-4 w-4" />
+              Assigned Shops — {shopsDialogTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {shopsLoading ? 'Loading...' : `${shopsList.length} active shop assignment${shopsList.length !== 1 ? 's' : ''}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 -mx-6 px-6">
+            {shopsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : shopsList.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">No active shop assignments found.</p>
+            ) : (
+              <div className="space-y-2">
+                {shopsList.map((shop, i) => (
+                  <div key={shop.id} className="flex items-center gap-3 p-2 rounded-lg border bg-muted/30">
+                    <span className="text-xs text-muted-foreground w-6 text-right">{i + 1}</span>
+                    <Store className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{shop.shop_name}</p>
+                      <p className="text-xs text-muted-foreground">{shop.shop_phone}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex-shrink-0">
+                      Since {new Date(shop.effective_from).toLocaleDateString('en-MY')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
