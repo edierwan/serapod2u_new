@@ -9,11 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Settings, 
-  Save, 
-  Loader2, 
-  CheckCircle2, 
+import {
+  Settings,
+  Save,
+  Loader2,
+  CheckCircle2,
   AlertCircle,
   Coins,
   TrendingUp,
@@ -21,11 +21,9 @@ import {
   Info,
   Banknote,
   PlayCircle,
-  Gift
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
-import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
 
 type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
 type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
@@ -44,7 +42,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [saving, setSaving] = useState(false)
   const [activeRule, setActiveRule] = useState<PointsRuleRow | null>(null)
   const [allRules, setAllRules] = useState<PointsRuleRow[]>([])
-  
+
   // Form state
   const [pointsPerScan, setPointsPerScan] = useState<number>(50)
   const [pointValueRM, setPointValueRM] = useState<number>(0.01)
@@ -53,10 +51,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [allowManualAdjustment, setAllowManualAdjustment] = useState<boolean>(true)
   const [migrationMultiplier, setMigrationMultiplier] = useState<number | null>(null)
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
-  
+
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral' | 'registration'>('points')
-  
+  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral'>('points')
+
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
 
@@ -70,7 +68,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
     async function fetchRules() {
       try {
         setLoading(true)
-        
+
         // Fetch all rules for this organization
         const { data: rules, error: rulesError } = await supabase
           .from('points_rules')
@@ -179,14 +177,14 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         if (updateError) throw updateError
 
         showAlert('success', 'Point configuration updated successfully!')
-        
+
         // Refresh the rule
         const { data: updated } = await supabase
           .from('points_rules')
           .select('*')
           .eq('id', activeRule.id)
           .single()
-        
+
         if (updated) setActiveRule(updated)
       } else {
         // Create new rule (deactivate any existing active rules first)
@@ -302,8 +300,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral' | 'registration')}>
-        <TabsList className="grid w-full max-w-3xl grid-cols-4">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral')}>
+        <TabsList className="grid w-full max-w-3xl grid-cols-3">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
@@ -316,297 +314,292 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
             <Banknote className="h-4 w-4" />
             Referral Incentives
           </TabsTrigger>
-          <TabsTrigger value="registration" className="gap-2">
-            <Gift className="h-4 w-4" />
-            User Registration
-          </TabsTrigger>
         </TabsList>
 
         {/* Point Collection Settings Tab */}
         <TabsContent value="points" className="space-y-6 mt-6">
 
-      {/* Main Configuration Card */}
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Coins className="h-5 w-5 text-amber-500" />
-            Active Point Configuration
-            {activeRule && (
-              <Badge variant="default" className="ml-2">
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                Active
-              </Badge>
-            )}
-          </CardTitle>
-          <CardDescription>
-            Set the number of points awarded to shops for each consumer QR scan
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Points Per Scan Input */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="pointsPerScan" className="text-base font-semibold">
-                Points Per QR Scan <span className="text-red-500">*</span>
-              </Label>
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1 max-w-xs">
-                  <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="pointsPerScan"
-                    type="number"
-                    min="1"
-                    max="10000"
-                    value={pointsPerScan}
-                    onChange={(e) => setPointsPerScan(parseInt(e.target.value) || 0)}
-                    className="pl-10 text-lg font-semibold"
-                    placeholder="50"
-                  />
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  points per scan
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Recommended: 10-100 points.
-              </p>
-              {pointsPerScan > 0 && pointValueRM > 0 && (
-                <div className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 inline-block">
-                  Estimated Cost: RM {(pointsPerScan * pointValueRM).toFixed(2)} per scan
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="pointValueRM" className="text-base font-semibold">
-                Point Value (RM)
-              </Label>
-              <div className="flex items-center gap-4">
-                <div className="relative flex-1 max-w-xs">
-                  <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="pointValueRM"
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={pointValueRM}
-                    onChange={(e) => setPointValueRM(parseFloat(e.target.value) || 0)}
-                    className="pl-10 text-lg font-semibold"
-                    placeholder="0.01"
-                  />
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  RM per point
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Internal reference value for budget estimation.
-              </p>
-            </div>
-          </div>
-
-          {/* Migration Point Multiplier - New Section */}
-          <div className="space-y-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <Label htmlFor="migrationMultiplier" className="text-base font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-amber-600" />
-              Migration Point Multiplier (Optional)
-            </Label>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <Input
-                  id="migrationMultiplier"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={migrationMultiplier || ''}
-                  onChange={(e) => setMigrationMultiplier(e.target.value ? parseInt(e.target.value) : null)}
-                  className="text-lg font-semibold"
-                  placeholder="None (no multiplier)"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                times multiplier
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              When set, imported points during migration will be multiplied by this value.
-            </p>
-            {migrationMultiplier && migrationMultiplier > 1 && (
-              <div className="text-sm font-medium text-amber-700 bg-amber-100 p-2 rounded border border-amber-200 mt-2">
-                <strong>Example:</strong> If user has 100 points in file, they will receive {100 * migrationMultiplier} points after migration.
-              </div>
-            )}
-          </div>
-
-          {/* Rule Name */}
-          <div className="space-y-2">
-            <Label htmlFor="ruleName">
-              Rule Name
-            </Label>
-            <Input
-              id="ruleName"
-              type="text"
-              value={ruleName}
-              onChange={(e) => setRuleName(e.target.value)}
-              placeholder="e.g., Default Point Collection Rule"
-            />
-            <p className="text-xs text-muted-foreground">
-              Internal name for this configuration (for your reference)
-            </p>
-          </div>
-
-          {/* Points Expiry */}
-          <div className="space-y-2">
-            <Label htmlFor="expiresAfterDays" className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Points Expiry (Optional)
-            </Label>
-            <div className="flex items-center gap-4">
-              <Input
-                id="expiresAfterDays"
-                type="number"
-                min="0"
-                value={expiresAfterDays || ''}
-                onChange={(e) => setExpiresAfterDays(e.target.value ? parseInt(e.target.value) : null)}
-                placeholder="Leave empty for no expiry"
-                className="max-w-xs"
-              />
-              <span className="text-sm text-muted-foreground">days</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              If set, points will expire after this many days. Leave empty for points that never expire.
-            </p>
-          </div>
-
-          {/* Manual Adjustment Toggle */}
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div className="space-y-1">
-              <Label className="text-base font-medium">
-                Allow Manual Point Adjustments
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Enable admins to manually adjust shop point balances
-              </p>
-            </div>
-            <Button
-              variant={allowManualAdjustment ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAllowManualAdjustment(!allowManualAdjustment)}
-            >
-              {allowManualAdjustment ? 'Enabled' : 'Disabled'}
-            </Button>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex items-center gap-3 pt-4 border-t">
-            <Button 
-              onClick={handleSave} 
-              disabled={saving || pointsPerScan < 1}
-              className="gap-2"
-              size="lg"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  {activeRule ? 'Update Configuration' : 'Create Configuration'}
-                </>
-              )}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Changes will apply immediately to all new point collections
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Previous Configurations */}
-      {allRules.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Configuration History
-            </CardTitle>
-            <CardDescription>
-              Previous point collection configurations for this organization
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {allRules.map((rule) => (
-                <div
-                  key={rule.id}
-                  className={`flex items-center justify-between p-3 border rounded-lg ${
-                    rule.is_active ? 'bg-primary/5 border-primary/30' : 'bg-muted/30'
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{rule.name}</p>
-                      {rule.is_active && (
-                        <Badge variant="default" className="text-xs">
-                          Active
-                        </Badge>
-                      )}
+          {/* Main Configuration Card */}
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Coins className="h-5 w-5 text-amber-500" />
+                Active Point Configuration
+                {activeRule && (
+                  <Badge variant="default" className="ml-2">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Active
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Set the number of points awarded to shops for each consumer QR scan
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Points Per Scan Input */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="pointsPerScan" className="text-base font-semibold">
+                    Points Per QR Scan <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-xs">
+                      <Coins className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="pointsPerScan"
+                        type="number"
+                        min="1"
+                        max="10000"
+                        value={pointsPerScan}
+                        onChange={(e) => setPointsPerScan(parseInt(e.target.value) || 0)}
+                        className="pl-10 text-lg font-semibold"
+                        placeholder="50"
+                      />
                     </div>
-                    <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Coins className="h-3 w-3" />
-                        {rule.points_per_scan} points/scan
-                      </span>
-                      {rule.expires_after_days && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Expires in {rule.expires_after_days} days
-                        </span>
-                      )}
-                      <span>
-                        Created {new Date(rule.created_at).toLocaleDateString()}
-                      </span>
+                    <div className="text-sm text-muted-foreground">
+                      points per scan
                     </div>
                   </div>
-                  {!rule.is_active && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleActivateRule(rule.id)}
-                      disabled={saving}
-                    >
-                      Activate
-                    </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Recommended: 10-100 points.
+                  </p>
+                  {pointsPerScan > 0 && pointValueRM > 0 && (
+                    <div className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 inline-block">
+                      Estimated Cost: RM {(pointsPerScan * pointValueRM).toFixed(2)} per scan
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Info Card */}
-      <Card className="border-blue-200 bg-blue-50/50">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <div className="rounded-full bg-blue-100 p-2">
-              <Info className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="font-medium text-blue-900">How Point Collection Works</p>
-              <ul className="space-y-1 text-blue-800/80">
-                <li>• Shops scan consumer QR codes through the mobile app</li>
-                <li>• They authenticate with their Shop ID and password</li>
-                <li>• Points are awarded automatically based on this configuration</li>
-                <li>• Shops can redeem points for rewards in the catalog</li>
-                <li>• All point collections are tracked in the "Shop Points Monitor" tab</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                <div className="space-y-2">
+                  <Label htmlFor="pointValueRM" className="text-base font-semibold">
+                    Point Value (RM)
+                  </Label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-xs">
+                      <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="pointValueRM"
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        value={pointValueRM}
+                        onChange={(e) => setPointValueRM(parseFloat(e.target.value) || 0)}
+                        className="pl-10 text-lg font-semibold"
+                        placeholder="0.01"
+                      />
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      RM per point
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Internal reference value for budget estimation.
+                  </p>
+                </div>
+              </div>
+
+              {/* Migration Point Multiplier - New Section */}
+              <div className="space-y-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <Label htmlFor="migrationMultiplier" className="text-base font-semibold flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-amber-600" />
+                  Migration Point Multiplier (Optional)
+                </Label>
+                <div className="flex items-center gap-4">
+                  <div className="relative flex-1 max-w-xs">
+                    <Input
+                      id="migrationMultiplier"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={migrationMultiplier || ''}
+                      onChange={(e) => setMigrationMultiplier(e.target.value ? parseInt(e.target.value) : null)}
+                      className="text-lg font-semibold"
+                      placeholder="None (no multiplier)"
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    times multiplier
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  When set, imported points during migration will be multiplied by this value.
+                </p>
+                {migrationMultiplier && migrationMultiplier > 1 && (
+                  <div className="text-sm font-medium text-amber-700 bg-amber-100 p-2 rounded border border-amber-200 mt-2">
+                    <strong>Example:</strong> If user has 100 points in file, they will receive {100 * migrationMultiplier} points after migration.
+                  </div>
+                )}
+              </div>
+
+              {/* Rule Name */}
+              <div className="space-y-2">
+                <Label htmlFor="ruleName">
+                  Rule Name
+                </Label>
+                <Input
+                  id="ruleName"
+                  type="text"
+                  value={ruleName}
+                  onChange={(e) => setRuleName(e.target.value)}
+                  placeholder="e.g., Default Point Collection Rule"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Internal name for this configuration (for your reference)
+                </p>
+              </div>
+
+              {/* Points Expiry */}
+              <div className="space-y-2">
+                <Label htmlFor="expiresAfterDays" className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Points Expiry (Optional)
+                </Label>
+                <div className="flex items-center gap-4">
+                  <Input
+                    id="expiresAfterDays"
+                    type="number"
+                    min="0"
+                    value={expiresAfterDays || ''}
+                    onChange={(e) => setExpiresAfterDays(e.target.value ? parseInt(e.target.value) : null)}
+                    placeholder="Leave empty for no expiry"
+                    className="max-w-xs"
+                  />
+                  <span className="text-sm text-muted-foreground">days</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  If set, points will expire after this many days. Leave empty for points that never expire.
+                </p>
+              </div>
+
+              {/* Manual Adjustment Toggle */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="space-y-1">
+                  <Label className="text-base font-medium">
+                    Allow Manual Point Adjustments
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Enable admins to manually adjust shop point balances
+                  </p>
+                </div>
+                <Button
+                  variant={allowManualAdjustment ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAllowManualAdjustment(!allowManualAdjustment)}
+                >
+                  {allowManualAdjustment ? 'Enabled' : 'Disabled'}
+                </Button>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Button
+                  onClick={handleSave}
+                  disabled={saving || pointsPerScan < 1}
+                  className="gap-2"
+                  size="lg"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      {activeRule ? 'Update Configuration' : 'Create Configuration'}
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Changes will apply immediately to all new point collections
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Previous Configurations */}
+          {allRules.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Configuration History
+                </CardTitle>
+                <CardDescription>
+                  Previous point collection configurations for this organization
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {allRules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className={`flex items-center justify-between p-3 border rounded-lg ${rule.is_active ? 'bg-primary/5 border-primary/30' : 'bg-muted/30'
+                        }`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{rule.name}</p>
+                          {rule.is_active && (
+                            <Badge variant="default" className="text-xs">
+                              Active
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            {rule.points_per_scan} points/scan
+                          </span>
+                          {rule.expires_after_days && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Expires in {rule.expires_after_days} days
+                            </span>
+                          )}
+                          <span>
+                            Created {new Date(rule.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      {!rule.is_active && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleActivateRule(rule.id)}
+                          disabled={saving}
+                        >
+                          Activate
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Info Card */}
+          <Card className="border-blue-200 bg-blue-50/50">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-blue-100 p-2">
+                  <Info className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium text-blue-900">How Point Collection Works</p>
+                  <ul className="space-y-1 text-blue-800/80">
+                    <li>• Shops scan consumer QR codes through the mobile app</li>
+                    <li>• They authenticate with their Shop ID and password</li>
+                    <li>• Points are awarded automatically based on this configuration</li>
+                    <li>• Shops can redeem points for rewards in the catalog</li>
+                    <li>• All point collections are tracked in the "Shop Points Monitor" tab</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Media Display Settings Tab */}
@@ -651,8 +644,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
 
               {/* Save Button */}
               <div className="flex items-center gap-3 pt-4 border-t">
-                <Button 
-                  onClick={handleSave} 
+                <Button
+                  onClick={handleSave}
                   disabled={saving || mediaDisplayDuration < 1}
                   className="gap-2"
                   size="lg"
@@ -703,9 +696,6 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           <ReferralIncentiveSettings userProfile={userProfile} />
         </TabsContent>
 
-        <TabsContent value="registration" className="space-y-6 mt-6">
-          <UserRegistrationBonusSettings userProfile={userProfile} />
-        </TabsContent>
       </Tabs>
     </div>
   )
