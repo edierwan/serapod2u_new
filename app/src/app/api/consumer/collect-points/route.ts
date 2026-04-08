@@ -534,6 +534,17 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Points awarded successfully:', pointsToAward)
 
+    try {
+      if (orderData.company_id && authenticatedUserId) {
+        await supabaseAdmin.rpc('evaluate_user_registration_bonus' as any, {
+          p_org_id: orderData.company_id,
+          p_user_id: authenticatedUserId,
+        })
+      }
+    } catch (bonusError) {
+      console.warn('Registration bonus evaluation skipped:', bonusError)
+    }
+
     // 6. Calculate total points collected
     const totalBalance = await calculateBalance()
 

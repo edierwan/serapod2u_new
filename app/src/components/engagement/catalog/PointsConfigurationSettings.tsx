@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
+import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
 
 type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
 type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
@@ -53,7 +54,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
   
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral'>('points')
+  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral' | 'registration'>('points')
   
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -300,8 +301,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral')}>
-        <TabsList className="grid w-full max-w-lg grid-cols-3">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral' | 'registration')}>
+        <TabsList className="grid w-full max-w-3xl grid-cols-4">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
@@ -313,6 +314,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           <TabsTrigger value="referral" className="gap-2">
             <Banknote className="h-4 w-4" />
             Referral Incentives
+          </TabsTrigger>
+          <TabsTrigger value="registration" className="gap-2">
+            <Gift className="h-4 w-4" />
+            User Registration
           </TabsTrigger>
         </TabsList>
 
@@ -695,6 +700,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         {/* Referral Incentives Settings Tab */}
         <TabsContent value="referral" className="space-y-6 mt-6">
           <ReferralIncentiveSettings userProfile={userProfile} />
+        </TabsContent>
+
+        <TabsContent value="registration" className="space-y-6 mt-6">
+          <UserRegistrationBonusSettings userProfile={userProfile} />
         </TabsContent>
       </Tabs>
     </div>

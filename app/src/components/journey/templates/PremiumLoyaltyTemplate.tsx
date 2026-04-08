@@ -591,6 +591,15 @@ export default function PremiumLoyaltyTemplate({
     const [emailError, setEmailError] = useState('')
     const [phoneError, setPhoneError] = useState('')
     const [isSignUp, setIsSignUp] = useState(false)
+    const [signUpEmailStatus, setSignUpEmailStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+    const [signUpPhoneStatus, setSignUpPhoneStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+    const [showRegistrationOtpModal, setShowRegistrationOtpModal] = useState(false)
+    const [registrationOtpCode, setRegistrationOtpCode] = useState('')
+    const [registrationOtpError, setRegistrationOtpError] = useState('')
+    const [registrationOtpLoading, setRegistrationOtpLoading] = useState(false)
+    const [registrationOtpSending, setRegistrationOtpSending] = useState(false)
+    const [, setRegistrationVerificationToken] = useState('')
+    const [registrationResendCooldown, setRegistrationResendCooldown] = useState(0)
 
     // Signup states
     const [signUpName, setSignUpName] = useState('')
@@ -1439,6 +1448,9 @@ export default function PremiumLoyaltyTemplate({
         setLoginError('')
         setEmailError('')
         setPhoneError('')
+        setSignUpEmailStatus('idle')
+        setSignUpPhoneStatus('idle')
+        resetRegistrationVerificationState()
         setLoginLoading(false)
         setShowLoginForm(false)
     }, [qrCode])
@@ -1452,10 +1464,115 @@ export default function PremiumLoyaltyTemplate({
             setLoginError('')
             setEmailError('')
             setPhoneError('')
+            setSignUpEmailStatus('idle')
+            setSignUpPhoneStatus('idle')
+            resetRegistrationVerificationState()
             setLoginLoading(false)
             setShowLoginForm(false)
         }
     }, [isAuthenticated])
+
+    useEffect(() => {
+        if (registrationResendCooldown <= 0) return
+
+        const timer = window.setTimeout(() => {
+            setRegistrationResendCooldown((current) => Math.max(0, current - 1))
+        }, 1000)
+
+        return () => window.clearTimeout(timer)
+    }, [registrationResendCooldown])
+
+    useEffect(() => {
+        if (!isSignUp) return
+
+        const email = loginEmail.trim().toLowerCase()
+        if (!email) {
+            setEmailError('')
+            setSignUpEmailStatus('idle')
+            return
+        }
+
+        if (!email.includes('@')) {
+            setEmailError('Please enter a valid email address.')
+            setSignUpEmailStatus('taken')
+            return
+        }
+
+        const timeoutId = window.setTimeout(async () => {
+            try {
+                setSignUpEmailStatus('checking')
+                const response = await fetch('/api/auth/register/check-availability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email }),
+                })
+
+                const result = await response.json()
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to validate email address.')
+                }
+
+                if (result.email?.available) {
+                    setEmailError('')
+                    setSignUpEmailStatus('available')
+                } else {
+                    setEmailError(result.email?.message || 'This email address is already linked to an existing account.')
+                    setSignUpEmailStatus('taken')
+                }
+            } catch (error: any) {
+                setEmailError(error.message || 'Unable to validate email address.')
+                setSignUpEmailStatus('taken')
+            }
+        }, 450)
+
+        return () => window.clearTimeout(timeoutId)
+    }, [isSignUp, loginEmail])
+
+    useEffect(() => {
+        if (!isSignUp) return
+
+        const phone = signUpPhone.trim()
+        if (!phone) {
+            setPhoneError('')
+            setSignUpPhoneStatus('idle')
+            return
+        }
+
+        if (!validatePhoneNumber(phone)) {
+            setPhoneError('Please enter a valid Malaysia or China mobile number.')
+            setSignUpPhoneStatus('taken')
+            return
+        }
+
+        const timeoutId = window.setTimeout(async () => {
+            try {
+                setSignUpPhoneStatus('checking')
+                const response = await fetch('/api/auth/register/check-availability', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone }),
+                })
+
+                const result = await response.json()
+                if (!response.ok) {
+                    throw new Error(result.error || 'Unable to validate mobile number.')
+                }
+
+                if (result.phone?.available) {
+                    setPhoneError('')
+                    setSignUpPhoneStatus('available')
+                } else {
+                    setPhoneError(result.phone?.message || 'This mobile number is already linked to an existing account.')
+                    setSignUpPhoneStatus('taken')
+                }
+            } catch (error: any) {
+                setPhoneError(error.message || 'Unable to validate mobile number.')
+                setSignUpPhoneStatus('taken')
+            }
+        }, 450)
+
+        return () => window.clearTimeout(timeoutId)
+    }, [isSignUp, signUpPhone])
 
     // Re-check QR status when navigating to lucky-draw tab (bulletproof double-check)
     useEffect(() => {
@@ -1663,6 +1780,184 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    const resetRegistrationVerificationState = () => {
+        setShowRegistrationOtpModal(false)
+        setRegistrationOtpCode('')
+        setRegistrationOtpError('')
+        setRegistrationOtpLoading(false)
+        setRegistrationOtpSending(false)
+        setRegistrationVerificationToken('')
+        setRegistrationResendCooldown(0)
+    }
+
+    const resetSignUpForm = () => {
+        setLoginEmail('')
+        setLoginPassword('')
+        setSignUpName('')
+        setSignUpPhone('')
+        setSignUpLocation('')
+        setSignUpConfirmPassword('')
+        setSignUpReference('')
+        setSignUpAddress('')
+        setSignUpShopName('')
+        setEmailError('')
+        setPhoneError('')
+        setSignUpEmailStatus('idle')
+        setSignUpPhoneStatus('idle')
+        resetRegistrationVerificationState()
+    }
+
+    const completeVerifiedRegistration = async (emailToUse: string, verificationToken: string) => {
+        const regResult = await registerConsumer({
+            email: emailToUse,
+            password: loginPassword,
+            full_name: signUpName,
+            phone: signUpPhone || undefined,
+            location: signUpLocation || undefined,
+            referral_phone: signUpReference || undefined,
+            address: signUpAddress || undefined,
+            shop_name: signUpShopName || undefined,
+            registration_org_id: orgId,
+            verification_token: verificationToken,
+        })
+
+        if (!regResult.success) {
+            throw new Error(regResult.error || 'Failed to create account')
+        }
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: emailToUse,
+            password: loginPassword
+        })
+
+        if (error) throw error
+
+        if (data.session && data.user) {
+            sessionStorage.setItem('serapod_active_session', 'logged_in')
+            setShowLoginForm(false)
+            resetSignUpForm()
+
+            try {
+                const profileData = await checkUserOrganization(data.user.id, true)
+                const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
+
+                if (success) {
+                    setIsAuthenticated(true)
+                    setUserEmail(data.user.email || '')
+                    setUserId(data.user.id)
+                    setIsShopUser(isShop)
+                    setUserName(fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || '')
+                    setUserAvatarUrl(avatarUrl)
+                    setShopName(orgName)
+                    setUserPhone(phone)
+                    setUserPoints(pointsBalance)
+                }
+            } catch (profileError) {
+                console.error('🔐 Error fetching profile after signup:', profileError)
+            }
+
+            toast({
+                title: 'Account Created',
+                description: 'Your account has been created and you are now logged in.',
+            })
+            return
+        }
+
+        setShowLoginForm(false)
+        resetSignUpForm()
+        toast({
+            title: 'Account Created',
+            description: 'Your account has been created successfully. Please check your email for confirmation if required.',
+        })
+    }
+
+    const requestRegistrationOtp = async (isResend = false) => {
+        if (!orgId) {
+            throw new Error('Registration is not available because the organization is missing.')
+        }
+
+        setRegistrationOtpSending(true)
+        setRegistrationOtpError('')
+
+        try {
+            const response = await fetch(isResend ? '/api/auth/register/resend-code' : '/api/auth/register/request-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: loginEmail.trim().toLowerCase(),
+                    phone: signUpPhone.trim(),
+                    fullName: signUpName.trim(),
+                    orgId,
+                }),
+            })
+
+            const result = await response.json()
+            if (!response.ok) {
+                if (result.field === 'email') {
+                    setEmailError(result.error)
+                    setSignUpEmailStatus('taken')
+                }
+                if (result.field === 'phone') {
+                    setPhoneError(result.error)
+                    setSignUpPhoneStatus('taken')
+                }
+                throw new Error(result.error || 'Unable to send verification code.')
+            }
+
+            setRegistrationResendCooldown(Number(result.resendCooldown || 60))
+            setShowRegistrationOtpModal(true)
+            setRegistrationOtpCode('')
+            setRegistrationOtpError('')
+            toast({
+                title: isResend ? 'Verification Code Sent' : 'Verification Started',
+                description: result.message || 'A 4-digit WhatsApp verification code has been sent to your mobile number.',
+            })
+        } finally {
+            setRegistrationOtpSending(false)
+        }
+    }
+
+    const verifyRegistrationOtp = async () => {
+        if (!signUpPhone.trim()) {
+            setRegistrationOtpError('Phone number is required.')
+            return
+        }
+
+        if (!/^\d{4}$/.test(registrationOtpCode)) {
+            setRegistrationOtpError('Please enter the 4-digit verification code.')
+            return
+        }
+
+        setRegistrationOtpLoading(true)
+        setRegistrationOtpError('')
+
+        try {
+            const response = await fetch('/api/auth/register/verify-code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: signUpPhone.trim(),
+                    code: registrationOtpCode,
+                }),
+            })
+
+            const result = await response.json()
+            if (!response.ok) {
+                throw new Error(result.error || 'Unable to verify the code.')
+            }
+
+            setRegistrationVerificationToken(result.verificationToken || '')
+            setShowRegistrationOtpModal(false)
+
+            const emailToUse = loginEmail.replace(/\s/g, '').toLowerCase()
+            await completeVerifiedRegistration(emailToUse, result.verificationToken)
+        } catch (error: any) {
+            setRegistrationOtpError(error.message || 'Unable to verify the code.')
+        } finally {
+            setRegistrationOtpLoading(false)
+        }
+    }
+
     // Handle login
     const handleLogin = async () => {
         if (!loginEmail || !loginPassword) {
@@ -1675,6 +1970,10 @@ export default function PremiumLoyaltyTemplate({
                 setLoginError('Please enter your full name')
                 return
             }
+            if (!signUpPhone) {
+                setLoginError('Please enter your mobile number')
+                return
+            }
             if (!signUpConfirmPassword) {
                 setLoginError('Please confirm your password')
                 return
@@ -1683,9 +1982,20 @@ export default function PremiumLoyaltyTemplate({
                 setLoginError('Passwords do not match')
                 return
             }
-            // Phone is optional but good to have validation if provided
-            if (signUpPhone && !validateMalaysiaPhone(signUpPhone)) {
-                setLoginError('Please enter a valid Malaysia phone number')
+            if (!validatePhoneNumber(signUpPhone)) {
+                setLoginError('Please enter a valid Malaysia or China mobile number')
+                return
+            }
+            if (emailError || phoneError) {
+                setLoginError(emailError || phoneError)
+                return
+            }
+            if (signUpEmailStatus === 'checking' || signUpPhoneStatus === 'checking') {
+                setLoginError('Please wait while we validate your registration details.')
+                return
+            }
+            if (signUpEmailStatus === 'taken' || signUpPhoneStatus === 'taken') {
+                setLoginError('Please update the highlighted registration details before continuing.')
                 return
             }
         }
@@ -1776,121 +2086,9 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
 
-                // Use server action to bypass rate limits
-                const regResult = await registerConsumer({
-                    email: emailToUse,
-                    password: loginPassword,
-                    full_name: signUpName,
-                    phone: signUpPhone || undefined,
-                    location: signUpLocation || undefined
-                })
-
-                if (!regResult.success) {
-                    throw new Error(regResult.error || 'Failed to create account')
-                }
-
-                console.log('🔐 Sign up successful via server action')
-
-                // Auto-login after successful registration
-                const { data, error } = await supabase.auth.signInWithPassword({
-                    email: emailToUse,
-                    password: loginPassword
-                })
-
-                if (error) throw error
-                console.log('🔐 Sign up successful')
-
-                if (data.session && data.user) {
-                    console.log('🔐 Auto-logging in after signup...', data.user.id)
-
-                    // Update profile with additional details via API (bypasses RLS)
-                    if (signUpPhone || signUpAddress || signUpShopName || signUpReference) {
-                        try {
-                            console.log('🔐 Updating profile with additional details')
-                            const response = await fetch('/api/user/update-profile', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    userId: data.user.id,
-                                    phone: signUpPhone || undefined,
-                                    referral_phone: signUpReference || undefined,
-                                    address: signUpAddress || undefined,
-                                    shop_name: signUpShopName || undefined
-                                })
-                            })
-
-                            const result = await response.json()
-                            if (result.success) {
-                                console.log('🔐 Profile updated successfully')
-                            } else {
-                                console.error('🔐 Error updating profile:', result.error)
-                            }
-                        } catch (profileError) {
-                            console.error('🔐 Error updating profile:', profileError)
-                        }
-                    }
-
-                    // IMPORTANT: Mark this as an active session so it persists within this browser session
-                    sessionStorage.setItem('serapod_active_session', 'logged_in')
-
-                    setShowLoginForm(false)
-                    // Clear form after successful login
-                    setLoginEmail('')
-                    setLoginPassword('')
-                    setSignUpName('')
-                    setSignUpPhone('')
-                    setSignUpReference('')
-                    setSignUpAddress('')
-                    setSignUpShopName('')
-                    setSignUpConfirmPassword('')
-
-                    // IMPORTANT: Force profile fetch after successful login
-                    if (data.user) {
-                        console.log('🔐 Forcing profile fetch after signup...')
-                        try {
-                            const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
-                            const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
-
-                            if (success) {
-                                console.log('🔐 Profile loaded successfully after signup')
-                                setIsAuthenticated(true)
-                                setUserEmail(data.user.email || '')
-                                setUserId(data.user.id)
-                                setIsShopUser(isShop)
-                                setUserName(fullName || data.user.user_metadata?.full_name || data.user.email?.split('@')[0] || '')
-                                setUserAvatarUrl(avatarUrl)
-                                setShopName(orgName)
-                                setUserPhone(phone)
-                                // Set points for all users
-                                setUserPoints(pointsBalance)
-                            }
-                        } catch (profileError) {
-                            console.error('🔐 Error fetching profile after signup:', profileError)
-                        }
-                    }
-
-                    toast({
-                        title: "Account Created",
-                        description: "Your account has been created and you are now logged in.",
-                    })
-                } else {
-                    setLoginError('')
-                    setShowLoginForm(false)
-                    // Clear form after successful signup
-                    setLoginEmail('')
-                    setLoginPassword('')
-                    setSignUpName('')
-                    setSignUpPhone('')
-                    setSignUpReference('')
-                    setSignUpAddress('')
-                    setSignUpShopName('')
-                    setSignUpConfirmPassword('')
-
-                    toast({
-                        title: "Account Created",
-                        description: "Your account has been created successfully. Please check your email for confirmation if required.",
-                    })
-                }
+                await requestRegistrationOtp(false)
+                setLoginError('')
+                return
             } else {
                 // Add timeout for sign in
                 const signInPromise = supabase.auth.signInWithPassword({
@@ -4897,9 +5095,7 @@ export default function PremiumLoyaltyTemplate({
                                         onClick={() => {
                                             setShowLoginForm(false)
                                             setLoginError('')
-                                            setEmailError('')
-                                            setPhoneError('')
-                                            // Clear fields when closing form
+                                            resetSignUpForm()
                                             setLoginEmail('')
                                             setLoginPassword('')
                                             setLoginLoading(false)
@@ -4928,28 +5124,29 @@ export default function PremiumLoyaltyTemplate({
                                             value={loginEmail}
                                             onChange={(e) => {
                                                 setLoginEmail(e.target.value)
-                                                setEmailError('')
-                                            }}
-                                            onBlur={async (e) => {
-                                                if (isSignUp && e.target.value && e.target.value.includes('@')) {
-                                                    // Check if email exists
-                                                    const { data } = await supabase
-                                                        .from('users')
-                                                        .select('id')
-                                                        .eq('email', e.target.value)
-                                                        .single()
-
-                                                    if (data) {
-                                                        setEmailError('This email address is already registered. Please use a different email.')
-                                                    }
+                                                if (!isSignUp) {
+                                                    setEmailError('')
+                                                } else if (!e.target.value.trim()) {
+                                                    setEmailError('')
+                                                    setSignUpEmailStatus('idle')
                                                 }
                                             }}
-                                            className={`h-11 pl-10 ${emailError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                            className={`h-11 pl-10 ${(emailError || signUpEmailStatus === 'taken') ? 'border-red-500 focus-visible:ring-red-500' : signUpEmailStatus === 'available' ? 'border-green-500 focus-visible:ring-green-500' : ''}`}
                                             autoComplete="off"
                                             autoCorrect="off"
                                             autoCapitalize="off"
                                         />
-                                        {emailError && (
+                                        {isSignUp && signUpEmailStatus === 'checking' && (
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                                            </div>
+                                        )}
+                                        {isSignUp && signUpEmailStatus === 'available' && !emailError && (
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                            </div>
+                                        )}
+                                        {(emailError || signUpEmailStatus === 'taken') && (
                                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                                 <AlertCircle className="w-5 h-5 text-red-500" />
                                             </div>
@@ -5007,26 +5204,25 @@ export default function PremiumLoyaltyTemplate({
                                                     value={signUpPhone}
                                                     onChange={(e) => {
                                                         setSignUpPhone(e.target.value)
-                                                        setPhoneError('')
-                                                    }}
-                                                    onBlur={async (e) => {
-                                                        if (e.target.value) {
-                                                            // Check if phone exists
-                                                            const { data } = await supabase
-                                                                .from('users')
-                                                                .select('id')
-                                                                .eq('phone', e.target.value)
-                                                                .single()
-
-                                                            if (data) {
-                                                                setPhoneError('This phone number is already registered to another user.')
-                                                            }
+                                                        if (!e.target.value.trim()) {
+                                                            setPhoneError('')
+                                                            setSignUpPhoneStatus('idle')
                                                         }
                                                     }}
-                                                    className={`h-11 pl-10 ${phoneError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                                    className={`h-11 pl-10 ${(phoneError || signUpPhoneStatus === 'taken') ? 'border-red-500 focus-visible:ring-red-500' : signUpPhoneStatus === 'available' ? 'border-green-500 focus-visible:ring-green-500' : ''}`}
                                                     autoComplete="tel"
                                                 />
-                                                {phoneError && (
+                                                {signUpPhoneStatus === 'checking' && (
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+                                                    </div>
+                                                )}
+                                                {signUpPhoneStatus === 'available' && !phoneError && (
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                    </div>
+                                                )}
+                                                {(phoneError || signUpPhoneStatus === 'taken') && (
                                                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
                                                         <AlertCircle className="w-5 h-5 text-red-500" />
                                                     </div>
@@ -5035,7 +5231,9 @@ export default function PremiumLoyaltyTemplate({
                                             {phoneError && (
                                                 <p className="text-xs text-red-500 mt-1">{phoneError}</p>
                                             )}
-                                            <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers</p>
+                                            {!phoneError && (
+                                                <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers. A 4-digit WhatsApp verification code will be sent before account creation.</p>
+                                            )}
                                         </div>
 
                                         <div>
@@ -5180,7 +5378,7 @@ export default function PremiumLoyaltyTemplate({
 
                                 <Button
                                     onClick={handleLogin}
-                                    disabled={loginLoading || !loginEmail || !loginPassword}
+                                    disabled={loginLoading || registrationOtpSending || !loginEmail || !loginPassword || (isSignUp && (!signUpName || !signUpPhone || signUpEmailStatus === 'checking' || signUpPhoneStatus === 'checking' || signUpEmailStatus === 'taken' || signUpPhoneStatus === 'taken'))}
                                     className="w-full h-11 font-semibold"
                                     style={{ backgroundColor: config.button_color }}
                                 >
@@ -5189,6 +5387,11 @@ export default function PremiumLoyaltyTemplate({
                                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                             {isSignUp ? 'Creating Account...' : 'Signing In...'}
                                         </>
+                                    ) : registrationOtpSending ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Sending WhatsApp Code...
+                                        </>
                                     ) : (
                                         isSignUp ? 'Create Account' : 'Sign In'
                                     )}
@@ -5196,7 +5399,15 @@ export default function PremiumLoyaltyTemplate({
 
                                 <div className="text-center">
                                     <button
-                                        onClick={() => setIsSignUp(!isSignUp)}
+                                        onClick={() => {
+                                            setLoginError('')
+                                            setEmailError('')
+                                            setPhoneError('')
+                                            setSignUpEmailStatus('idle')
+                                            setSignUpPhoneStatus('idle')
+                                            resetRegistrationVerificationState()
+                                            setIsSignUp(!isSignUp)
+                                        }}
                                         className="text-sm font-medium"
                                         style={{ color: config.primary_color }}
                                     >
@@ -6730,6 +6941,94 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 </div>
             )}
+            <Dialog
+                open={showRegistrationOtpModal}
+                onOpenChange={(open) => {
+                    setShowRegistrationOtpModal(open)
+                    if (!open) {
+                        setRegistrationOtpCode('')
+                        setRegistrationOtpError('')
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Verify Mobile Number</DialogTitle>
+                        <DialogDescription>
+                            Enter the 4-digit WhatsApp code sent to {signUpPhone || 'your mobile number'} to complete registration.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Verification Code
+                            </label>
+                            <Input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={4}
+                                placeholder="Enter 4-digit code"
+                                value={registrationOtpCode}
+                                onChange={(e) => {
+                                    setRegistrationOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+                                    setRegistrationOtpError('')
+                                }}
+                                className={`h-12 text-center text-lg tracking-[0.4em] ${registrationOtpError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                            />
+                            {registrationOtpError && (
+                                <p className="text-xs text-red-500 mt-2">{registrationOtpError}</p>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                            The verification message is delivered through WhatsApp Activity under the Registration category.
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex-col gap-2 sm:flex-col">
+                        <Button
+                            onClick={verifyRegistrationOtp}
+                            disabled={registrationOtpLoading || registrationOtpCode.length !== 4}
+                            className="w-full h-11"
+                            style={{ backgroundColor: config.button_color }}
+                        >
+                            {registrationOtpLoading ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Verifying Code...
+                                </>
+                            ) : (
+                                'Verify and Create Account'
+                            )}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={async () => {
+                                try {
+                                    await requestRegistrationOtp(true)
+                                } catch (error: any) {
+                                    setRegistrationOtpError(error.message || 'Unable to resend the verification code.')
+                                }
+                            }}
+                            disabled={registrationOtpSending || registrationResendCooldown > 0}
+                            className="w-full h-11"
+                        >
+                            {registrationOtpSending ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Sending New Code...
+                                </>
+                            ) : registrationResendCooldown > 0 ? (
+                                `Resend available in ${Math.floor(registrationResendCooldown / 60)}:${String(registrationResendCooldown % 60).padStart(2, '0')}`
+                            ) : (
+                                'Resend WhatsApp Code'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             {/* Reward Detail Modal */}
             <Dialog open={showRewardDetailModal} onOpenChange={setShowRewardDetailModal}>
                 <DialogContent className="max-w-[90vw] w-full rounded-2xl p-0 overflow-hidden bg-white">

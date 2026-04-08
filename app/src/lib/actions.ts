@@ -6,6 +6,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import {
+  findCodeByVerificationToken,
+  logNotificationEvent as logRegistrationNotificationEvent,
+  markCodeUsed as markRegistrationCodeUsed,
+} from '@/server/auth/registrationVerificationService'
 
 export async function createUserWithAuth(userData: {
   email: string
@@ -576,6 +581,11 @@ export async function registerConsumer(userData: {
   full_name: string
   phone?: string
   location?: string
+  referral_phone?: string
+  address?: string
+  shop_name?: string
+  registration_org_id?: string
+  verification_token?: string
 }) {
   try {
     const adminClient = createAdminClient()
@@ -587,10 +597,41 @@ export async function registerConsumer(userData: {
     }
 
     const phone = userData.phone ? normalizePhone(userData.phone) : undefined
+    const normalizedEmail = userData.email.trim().toLowerCase()
+
+    if (!phone) {
+      return {
+        success: false,
+        error: 'A verified mobile number is required for registration.'
+      }
+    }
+
+    if (!userData.verification_token) {
+      return {
+        success: false,
+        error: 'Mobile verification is required before registration can be completed.'
+      }
+    }
+
+    const verificationCode = await findCodeByVerificationToken(adminClient, userData.verification_token)
+    if (!verificationCode) {
+      return {
+        success: false,
+        error: 'Your mobile verification session has expired. Please request a new WhatsApp code.'
+      }
+    }
+
+    const verifiedEmail = String((verificationCode.meta as any)?.email || '').trim().toLowerCase()
+    if (verificationCode.phone_normalized !== phone || verifiedEmail !== normalizedEmail) {
+      return {
+        success: false,
+        error: 'The verified mobile number does not match the current registration details. Please verify again.'
+      }
+    }
 
     // Create user with auto-confirm to bypass rate limits and verification
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: userData.email,
+      email: normalizedEmail,
       password: userData.password,
       email_confirm: true,
       phone: phone,
@@ -621,7 +662,7 @@ export async function registerConsumer(userData: {
     const { error: syncError } = await supabase
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
-        p_email: userData.email,
+        p_email: normalizedEmail,
         p_full_name: userData.full_name,
         p_phone: phone,
         p_role_code: 'CONSUMER' // Default role for consumers
@@ -630,13 +671,111 @@ export async function registerConsumer(userData: {
     if (syncError) {
       console.warn('Manual sync_user_profile failed, relying on trigger:', syncError)
       // Don't fail the registration, as the trigger might still work
-    } else if (userData.location) {
-      // Update location if provided (since sync_user_profile might not handle it yet)
-      await adminClient
-        .from('users')
-        .update({ location: userData.location })
-        .eq('id', authUser.user.id)
     }
+
+    const profileUpdates: Record<string, any> = {}
+    if (userData.location) profileUpdates.location = userData.location
+    if (userData.referral_phone) profileUpdates.referral_phone = userData.referral_phone
+    if (userData.address) profileUpdates.address = userData.address
+    if (userData.shop_name) profileUpdates.shop_name = userData.shop_name
+
+    if (Object.keys(profileUpdates).length > 0) {
+      const { error: profileError } = await adminClient
+        .from('users')
+        .update(profileUpdates)
+        .eq('id', authUser.user.id)
+
+      if (profileError) {
+        console.warn('Registration profile enrichment failed:', profileError)
+      }
+    }
+
+    if (userData.registration_org_id) {
+      try {
+        const { data: settings } = await (adminClient as any)
+          .from('user_registration_bonus_settings')
+          .select('*')
+          .eq('org_id', userData.registration_org_id)
+          .eq('enabled', true)
+          .maybeSingle()
+
+        if (settings) {
+          const bonusRow = {
+            org_id: userData.registration_org_id,
+            user_id: authUser.user.id,
+            settings_id: settings.id,
+            status: settings.bonus_mode === 'instant' ? 'awarded' : 'pending',
+            bonus_mode: settings.bonus_mode,
+            bonus_points: settings.bonus_points,
+            min_valid_scans_per_month: settings.min_valid_scans_per_month,
+            required_consecutive_months: settings.required_consecutive_months,
+            only_unique_qr_scans: settings.only_unique_qr_scans,
+            allow_grace_month: settings.allow_grace_month,
+            bonus_expiry_days: settings.bonus_expiry_days,
+            max_bonus_claims_per_user: settings.max_bonus_claims_per_user,
+            registration_source: 'premium_loyalty',
+            registered_at: new Date().toISOString(),
+            qualified_at: settings.bonus_mode === 'instant' ? new Date().toISOString() : null,
+            awarded_at: settings.bonus_mode === 'instant' ? new Date().toISOString() : null,
+          }
+
+          let awardedTransactionId: string | null = null
+
+          if (settings.bonus_mode === 'instant') {
+            const { data: balanceData } = await (adminClient as any)
+              .from('v_consumer_points_balance')
+              .select('current_balance')
+              .eq('user_id', authUser.user.id)
+              .maybeSingle()
+
+            const currentBalance = Number(balanceData?.current_balance || 0)
+            const { data: txnData, error: txnError } = await (adminClient as any)
+              .from('points_transactions')
+              .insert({
+                company_id: userData.registration_org_id,
+                consumer_phone: phone,
+                consumer_email: normalizedEmail,
+                transaction_type: 'adjust',
+                points_amount: settings.bonus_points,
+                balance_after: currentBalance + settings.bonus_points,
+                description: 'Welcome bonus credited upon successful registration.',
+                transaction_date: new Date().toISOString(),
+                user_id: authUser.user.id,
+                created_by: authUser.user.id,
+              })
+              .select('id')
+              .single()
+
+            if (txnError) {
+              console.warn('Failed to award instant registration bonus:', txnError)
+            } else {
+              awardedTransactionId = txnData?.id || null
+            }
+          }
+
+          await (adminClient as any)
+            .from('user_registration_bonus_progress')
+            .upsert({
+              ...bonusRow,
+              awarded_transaction_id: awardedTransactionId,
+            }, { onConflict: 'org_id,user_id' })
+        }
+      } catch (bonusError) {
+        console.warn('Registration bonus setup unavailable or failed:', bonusError)
+      }
+    }
+
+    await markRegistrationCodeUsed(adminClient, verificationCode.id, authUser.user.id)
+    await logRegistrationNotificationEvent(adminClient, {
+      eventType: 'registration_completed',
+      phone,
+      userId: authUser.user.id,
+      status: 'completed',
+      meta: {
+        email: normalizedEmail,
+        org_id: userData.registration_org_id || null,
+      },
+    })
 
     return {
       success: true,
