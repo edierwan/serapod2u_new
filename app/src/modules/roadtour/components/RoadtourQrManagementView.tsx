@@ -1,0 +1,400 @@
+'use client'
+
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  AlertCircle, CheckCircle2, Copy, Download, Eye, Loader2, QrCode, RefreshCcw,
+  Search, Send, ShieldOff, XCircle
+} from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
+
+interface RoadtourQrManagementViewProps {
+  userProfile: any
+  onViewChange: (viewId: string) => void
+}
+
+interface Campaign {
+  id: string
+  name: string
+  status: string
+}
+
+interface QrCode {
+  id: string
+  campaign_id: string
+  campaign_name?: string
+  user_id: string
+  user_name?: string
+  token: string
+  status: string
+  expires_at: string | null
+  usage_count: number
+  created_at: string
+}
+
+export function RoadtourQrManagementView({ userProfile, onViewChange }: RoadtourQrManagementViewProps) {
+  const supabase = createClient()
+  const companyId = userProfile.organizations.id
+
+  const [loading, setLoading] = useState(true)
+  const [qrCodes, setQrCodes] = useState<QrCode[]>([])
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [campaignFilter, setCampaignFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Generate dialog
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [genCampaignId, setGenCampaignId] = useState('')
+  const [genManagerId, setGenManagerId] = useState('')
+  const [assignedManagers, setAssignedManagers] = useState<{ user_id: string; full_name: string }[]>([])
+  const [generating, setGenerating] = useState(false)
+
+  // Preview dialog
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewQr, setPreviewQr] = useState<QrCode | null>(null)
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+
+  const qrBaseUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/scan`
+    : ''
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const [campaignRes, qrRes] = await Promise.all([
+        (supabase as any).from('roadtour_campaigns').select('id, name, status').eq('org_id', companyId).order('name'),
+        (supabase as any).from('roadtour_qr_codes')
+          .select('*, roadtour_campaigns!inner(name, org_id), users:user_id(full_name)')
+          .eq('roadtour_campaigns.org_id', companyId)
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ])
+
+      if (campaignRes.error) throw campaignRes.error
+      if (qrRes.error) throw qrRes.error
+
+      setCampaigns(campaignRes.data || [])
+      setQrCodes(
+        (qrRes.data || []).map((q: any) => ({
+          ...q,
+          campaign_name: q.roadtour_campaigns?.name || '—',
+          user_name: q.users?.full_name || '—',
+        }))
+      )
+    } catch (err: any) {
+      toast({ title: 'Error', description: 'Failed to load QR codes.', variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }, [companyId, supabase])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  // When campaign selected in generate dialog, load its managers
+  useEffect(() => {
+    if (!genCampaignId) { setAssignedManagers([]); return }
+    ;(async () => {
+      const { data } = await (supabase as any)
+        .from('roadtour_campaign_managers')
+        .select('user_id, users:user_id(full_name)')
+        .eq('campaign_id', genCampaignId)
+        .eq('is_active', true)
+      setAssignedManagers((data || []).map((d: any) => ({ user_id: d.user_id, full_name: d.users?.full_name || '—' })))
+    })()
+  }, [genCampaignId, supabase])
+
+  const generateQr = async () => {
+    if (!genCampaignId || !genManagerId) {
+      toast({ title: 'Validation', description: 'Select a campaign and an account manager.', variant: 'destructive' })
+      return
+    }
+    try {
+      setGenerating(true)
+      const token = crypto.randomUUID()
+
+      // Determine expiry from campaign's qr_mode
+      const campaign = campaigns.find((c) => c.id === genCampaignId)
+      let expiresAt: string | null = null
+
+      // Check settings for QR mode specifics
+      const { data: settings } = await (supabase as any).from('roadtour_settings').select('qr_expiry_hours, qr_mode').eq('org_id', companyId).maybeSingle()
+      if (settings?.qr_mode === 'time_limited' && settings?.qr_expiry_hours) {
+        const exp = new Date()
+        exp.setHours(exp.getHours() + settings.qr_expiry_hours)
+        expiresAt = exp.toISOString()
+      }
+
+      const { error } = await (supabase as any).from('roadtour_qr_codes').insert({
+        campaign_id: genCampaignId,
+        user_id: genManagerId,
+        token,
+        status: 'active',
+        expires_at: expiresAt,
+        created_by: userProfile.id,
+      })
+
+      if (error) {
+        if (error.code === '23505') {
+          toast({ title: 'Duplicate', description: 'This account manager already has an active QR for this campaign.', variant: 'destructive' })
+          return
+        }
+        throw error
+      }
+
+      toast({ title: 'QR Generated', description: 'New QR code created successfully.' })
+      setGenerateOpen(false)
+      setGenCampaignId('')
+      setGenManagerId('')
+      loadData()
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const previewQrCode = async (qr: QrCode) => {
+    setPreviewQr(qr)
+    setPreviewOpen(true)
+    setPreviewLoading(true)
+    try {
+      const QRCode = (await import('qrcode')).default
+      const url = `${qrBaseUrl}?rt=${qr.token}`
+      const dataUrl = await QRCode.toDataURL(url, { width: 360, margin: 2, color: { dark: '#000000', light: '#FFFFFF' } })
+      setPreviewDataUrl(dataUrl)
+    } catch {
+      toast({ title: 'Error', description: 'Failed to generate QR preview.', variant: 'destructive' })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const downloadQr = async (qr: QrCode) => {
+    try {
+      const QRCode = (await import('qrcode')).default
+      const url = `${qrBaseUrl}?rt=${qr.token}`
+      const dataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 })
+      const link = document.createElement('a')
+      link.download = `roadtour-qr-${qr.token.substring(0, 8)}.png`
+      link.href = dataUrl
+      link.click()
+    } catch {
+      toast({ title: 'Error', description: 'Failed to download QR.', variant: 'destructive' })
+    }
+  }
+
+  const copyLink = (qr: QrCode) => {
+    const url = `${qrBaseUrl}?rt=${qr.token}`
+    navigator.clipboard.writeText(url)
+    toast({ title: 'Copied', description: 'QR link copied to clipboard.' })
+  }
+
+  const revokeQr = async (qrId: string) => {
+    try {
+      const { error } = await (supabase as any).from('roadtour_qr_codes').update({ status: 'revoked' }).eq('id', qrId)
+      if (error) throw error
+      toast({ title: 'Revoked', description: 'QR code has been revoked.' })
+      loadData()
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' })
+    }
+  }
+
+  const sendWhatsApp = async (qr: QrCode) => {
+    try {
+      const url = `${qrBaseUrl}?rt=${qr.token}`
+      const message = `🗺️ *RoadTour QR Code*\n\nHi ${qr.user_name},\nHere is your RoadTour QR link for campaign "${qr.campaign_name}":\n\n${url}\n\nShare this link with shop owners during your visit. They can scan it to earn reward points.`
+
+      // Get the manager's phone
+      const { data: usr } = await supabase.from('users').select('phone').eq('id', qr.user_id).single()
+      if (!usr?.phone) { toast({ title: 'Error', description: 'Account manager has no phone number.', variant: 'destructive' }); return }
+
+      const resp = await fetch('/api/settings/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: usr.phone, message }),
+      })
+
+      if (!resp.ok) throw new Error('WhatsApp send failed')
+
+      // Log delivery
+      await (supabase as any).from('roadtour_qr_delivery_logs').insert({
+        qr_id: qr.id,
+        channel: 'whatsapp',
+        recipient_phone: usr.phone,
+        status: 'sent',
+        sent_by: userProfile.id,
+      })
+
+      toast({ title: 'Sent', description: `QR link sent via WhatsApp to ${usr.phone}.` })
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to send WhatsApp message.', variant: 'destructive' })
+    }
+  }
+
+  const statusColors: Record<string, string> = {
+    active: 'bg-emerald-100 text-emerald-700',
+    revoked: 'bg-red-100 text-red-700',
+    expired: 'bg-gray-100 text-gray-700',
+  }
+
+  const filtered = qrCodes.filter((q) => {
+    if (campaignFilter !== 'all' && q.campaign_id !== campaignFilter) return false
+    if (statusFilter !== 'all' && q.status !== statusFilter) return false
+    if (searchTerm && !q.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) && !q.campaign_name?.toLowerCase().includes(searchTerm.toLowerCase())) return false
+    return true
+  })
+
+  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-xl font-semibold flex items-center gap-2"><QrCode className="h-5 w-5 text-primary" />QR Management</h3>
+          <p className="text-sm text-muted-foreground mt-1">Generate, preview, and distribute RoadTour QR codes to account managers.</p>
+        </div>
+        <Button onClick={() => setGenerateOpen(true)} className="gap-2"><QrCode className="h-4 w-4" />Generate QR</Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search by manager or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+        </div>
+        <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+          <SelectTrigger className="w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Campaigns</SelectItem>
+            {campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="revoked">Revoked</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* QR Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Account Manager</TableHead>
+                <TableHead>Campaign</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Scans</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No QR codes found.</TableCell></TableRow>
+              )}
+              {filtered.map((q) => (
+                <TableRow key={q.id}>
+                  <TableCell className="font-medium">{q.user_name}</TableCell>
+                  <TableCell>{q.campaign_name}</TableCell>
+                  <TableCell><Badge className={statusColors[q.status] || ''}>{q.status}</Badge></TableCell>
+                  <TableCell>{q.usage_count}</TableCell>
+                  <TableCell className="text-sm">{q.expires_at ? new Date(q.expires_at).toLocaleString() : '—'}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex gap-1 justify-end">
+                      <Button size="sm" variant="ghost" onClick={() => previewQrCode(q)} title="Preview"><Eye className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => downloadQr(q)} title="Download"><Download className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => copyLink(q)} title="Copy Link"><Copy className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => sendWhatsApp(q)} title="Send WhatsApp"><Send className="h-4 w-4 text-green-600" /></Button>
+                      {q.status === 'active' && (
+                        <Button size="sm" variant="ghost" onClick={() => revokeQr(q.id)} title="Revoke"><ShieldOff className="h-4 w-4 text-red-500" /></Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Generate Dialog */}
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate QR Code</DialogTitle>
+            <DialogDescription>Create a QR code for an account manager in a specific campaign.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Campaign *</Label>
+              <Select value={genCampaignId} onValueChange={setGenCampaignId}>
+                <SelectTrigger><SelectValue placeholder="Select campaign" /></SelectTrigger>
+                <SelectContent>
+                  {campaigns.filter((c) => c.status === 'active').map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Account Manager *</Label>
+              <Select value={genManagerId} onValueChange={setGenManagerId}>
+                <SelectTrigger><SelectValue placeholder={assignedManagers.length === 0 ? 'Select campaign first' : 'Select manager'} /></SelectTrigger>
+                <SelectContent>
+                  {assignedManagers.map((m) => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {genCampaignId && assignedManagers.length === 0 && (
+                <p className="text-xs text-amber-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />No managers assigned to this campaign yet.</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancel</Button>
+            <Button onClick={generateQr} disabled={generating}>{generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Generate</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="sm:max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle>QR Code Preview</DialogTitle>
+            <DialogDescription>{previewQr?.campaign_name} — {previewQr?.user_name}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-4">
+            {previewLoading ? <Loader2 className="h-8 w-8 animate-spin" /> : previewDataUrl ? (
+              <img src={previewDataUrl} alt="RoadTour QR" className="w-64 h-64 rounded-lg border" />
+            ) : (
+              <p className="text-muted-foreground">Failed to generate preview.</p>
+            )}
+          </div>
+          {previewQr && (
+            <div className="flex gap-2 justify-center">
+              <Button size="sm" variant="outline" onClick={() => downloadQr(previewQr)} className="gap-1"><Download className="h-4 w-4" />Download</Button>
+              <Button size="sm" variant="outline" onClick={() => copyLink(previewQr)} className="gap-1"><Copy className="h-4 w-4" />Copy Link</Button>
+              <Button size="sm" variant="outline" onClick={() => sendWhatsApp(previewQr)} className="gap-1"><Send className="h-4 w-4" />WhatsApp</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

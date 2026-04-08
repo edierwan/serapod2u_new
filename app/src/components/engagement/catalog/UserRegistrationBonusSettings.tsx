@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { AlertCircle, CheckCircle2, Coins, Gift, Info, Loader2, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface UserRegistrationBonusSettingsProps {
   userProfile: any
@@ -171,9 +172,11 @@ export function UserRegistrationBonusSettings({ userProfile }: UserRegistrationB
       }
 
       showAlert('success', 'User registration bonus settings saved successfully.')
+      toast({ title: 'Settings Saved', description: 'User registration bonus settings saved successfully.' })
     } catch (error: any) {
       console.error('Error saving user registration bonus settings:', error)
       showAlert('error', error.message || 'Failed to save user registration settings.')
+      toast({ title: 'Save Failed', description: error.message || 'Failed to save settings.', variant: 'destructive' })
     } finally {
       setSaving(false)
     }

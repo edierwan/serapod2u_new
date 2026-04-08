@@ -142,6 +142,16 @@ import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerG
 import { isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
 import HeroBannersUnifiedView from '@/modules/ecommerce/components/HeroBannersUnifiedView'
 import StoreOrdersView from '@/modules/ecommerce/components/StoreOrdersView'
+// RoadTour Module Components
+import { RoadtourLandingView } from '@/modules/roadtour/components/RoadtourLandingView'
+import { RoadtourCampaignsView } from '@/modules/roadtour/components/RoadtourCampaignsView'
+import { RoadtourQrManagementView } from '@/modules/roadtour/components/RoadtourQrManagementView'
+import { RoadtourSurveyBuilderView } from '@/modules/roadtour/components/RoadtourSurveyBuilderView'
+import { RoadtourVisitsView } from '@/modules/roadtour/components/RoadtourVisitsView'
+import { RoadtourAnalyticsView } from '@/modules/roadtour/components/RoadtourAnalyticsView'
+import { RoadtourSettingsView } from '@/modules/roadtour/components/RoadtourSettingsView'
+import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
+import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -415,6 +425,21 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
       case 'customer-growth':
         return <CustomerGrowthLandingView userName={userProfile.full_name} onViewChange={handleViewChange} bannerImageUrl={moduleBannerUrls.customer} />
+
+      case 'roadtour':
+        return <RoadtourLandingView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-campaigns':
+        return <RoadtourCampaignsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-qr':
+        return <RoadtourQrManagementView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-surveys':
+        return <RoadtourSurveyBuilderView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-visits':
+        return <RoadtourVisitsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-analytics':
+        return <RoadtourAnalyticsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-settings':
+        return <RoadtourSettingsView userProfile={userProfile} />
 
       case 'hero-banners':
       case 'store-banner-manager':
@@ -705,9 +730,10 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isMarketingView = isMarketingViewId(currentView)
   const isCatalogView = isCatalogViewId(currentView)
   const isCustomerGrowthView = isCustomerGrowthViewId(currentView)
+  const isRoadtourView = isRoadtourViewId(currentView)
   // Show Customer & Growth domain top-nav on ALL CG views (landing + child modules + sub-views)
   const showCustomerGrowthTopNav = isCustomerGrowthView
-  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || showCustomerGrowthTopNav
+  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || isRoadtourView || showCustomerGrowthTopNav
 
   const handleHrNavigate = (href: string) => {
     router.push(href)
@@ -790,6 +816,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         )}
         {isCatalogView && (
           <CatalogTopNav currentView={currentView} onNavigate={handleCatalogNavigate} />
+        )}
+        {isRoadtourView && (
+          <RoadtourTopNav currentView={currentView} onNavigate={handleViewChange} />
         )}
         <main className={`flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${hasModuleTopNav ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
           {renderCurrentView()}

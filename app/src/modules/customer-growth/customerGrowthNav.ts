@@ -25,12 +25,14 @@ import {
     ShoppingBag,
     CreditCard,
     LogIn,
+    Map,
     type LucideIcon,
 } from 'lucide-react'
 import { isCrmViewId } from '@/modules/crm/crmNav'
 import { isMarketingViewId } from '@/modules/marketing/marketingNav'
 import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
 import { isCatalogViewId } from '@/modules/catalog/catalogNav'
+import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -92,6 +94,13 @@ export const customerGrowthModules: CustomerGrowthNavChild[] = [
         route: '/ecommerce',
         description: 'Online store management, hero banners, and storefront settings.',
     },
+    {
+        id: 'roadtour',
+        label: 'RoadTour',
+        icon: Map,
+        route: '/roadtour',
+        description: 'Field-visit verification with QR codes, surveys, and reward points.',
+    },
 ]
 
 // Group the modules into card groups for the landing page AND top nav dropdowns
@@ -148,6 +157,17 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
             { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce', description: 'Configure payment providers for checkout', href: '/ecommerce' },
         ],
     },
+    {
+        id: 'cg-roadtour',
+        label: 'RoadTour',
+        icon: Map,
+        description: 'Field-visit verification with QR codes, surveys, and reward points.',
+        children: [
+            { id: 'roadtour-campaigns', label: 'Campaigns', icon: Map, route: '/roadtour', description: 'Manage RoadTour campaigns', href: '/roadtour' },
+            { id: 'roadtour-qr', label: 'QR Management', icon: Scan, route: '/roadtour', description: 'Generate and manage QR codes', href: '/roadtour' },
+            { id: 'roadtour-surveys', label: 'Surveys', icon: BookOpen, route: '/roadtour', description: 'Survey templates for field visits', href: '/roadtour' },
+        ],
+    },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -166,7 +186,8 @@ export function isCustomerGrowthViewId(viewId: string): boolean {
         isMarketingViewId(viewId) ||
         isLoyaltyViewId(viewId) ||
         isCatalogViewId(viewId) ||
-        isEcommerceViewId(viewId)
+        isEcommerceViewId(viewId) ||
+        isRoadtourViewId(viewId)
 }
 
 /** Determine which child module a view belongs to (returns module id, or null) */
@@ -176,6 +197,7 @@ export function getActiveCustomerGrowthModule(viewId: string): string | null {
     if (isLoyaltyViewId(viewId)) return 'loyalty'
     if (isCatalogViewId(viewId)) return 'catalog'
     if (isEcommerceViewId(viewId)) return 'ecommerce'
+    if (isRoadtourViewId(viewId)) return 'roadtour'
     return null
 }
 
@@ -186,6 +208,7 @@ export function getActiveCustomerGrowthGroup(viewId: string): string | null {
     if (isLoyaltyViewId(viewId)) return 'cg-loyalty'
     if (isCatalogViewId(viewId)) return 'cg-catalog'
     if (isEcommerceViewId(viewId)) return 'cg-ecommerce'
+    if (isRoadtourViewId(viewId)) return 'cg-roadtour'
     return null
 }
 
