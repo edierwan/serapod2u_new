@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
         referral_phone,
         address,
         shop_name,
+        role_code,
         organization_id,
         bank_id,
         bank_account_number,
@@ -141,8 +142,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch points balance
+    // GUEST/CONSUMER users always use consumer balance, even if linked to a shop org
+    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code)
     let pointsBalance = 0
-    if (isShop && userProfile.organization_id) {
+    if (isShop && userProfile.organization_id && !isConsumerRole) {
       const { data: balanceData } = await supabaseAdmin
         .from('v_shop_points_balance')
         .select('current_balance')
@@ -150,7 +153,7 @@ export async function GET(request: NextRequest) {
         .maybeSingle()
 
       pointsBalance = balanceData?.current_balance || 0
-    } else if (!userProfile.organization_id) {
+    } else if (!userProfile.organization_id || isConsumerRole) {
       // Independent Consumer - Prefer the consolidated view used by Admin monitor
       const { data: balanceData, error: balanceError } = await supabaseAdmin
         .from('v_consumer_points_balance')
