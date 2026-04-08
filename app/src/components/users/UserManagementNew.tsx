@@ -166,6 +166,7 @@ export default function UserManagementNew({
     const roleCode = userProfile?.role_code?.toUpperCase();
     if (roleCode === "SUPERADMIN" || roleCode === "SUPER" || roleCode === "SA") return 1;
     if (roleCode === "HQ_ADMIN" || roleCode === "HQ") return 10;
+    if (roleCode === "POWER_USER" || roleCode === "POWER") return 20;
     return 999;
   };
 

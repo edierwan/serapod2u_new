@@ -5042,16 +5042,13 @@ export default function PremiumLoyaltyTemplate({
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                                 Reference (Optional)
                                             </label>
-                                            <div className="relative">
-                                                <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Reference Number (e.g. 0123456789)"
-                                                    value={signUpReference}
-                                                    onChange={(e) => setSignUpReference(e.target.value)}
-                                                    className="h-11 pl-10"
-                                                />
-                                            </div>
+                                            <ReferencePicker
+                                                value={signUpReference}
+                                                onSelect={(_ref: ReferenceUser | null, phone: string) => {
+                                                    setSignUpReference(phone)
+                                                }}
+                                                placeholder="Search by name, phone, or email..."
+                                            />
                                         </div>
 
                                         <div>
@@ -5073,16 +5070,13 @@ export default function PremiumLoyaltyTemplate({
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                                 Shop Name (Optional)
                                             </label>
-                                            <div className="relative">
-                                                <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                                <Input
-                                                    type="text"
-                                                    placeholder="Enter shop name"
-                                                    value={signUpShopName}
-                                                    onChange={(e) => setSignUpShopName(e.target.value)}
-                                                    className="h-11 pl-10"
-                                                />
-                                            </div>
+                                            <ShopPicker
+                                                value={signUpShopName}
+                                                onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                    setSignUpShopName(displayName)
+                                                }}
+                                                placeholder="Search shop by name..."
+                                            />
                                         </div>
 
                                         <div>
@@ -6097,7 +6091,8 @@ export default function PremiumLoyaltyTemplate({
                                                     if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
                                                 }
                                             }
-                                            setActiveTab('profile')
+                                            setActiveTab('account-settings')
+                                            setShowProfileInfo(true)
                                         }}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}

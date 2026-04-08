@@ -20,6 +20,8 @@ import {
   UserMinus, ArrowRightLeft, Store
 } from 'lucide-react'
 import { formatNumber } from './catalog-utils'
+import UserDialogNew from '@/components/users/UserDialogNew'
+import type { User, Role, Organization } from '@/types/user'
 
 interface ReferralMonitorEntry {
   reference_user_id: string | null
@@ -92,6 +94,13 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
   const [reassignFrom, setReassignFrom] = useState<ReferralMonitorEntry | null>(null)
   const [reassignToId, setReassignToId] = useState('')
   const [transferBalance, setTransferBalance] = useState(false)
+
+  // User profile dialog
+  const [profileDialogUser, setProfileDialogUser] = useState<User | null>(null)
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
+  const [profileDialogRoles, setProfileDialogRoles] = useState<Role[]>([])
+  const [profileDialogOrgs, setProfileDialogOrgs] = useState<Organization[]>([])
+  const [profileDialogSaving, setProfileDialogSaving] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
@@ -222,27 +231,21 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
       setShopsDialogTitle(referenceName || 'Unknown')
       setShowShopsDialog(true)
 
-      const { data: assignments } = await supabase
-        .from('reference_assignments')
-        .select('id, shop_user_id, effective_from')
-        .eq('reference_user_id', referenceUserId)
-        .is('effective_to', null)
-        .order('effective_from', { ascending: false })
+      // Use SECURITY DEFINER function to bypass RLS
+      const { data: shops, error } = await supabase.rpc('get_reference_assigned_shops', {
+        p_reference_user_id: referenceUserId
+      })
 
-      if (assignments && assignments.length > 0) {
-        const shopIds = [...new Set(assignments.map(a => a.shop_user_id))]
-        const { data: shops } = await supabase
-          .from('users')
-          .select('id, full_name, phone')
-          .in('id', shopIds)
-        const shopMap = Object.fromEntries((shops || []).map(s => [s.id, s]))
-
-        setShopsList(assignments.map(a => ({
-          id: a.id,
-          shop_user_id: a.shop_user_id,
-          effective_from: a.effective_from,
-          shop_name: shopMap[a.shop_user_id]?.full_name || 'Unknown',
-          shop_phone: shopMap[a.shop_user_id]?.phone || '',
+      if (error) {
+        console.error('Error from get_reference_assigned_shops:', error)
+        setShopsList([])
+      } else if (shops && shops.length > 0) {
+        setShopsList(shops.map((s: any) => ({
+          id: s.assignment_id,
+          shop_user_id: s.shop_user_id,
+          effective_from: s.effective_from,
+          shop_name: s.shop_name || 'Unknown',
+          shop_phone: s.shop_phone || '',
         })))
       } else {
         setShopsList([])
@@ -251,6 +254,58 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
       console.error('Error loading shops:', error)
     } finally {
       setShopsLoading(false)
+    }
+  }
+
+  const openUserProfile = async (referenceUserId: string) => {
+    try {
+      // Load user data
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', referenceUserId)
+        .single()
+
+      if (userError || !userData) {
+        console.error('Error loading user:', userError)
+        return
+      }
+
+      // Load roles and organizations (for the dialog)
+      const [rolesResult, orgsResult] = await Promise.all([
+        supabase.from('roles').select('*').order('role_level'),
+        supabase.from('organizations').select('*').eq('is_active', true).order('org_name'),
+      ])
+
+      setProfileDialogRoles(rolesResult.data || [])
+      setProfileDialogOrgs(orgsResult.data || [])
+      setProfileDialogUser(userData as User)
+      setProfileDialogOpen(true)
+    } catch (error: any) {
+      console.error('Error opening user profile:', error)
+    }
+  }
+
+  const handleProfileSave = async (userData: Partial<User>, avatarFile?: File | null) => {
+    if (!profileDialogUser) return
+    try {
+      setProfileDialogSaving(true)
+      const { updateUserWithAuth } = await import('@/lib/actions')
+      const result = await updateUserWithAuth(profileDialogUser.id, userData as any, {
+        id: userProfile.id,
+        role_code: userProfile.role_code || userProfile.roles?.role_code,
+      })
+      if (!result.success) {
+        console.error('Error saving user:', result.error)
+        return
+      }
+      setProfileDialogOpen(false)
+      setProfileDialogUser(null)
+      loadData() // Refresh monitor data
+    } catch (error: any) {
+      console.error('Error saving user profile:', error)
+    } finally {
+      setProfileDialogSaving(false)
     }
   }
 
@@ -449,7 +504,12 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
                     <td className="px-3 py-2 text-muted-foreground">{(page - 1) * pageSize + idx + 1}</td>
                     <td className="px-3 py-2">
                       <div>
-                        <p className="font-medium">{row.reference_name || 'Unknown'}</p>
+                        <button
+                          className="font-medium text-left hover:text-blue-600 hover:underline cursor-pointer"
+                          onClick={() => row.reference_user_id && openUserProfile(row.reference_user_id)}
+                        >
+                          {row.reference_name || 'Unknown'}
+                        </button>
                         <p className="text-xs text-muted-foreground">{row.reference_phone}</p>
                         {row.reference_email && (
                           <p className="text-xs text-muted-foreground">{row.reference_email}</p>
@@ -679,6 +739,23 @@ export function ReferralMonitor({ userProfile, onViewDetail }: ReferralMonitorPr
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* User Profile Dialog */}
+      {profileDialogUser && (
+        <UserDialogNew
+          user={profileDialogUser}
+          roles={profileDialogRoles}
+          organizations={profileDialogOrgs}
+          open={profileDialogOpen}
+          isSaving={profileDialogSaving}
+          currentUserRoleLevel={userProfile.roles?.role_level ?? 999}
+          onOpenChange={(open) => {
+            setProfileDialogOpen(open)
+            if (!open) setProfileDialogUser(null)
+          }}
+          onSave={handleProfileSave}
+        />
+      )}
     </div>
   )
 }
