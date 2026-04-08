@@ -16,15 +16,6 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient()
 
-        // Auth check
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-            return NextResponse.json(
-                { success: false, error: 'Unauthorized' },
-                { status: 401 }
-            )
-        }
-
         const { data, error } = await supabase.rpc('search_eligible_references' as any, {
             p_search_term: searchTerm.trim(),
             p_limit: limit

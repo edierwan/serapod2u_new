@@ -604,11 +604,9 @@ export default function PremiumLoyaltyTemplate({
     // Signup states
     const [signUpName, setSignUpName] = useState('')
     const [signUpPhone, setSignUpPhone] = useState('')
-    const [signUpLocation, setSignUpLocation] = useState('')
     const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('')
     // New Signup Fields
     const [signUpReference, setSignUpReference] = useState('')
-    const [signUpAddress, setSignUpAddress] = useState('')
     const [signUpShopName, setSignUpShopName] = useState('')
 
     // Security modal states
@@ -1795,10 +1793,8 @@ export default function PremiumLoyaltyTemplate({
         setLoginPassword('')
         setSignUpName('')
         setSignUpPhone('')
-        setSignUpLocation('')
         setSignUpConfirmPassword('')
         setSignUpReference('')
-        setSignUpAddress('')
         setSignUpShopName('')
         setEmailError('')
         setPhoneError('')
@@ -1813,9 +1809,7 @@ export default function PremiumLoyaltyTemplate({
             password: loginPassword,
             full_name: signUpName,
             phone: signUpPhone || undefined,
-            location: signUpLocation || undefined,
             referral_phone: signUpReference || undefined,
-            address: signUpAddress || undefined,
             shop_name: signUpShopName || undefined,
             registration_org_id: orgId,
             verification_token: verificationToken,
@@ -5258,21 +5252,6 @@ export default function PremiumLoyaltyTemplate({
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Address (Optional)
-                                            </label>
-                                            <div className="relative">
-                                                <MapPin className="absolute left-3 top-2 w-5 h-5 text-gray-400" />
-                                                <textarea
-                                                    placeholder="Enter your address"
-                                                    value={signUpAddress}
-                                                    onChange={(e) => setSignUpAddress(e.target.value)}
-                                                    className="w-full min-h-[80px] pl-10 pr-3 py-2 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
                                                 Shop Name
                                             </label>
                                             <ShopPicker
@@ -5283,38 +5262,6 @@ export default function PremiumLoyaltyTemplate({
                                                 placeholder="Search shop by name..."
                                                 maxLength={50}
                                             />
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Location
-                                            </label>
-                                            <div className="relative">
-                                                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                                <select
-                                                    value={signUpLocation}
-                                                    onChange={(e) => setSignUpLocation(e.target.value)}
-                                                    className="h-11 w-full pl-10 pr-3 rounded-md border border-input bg-background text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                                >
-                                                    <option value="" disabled>Select your state</option>
-                                                    <option value="Johor">Johor</option>
-                                                    <option value="Kedah">Kedah</option>
-                                                    <option value="Kelantan">Kelantan</option>
-                                                    <option value="Melaka">Melaka</option>
-                                                    <option value="Negeri Sembilan">Negeri Sembilan</option>
-                                                    <option value="Pahang">Pahang</option>
-                                                    <option value="Penang">Penang</option>
-                                                    <option value="Perak">Perak</option>
-                                                    <option value="Perlis">Perlis</option>
-                                                    <option value="Sabah">Sabah</option>
-                                                    <option value="Sarawak">Sarawak</option>
-                                                    <option value="Selangor">Selangor</option>
-                                                    <option value="Terengganu">Terengganu</option>
-                                                    <option value="Kuala Lumpur">Kuala Lumpur</option>
-                                                    <option value="Labuan">Labuan</option>
-                                                    <option value="Putrajaya">Putrajaya</option>
-                                                </select>
-                                            </div>
                                         </div>
                                     </>
                                 )}
