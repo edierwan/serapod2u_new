@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Map, ChevronDown, ChevronRight, Menu as MenuIcon } from 'lucide-react'
 import {
   roadtourNavGroups,
-  getActiveRoadtourGroup,
+  findRoadtourGroupForView,
   type RoadtourNavGroup,
   type RoadtourNavChild,
 } from '@/modules/roadtour/roadtourNav'
@@ -24,7 +24,7 @@ export default function RoadtourTopNav({ currentView, onNavigate }: RoadtourTopN
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const [dropdownStyle, setDropdownStyle] = useState<{ left: number; top: number }>({ left: 0, top: 0 })
 
-  const activeGroupId = useMemo(() => getActiveRoadtourGroup(currentView), [currentView])
+  const activeGroupId = useMemo(() => findRoadtourGroupForView(currentView)?.id ?? null, [currentView])
 
   const isGroupActive = useCallback(
     (group: RoadtourNavGroup) =>
