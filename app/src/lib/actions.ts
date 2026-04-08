@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
+import { normalizePhoneE164 } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import {
   findCodeByVerificationToken,
@@ -622,7 +623,8 @@ export async function registerConsumer(userData: {
     }
 
     const verifiedEmail = String((verificationCode.meta as any)?.email || '').trim().toLowerCase()
-    if (verificationCode.phone_normalized !== phone || verifiedEmail !== normalizedEmail) {
+    const phoneE164 = normalizePhoneE164(userData.phone || '')
+    if (verificationCode.phone_normalized !== phoneE164 || verifiedEmail !== normalizedEmail) {
       return {
         success: false,
         error: 'The verified mobile number does not match the current registration details. Please verify again.'

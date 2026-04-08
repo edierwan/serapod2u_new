@@ -6964,7 +6964,7 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
 
                                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                                    The verification message is delivered through WhatsApp Activity under the Registration category.
+                                    The verification code will be sent to your WhatsApp number.
                                 </div>
                             </div>
 
