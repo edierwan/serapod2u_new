@@ -600,6 +600,8 @@ export default function PremiumLoyaltyTemplate({
     const [registrationOtpSending, setRegistrationOtpSending] = useState(false)
     const [, setRegistrationVerificationToken] = useState('')
     const [registrationResendCooldown, setRegistrationResendCooldown] = useState(0)
+    const [registrationOtpRequested, setRegistrationOtpRequested] = useState(false)
+    const [registrationCreatingAccount, setRegistrationCreatingAccount] = useState(false)
 
     // Signup states
     const [signUpName, setSignUpName] = useState('')
@@ -1786,6 +1788,8 @@ export default function PremiumLoyaltyTemplate({
         setRegistrationOtpSending(false)
         setRegistrationVerificationToken('')
         setRegistrationResendCooldown(0)
+        setRegistrationOtpRequested(false)
+        setRegistrationCreatingAccount(false)
     }
 
     const resetSignUpForm = () => {
@@ -1900,6 +1904,7 @@ export default function PremiumLoyaltyTemplate({
 
             setRegistrationResendCooldown(Number(result.resendCooldown || 60))
             setShowRegistrationOtpModal(true)
+            setRegistrationOtpRequested(true)
             setRegistrationOtpCode('')
             setRegistrationOtpError('')
             toast({
@@ -1941,11 +1946,13 @@ export default function PremiumLoyaltyTemplate({
             }
 
             setRegistrationVerificationToken(result.verificationToken || '')
-            setShowRegistrationOtpModal(false)
+            setRegistrationCreatingAccount(true)
+            setRegistrationOtpError('')
 
             const emailToUse = loginEmail.replace(/\s/g, '').toLowerCase()
             await completeVerifiedRegistration(emailToUse, result.verificationToken)
         } catch (error: any) {
+            setRegistrationCreatingAccount(false)
             setRegistrationOtpError(error.message || 'Unable to verify the code.')
         } finally {
             setRegistrationOtpLoading(false)
@@ -2076,6 +2083,13 @@ export default function PremiumLoyaltyTemplate({
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
                 if (!emailRegex.test(emailToUse)) {
                     setLoginError(`Invalid email format: "${emailToUse}". Please check for typos.`)
+                    setLoginLoading(false)
+                    return
+                }
+
+                // If OTP already requested, just re-open the modal instead of sending another code
+                if (registrationOtpRequested) {
+                    setShowRegistrationOtpModal(true)
                     setLoginLoading(false)
                     return
                 }
@@ -6899,6 +6913,7 @@ export default function PremiumLoyaltyTemplate({
             <Dialog
                 open={showRegistrationOtpModal}
                 onOpenChange={(open) => {
+                    if (registrationCreatingAccount) return
                     setShowRegistrationOtpModal(open)
                     if (!open) {
                         setRegistrationOtpCode('')
@@ -6906,82 +6921,96 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-md rounded-2xl">
+                <DialogContent className="sm:max-w-md rounded-2xl" onPointerDownOutside={(e) => { if (registrationCreatingAccount) e.preventDefault() }}>
                     <DialogHeader>
-                        <DialogTitle>Verify Mobile Number</DialogTitle>
+                        <DialogTitle>{registrationCreatingAccount ? 'Creating Your Account' : 'Verify Mobile Number'}</DialogTitle>
                         <DialogDescription>
-                            Enter the 4-digit WhatsApp code sent to {signUpPhone || 'your mobile number'} to complete registration.
+                            {registrationCreatingAccount
+                                ? 'Your code has been verified. Please wait while we set up your account...'
+                                : `Enter the 4-digit WhatsApp code sent to ${signUpPhone || 'your mobile number'} to complete registration.`}
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 py-2">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Verification Code
-                            </label>
-                            <Input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={4}
-                                placeholder="Enter 4-digit code"
-                                value={registrationOtpCode}
-                                onChange={(e) => {
-                                    setRegistrationOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))
-                                    setRegistrationOtpError('')
-                                }}
-                                className={`h-12 text-center text-lg tracking-[0.4em] ${registrationOtpError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                            />
+                    {registrationCreatingAccount ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground">Setting up your account...</p>
                             {registrationOtpError && (
-                                <p className="text-xs text-red-500 mt-2">{registrationOtpError}</p>
+                                <p className="text-xs text-red-500 mt-2 text-center">{registrationOtpError}</p>
                             )}
                         </div>
+                    ) : (
+                        <>
+                            <div className="space-y-4 py-2">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Verification Code
+                                    </label>
+                                    <Input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        placeholder="Enter 4-digit code"
+                                        value={registrationOtpCode}
+                                        onChange={(e) => {
+                                            setRegistrationOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+                                            setRegistrationOtpError('')
+                                        }}
+                                        className={`h-12 text-center text-lg tracking-[0.4em] ${registrationOtpError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                                    />
+                                    {registrationOtpError && (
+                                        <p className="text-xs text-red-500 mt-2">{registrationOtpError}</p>
+                                    )}
+                                </div>
 
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                            The verification message is delivered through WhatsApp Activity under the Registration category.
-                        </div>
-                    </div>
+                                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                                    The verification message is delivered through WhatsApp Activity under the Registration category.
+                                </div>
+                            </div>
 
-                    <DialogFooter className="flex-col gap-2 sm:flex-col">
-                        <Button
-                            onClick={verifyRegistrationOtp}
-                            disabled={registrationOtpLoading || registrationOtpCode.length !== 4}
-                            className="w-full h-11"
-                            style={{ backgroundColor: config.button_color }}
-                        >
-                            {registrationOtpLoading ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Verifying Code...
-                                </>
-                            ) : (
-                                'Verify and Create Account'
-                            )}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={async () => {
-                                try {
-                                    await requestRegistrationOtp(true)
-                                } catch (error: any) {
-                                    setRegistrationOtpError(error.message || 'Unable to resend the verification code.')
-                                }
-                            }}
-                            disabled={registrationOtpSending || registrationResendCooldown > 0}
-                            className="w-full h-11"
-                        >
-                            {registrationOtpSending ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    Sending New Code...
-                                </>
-                            ) : registrationResendCooldown > 0 ? (
-                                `Resend available in ${Math.floor(registrationResendCooldown / 60)}:${String(registrationResendCooldown % 60).padStart(2, '0')}`
-                            ) : (
-                                'Resend WhatsApp Code'
-                            )}
-                        </Button>
-                    </DialogFooter>
+                            <DialogFooter className="flex-col gap-2 sm:flex-col">
+                                <Button
+                                    onClick={verifyRegistrationOtp}
+                                    disabled={registrationOtpLoading || registrationOtpCode.length !== 4}
+                                    className="w-full h-11"
+                                    style={{ backgroundColor: config.button_color }}
+                                >
+                                    {registrationOtpLoading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Verifying Code...
+                                        </>
+                                    ) : (
+                                        'Verify and Create Account'
+                                    )}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={async () => {
+                                        try {
+                                            await requestRegistrationOtp(true)
+                                        } catch (error: any) {
+                                            setRegistrationOtpError(error.message || 'Unable to resend the verification code.')
+                                        }
+                                    }}
+                                    disabled={registrationOtpSending || registrationResendCooldown > 0}
+                                    className="w-full h-11"
+                                >
+                                    {registrationOtpSending ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Sending New Code...
+                                        </>
+                                    ) : registrationResendCooldown > 0 ? (
+                                        `Resend available in ${Math.floor(registrationResendCooldown / 60)}:${String(registrationResendCooldown % 60).padStart(2, '0')}`
+                                    ) : (
+                                        'Resend WhatsApp Code'
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
             {/* Reward Detail Modal */}

@@ -20,7 +20,8 @@ import {
   Calendar,
   Info,
   Banknote,
-  PlayCircle
+  PlayCircle,
+  Gift
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
