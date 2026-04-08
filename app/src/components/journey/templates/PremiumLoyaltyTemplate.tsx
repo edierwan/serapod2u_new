@@ -5238,12 +5238,19 @@ export default function PremiumLoyaltyTemplate({
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Reference (Optional)
+                                                Reference
                                             </label>
                                             <ReferencePicker
                                                 value={signUpReference}
-                                                onSelect={(_ref: ReferenceUser | null, phone: string) => {
+                                                onSelect={(ref: ReferenceUser | null, phone: string) => {
                                                     setSignUpReference(phone)
+                                                    if (ref) {
+                                                        setReferralCheckStatus('valid')
+                                                        setReferralName(ref.full_name)
+                                                    } else if (!phone) {
+                                                        setReferralCheckStatus('idle')
+                                                        setReferralName('')
+                                                    }
                                                 }}
                                                 placeholder="Search by name, phone, or email..."
                                             />
@@ -5266,7 +5273,7 @@ export default function PremiumLoyaltyTemplate({
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Shop Name (Optional)
+                                                Shop Name
                                             </label>
                                             <ShopPicker
                                                 value={signUpShopName}
@@ -5274,6 +5281,7 @@ export default function PremiumLoyaltyTemplate({
                                                     setSignUpShopName(displayName)
                                                 }}
                                                 placeholder="Search shop by name..."
+                                                maxLength={50}
                                             />
                                         </div>
 

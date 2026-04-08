@@ -144,7 +144,7 @@ export async function middleware(request: NextRequest) {
   if (qrRedirect) return qrRedirect;
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register']
 
   // Check if current path is public
   const isPublicPath = PUBLIC_PATHS.some((path) =>
@@ -252,7 +252,7 @@ export async function middleware(request: NextRequest) {
         authError.status === 400
       ) {
         // Public API routes that don't require authentication
-        const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth/password-reset/')
+        const isPublicApi = request.nextUrl.pathname.startsWith('/api/auth/password-reset/') || request.nextUrl.pathname.startsWith('/api/auth/register/')
 
         // Return 401 for API routes instead of redirecting (except public ones)
         if (request.nextUrl.pathname.startsWith('/api/') && !isPublicApi) {
