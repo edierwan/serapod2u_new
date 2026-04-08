@@ -660,14 +660,13 @@ export async function registerConsumer(userData: {
     }
 
     // Explicitly sync user profile to ensure it exists before login
-    const supabase = await createClient()
-    const { error: syncError } = await supabase
+    const { error: syncError } = await adminClient
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
         p_email: normalizedEmail,
         p_full_name: userData.full_name,
         p_phone: phone,
-        p_role_code: 'CONSUMER' // Default role for consumers
+        p_role_code: 'GUEST' // Default role for consumer registrations
       })
 
     if (syncError) {
