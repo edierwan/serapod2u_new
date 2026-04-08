@@ -94,13 +94,6 @@ export const customerGrowthModules: CustomerGrowthNavChild[] = [
         route: '/ecommerce',
         description: 'Online store management, hero banners, and storefront settings.',
     },
-    {
-        id: 'roadtour',
-        label: 'RoadTour',
-        icon: Map,
-        route: '/roadtour',
-        description: 'Field-visit verification with QR codes, surveys, and reward points.',
-    },
 ]
 
 // Group the modules into card groups for the landing page AND top nav dropdowns
@@ -122,6 +115,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         description: 'Build automated consumer journeys and send targeted WhatsApp broadcasts.',
         children: [
             { id: 'journey-builder', label: 'Journey Builder', icon: BookOpen, route: '/marketing', description: 'Automated consumer journeys', href: '/marketing' },
+            { id: 'roadtour', label: 'Road Tour', icon: Map, route: '/roadtour', description: 'Field-visit verification with QR codes, surveys, and rewards', href: '/roadtour' },
             { id: 'marketing', label: 'WhatsApp Broadcast', icon: MessageSquare, route: '/marketing', description: 'Outbound WhatsApp messaging', href: '/marketing' },
         ],
     },
@@ -157,17 +151,6 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
             { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce', description: 'Configure payment providers for checkout', href: '/ecommerce' },
         ],
     },
-    {
-        id: 'cg-roadtour',
-        label: 'RoadTour',
-        icon: Map,
-        description: 'Field-visit verification with QR codes, surveys, and reward points.',
-        children: [
-            { id: 'roadtour-campaigns', label: 'Campaigns', icon: Map, route: '/roadtour', description: 'Manage RoadTour campaigns', href: '/roadtour' },
-            { id: 'roadtour-qr', label: 'QR Management', icon: Scan, route: '/roadtour', description: 'Generate and manage QR codes', href: '/roadtour' },
-            { id: 'roadtour-surveys', label: 'Surveys', icon: BookOpen, route: '/roadtour', description: 'Survey templates for field visits', href: '/roadtour' },
-        ],
-    },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -197,7 +180,7 @@ export function getActiveCustomerGrowthModule(viewId: string): string | null {
     if (isLoyaltyViewId(viewId)) return 'loyalty'
     if (isCatalogViewId(viewId)) return 'catalog'
     if (isEcommerceViewId(viewId)) return 'ecommerce'
-    if (isRoadtourViewId(viewId)) return 'roadtour'
+    if (isRoadtourViewId(viewId)) return 'mktg'
     return null
 }
 
@@ -208,7 +191,7 @@ export function getActiveCustomerGrowthGroup(viewId: string): string | null {
     if (isLoyaltyViewId(viewId)) return 'cg-loyalty'
     if (isCatalogViewId(viewId)) return 'cg-catalog'
     if (isEcommerceViewId(viewId)) return 'cg-ecommerce'
-    if (isRoadtourViewId(viewId)) return 'cg-roadtour'
+    if (isRoadtourViewId(viewId)) return 'cg-marketing'
     return null
 }
 

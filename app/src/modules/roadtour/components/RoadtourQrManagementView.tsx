@@ -31,7 +31,7 @@ interface QrCode {
   id: string
   campaign_id: string
   campaign_name?: string
-  user_id: string
+  account_manager_user_id: string
   user_name?: string
   token: string
   status: string
@@ -75,7 +75,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
       const [campaignRes, qrRes] = await Promise.all([
         (supabase as any).from('roadtour_campaigns').select('id, name, status').eq('org_id', companyId).order('name'),
         (supabase as any).from('roadtour_qr_codes')
-          .select('*, roadtour_campaigns!inner(name, org_id), users:user_id(full_name)')
+          .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name)')
           .eq('roadtour_campaigns.org_id', companyId)
           .order('created_at', { ascending: false })
           .limit(200),
@@ -137,11 +137,10 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
       const { error } = await (supabase as any).from('roadtour_qr_codes').insert({
         campaign_id: genCampaignId,
-        user_id: genManagerId,
+        account_manager_user_id: genManagerId,
         token,
         status: 'active',
         expires_at: expiresAt,
-        created_by: userProfile.id,
       })
 
       if (error) {
@@ -217,7 +216,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
       const message = `🗺️ *RoadTour QR Code*\n\nHi ${qr.user_name},\nHere is your RoadTour QR link for campaign "${qr.campaign_name}":\n\n${url}\n\nShare this link with shop owners during your visit. They can scan it to earn reward points.`
 
       // Get the manager's phone
-      const { data: usr } = await supabase.from('users').select('phone').eq('id', qr.user_id).single()
+      const { data: usr } = await supabase.from('users').select('phone').eq('id', qr.account_manager_user_id).single()
       if (!usr?.phone) { toast({ title: 'Error', description: 'Account manager has no phone number.', variant: 'destructive' }); return }
 
       const resp = await fetch('/api/settings/whatsapp/send', {
@@ -230,11 +229,12 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
       // Log delivery
       await (supabase as any).from('roadtour_qr_delivery_logs').insert({
-        qr_id: qr.id,
-        channel: 'whatsapp',
-        recipient_phone: usr.phone,
-        status: 'sent',
-        sent_by: userProfile.id,
+        campaign_id: qr.campaign_id,
+        qr_code_id: qr.id,
+        account_manager_user_id: qr.account_manager_user_id,
+        phone_number: usr.phone,
+        send_status: 'sent',
+        sent_at: new Date().toISOString(),
       })
 
       toast({ title: 'Sent', description: `QR link sent via WhatsApp to ${usr.phone}.` })

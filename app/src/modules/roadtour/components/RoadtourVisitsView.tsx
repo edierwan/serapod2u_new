@@ -24,7 +24,7 @@ interface OfficialVisit {
   id: string
   campaign_id: string
   campaign_name?: string
-  user_id: string
+  account_manager_user_id: string
   user_name?: string
   shop_id: string
   shop_name?: string
@@ -37,15 +37,14 @@ interface OfficialVisit {
 
 interface ScanEvent {
   id: string
-  qr_id: string
-  consumer_user_id: string | null
+  qr_code_id: string
+  scanned_by_user_id: string | null
   consumer_name?: string
-  consumer_phone: string | null
   shop_id: string | null
   shop_name?: string
-  reward_status: string
+  scan_status: string
   points_awarded: number
-  scanned_at: string
+  scan_time: string
 }
 
 export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisitsViewProps) {
@@ -71,7 +70,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
       setLoading(true)
       let q = (supabase as any)
         .from('roadtour_official_visits')
-        .select('*, roadtour_campaigns!inner(name, org_id), users:user_id(full_name), organizations:shop_id(name)')
+        .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name), organizations:shop_id(name)')
         .eq('roadtour_campaigns.org_id', companyId)
         .order('visit_date', { ascending: false })
         .limit(200)
@@ -112,13 +111,13 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
       // Get scan events for this visit's campaign + AM + shop + date
       const { data, error } = await (supabase as any)
         .from('roadtour_scan_events')
-        .select('*, roadtour_qr_codes!inner(campaign_id, user_id), users:consumer_user_id(full_name), organizations:shop_id(name)')
-        .eq('roadtour_qr_codes.campaign_id', visit.campaign_id)
-        .eq('roadtour_qr_codes.user_id', visit.user_id)
+        .select('*, users:scanned_by_user_id(full_name), organizations:shop_id(name)')
+        .eq('campaign_id', visit.campaign_id)
+        .eq('account_manager_user_id', visit.account_manager_user_id)
         .eq('shop_id', visit.shop_id)
-        .gte('scanned_at', visit.visit_date + 'T00:00:00')
-        .lt('scanned_at', visit.visit_date + 'T23:59:59')
-        .order('scanned_at', { ascending: false })
+        .gte('scan_time', visit.visit_date + 'T00:00:00')
+        .lt('scan_time', visit.visit_date + 'T23:59:59')
+        .order('scan_time', { ascending: false })
 
       if (error) throw error
       setScans(
@@ -144,10 +143,12 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
   })
 
   const rewardStatusColor: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700',
-    rewarded: 'bg-emerald-100 text-emerald-700',
+    opened: 'bg-amber-100 text-amber-700',
+    success: 'bg-emerald-100 text-emerald-700',
     duplicate: 'bg-gray-100 text-gray-700',
     rejected: 'bg-red-100 text-red-700',
+    invalid: 'bg-red-100 text-red-700',
+    expired: 'bg-gray-100 text-gray-700',
   }
 
   if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -179,7 +180,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{filtered.length}</p><p className="text-xs text-muted-foreground">Total Visits</p></CardContent></Card>
-        <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.user_id)).size}</p><p className="text-xs text-muted-foreground">Active Managers</p></CardContent></Card>
+        <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.account_manager_user_id)).size}</p><p className="text-xs text-muted-foreground">Active Managers</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.shop_id)).size}</p><p className="text-xs text-muted-foreground">Shops Visited</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{filtered.reduce((s, v) => s + v.total_points_awarded, 0)}</p><p className="text-xs text-muted-foreground">Total Points Awarded</p></CardContent></Card>
       </div>
@@ -251,12 +252,12 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     {scans.map((s) => (
                       <div key={s.id} className="rounded-lg border p-3 flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-medium">{s.consumer_name || s.consumer_phone || 'Unknown'}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(s.scanned_at).toLocaleString()}</p>
+                          <p className="text-sm font-medium">{s.consumer_name || 'Unknown'}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(s.scan_time).toLocaleString()}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           {s.points_awarded > 0 && <span className="text-sm font-medium text-emerald-600">+{s.points_awarded} pts</span>}
-                          <Badge className={rewardStatusColor[s.reward_status] || ''}>{s.reward_status}</Badge>
+                          <Badge className={rewardStatusColor[s.scan_status] || ''}>{s.scan_status}</Badge>
                         </div>
                       </div>
                     ))}
