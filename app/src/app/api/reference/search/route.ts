@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         const searchTerm = searchParams.get('q') || ''
         const limit = Math.min(parseInt(searchParams.get('limit') || '10', 10), 20)
 
-        const supabase = await createClient()
+        const supabase = createAdminClient()
 
         const { data, error } = await supabase.rpc('search_eligible_references' as any, {
             p_search_term: searchTerm.trim(),

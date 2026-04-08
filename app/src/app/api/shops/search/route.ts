@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         const searchTerm = searchParams.get('q')?.trim() || ''
         const limit = Math.min(parseInt(searchParams.get('limit') || '10', 10), 30)
 
-        const supabase = await createClient()
+        const supabase = createAdminClient()
 
         if (!searchTerm) {
             return NextResponse.json({ success: true, results: [] })
