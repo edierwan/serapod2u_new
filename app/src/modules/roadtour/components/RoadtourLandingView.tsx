@@ -13,6 +13,7 @@ const cardAccents: Record<string, { bg: string; text: string; hoverBorder: strin
     'rt-campaigns': { bg: 'bg-blue-50', text: 'text-blue-700', hoverBorder: 'hover:border-blue-300' },
     'rt-field': { bg: 'bg-emerald-50', text: 'text-emerald-700', hoverBorder: 'hover:border-emerald-300' },
     'rt-analytics': { bg: 'bg-amber-50', text: 'text-amber-700', hoverBorder: 'hover:border-amber-300' },
+    'rt-settings': { bg: 'bg-violet-50', text: 'text-violet-700', hoverBorder: 'hover:border-violet-300' },
 }
 
 export function RoadtourLandingView({ userProfile, onViewChange }: RoadtourLandingViewProps) {
@@ -34,7 +35,7 @@ export function RoadtourLandingView({ userProfile, onViewChange }: RoadtourLandi
                 Plan road tour campaigns, assign account managers, generate QR codes, track field visits, and monitor performance.
             </p>
 
-            <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
                 {roadtourNavGroups.map((group) => {
                     const accent = cardAccents[group.id] || { bg: 'bg-gray-50', text: 'text-gray-700', hoverBorder: 'hover:border-gray-300' }
                     const Icon = group.icon

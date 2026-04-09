@@ -150,6 +150,7 @@ import { RoadtourSurveyBuilderView } from '@/modules/roadtour/components/Roadtou
 import { RoadtourVisitsView } from '@/modules/roadtour/components/RoadtourVisitsView'
 import { RoadtourAnalyticsView } from '@/modules/roadtour/components/RoadtourAnalyticsView'
 import { RoadtourSettingsView } from '@/modules/roadtour/components/RoadtourSettingsView'
+import { RoadtourWhatsAppMonitoringView } from '@/modules/roadtour/components/RoadtourWhatsAppMonitoringView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
@@ -438,6 +439,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <RoadtourVisitsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-analytics':
         return <RoadtourAnalyticsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-whatsapp':
+        return <RoadtourWhatsAppMonitoringView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-settings':
         return <RoadtourSettingsView userProfile={userProfile} />
 

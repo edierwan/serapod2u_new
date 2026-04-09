@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users } from 'lucide-react'
+import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone } from 'lucide-react'
 
 export interface RoadtourNavChild {
     id: string
@@ -39,12 +39,21 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
     },
     {
         id: 'rt-analytics',
-        label: 'Analytics & Settings',
+        label: 'Analytics',
         icon: BarChart3,
-        description: 'Monitor campaign performance, costs, and configure RoadTour settings.',
+        description: 'Monitor campaign performance, WhatsApp delivery, and track field activity.',
         children: [
             { id: 'roadtour-analytics', label: 'Analytics', icon: BarChart3 },
-            { id: 'roadtour-settings', label: 'Settings', icon: Settings },
+            { id: 'roadtour-whatsapp', label: 'WhatsApp Monitoring', icon: Smartphone },
+        ],
+    },
+    {
+        id: 'rt-settings',
+        label: 'Settings',
+        icon: Settings,
+        description: 'Configure RoadTour module settings, user registration, and preferences.',
+        children: [
+            { id: 'roadtour-settings', label: 'RoadTour Settings', icon: Settings },
         ],
     },
 ]
