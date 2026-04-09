@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import {
     AlertCircle, Calendar, CheckCircle2, Edit, Loader2, Map, MapPin, Plus,
-    Search, Trash2, Users, Eye, Play, Pause, Archive
+    Search, Store, Trash2, Users, Eye, Play, Pause, Archive
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 
@@ -90,6 +90,23 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [formRegions, setFormRegions] = useState<string[]>([])
     const [formNotes, setFormNotes] = useState('')
 
+    // Point value from org settings
+    const [pointValueRm, setPointValueRm] = useState(0.10)
+
+    // Shop counts by state
+    const [shopCountByState, setShopCountByState] = useState<Record<string, number>>({})
+
+    // Region detail dialog
+    const [regionDialogOpen, setRegionDialogOpen] = useState(false)
+    const [regionDialogState, setRegionDialogState] = useState('')
+    const [regionShops, setRegionShops] = useState<{ id: string; org_name: string; branch_name: string | null }[]>([])
+    const [regionShopsLoading, setRegionShopsLoading] = useState(false)
+
+    // References detail dialog
+    const [refsDialogOpen, setRefsDialogOpen] = useState(false)
+    const [refsDialogCampaignName, setRefsDialogCampaignName] = useState('')
+    const [refsDialogManagers, setRefsDialogManagers] = useState<{ full_name: string; phone: string }[]>([])
+
     // Managers dialog
     const [managersDialogOpen, setManagersDialogOpen] = useState(false)
     const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
@@ -98,6 +115,61 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [availableManagers, setAvailableManagers] = useState<{ id: string; full_name: string; email: string; phone: string }[]>([])
     const [managersLoading, setManagersLoading] = useState(false)
     const [managerSearch, setManagerSearch] = useState('')
+
+    // Calculate working days (exclude weekends)
+    const calcWorkingDays = (start: string, end: string): number => {
+        if (!start || !end) return 0
+        const s = new Date(start)
+        const e = new Date(end)
+        let count = 0
+        const cur = new Date(s)
+        while (cur <= e) {
+            const day = cur.getDay()
+            if (day !== 0 && day !== 6) count++
+            cur.setDate(cur.getDate() + 1)
+        }
+        return count
+    }
+
+    // Load point_value_rm from org settings
+    useEffect(() => {
+        (async () => {
+            const { data } = await supabase.from('organizations').select('settings').eq('id', companyId).single()
+            if (data?.settings && typeof data.settings === 'object') {
+                const pv = (data.settings as any).point_value_rm
+                if (pv && !isNaN(Number(pv))) setPointValueRm(Number(pv))
+            }
+        })()
+    }, [companyId, supabase])
+
+    // Load shop counts by state
+    useEffect(() => {
+        (async () => {
+            const { data } = await supabase.from('organizations').select('state').eq('org_type_code', 'SHOP')
+            if (data) {
+                const counts: Record<string, number> = {}
+                for (const r of data) {
+                    const st = r.state?.trim()
+                    if (st) counts[st] = (counts[st] || 0) + 1
+                }
+                setShopCountByState(counts)
+            }
+        })()
+    }, [supabase])
+
+    const openRegionShops = async (stateName: string) => {
+        setRegionDialogState(stateName)
+        setRegionDialogOpen(true)
+        setRegionShopsLoading(true)
+        try {
+            const { data } = await supabase.from('organizations').select('id, org_name, branch_name').eq('org_type_code', 'SHOP').eq('state', stateName).order('org_name')
+            setRegionShops(data || [])
+        } catch {
+            setRegionShops([])
+        } finally {
+            setRegionShopsLoading(false)
+        }
+    }
 
     const loadCampaigns = useCallback(async () => {
         try {
@@ -346,6 +418,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 <TableHead>Status</TableHead>
                                 <TableHead className="hidden md:table-cell">Period</TableHead>
                                 <TableHead>Points</TableHead>
+                                <TableHead className="hidden md:table-cell">Days</TableHead>
                                 <TableHead className="hidden lg:table-cell">Mode</TableHead>
                                 <TableHead className="hidden lg:table-cell">Region</TableHead>
                                 <TableHead>References</TableHead>
@@ -354,9 +427,12 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
                             )}
-                            {filtered.map((c) => (
+                            {filtered.map((c) => {
+                                const workDays = calcWorkingDays(c.start_date, c.end_date)
+                                const costPerReward = c.default_points * pointValueRm
+                                return (
                                 <TableRow key={c.id}>
                                     <TableCell>
                                         <div>
@@ -367,19 +443,31 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     </TableCell>
                                     <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
                                     <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
-                                    <TableCell>{c.default_points}</TableCell>
-                                    <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
-                                    <TableCell className="text-sm hidden lg:table-cell">{c.region_scope?.join(', ') || '—'}</TableCell>
                                     <TableCell>
-                                        {(c._managers && c._managers.length > 0) ? (
-                                            <div className="space-y-0.5">
-                                                {c._managers.map((m, i) => (
-                                                    <div key={i} className="text-sm">
-                                                        <span className="font-medium">{m.full_name}</span>
-                                                        {m.phone && <span className="text-xs text-muted-foreground ml-1">({m.phone})</span>}
-                                                    </div>
+                                        <div>
+                                            <p className="font-medium">{c.default_points}</p>
+                                            <p className="text-xs text-muted-foreground">RM {costPerReward.toFixed(2)}</p>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="hidden md:table-cell text-sm">{workDays}</TableCell>
+                                    <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
+                                    <TableCell className="text-sm hidden lg:table-cell">
+                                        {c.region_scope && c.region_scope.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {c.region_scope.map((r) => (
+                                                    <Badge key={r} variant="outline" className="text-xs cursor-pointer hover:bg-primary/10" onClick={() => openRegionShops(r)}>{r}</Badge>
                                                 ))}
                                             </div>
+                                        ) : '—'}
+                                    </TableCell>
+                                    <TableCell>
+                                        {(c._managers && c._managers.length > 0) ? (
+                                            <button
+                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                                onClick={() => { setRefsDialogCampaignName(c.name); setRefsDialogManagers(c._managers || []); setRefsDialogOpen(true) }}
+                                            >
+                                                Show ({c._managers.length})
+                                            </button>
                                         ) : (
                                             <span className="text-xs text-muted-foreground">No references</span>
                                         )}
@@ -395,7 +483,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         </div>
                                     </TableCell>
                                 </TableRow>
-                            ))}
+                                )
+                            })}
                         </TableBody>
                     </Table>
                 </CardContent>
@@ -415,8 +504,21 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             <div className="space-y-2"><Label>Start Date *</Label><Input type="date" value={formStart} onChange={(e) => setFormStart(e.target.value)} /></div>
                             <div className="space-y-2"><Label>End Date *</Label><Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} /></div>
                         </div>
+                        {formStart && formEnd && (
+                            <p className="text-xs text-muted-foreground -mt-2">
+                                📅 {calcWorkingDays(formStart, formEnd)} working days (excl. weekends)
+                            </p>
+                        )}
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>Reward Points</Label><Input type="number" min={1} value={formPoints} onChange={(e) => setFormPoints(parseInt(e.target.value || '20', 10) || 20)} /></div>
+                            <div className="space-y-2">
+                                <Label>Reward Points</Label>
+                                <Input type="number" min={1} value={formPoints} onChange={(e) => setFormPoints(parseInt(e.target.value || '20', 10) || 20)} />
+                                {formPoints > 0 && (
+                                    <p className="text-xs text-muted-foreground">
+                                        💰 Estimated cost: <span className="font-semibold text-amber-700">RM {(formPoints * pointValueRm).toFixed(2)}</span> per reward
+                                    </p>
+                                )}
+                            </div>
                             <div className="space-y-2">
                                 <Label>Reward Mode</Label>
                                 <Select value={formRewardMode} onValueChange={setFormRewardMode}><SelectTrigger><SelectValue /></SelectTrigger>
@@ -428,9 +530,17 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             <div className="flex flex-wrap gap-2">
                                 {MALAYSIAN_STATES.map((s) => (
                                     <Badge key={s} variant={formRegions.includes(s) ? 'default' : 'outline'}
-                                        className="cursor-pointer" onClick={() => setFormRegions((prev) => prev.includes(s) ? prev.filter((r) => r !== s) : [...prev, s])}>{s}</Badge>
+                                        className="cursor-pointer" onClick={() => setFormRegions((prev) => prev.includes(s) ? prev.filter((r) => r !== s) : [...prev, s])}>
+                                        {s}
+                                        {shopCountByState[s] ? <span className="ml-1 opacity-70">({shopCountByState[s]})</span> : null}
+                                    </Badge>
                                 ))}
                             </div>
+                            {formRegions.length > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    🏪 {formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops in selected regions
+                                </p>
+                            )}
                         </div>
                         <div className="space-y-2"><Label>Notes</Label><Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={2} /></div>
                     </div>
@@ -492,6 +602,49 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             </div>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Region Shops Dialog */}
+            <Dialog open={regionDialogOpen} onOpenChange={setRegionDialogOpen}>
+                <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle><MapPin className="inline h-4 w-4 mr-1" />{regionDialogState}</DialogTitle>
+                        <DialogDescription>Shops registered under this state.</DialogDescription>
+                    </DialogHeader>
+                    {regionShopsLoading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                    ) : regionShops.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">No shops found in {regionDialogState}.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">{regionShops.length} shops</p>
+                            {regionShops.map((shop) => (
+                                <div key={shop.id} className="rounded-lg border p-3">
+                                    <p className="text-sm font-medium">{shop.org_name}</p>
+                                    {shop.branch_name && <p className="text-xs text-muted-foreground">{shop.branch_name}</p>}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* References Detail Dialog */}
+            <Dialog open={refsDialogOpen} onOpenChange={setRefsDialogOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>References — {refsDialogCampaignName}</DialogTitle>
+                        <DialogDescription>{refsDialogManagers.length} reference{refsDialogManagers.length !== 1 ? 's' : ''} assigned</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        {refsDialogManagers.map((m, i) => (
+                            <div key={i} className="rounded-lg border p-3">
+                                <p className="text-sm font-medium">{m.full_name}</p>
+                                {m.phone && <p className="text-xs text-muted-foreground">{m.phone}</p>}
+                            </div>
+                        ))}
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

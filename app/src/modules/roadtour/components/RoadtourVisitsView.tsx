@@ -70,7 +70,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(name)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .limit(200)
@@ -88,7 +88,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     campaign_name: v.roadtour_campaigns?.name || '—',
                     user_name: v.users?.full_name || '—',
                     user_phone: v.users?.phone || '',
-                    shop_name: v.organizations?.name || '—',
+                    shop_name: v.organizations?.org_name || '—',
                 }))
             )
 
@@ -112,7 +112,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             // Get scan events for this visit's campaign + AM + shop + date
             const { data, error } = await (supabase as any)
                 .from('roadtour_scan_events')
-                .select('*, users:scanned_by_user_id(full_name), organizations:shop_id(name)')
+                .select('*, users:scanned_by_user_id(full_name), organizations:shop_id(org_name)')
                 .eq('campaign_id', visit.campaign_id)
                 .eq('account_manager_user_id', visit.account_manager_user_id)
                 .eq('shop_id', visit.shop_id)
@@ -125,7 +125,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                 (data || []).map((s: any) => ({
                     ...s,
                     consumer_name: s.users?.full_name || null,
-                    shop_name: s.organizations?.name || null,
+                    shop_name: s.organizations?.org_name || null,
                 }))
             )
         } catch {

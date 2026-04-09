@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch points balance
     // GUEST/CONSUMER users always use consumer balance, even if linked to a shop org
-    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code)
+    const isConsumerRole = ['GUEST', 'CONSUMER', 'USER'].includes(userProfile.role_code)
     let pointsBalance = 0
     if (isShop && userProfile.organization_id && !isConsumerRole) {
       const { data: balanceData } = await supabaseAdmin

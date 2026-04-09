@@ -1326,7 +1326,7 @@ export default function PremiumLoyaltyTemplate({
                 if (newOrgName !== shopName) setShopName(newOrgName)
                 const newPhone = profile.phone || userPhone
                 if (newPhone !== userPhone) setUserPhone(newPhone)
-                if (profile.isShop && profile.pointsBalance !== userPoints) {
+                if (profile.pointsBalance !== userPoints) {
                     setUserPoints(profile.pointsBalance)
                 }
             } catch (err) {
