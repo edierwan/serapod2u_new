@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import {
   Search, Download, Store, TrendingUp, Users, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ArrowUpDown,
+  ArrowUpDown, X, Phone, Mail, Loader2,
 } from "lucide-react"
 import {
   Select,
@@ -44,6 +44,16 @@ interface Totals {
 
 type SortKey = keyof ShopSummary
 
+interface ShopConsumer {
+  id: string
+  full_name: string
+  phone: string | null
+  email: string | null
+  role_code: string
+  created_at: string
+  current_balance: number
+}
+
 export function ShopPointsReport() {
   const [data, setData] = useState<ShopSummary[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
@@ -54,6 +64,11 @@ export function ShopPointsReport() {
   const [sortAsc, setSortAsc] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
+
+  // Consumer detail dialog state
+  const [selectedShop, setSelectedShop] = useState<ShopSummary | null>(null)
+  const [consumers, setConsumers] = useState<ShopConsumer[]>([])
+  const [consumersLoading, setConsumersLoading] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -70,6 +85,22 @@ export function ShopPointsReport() {
         setLoading(false)
       }
     })()
+  }, [])
+
+  const openConsumerDetail = useCallback(async (shop: ShopSummary) => {
+    setSelectedShop(shop)
+    setConsumersLoading(true)
+    setConsumers([])
+    try {
+      const res = await fetch(`/api/admin/shop-consumers?shop_id=${encodeURIComponent(shop.shop_id)}`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      setConsumers(json.data || [])
+    } catch {
+      setConsumers([])
+    } finally {
+      setConsumersLoading(false)
+    }
   }, [])
 
   const filtered = useMemo(() => {
@@ -235,7 +266,18 @@ export function ShopPointsReport() {
                           {shop.branch_name && <div className="text-xs text-muted-foreground">{shop.branch_name}</div>}
                         </td>
                         <td className="px-3 py-2.5 text-sm">{shop.state || '—'}</td>
-                        <td className="px-3 py-2.5 text-sm font-medium">{formatNumber(shop.total_consumers)}</td>
+                        <td className="px-3 py-2.5 text-sm">
+                          {shop.total_consumers > 0 ? (
+                            <button
+                              className="font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                              onClick={() => openConsumerDetail(shop)}
+                            >
+                              {formatNumber(shop.total_consumers)}
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-sm font-semibold text-emerald-700">{formatNumber(shop.total_points_balance)}</td>
                         <td className="px-3 py-2.5 text-sm">{formatNumber(shop.total_collected_system)}</td>
                         <td className="px-3 py-2.5 text-sm">{formatNumber(shop.total_collected_manual)}</td>
@@ -291,6 +333,68 @@ export function ShopPointsReport() {
           )}
         </CardContent>
       </Card>
+
+      {/* Consumer Detail Dialog */}
+      {selectedShop && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedShop(null)}>
+          <div className="relative mx-4 w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold">{selectedShop.shop_name}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {selectedShop.total_consumers} consumer{selectedShop.total_consumers !== 1 ? 's' : ''}
+                  {selectedShop.branch_name && ` · ${selectedShop.branch_name}`}
+                  {selectedShop.state && ` · ${selectedShop.state}`}
+                </p>
+              </div>
+              <button onClick={() => setSelectedShop(null)} className="rounded-full p-1.5 hover:bg-muted">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+              {consumersLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : consumers.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">No consumers found for this shop.</div>
+              ) : (
+                <div className="space-y-3">
+                  {consumers.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/30">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-sm truncate">{c.full_name}</div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                          {c.phone && (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Phone className="h-3 w-3" /> {c.phone}
+                            </span>
+                          )}
+                          {c.email && (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Mail className="h-3 w-3" /> {c.email}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Joined {new Date(c.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="ml-3 text-right shrink-0">
+                        <div className="flex items-center gap-1 text-sm font-semibold text-emerald-700">
+                          <Trophy className="h-3.5 w-3.5" />
+                          {formatNumber(c.current_balance)}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">points</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

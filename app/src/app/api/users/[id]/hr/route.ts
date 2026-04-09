@@ -73,7 +73,7 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 })
         }
 
-        if (target.organization_id !== ctx.organizationId && ctx.roleLevel !== 1) {
+        if (target.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20)) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
         }
 
@@ -84,7 +84,7 @@ export async function PATCH(
                 .eq('id', updateData.department_id)
                 .single()
 
-            if (!dept || (dept.organization_id !== ctx.organizationId && ctx.roleLevel !== 1)) {
+            if (!dept || (dept.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
                 return NextResponse.json({ success: false, error: 'Invalid department' }, { status: 400 })
             }
         }
@@ -96,7 +96,7 @@ export async function PATCH(
                 .eq('id', updateData.position_id)
                 .single()
 
-            if (!position || (position.organization_id !== ctx.organizationId && ctx.roleLevel !== 1)) {
+            if (!position || (position.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
                 return NextResponse.json({ success: false, error: 'Invalid position' }, { status: 400 })
             }
         }
@@ -108,7 +108,7 @@ export async function PATCH(
                 .eq('id', updateData.manager_user_id)
                 .single()
 
-            if (!manager || (manager.organization_id !== ctx.organizationId && ctx.roleLevel !== 1)) {
+            if (!manager || (manager.organization_id !== ctx.organizationId && (ctx.roleLevel === null || ctx.roleLevel > 20))) {
                 return NextResponse.json({ success: false, error: 'Invalid manager' }, { status: 400 })
             }
         }

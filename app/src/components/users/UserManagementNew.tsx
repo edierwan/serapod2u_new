@@ -532,12 +532,12 @@ export default function UserManagementNew({
 
       const buildHrPayload = () => {
         const payload: Record<string, any> = {}
-        if ("department_id" in userData) payload.department_id = userData.department_id || null;
-        if ("position_id" in userData) payload.position_id = (userData as any).position_id || null;
-        if ("manager_user_id" in userData) payload.manager_user_id = (userData as any).manager_user_id || null;
-        if ("employment_type" in userData) payload.employment_type = (userData as any).employment_type || null;
-        if ("join_date" in userData) payload.join_date = (userData as any).join_date || null;
-        if ("employment_status" in userData) payload.employment_status = (userData as any).employment_status || null;
+        if (userData.department_id) payload.department_id = userData.department_id;
+        if ((userData as any).position_id) payload.position_id = (userData as any).position_id;
+        if ((userData as any).manager_user_id) payload.manager_user_id = (userData as any).manager_user_id;
+        if ((userData as any).employment_type) payload.employment_type = (userData as any).employment_type;
+        if ((userData as any).join_date) payload.join_date = (userData as any).join_date;
+        if ((userData as any).employment_status && (userData as any).employment_status !== 'active') payload.employment_status = (userData as any).employment_status;
         return payload;
       };
 
