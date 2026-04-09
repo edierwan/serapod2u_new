@@ -1,32 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
+import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import {
-    AlertCircle, CheckCircle2, Gift, Loader2, Map, MapPin, QrCode, Star, XCircle
+    AlertCircle, CheckCircle2, Eye, EyeOff, Gift, Loader2, Map, MapPin,
+    QrCode, Star, XCircle
 } from 'lucide-react'
 
-type ScanStep = 'loading' | 'invalid' | 'expired' | 'login' | 'shop-select' | 'survey' | 'reward' | 'done' | 'duplicate'
+type ScanStep = 'loading' | 'invalid' | 'expired' | 'ready' | 'shop-select' | 'survey' | 'done' | 'duplicate'
 
-interface QrValidationResult {
+interface QrValidation {
+    qr_code_id: string
     campaign_id: string
     campaign_name: string
-    am_user_id: string
-    am_name: string
+    account_manager_user_id: string
+    account_manager_name: string
     default_points: number
     reward_mode: string
     survey_template_id: string | null
     require_login: boolean
     require_shop_context: boolean
+    require_geolocation: boolean
+    duplicate_rule_reward: string
+    org_id: string
+    shop_id: string | null
 }
 
 interface SurveyField {
@@ -45,15 +44,29 @@ export default function RoadtourScanPage() {
     const supabase = createClient()
 
     const [step, setStep] = useState<ScanStep>('loading')
-    const [qrResult, setQrResult] = useState<QrValidationResult | null>(null)
-    const [qrId, setQrId] = useState<string | null>(null)
+    const [qr, setQr] = useState<QrValidation | null>(null)
     const [errorMsg, setErrorMsg] = useState('')
 
-    // Auth
+    // Auth state
+    const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [userId, setUserId] = useState<string | null>(null)
-    const [userPhone, setUserPhone] = useState('')
-    const [userName, setUserName] = useState('')
-    const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+    // Login modal
+    const [showLoginModal, setShowLoginModal] = useState(false)
+    const [loginEmail, setLoginEmail] = useState('')
+    const [loginPassword, setLoginPassword] = useState('')
+    const [showPassword, setShowPassword] = useState(false)
+    const [loginError, setLoginError] = useState('')
+    const [loginLoading, setLoginLoading] = useState(false)
+
+    // Registration redirect
+    const [showRegisterInfo, setShowRegisterInfo] = useState(false)
+
+    // Forgot password
+    const [showForgotPassword, setShowForgotPassword] = useState(false)
+    const [forgotEmail, setForgotEmail] = useState('')
+    const [forgotSending, setForgotSending] = useState(false)
+    const [forgotSent, setForgotSent] = useState(false)
 
     // Shop selection
     const [shops, setShops] = useState<{ id: string; name: string }[]>([])
@@ -65,55 +78,67 @@ export default function RoadtourScanPage() {
     const [surveyAnswers, setSurveyAnswers] = useState<Record<string, string>>({})
 
     // Reward
-    const [rewardPoints, setRewardPoints] = useState(0)
     const [processing, setProcessing] = useState(false)
+    const [rewardPoints, setRewardPoints] = useState(0)
+    const [totalBalance, setTotalBalance] = useState(0)
+    const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
 
-    // 1. Validate token
+    // Geolocation
+    const [geolocation, setGeolocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
+    const geoRequested = useRef(false)
+
+    // Capture geolocation
+    const requestGeolocation = useCallback(() => {
+        if (geoRequested.current) return
+        geoRequested.current = true
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    setGeolocation({
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy,
+                    })
+                },
+                () => { /* user denied or unavailable — continue without geo */ },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            )
+        }
+    }, [])
+
+    // 1. Validate token on mount
     useEffect(() => {
         if (!token) { setStep('invalid'); setErrorMsg('No QR token provided.'); return }
 
-        ; (async () => {
+        ;(async () => {
             try {
-                // Call the validate function (cast to bypass type generation lag)
                 const { data: rawData, error } = await (supabase as any).rpc('validate_roadtour_qr_token', { p_token: token })
                 if (error) throw error
                 const data = rawData as any
 
-                if (!data || data.status === 'error') {
-                    const reason = data?.reason || 'invalid'
-                    if (reason === 'expired') { setStep('expired'); setErrorMsg('This QR code has expired.'); return }
+                if (!data || data.valid === false) {
+                    const err = data?.error || 'invalid'
+                    if (err === 'expired') { setStep('expired'); setErrorMsg('This QR code has expired.'); return }
                     setStep('invalid')
                     setErrorMsg(data?.message || 'Invalid QR code.')
                     return
                 }
 
-                setQrResult(data)
-                setQrId(data.qr_id)
+                setQr(data)
 
-                // Check if user is logged in
+                // Check existing session
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user) {
+                    setIsAuthenticated(true)
                     setUserId(user.id)
-                    setIsLoggedIn(true)
-                    const { data: profile } = await supabase.from('users').select('full_name, phone').eq('id', user.id).single()
-                    if (profile) {
-                        setUserName(profile.full_name || '')
-                        setUserPhone(profile.phone || '')
-                    }
                 }
 
-                // Determine next step
-                if (data.require_login && !user) {
-                    setStep('login')
-                } else if (data.require_shop_context) {
-                    await loadShops(data.campaign_id)
-                    setStep('shop-select')
-                } else if (data.reward_mode === 'survey_submit' && data.survey_template_id) {
-                    await loadSurvey(data.survey_template_id)
-                    setStep('survey')
-                } else {
-                    setStep('reward')
+                // Request geolocation if enabled
+                if (data.require_geolocation) {
+                    requestGeolocation()
                 }
+
+                setStep('ready')
             } catch (err: any) {
                 setStep('invalid')
                 setErrorMsg(err.message || 'Failed to validate QR code.')
@@ -121,8 +146,8 @@ export default function RoadtourScanPage() {
         })()
     }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    const loadShops = async (campaignId: string) => {
-        // Get shops — all active shops for now
+    // Load shops for shop-select step
+    const loadShops = async () => {
         const { data } = await supabase
             .from('organizations')
             .select('id, name:org_name')
@@ -133,6 +158,7 @@ export default function RoadtourScanPage() {
         setShops((data || []).map((s: any) => ({ id: s.id, name: s.name })))
     }
 
+    // Load survey fields
     const loadSurvey = async (templateId: string) => {
         const { data } = await (supabase as any)
             .from('roadtour_survey_template_fields')
@@ -142,48 +168,152 @@ export default function RoadtourScanPage() {
         setSurveyFields(data || [])
     }
 
-    // Handle shop selection → next step
-    const handleShopSelected = async () => {
-        if (!selectedShopId) return
-        if (qrResult?.reward_mode === 'survey_submit' && qrResult?.survey_template_id) {
-            await loadSurvey(qrResult.survey_template_id)
+    // Handle "RoadTour Rewards" button click
+    const handleRewardsClick = async () => {
+        // If require_login and not authenticated → show login modal
+        if (qr?.require_login && !isAuthenticated) {
+            // Check session one more time
+            try {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (user) {
+                    setIsAuthenticated(true)
+                    setUserId(user.id)
+                    proceedAfterAuth()
+                    return
+                }
+            } catch { /* no session */ }
+
+            setLoginError('')
+            setShowLoginModal(true)
+            return
+        }
+
+        proceedAfterAuth()
+    }
+
+    // After authentication, proceed to next step or claim directly
+    const proceedAfterAuth = async () => {
+        if (!qr) return
+
+        if (qr.require_shop_context) {
+            await loadShops()
+            setStep('shop-select')
+        } else if (qr.reward_mode === 'survey_submit' && qr.survey_template_id) {
+            await loadSurvey(qr.survey_template_id)
             setStep('survey')
         } else {
-            setStep('reward')
+            // Direct claim
+            await claimReward()
         }
     }
 
-    // Handle survey answer changes
-    const updateAnswer = (fieldKey: string, value: string) => {
-        setSurveyAnswers((prev) => ({ ...prev, [fieldKey]: value }))
-    }
-
-    // Submit survey and claim reward
-    const handleClaimReward = async () => {
-        if (processing) return
-        setProcessing(true)
+    // Handle login submission
+    const handleLogin = async () => {
+        if (!loginEmail.trim() || !loginPassword.trim()) return
+        setLoginLoading(true)
+        setLoginError('')
 
         try {
-            // If survey mode, validate required fields
-            if (qrResult?.reward_mode === 'survey_submit' && surveyFields.length > 0) {
-                const missing = surveyFields.filter((f) => f.is_required && !surveyAnswers[f.field_key]?.trim())
+            // Determine if input is email or phone
+            const isPhone = /^[0-9+]/.test(loginEmail.trim())
+            let email = loginEmail.trim()
+
+            if (isPhone) {
+                // Look up email by phone number
+                const phoneDigits = email.replace(/\D/g, '')
+                const phoneLookups = [phoneDigits]
+                if (phoneDigits.startsWith('0')) phoneLookups.push('6' + phoneDigits)
+                if (phoneDigits.startsWith('60')) phoneLookups.push(phoneDigits.slice(1))
+
+                const { data: userRow } = await (supabase as any)
+                    .from('users')
+                    .select('email')
+                    .or(phoneLookups.map(p => `phone.eq.${p}`).join(','))
+                    .limit(1)
+                    .maybeSingle()
+
+                if (!userRow?.email) {
+                    setLoginError('No account found with this phone number.')
+                    setLoginLoading(false)
+                    return
+                }
+                email = userRow.email
+            }
+
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email,
+                password: loginPassword,
+            })
+
+            if (authError) {
+                setLoginError(authError.message || 'Invalid credentials.')
+                setLoginLoading(false)
+                return
+            }
+
+            if (authData?.user) {
+                setIsAuthenticated(true)
+                setUserId(authData.user.id)
+                setShowLoginModal(false)
+                proceedAfterAuth()
+            }
+        } catch (err: any) {
+            setLoginError(err.message || 'Login failed.')
+        } finally {
+            setLoginLoading(false)
+        }
+    }
+
+    // Handle forgot password
+    const handleForgotPassword = async () => {
+        if (!forgotEmail.trim()) return
+        setForgotSending(true)
+        try {
+            await supabase.auth.resetPasswordForEmail(forgotEmail.trim())
+            setForgotSent(true)
+        } catch { /* ignore errors */ }
+        setForgotSending(false)
+    }
+
+    // Handle shop selected → next step
+    const handleShopSelected = async () => {
+        if (!selectedShopId) return
+        if (qr?.reward_mode === 'survey_submit' && qr?.survey_template_id) {
+            await loadSurvey(qr.survey_template_id)
+            setStep('survey')
+        } else {
+            await claimReward()
+        }
+    }
+
+    // Claim reward
+    const claimReward = async () => {
+        if (processing || !qr) return
+        setProcessing(true)
+        setErrorMsg('')
+
+        try {
+            // Validate survey if applicable
+            if (qr.reward_mode === 'survey_submit' && surveyFields.length > 0) {
+                const missing = surveyFields.filter(f => f.is_required && !surveyAnswers[f.field_key]?.trim())
                 if (missing.length > 0) {
-                    setErrorMsg(`Please fill in: ${missing.map((f) => f.label).join(', ')}`)
+                    setErrorMsg(`Please fill in: ${missing.map(f => f.label).join(', ')}`)
                     setProcessing(false)
                     return
                 }
             }
 
-            // Call the reward API
             const resp = await fetch('/api/roadtour/claim-reward', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     token,
                     shop_id: selectedShopId || null,
-                    consumer_phone: userPhone || null,
-                    consumer_name: userName || null,
+                    consumer_phone: null,
+                    consumer_name: null,
                     survey_answers: Object.keys(surveyAnswers).length > 0 ? surveyAnswers : null,
+                    geolocation: geolocation || null,
                 }),
             })
 
@@ -200,7 +330,9 @@ export default function RoadtourScanPage() {
                 return
             }
 
-            setRewardPoints(result.points_awarded || qrResult?.default_points || 0)
+            setRewardPoints(result.points_awarded || qr.default_points || 0)
+            setTotalBalance(result.balance_after || result.points_awarded || 0)
+            setShowSuccessAnimation(true)
             setStep('done')
         } catch (err: any) {
             setErrorMsg(err.message || 'An error occurred.')
@@ -209,202 +341,457 @@ export default function RoadtourScanPage() {
         }
     }
 
-    // Login step (simplified — prompt for phone)
-    const handleLoginContinue = async () => {
-        if (!userPhone.trim()) return
-        // For now, continue without auth — phone is collected
-        if (qrResult?.require_shop_context) {
-            await loadShops(qrResult.campaign_id)
-            setStep('shop-select')
-        } else if (qrResult?.reward_mode === 'survey_submit' && qrResult?.survey_template_id) {
-            await loadSurvey(qrResult.survey_template_id)
-            setStep('survey')
-        } else {
-            setStep('reward')
-        }
-    }
+    const filteredShops = shops.filter(s => !shopSearch || s.name.toLowerCase().includes(shopSearch.toLowerCase()))
 
-    const filteredShops = shops.filter((s) => !shopSearch || s.name.toLowerCase().includes(shopSearch.toLowerCase()))
+    // Primary color for the branded theme
+    const primaryColor = '#e97b2d'
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-blue-950 dark:to-background flex items-start justify-center p-4 pt-8">
-            <div className="w-full max-w-md space-y-4">
-                {/* Header */}
-                <div className="text-center space-y-2">
-                    <div className="flex items-center justify-center gap-2">
-                        <Map className="h-8 w-8 text-blue-600" />
-                        <h1 className="text-2xl font-bold text-blue-700 dark:text-blue-300">RoadTour</h1>
+        <div className="min-h-screen bg-gray-50">
+            {/* ======================== BRANDED HEADER ======================== */}
+            <div
+                className="relative w-full overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #c9631e 100%)` }}
+            >
+                <div className="px-4 pt-6 pb-10 text-center text-white relative z-10">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                        <Map className="h-7 w-7" />
+                        <h1 className="text-2xl font-bold tracking-tight">RoadTour</h1>
                     </div>
-                    {qrResult && (
-                        <div className="space-y-1">
-                            <p className="text-sm text-muted-foreground">Campaign: <span className="font-medium text-foreground">{qrResult.campaign_name}</span></p>
-                            <p className="text-sm text-muted-foreground">Account Manager: <span className="font-medium text-foreground">{qrResult.am_name}</span></p>
+                    {qr && (
+                        <div className="space-y-0.5">
+                            <p className="text-sm opacity-90">Campaign: <span className="font-semibold">{qr.campaign_name}</span></p>
+                            <p className="text-sm opacity-90">Account Manager: <span className="font-semibold">{qr.account_manager_name}</span></p>
                         </div>
                     )}
                 </div>
+                {/* Decorative wave */}
+                <svg className="absolute bottom-0 left-0 w-full" viewBox="0 0 1440 60" fill="none">
+                    <path d="M0 30 Q 360 60 720 30 Q 1080 0 1440 30 L1440 60 L0 60Z" fill="#f9fafb" />
+                </svg>
+            </div>
+
+            {/* ======================== CONTENT ======================== */}
+            <div className="px-4 -mt-2 pb-8 max-w-md mx-auto space-y-4">
 
                 {/* Loading */}
                 {step === 'loading' && (
-                    <Card><CardContent className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" /><p className="text-sm text-muted-foreground mt-3">Validating QR code...</p></CardContent></Card>
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto" style={{ color: primaryColor }} />
+                        <p className="text-sm text-gray-500 mt-3">Validating QR code...</p>
+                    </div>
                 )}
 
                 {/* Invalid */}
                 {step === 'invalid' && (
-                    <Card className="border-red-200"><CardContent className="py-8 text-center">
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-red-100">
                         <XCircle className="h-12 w-12 text-red-500 mx-auto" />
                         <h2 className="text-lg font-semibold mt-3">Invalid QR Code</h2>
-                        <p className="text-sm text-muted-foreground mt-1">{errorMsg}</p>
-                    </CardContent></Card>
+                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                    </div>
                 )}
 
                 {/* Expired */}
                 {step === 'expired' && (
-                    <Card className="border-amber-200"><CardContent className="py-8 text-center">
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
                         <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
                         <h2 className="text-lg font-semibold mt-3">QR Code Expired</h2>
-                        <p className="text-sm text-muted-foreground mt-1">{errorMsg}</p>
-                    </CardContent></Card>
+                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                    </div>
                 )}
 
-                {/* Login / Identify */}
-                {step === 'login' && (
-                    <Card>
-                        <CardHeader><CardTitle className="text-center">Identify Yourself</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <p className="text-sm text-muted-foreground text-center">Please enter your details to claim your reward.</p>
-                            <div className="space-y-2"><Label>Your Name</Label><Input value={userName} onChange={(e) => setUserName(e.target.value)} placeholder="Enter your name" /></div>
-                            <div className="space-y-2"><Label>Phone Number *</Label><Input value={userPhone} onChange={(e) => setUserPhone(e.target.value)} placeholder="e.g. 0123456789" /></div>
-                            <Button className="w-full" onClick={handleLoginContinue} disabled={!userPhone.trim()}>Continue</Button>
-                        </CardContent>
-                    </Card>
+                {/* ======================== READY — Main reward card ======================== */}
+                {step === 'ready' && qr && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
+                        <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center"
+                            style={{ backgroundColor: `${primaryColor}15` }}>
+                            <Gift className="h-7 w-7" style={{ color: primaryColor }} />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-800">RoadTour Rewards</h2>
+                        <p className="text-sm text-gray-500 mt-1 mb-4">Claim your bonus points from this visit</p>
+
+                        <div className="py-3 mb-4">
+                            <p className="text-4xl font-bold" style={{ color: primaryColor }}>{qr.default_points}</p>
+                            <p className="text-sm text-gray-500 mt-0.5">bonus points</p>
+                        </div>
+
+                        {errorMsg && (
+                            <p className="text-sm text-red-600 mb-3">{errorMsg}</p>
+                        )}
+
+                        <button
+                            onClick={handleRewardsClick}
+                            disabled={processing}
+                            className="w-full py-3.5 rounded-xl text-white font-semibold text-base shadow-sm transition-all active:scale-[0.98] disabled:opacity-60"
+                            style={{ backgroundColor: primaryColor }}
+                        >
+                            {processing ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" /> Processing...
+                                </span>
+                            ) : (
+                                <span className="flex items-center justify-center gap-2">
+                                    <Gift className="h-5 w-5" /> RoadTour Rewards
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 )}
 
-                {/* Shop Selection */}
+                {/* ======================== SHOP SELECT ======================== */}
                 {step === 'shop-select' && (
-                    <Card>
-                        <CardHeader><CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" />Select Shop</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <p className="text-sm text-muted-foreground">Please select the shop you are visiting.</p>
-                            <Input placeholder="Search shops..." value={shopSearch} onChange={(e) => setShopSearch(e.target.value)} />
-                            <div className="max-h-60 overflow-y-auto space-y-1">
-                                {filteredShops.slice(0, 50).map((s) => (
-                                    <button key={s.id} onClick={() => setSelectedShopId(s.id)}
-                                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${selectedShopId === s.id ? 'bg-blue-100 text-blue-800 font-medium border border-blue-300' : 'hover:bg-muted border border-transparent'}`}>
-                                        {s.name}
-                                    </button>
-                                ))}
-                                {filteredShops.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No shops found.</p>}
-                            </div>
-                            <Button className="w-full" onClick={handleShopSelected} disabled={!selectedShopId}>Continue</Button>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* Survey */}
-                {step === 'survey' && (
-                    <Card>
-                        <CardHeader><CardTitle className="flex items-center gap-2"><QrCode className="h-5 w-5" />Quick Survey</CardTitle></CardHeader>
-                        <CardContent className="space-y-4">
-                            <p className="text-sm text-muted-foreground">Please complete this short survey to claim your reward.</p>
-                            {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
-                            {surveyFields.map((f) => (
-                                <div key={f.id} className="space-y-1.5">
-                                    <Label>{f.label} {f.is_required && <span className="text-red-500">*</span>}</Label>
-                                    {f.field_type === 'text' && (
-                                        <Input value={surveyAnswers[f.field_key] || ''} onChange={(e) => updateAnswer(f.field_key, e.target.value)} />
-                                    )}
-                                    {f.field_type === 'textarea' && (
-                                        <Textarea value={surveyAnswers[f.field_key] || ''} onChange={(e) => updateAnswer(f.field_key, e.target.value)} rows={3} />
-                                    )}
-                                    {f.field_type === 'number' && (
-                                        <Input type="number" value={surveyAnswers[f.field_key] || ''} onChange={(e) => updateAnswer(f.field_key, e.target.value)} />
-                                    )}
-                                    {f.field_type === 'phone' && (
-                                        <Input type="tel" value={surveyAnswers[f.field_key] || ''} onChange={(e) => updateAnswer(f.field_key, e.target.value)} />
-                                    )}
-                                    {f.field_type === 'yes_no' && (
-                                        <div className="flex gap-3">
-                                            <Button variant={surveyAnswers[f.field_key] === 'yes' ? 'default' : 'outline'} size="sm" onClick={() => updateAnswer(f.field_key, 'yes')}>Yes</Button>
-                                            <Button variant={surveyAnswers[f.field_key] === 'no' ? 'default' : 'outline'} size="sm" onClick={() => updateAnswer(f.field_key, 'no')}>No</Button>
-                                        </div>
-                                    )}
-                                    {(f.field_type === 'single_select' || f.field_type === 'radio') && f.options && (
-                                        <Select value={surveyAnswers[f.field_key] || ''} onValueChange={(v) => updateAnswer(f.field_key, v)}>
-                                            <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                                            <SelectContent>{f.options.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    )}
-                                    {f.field_type === 'multi_select' && f.options && (
-                                        <div className="flex flex-wrap gap-2">
-                                            {f.options.map((opt) => {
-                                                const selected = (surveyAnswers[f.field_key] || '').split(',').filter(Boolean)
-                                                const isSelected = selected.includes(opt)
-                                                return (
-                                                    <Badge key={opt} variant={isSelected ? 'default' : 'outline'} className="cursor-pointer"
-                                                        onClick={() => updateAnswer(f.field_key, isSelected ? selected.filter((s) => s !== opt).join(',') : [...selected, opt].join(','))}>
-                                                        {opt}
-                                                    </Badge>
-                                                )
-                                            })}
-                                        </div>
-                                    )}
-                                    {f.field_type === 'checkbox' && (
-                                        <div className="flex items-center gap-2">
-                                            <Switch checked={surveyAnswers[f.field_key] === 'true'} onCheckedChange={(v) => updateAnswer(f.field_key, v ? 'true' : 'false')} />
-                                            <span className="text-sm">{surveyAnswers[f.field_key] === 'true' ? 'Yes' : 'No'}</span>
-                                        </div>
-                                    )}
-                                </div>
+                    <div className="bg-white rounded-2xl shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                            <MapPin className="h-5 w-5" style={{ color: primaryColor }} />
+                            <h2 className="text-lg font-semibold">Select Shop</h2>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-3">Please select the shop you are visiting.</p>
+                        <input
+                            type="text"
+                            placeholder="Search shops..."
+                            value={shopSearch}
+                            onChange={(e) => setShopSearch(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <div className="max-h-60 overflow-y-auto space-y-1 mb-4">
+                            {filteredShops.slice(0, 50).map((s) => (
+                                <button key={s.id} onClick={() => setSelectedShopId(s.id)}
+                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${selectedShopId === s.id ? 'bg-orange-50 text-orange-800 font-medium border border-orange-300' : 'hover:bg-gray-50 border border-transparent'}`}>
+                                    {s.name}
+                                </button>
                             ))}
-                            <Button className="w-full gap-2" onClick={handleClaimReward} disabled={processing}>
-                                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                                Submit & Claim Reward
-                            </Button>
-                        </CardContent>
-                    </Card>
+                            {filteredShops.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No shops found.</p>}
+                        </div>
+                        <button
+                            onClick={handleShopSelected}
+                            disabled={!selectedShopId || processing}
+                            className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50"
+                            style={{ backgroundColor: primaryColor }}
+                        >
+                            {processing ? 'Processing...' : 'Continue'}
+                        </button>
+                    </div>
                 )}
 
-                {/* Direct Reward */}
-                {step === 'reward' && (
-                    <Card>
-                        <CardHeader><CardTitle className="text-center flex items-center justify-center gap-2"><Star className="h-5 w-5 text-amber-500" />Claim Your Reward</CardTitle></CardHeader>
-                        <CardContent className="space-y-4 text-center">
-                            <div className="py-4">
-                                <p className="text-4xl font-bold text-blue-600">{qrResult?.default_points || 0}</p>
-                                <p className="text-sm text-muted-foreground mt-1">bonus points</p>
+                {/* ======================== SURVEY ======================== */}
+                {step === 'survey' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-5">
+                        <div className="flex items-center gap-2 mb-3">
+                            <QrCode className="h-5 w-5" style={{ color: primaryColor }} />
+                            <h2 className="text-lg font-semibold">Quick Survey</h2>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">Please complete this short survey to claim your reward.</p>
+                        {errorMsg && <p className="text-sm text-red-600 mb-3">{errorMsg}</p>}
+
+                        {surveyFields.map((f) => (
+                            <div key={f.id} className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {f.label} {f.is_required && <span className="text-red-500">*</span>}
+                                </label>
+                                {f.field_type === 'text' && (
+                                    <input type="text" value={surveyAnswers[f.field_key] || ''}
+                                        onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                                )}
+                                {f.field_type === 'textarea' && (
+                                    <textarea value={surveyAnswers[f.field_key] || ''} rows={3}
+                                        onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                                )}
+                                {f.field_type === 'yes_no' && (
+                                    <div className="flex gap-3">
+                                        {['yes', 'no'].map(v => (
+                                            <button key={v} onClick={() => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: v })}
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium border ${surveyAnswers[f.field_key] === v ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                {v === 'yes' ? 'Yes' : 'No'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {(f.field_type === 'single_select' || f.field_type === 'radio') && f.options && (
+                                    <select value={surveyAnswers[f.field_key] || ''}
+                                        onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300">
+                                        <option value="">Select...</option>
+                                        {f.options.map(opt => <option key={String(opt)} value={String(opt)}>{String(opt)}</option>)}
+                                    </select>
+                                )}
+                                {f.field_type === 'multi_select' && f.options && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {f.options.map(opt => {
+                                            const sel = (surveyAnswers[f.field_key] || '').split(',').filter(Boolean)
+                                            const active = sel.includes(String(opt))
+                                            return (
+                                                <button key={String(opt)} onClick={() => {
+                                                    const next = active ? sel.filter(s => s !== String(opt)) : [...sel, String(opt)]
+                                                    setSurveyAnswers({ ...surveyAnswers, [f.field_key]: next.join(',') })
+                                                }}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                    {String(opt)}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                                {f.field_type === 'number' && (
+                                    <input type="number" value={surveyAnswers[f.field_key] || ''}
+                                        onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                                )}
+                                {f.field_type === 'phone' && (
+                                    <input type="tel" value={surveyAnswers[f.field_key] || ''}
+                                        onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}
+                                        className="w-full px-3 py-2 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                                )}
+                                {f.field_type === 'checkbox' && (
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={surveyAnswers[f.field_key] === 'true'}
+                                            onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.checked ? 'true' : 'false' })}
+                                            className="w-4 h-4 rounded text-orange-500 focus:ring-orange-300" />
+                                        <span className="text-sm">{surveyAnswers[f.field_key] === 'true' ? 'Yes' : 'No'}</span>
+                                    </label>
+                                )}
                             </div>
-                            {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
-                            <Button className="w-full gap-2" onClick={handleClaimReward} disabled={processing}>
-                                {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
-                                Claim Points
-                            </Button>
-                        </CardContent>
-                    </Card>
+                        ))}
+
+                        <button
+                            onClick={claimReward}
+                            disabled={processing}
+                            className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50 mt-2"
+                            style={{ backgroundColor: primaryColor }}
+                        >
+                            {processing ? (
+                                <span className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Submitting...</span>
+                            ) : (
+                                <span className="flex items-center justify-center gap-2"><Gift className="h-4 w-4" /> Submit & Claim Reward</span>
+                            )}
+                        </button>
+                    </div>
                 )}
 
-                {/* Success */}
-                {step === 'done' && (
-                    <Card className="border-emerald-200">
-                        <CardContent className="py-8 text-center space-y-3">
-                            <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
-                            <h2 className="text-xl font-bold">Reward Claimed!</h2>
-                            <p className="text-3xl font-bold text-emerald-600">+{rewardPoints} points</p>
-                            <p className="text-sm text-muted-foreground">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
-                        </CardContent>
-                    </Card>
+                {/* ======================== SUCCESS (after animation closes) ======================== */}
+                {step === 'done' && !showSuccessAnimation && (
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-emerald-100">
+                        <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
+                        <h2 className="text-xl font-bold mt-3">Reward Claimed!</h2>
+                        <p className="text-3xl font-bold text-emerald-600 mt-2">+{rewardPoints} points</p>
+                        <p className="text-sm text-gray-500 mt-2">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
+                    </div>
                 )}
 
                 {/* Duplicate */}
                 {step === 'duplicate' && (
-                    <Card className="border-amber-200">
-                        <CardContent className="py-8 text-center space-y-3">
-                            <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
-                            <h2 className="text-lg font-semibold">Already Claimed</h2>
-                            <p className="text-sm text-muted-foreground">{errorMsg}</p>
-                        </CardContent>
-                    </Card>
+                    <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
+                        <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
+                        <h2 className="text-lg font-semibold mt-3">Already Claimed</h2>
+                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                    </div>
+                )}
+
+                {/* Geolocation indicator */}
+                {qr?.require_geolocation && step === 'ready' && (
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+                        <MapPin className="h-3 w-3" />
+                        {geolocation ? 'Location captured' : 'Acquiring location...'}
+                    </div>
                 )}
             </div>
+
+            {/* ======================== LOGIN MODAL ======================== */}
+            {showLoginModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
+                        {/* Close button */}
+                        <button onClick={() => setShowLoginModal(false)}
+                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+
+                        <div className="text-center">
+                            <div className="w-14 h-14 rounded-full mx-auto mb-2 flex items-center justify-center"
+                                style={{ backgroundColor: `${primaryColor}10` }}>
+                                <Gift className="h-6 w-6" style={{ color: primaryColor }} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-800">Collect Points</h3>
+                            <p className="text-sm text-gray-500">Enter your credentials to collect points</p>
+                        </div>
+
+                        {loginError && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                                <p className="text-sm text-red-700">{loginError}</p>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
+                            <input
+                                type="text"
+                                value={loginEmail}
+                                onChange={(e) => setLoginEmail(e.target.value)}
+                                placeholder="Enter your email or phone"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                disabled={loginLoading}
+                                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={loginPassword}
+                                    onChange={(e) => setLoginPassword(e.target.value)}
+                                    placeholder="Enter your password"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    disabled={loginLoading}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                                />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowLoginModal(false)}
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                disabled={loginLoading}
+                            >
+                                Back
+                            </button>
+                            <button
+                                onClick={handleLogin}
+                                disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ backgroundColor: primaryColor }}
+                            >
+                                {loginLoading ? 'Collecting...' : 'Collect Points'}
+                            </button>
+                        </div>
+
+                        <div className="text-center space-y-1">
+                            <button
+                                onClick={() => { setShowLoginModal(false); setShowForgotPassword(true); setForgotEmail(loginEmail); }}
+                                className="text-sm font-medium hover:underline"
+                                style={{ color: primaryColor }}
+                            >
+                                Forgot Password?
+                            </button>
+                            <br />
+                            <button
+                                onClick={() => { setShowLoginModal(false); setShowRegisterInfo(true); }}
+                                className="text-sm font-medium hover:underline"
+                                style={{ color: primaryColor }}
+                            >
+                                Do not have account? Register here
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ======================== REGISTRATION INFO MODAL ======================== */}
+            {showRegisterInfo && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
+                        <button onClick={() => setShowRegisterInfo(false)}
+                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+
+                        <div className="text-center">
+                            <h3 className="text-lg font-bold text-gray-800">Create Account</h3>
+                            <p className="text-sm text-gray-500 mt-2">
+                                To register, please visit our main site and scan any product QR code, then tap &quot;Register&quot; on the product page.
+                            </p>
+                            <p className="text-sm text-gray-500 mt-2">
+                                Once registered, come back here to claim your RoadTour bonus points!
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { setShowRegisterInfo(false); setShowLoginModal(true); }}
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                                Back to Login
+                            </button>
+                            <a
+                                href="https://serapod2u.com"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white text-center"
+                                style={{ backgroundColor: primaryColor }}
+                            >
+                                Go to Serapod2U
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ======================== FORGOT PASSWORD MODAL ======================== */}
+            {showForgotPassword && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
+                        <button onClick={() => setShowForgotPassword(false)}
+                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+
+                        <h3 className="text-lg font-bold text-gray-800 text-center">Reset Password</h3>
+
+                        {forgotSent ? (
+                            <div className="text-center space-y-2">
+                                <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
+                                <p className="text-sm text-gray-600">Password reset email sent! Check your inbox.</p>
+                                <button
+                                    onClick={() => { setShowForgotPassword(false); setForgotSent(false); setShowLoginModal(true); }}
+                                    className="text-sm font-medium hover:underline"
+                                    style={{ color: primaryColor }}
+                                >
+                                    Back to Login
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <p className="text-sm text-gray-500 text-center">Enter your email to receive a password reset link.</p>
+                                <input
+                                    type="email"
+                                    value={forgotEmail}
+                                    onChange={(e) => setForgotEmail(e.target.value)}
+                                    placeholder="Enter your email"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                />
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setShowForgotPassword(false); setShowLoginModal(true); }}
+                                        className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        onClick={handleForgotPassword}
+                                        disabled={forgotSending || !forgotEmail.trim()}
+                                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                        style={{ backgroundColor: primaryColor }}
+                                    >
+                                        {forgotSending ? 'Sending...' : 'Send Reset Link'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ======================== SUCCESS ANIMATION ======================== */}
+            <PointEarnedAnimation
+                isOpen={showSuccessAnimation}
+                pointsEarned={rewardPoints}
+                totalBalance={totalBalance}
+                previousBalance={totalBalance - rewardPoints}
+                primaryColor={primaryColor}
+                autoCloseDelay={3500}
+                onClose={() => setShowSuccessAnimation(false)}
+            />
         </div>
     )
 }

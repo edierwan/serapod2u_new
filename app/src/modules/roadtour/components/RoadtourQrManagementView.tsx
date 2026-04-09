@@ -214,17 +214,17 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
     const sendWhatsApp = async (qr: QrCode) => {
         try {
+            // Use the phone already loaded from the JOIN (same as displayed in the table)
+            const phone = qr.user_phone
+            if (!phone) { toast({ title: 'Error', description: 'Reference has no phone number.', variant: 'destructive' }); return }
+
             const url = `${qrBaseUrl}?rt=${qr.token}`
             const message = `🗺️ *RoadTour QR Code*\n\nHi ${qr.user_name},\nHere is your RoadTour QR link for campaign "${qr.campaign_name}":\n\n${url}\n\nShare this link with shop owners during your visit. They can scan it to earn reward points.`
-
-            // Get the manager's phone
-            const { data: usr } = await supabase.from('users').select('phone').eq('id', qr.account_manager_user_id).single()
-            if (!usr?.phone) { toast({ title: 'Error', description: 'Reference has no phone number.', variant: 'destructive' }); return }
 
             const resp = await fetch('/api/settings/whatsapp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: usr.phone, message }),
+                body: JSON.stringify({ phone, message }),
             })
 
             if (!resp.ok) throw new Error('WhatsApp send failed')
@@ -234,12 +234,12 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                 campaign_id: qr.campaign_id,
                 qr_code_id: qr.id,
                 account_manager_user_id: qr.account_manager_user_id,
-                phone_number: usr.phone,
+                phone_number: phone,
                 send_status: 'sent',
                 sent_at: new Date().toISOString(),
             })
 
-            toast({ title: 'Sent', description: `QR link sent via WhatsApp to ${usr.phone}.` })
+            toast({ title: 'Sent', description: `QR link sent via WhatsApp to ${phone}.` })
         } catch (err: any) {
             toast({ title: 'Error', description: err.message || 'Failed to send WhatsApp message.', variant: 'destructive' })
         }

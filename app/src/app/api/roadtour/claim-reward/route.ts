@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { token, shop_id, consumer_phone, consumer_name, survey_answers } = body
+        const { token, shop_id, consumer_phone, consumer_name, survey_answers, geolocation, login_email, login_password } = body
 
         if (!token) {
             return NextResponse.json({ message: 'Missing QR token.' }, { status: 400 })
@@ -14,22 +15,61 @@ export async function POST(request: NextRequest) {
 
         // 1. Validate QR token (function created by migration, cast to bypass type generation lag)
         const { data: validation, error: valError } = await (supabase as any).rpc('validate_roadtour_qr_token', { p_token: token })
-        if (valError || !validation || validation.status === 'error') {
+        if (valError || !validation || validation.valid === false) {
             const msg = validation?.message || valError?.message || 'Invalid QR code.'
-            const code = validation?.reason === 'expired' ? 'EXPIRED' : 'INVALID'
+            const code = validation?.error === 'expired' ? 'EXPIRED' : 'INVALID'
             return NextResponse.json({ message: msg, code }, { status: 400 })
         }
 
-        const { qr_id, campaign_id, am_user_id, default_points, reward_mode, survey_template_id, org_id } = validation as any
+        const {
+            qr_code_id, campaign_id, account_manager_user_id,
+            default_points, reward_mode, survey_template_id, org_id,
+            duplicate_rule_reward
+        } = validation as any
 
-        // 2. Record scan event
+        // 2. Resolve authenticated user
+        let userId: string | null = null
+        let userPhone: string | null = consumer_phone || null
+
+        // Try session-based auth first
+        try {
+            const serverSupabase = await createClient()
+            const { data: { user } } = await serverSupabase.auth.getUser()
+            if (user) {
+                userId = user.id
+                const { data: profile } = await supabase.from('users').select('phone, full_name').eq('id', user.id).single()
+                if (profile?.phone) userPhone = profile.phone
+            }
+        } catch { /* no session, continue */ }
+
+        // Try login with email/password if provided
+        if (!userId && login_email && login_password) {
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email: login_email,
+                password: login_password,
+            })
+            if (authError) {
+                return NextResponse.json({ message: authError.message || 'Invalid credentials.', code: 'AUTH_FAILED' }, { status: 401 })
+            }
+            if (authData?.user) {
+                userId = authData.user.id
+                const { data: profile } = await supabase.from('users').select('phone, full_name').eq('id', authData.user.id).single()
+                if (profile?.phone) userPhone = profile.phone
+            }
+        }
+
+        // 3. Record scan event with geolocation
         const { data: scanEvent, error: scanError } = await (supabase as any)
             .from('roadtour_scan_events')
             .insert({
-                qr_id,
-                consumer_phone: consumer_phone || null,
+                campaign_id,
+                qr_code_id,
+                account_manager_user_id,
+                scanned_by_user_id: userId || null,
+                consumer_phone: userPhone || null,
                 shop_id: shop_id || null,
-                reward_status: 'pending',
+                scan_status: 'opened',
+                geolocation: geolocation || null,
             })
             .select('id')
             .single()
@@ -38,7 +78,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ message: 'Failed to record scan.', detail: scanError.message }, { status: 500 })
         }
 
-        // 3. If survey mode, save survey response
+        // 4. If survey mode, save survey response
         let surveyResponseId: string | null = null
         if (reward_mode === 'survey_submit' && survey_template_id && survey_answers) {
             const { data: surveyResp, error: surveyErr } = await (supabase as any)
@@ -71,33 +111,40 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 4. Record reward using the DB function (cast to bypass type generation lag)
+        // 5. Record reward using the DB function
         const { data: rewardResult, error: rewardError } = await (supabase as any).rpc('record_roadtour_reward', {
-            p_scan_event_id: scanEvent.id,
-            p_qr_id: qr_id,
+            p_org_id: org_id,
             p_campaign_id: campaign_id,
-            p_am_user_id: am_user_id,
-            p_consumer_user_id: null, // TODO: if logged in, pass user id
-            p_consumer_phone: consumer_phone || null,
+            p_qr_code_id: qr_code_id,
+            p_account_manager_user_id: account_manager_user_id,
+            p_scanned_by_user_id: userId || null,
             p_shop_id: shop_id || null,
             p_points: default_points,
-            p_org_id: org_id,
-            p_point_type: reward_mode === 'survey_submit' ? 'roadtour_survey' : 'roadtour',
+            p_scan_event_id: scanEvent.id,
+            p_survey_response_id: surveyResponseId,
+            p_duplicate_rule: duplicate_rule_reward || 'one_per_user_per_campaign',
+            p_transaction_type: reward_mode === 'survey_submit' ? 'roadtour_survey' : 'roadtour',
         })
 
         if (rewardError) {
             // Check for duplicate
             if (rewardError.message?.includes('duplicate') || rewardError.code === '23505') {
-                // Update scan event status
-                await (supabase as any).from('roadtour_scan_events').update({ reward_status: 'duplicate' }).eq('id', scanEvent.id)
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
                 return NextResponse.json({ message: 'You have already claimed this reward.', code: 'DUPLICATE' }, { status: 409 })
             }
             return NextResponse.json({ message: rewardError.message || 'Reward processing failed.', code: 'ERROR' }, { status: 500 })
         }
 
+        // Check if rewardResult indicates duplicate
+        if (rewardResult && rewardResult.success === false && rewardResult.error === 'duplicate') {
+            await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
+            return NextResponse.json({ message: rewardResult.message || 'You have already claimed this reward.', code: 'DUPLICATE' }, { status: 409 })
+        }
+
         return NextResponse.json({
             message: 'Reward claimed successfully.',
             points_awarded: default_points,
+            balance_after: rewardResult?.balance_after || default_points,
             scan_event_id: scanEvent.id,
             survey_response_id: surveyResponseId,
         })

@@ -419,7 +419,6 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 <TableHead>Campaign</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="hidden md:table-cell">Period</TableHead>
-                                <TableHead>Points</TableHead>
                                 <TableHead className="hidden md:table-cell">Days</TableHead>
                                 <TableHead className="hidden lg:table-cell">Mode</TableHead>
                                 <TableHead className="hidden lg:table-cell">Region</TableHead>
@@ -429,7 +428,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
                             )}
                             {filtered.map((c) => {
                                 const workDays = calcWorkingDays(c.start_date, c.end_date)
@@ -445,13 +444,12 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         </TableCell>
                                         <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
                                         <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
-                                        <TableCell>
+                                        <TableCell className="hidden md:table-cell text-sm">
                                             <div>
-                                                <p className="font-medium">{c.default_points}</p>
-                                                <p className="text-xs text-muted-foreground">RM {costPerReward.toFixed(2)}</p>
+                                                <p className="font-medium">{workDays}</p>
+                                                <p className="text-xs text-muted-foreground">{(() => { const today = new Date(); today.setHours(0,0,0,0); const end = new Date(c.end_date); end.setHours(0,0,0,0); const diff = Math.ceil((end.getTime() - today.getTime()) / (1000*60*60*24)); return diff > 0 ? `${diff} days left` : diff === 0 ? 'Last day' : 'Ended' })()}</p>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="hidden md:table-cell text-sm">{workDays}</TableCell>
                                         <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
                                         <TableCell className="text-sm hidden lg:table-cell">
                                             {c.region_scope && c.region_scope.length > 0 ? (
