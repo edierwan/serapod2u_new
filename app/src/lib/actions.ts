@@ -691,6 +691,10 @@ export async function registerConsumer(userData: {
       }
     }
 
+    let bonusAwarded = false
+    let bonusPoints = 0
+    let bonusMode: string | null = null
+
     if (userData.registration_org_id) {
       try {
         const { data: settings } = await (adminClient as any)
@@ -701,6 +705,9 @@ export async function registerConsumer(userData: {
           .maybeSingle()
 
         if (settings) {
+          bonusPoints = settings.bonus_points || 0
+          bonusMode = settings.bonus_mode || null
+
           const bonusRow = {
             org_id: userData.registration_org_id,
             user_id: authUser.user.id,
@@ -751,6 +758,7 @@ export async function registerConsumer(userData: {
               console.warn('Failed to award instant registration bonus:', txnError)
             } else {
               awardedTransactionId = txnData?.id || null
+              bonusAwarded = true
             }
           }
 
@@ -780,7 +788,12 @@ export async function registerConsumer(userData: {
 
     return {
       success: true,
-      user: authUser.user
+      user: authUser.user,
+      bonus: {
+        awarded: bonusAwarded,
+        points: bonusPoints,
+        mode: bonusMode,
+      },
     }
   } catch (error) {
     console.error('Error registering consumer:', error)

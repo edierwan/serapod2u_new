@@ -71,6 +71,7 @@ import { GenuineProductAnimation } from '@/components/animations/GenuineProductA
 import { RewardRedemptionAnimation } from '@/components/animations/RewardRedemptionAnimation'
 import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
+import { RegistrationCelebrationAnimation } from '@/components/animations/RegistrationCelebrationAnimation'
 import dynamic from 'next/dynamic'
 
 // Dynamically import QrScanner to avoid SSR issues
@@ -684,6 +685,10 @@ export default function PremiumLoyaltyTemplate({
 
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
+
+    // Registration celebration animation state
+    const [showRegistrationCelebration, setShowRegistrationCelebration] = useState(false)
+    const [registrationBonusInfo, setRegistrationBonusInfo] = useState<{ points: number; awarded: boolean; mode: string | null }>({ points: 0, awarded: false, mode: null })
 
     // Points animation state
     const [showPointsAnimation, setShowPointsAnimation] = useState(false)
@@ -1823,6 +1828,12 @@ export default function PremiumLoyaltyTemplate({
             throw new Error(regResult.error || 'Failed to create account')
         }
 
+        // Capture bonus info for celebration animation
+        const bonus = (regResult as any).bonus
+        if (bonus && bonus.points > 0) {
+            setRegistrationBonusInfo({ points: bonus.points, awarded: bonus.awarded, mode: bonus.mode })
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({
             email: emailToUse,
             password: loginPassword
@@ -1854,19 +1865,14 @@ export default function PremiumLoyaltyTemplate({
                 console.error('🔐 Error fetching profile after signup:', profileError)
             }
 
-            toast({
-                title: 'Account Created',
-                description: 'Your account has been created and you are now logged in.',
-            })
+            // Show celebration animation instead of plain toast
+            setShowRegistrationCelebration(true)
             return
         }
 
         setShowLoginForm(false)
         resetSignUpForm()
-        toast({
-            title: 'Account Created',
-            description: 'Your account has been created successfully. Please check your email for confirmation if required.',
-        })
+        setShowRegistrationCelebration(true)
     }
 
     const requestRegistrationOtp = async (isResend = false) => {
@@ -6439,6 +6445,16 @@ export default function PremiumLoyaltyTemplate({
                     setShowGenuineVerified(false)
                     setShowPointsAnimation(true)
                 }}
+            />
+
+            {/* Registration Celebration Animation */}
+            <RegistrationCelebrationAnimation
+                isVisible={showRegistrationCelebration}
+                userName={signUpName || userName || ''}
+                bonusPoints={registrationBonusInfo.points}
+                bonusAwarded={registrationBonusInfo.awarded}
+                bonusMode={registrationBonusInfo.mode}
+                onClose={() => setShowRegistrationCelebration(false)}
             />
 
             {/* Variant Animation Modal */}
