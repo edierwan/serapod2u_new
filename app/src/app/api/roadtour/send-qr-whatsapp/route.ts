@@ -16,7 +16,9 @@ import QRCode from 'qrcode'
 export const dynamic = 'force-dynamic'
 
 // Local baileys-gateway for image sending (supports base64)
-const BAILEYS_GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || 'http://127.0.0.1:3001'
+// Inside Docker, use the Docker bridge gateway IP to reach host services
+const LOCAL_BAILEYS_URL = process.env.LOCAL_BAILEYS_GATEWAY_URL || 'http://10.0.1.1:3001'
+const LOCAL_BAILEYS_API_KEY = process.env.LOCAL_BAILEYS_API_KEY || ''
 
 export async function POST(request: NextRequest) {
     try {
@@ -49,10 +51,14 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Phone and token are required' }, { status: 400 })
         }
 
-        // Still need config for API key auth
+        // Still need config to verify WhatsApp is configured for this org
         const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
-        if (!config?.apiKey) {
+        if (!config) {
             return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
+        }
+
+        if (!LOCAL_BAILEYS_API_KEY) {
+            return NextResponse.json({ error: 'Local baileys gateway API key not configured' }, { status: 500 })
         }
 
         // Build the scan URL
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
         const recipientDigits = String(phone).replace(/^\+/, '')
 
         // Call local baileys-gateway directly for image support
-        const gatewayUrl = `${BAILEYS_GATEWAY_URL}/messages/send-image`
+        const gatewayUrl = `${LOCAL_BAILEYS_URL}/messages/send-image`
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s for image
 
@@ -82,7 +88,7 @@ export async function POST(request: NextRequest) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'x-api-key': config.apiKey,
+                'x-api-key': LOCAL_BAILEYS_API_KEY,
             },
             body: JSON.stringify({ to: recipientDigits, image: qrBase64, caption }),
             signal: controller.signal,

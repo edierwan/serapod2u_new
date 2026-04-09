@@ -2,6 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Server-side environment variables (not exposed to client)
+  env: {
+    LOCAL_BAILEYS_GATEWAY_URL: process.env.LOCAL_BAILEYS_GATEWAY_URL || 'http://10.0.1.1:3001',
+    LOCAL_BAILEYS_API_KEY: process.env.LOCAL_BAILEYS_API_KEY || '26124d68ffcd848b8527db7854c79f702458abe1b8aca0185c3baf0100175086',
+  },
+
   // Standalone output for optimized Docker/self-hosted deployments
   output: 'standalone',
 
@@ -83,6 +89,7 @@ const nextConfig = {
     'exceljs',
     'pdfkit',
     'googleapis',
+    'qrcode',
   ],
 
   experimental: {
