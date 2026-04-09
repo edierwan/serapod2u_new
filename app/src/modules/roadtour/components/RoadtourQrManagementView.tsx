@@ -218,13 +218,15 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
             const phone = qr.user_phone
             if (!phone) { toast({ title: 'Error', description: 'Reference has no phone number.', variant: 'destructive' }); return }
 
-            const url = `${qrBaseUrl}?rt=${qr.token}`
-            const message = `🗺️ *RoadTour QR Code*\n\nHi ${qr.user_name},\nHere is your RoadTour QR link for campaign "${qr.campaign_name}":\n\n${url}\n\nShare this link with shop owners during your visit. They can scan it to earn reward points.`
-
-            const resp = await fetch('/api/settings/whatsapp/send', {
+            const resp = await fetch('/api/roadtour/send-qr-whatsapp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone, message }),
+                body: JSON.stringify({
+                    phone,
+                    token: qr.token,
+                    campaignName: qr.campaign_name,
+                    userName: qr.user_name,
+                }),
             })
 
             if (!resp.ok) throw new Error('WhatsApp send failed')
@@ -235,11 +237,12 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                 qr_code_id: qr.id,
                 account_manager_user_id: qr.account_manager_user_id,
                 phone_number: phone,
+                channel: 'whatsapp_qr_image',
                 send_status: 'sent',
                 sent_at: new Date().toISOString(),
             })
 
-            toast({ title: 'Sent', description: `QR link sent via WhatsApp to ${phone}.` })
+            toast({ title: 'Sent', description: `QR code image sent via WhatsApp to ${phone}.` })
         } catch (err: any) {
             toast({ title: 'Error', description: err.message || 'Failed to send WhatsApp message.', variant: 'destructive' })
         }

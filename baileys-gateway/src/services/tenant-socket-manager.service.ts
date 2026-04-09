@@ -864,6 +864,42 @@ class TenantSocketManager {
     }
 
     /**
+     * Send an image message for a tenant
+     */
+    async sendImage(tenantId: string, to: string, imageBase64: string, caption?: string): Promise<{ ok: boolean; jid?: string; error?: string }> {
+        const state = await this.ensureSocket(tenantId);
+
+        if (state.pairingState !== 'connected' || !state.socket) {
+            return { ok: false, error: 'Not connected to WhatsApp' };
+        }
+
+        try {
+            let phone = to.replace(/\D/g, '');
+            if (phone.startsWith('0')) {
+                phone = '60' + phone.substring(1);
+            }
+            phone = phone.replace(/^\+/, '');
+
+            const jid = `${phone}@s.whatsapp.net`;
+
+            logger.info({ tenantId, jid, captionLength: caption?.length || 0 }, 'Sending image message');
+
+            const imageBuffer = Buffer.from(imageBase64, 'base64');
+            const result = await state.socket.sendMessage(jid, {
+                image: imageBuffer,
+                caption: caption || '',
+            });
+
+            logger.info({ tenantId, messageId: result?.key?.id }, 'Image message sent successfully');
+
+            return { ok: true, jid };
+        } catch (error: any) {
+            logger.error({ tenantId, error: error.message }, 'Failed to send image message');
+            return { ok: false, error: error.message };
+        }
+    }
+
+    /**
      * Shutdown a specific tenant socket
      */
     async shutdownTenant(tenantId: string): Promise<void> {

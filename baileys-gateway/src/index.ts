@@ -38,7 +38,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || ['*'];
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(cors({
   origin: ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS,
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -161,6 +161,32 @@ app.post(
     } catch (error: any) {
       logger.error({ error: error.message, tenantId: req.tenantId }, 'Error sending message');
       res.status(500).json({ ok: false, error: error.message || 'Failed to send message' });
+    }
+  }
+);
+
+/**
+ * POST /tenants/:tenantId/messages/send-image
+ * Send a WhatsApp image message with optional caption
+ */
+app.post(
+  '/tenants/:tenantId/messages/send-image',
+  sendRateLimiter,
+  requireTenantAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { to, image, caption } = req.body;
+
+      if (!to || !image) {
+        return res.status(400).json({ ok: false, error: 'Missing required fields: to, image (base64)' });
+      }
+
+      const result = await tenantSocketManager.sendImage(tenantId, to, image, caption);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ error: error.message, tenantId: req.tenantId }, 'Error sending image');
+      res.status(500).json({ ok: false, error: error.message || 'Failed to send image' });
     }
   }
 );
@@ -347,6 +373,37 @@ app.post(
     } catch (error: any) {
       logger.error({ error: error.message }, 'Error sending message (legacy)');
       res.status(500).json({ ok: false, error: error.message || 'Failed to send message' });
+    }
+  }
+);
+
+/**
+ * POST /messages/send-image (legacy)
+ * Maps to /tenants/serapod2u/messages/send-image
+ */
+app.post(
+  '/messages/send-image',
+  sendRateLimiter,
+  requireLegacyAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tenantId = req.tenantId!;
+      const { to, image, caption } = req.body;
+
+      if (!to || !image) {
+        return res.status(400).json({ error: 'Missing required fields: to, image (base64)' });
+      }
+
+      const result = await tenantSocketManager.sendImage(tenantId, to, image, caption);
+
+      res.json({
+        ok: result.ok,
+        message_id: result.jid?.split('@')[0] || 'sent',
+        error: result.error,
+      });
+    } catch (error: any) {
+      logger.error({ error: error.message }, 'Error sending image (legacy)');
+      res.status(500).json({ ok: false, error: error.message || 'Failed to send image' });
     }
   }
 );

@@ -35,7 +35,7 @@ export function RoadtourLandingView({ userProfile, onViewChange }: RoadtourLandi
                 Plan road tour campaigns, assign account managers, generate QR codes, track field visits, and monitor performance.
             </p>
 
-            <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                 {roadtourNavGroups.map((group) => {
                     const accent = cardAccents[group.id] || { bg: 'bg-gray-50', text: 'text-gray-700', hoverBorder: 'hover:border-gray-300' }
                     const Icon = group.icon

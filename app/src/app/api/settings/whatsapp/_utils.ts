@@ -126,6 +126,7 @@ const GETOUCH_ENDPOINT_MAP: Record<string, string> = {
   '/status':          '/api/status',
   '/session/qr':      '/api/qr-code',
   '/messages/send':   '/api/send-text',
+  '/messages/send-image': '/api/send-image',
   '/session/start':   '/api/reset',
   '/session/logout':  '/api/logout',
   '/session/clear':   '/api/logout',
