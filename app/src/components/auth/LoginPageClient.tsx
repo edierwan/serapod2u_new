@@ -82,19 +82,30 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
         const params = new URLSearchParams(window.location.search)
         const m = params.get('mode')
         if (m === 'business') setMode('business')
+        // Show session replaced message
+        if (params.get('reason') === 'session_replaced') {
+            setError('You were signed out because your account was accessed from another device.')
+        }
     }, [])
+
+    // Track if we're navigating away (prevents state updates during navigation)
+    const isNavigatingRef = useRef(false)
 
     /**
      * Centralized post-login redirect.
      * Calls the server API which reads account_scope and returns { redirectTo }.
      */
     const doPostLoginRedirect = async () => {
+        isNavigatingRef.current = true
         try {
-            const res = await fetch('/api/auth/post-login-redirect')
+            const controller = new AbortController()
+            const timeout = setTimeout(() => controller.abort(), 4000)
+            const res = await fetch('/api/auth/post-login-redirect', { signal: controller.signal })
+            clearTimeout(timeout)
             const data = await res.json()
             window.location.href = data.redirectTo || '/store'
         } catch {
-            // Fallback if API is unreachable
+            // Fallback if API is unreachable or slow
             window.location.href = '/store'
         }
     }
@@ -243,14 +254,21 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             // Capture IP (fire and forget)
             fetch('/api/update-login-ip', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => { })
 
+            // Stamp session ID for single-session enforcement
+            const sessionId = crypto.randomUUID()
+            try {
+                await supabase.from('users').update({ active_session_id: sessionId, session_started_at: new Date().toISOString() } as any).eq('id', authUser.id)
+                localStorage.setItem('serapod_session_id', sessionId)
+            } catch { }
+
             // Route via centralized post-login redirect API (hard navigation)
             await doPostLoginRedirect()
         } catch (err) {
             console.error('Login error:', err)
-            setError('An unexpected error occurred. Please try again.')
-            setIsLoading(false)
-        } finally {
-            setIsLoading(false)
+            if (!isNavigatingRef.current) {
+                setError('An unexpected error occurred. Please try again.')
+                setIsLoading(false)
+            }
         }
     }
 

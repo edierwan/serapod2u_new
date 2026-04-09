@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Get user's organization (shop)
     const { data: userProfile, error: profileError } = await supabaseAdmin
       .from('users')
-      .select('id, organization_id, phone')
+      .select('id, organization_id, phone, role_code')
       .eq('id', user.id)
       .single()
 
@@ -56,6 +56,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // GUEST/CONSUMER users should see only their own transactions, not the whole shop
+    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code || '')
+
     let query = supabaseAdmin
       .from('shop_points_ledger')
       .select('*')
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
       .limit(100)
 
     // If user belongs to an organization, filter by shop_id
-    if (userProfile.organization_id) {
+    if (userProfile.organization_id && !isConsumerRole) {
       // Get organization details
       const { data: organization, error: orgError } = await supabaseAdmin
         .from('organizations')
@@ -88,7 +91,7 @@ export async function GET(request: NextRequest) {
 
       query = query.eq('shop_id', organization.id)
     } else {
-      // Independent consumer - filter by consumer_id
+      // Individual consumer (independent or GUEST/CONSUMER role) - filter by consumer_id
       query = query.eq('consumer_id', user.id)
     }
 

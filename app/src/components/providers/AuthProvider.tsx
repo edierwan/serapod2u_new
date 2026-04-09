@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Set up automatic session refresh check every 15 minutes
     // This prevents token expiry causing unexpected logouts
-    // Note: Supabase already handles automatic refresh internally, this is just a safety net
+    // Also validates single-session enforcement (kicks out old sessions)
     refreshInterval = setInterval(async () => {
       try {
         // Only check if we're on a dashboard page
@@ -108,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (error) {
           console.error('⚠️ Session check error:', error.message)
-          // Only logout on critical auth errors, not rate limits or network issues
           if (error.message?.includes('refresh_token_not_found') || 
               error.message?.includes('Invalid Refresh Token') ||
               error.message?.includes('JWT expired')) {
@@ -121,20 +120,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!session) {
           console.warn('⚠️ No session found during refresh check')
-          // Double-check before logging out - could be a temporary network issue
           const { data: { session: doubleCheck } } = await supabase.auth.getSession()
           if (!doubleCheck) {
             console.error('❌ Session confirmed lost - redirecting to login')
             router.push('/login')
           }
         } else {
+          // Single-session enforcement: validate this session is still the active one
+          const localSessionId = typeof window !== 'undefined' ? localStorage.getItem('serapod_session_id') : null
+          if (localSessionId && session.user?.id) {
+            try {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('active_session_id')
+                .eq('id', session.user.id)
+                .single()
+              if (userData?.active_session_id && userData.active_session_id !== localSessionId) {
+                console.warn('⚠️ Session replaced by another device - signing out')
+                localStorage.removeItem('serapod_session_id')
+                await supabase.auth.signOut({ scope: 'local' })
+                window.location.href = '/login?reason=session_replaced'
+                return
+              }
+            } catch { /* ignore - non-critical */ }
+          }
+
           // Check if token is close to expiry (within 10 minutes)
           const expiresAt = session.expires_at
           if (expiresAt) {
             const now = Math.floor(Date.now() / 1000)
             const timeUntilExpiry = expiresAt - now
             
-            if (timeUntilExpiry < 600) { // Less than 10 minutes
+            if (timeUntilExpiry < 600) {
               console.log('⏰ Token expiring soon, forcing refresh...')
               const { error: refreshError } = await supabase.auth.refreshSession()
               if (refreshError) {

@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     // 1. Get user's organization (shop)
     const { data: userProfile, error: profileError } = await supabase
       .from('users')
-      .select('id, organization_id, phone, email')
+      .select('id, organization_id, phone, email, role_code')
       .eq('id', user.id)
       .single()
 
@@ -63,6 +63,10 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       )
     }
+
+    // GUEST/CONSUMER users linked to a shop should use their INDIVIDUAL balance,
+    // not the shop aggregate balance
+    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code || '')
 
     let shopId = user.id // Default to user ID for independent consumers
     let isIndependent = true
@@ -189,9 +193,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Get current points balance
+    // GUEST/CONSUMER users always use individual balance (v_consumer_points_balance)
+    // Only non-consumer shop staff/owners use shop aggregate balance (v_shop_points_balance)
     let currentBalance = 0
 
-    if (!isIndependent) {
+    if (!isIndependent && !isConsumerRole) {
       const { data: balanceData, error: balanceError } = await supabaseAdmin
         .from('v_shop_points_balance')
         .select('*')
@@ -207,8 +213,7 @@ export async function POST(request: NextRequest) {
       }
       currentBalance = balanceData?.current_balance || 0
     } else {
-      // Use the view for independent consumers to ensure consistency with the UI
-      // This handles collected points, migration points, adjustments, and redemptions
+      // Individual consumer balance - consistent with profile API and UI
       const { data: balanceData, error: balanceError } = await supabaseAdmin
         .from('v_consumer_points_balance')
         .select('current_balance')

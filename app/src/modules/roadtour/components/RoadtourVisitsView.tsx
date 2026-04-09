@@ -239,8 +239,8 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                 <div><Label className="text-muted-foreground">Campaign</Label><p className="font-medium">{detailVisit.campaign_name}</p></div>
                                 <div><Label className="text-muted-foreground">Reference</Label><p className="font-medium">{detailVisit.user_name}</p>{detailVisit.user_phone && <p className="text-xs text-muted-foreground">{detailVisit.user_phone}</p>}</div>
                                 <div><Label className="text-muted-foreground">Shop</Label><p className="font-medium">{detailVisit.shop_name}</p></div>
-                                <div><Label className="text-muted-foreground">Verified Scans</Label><p className="font-medium">{detailVisit.verified_scans}</p></div>
-                                <div><Label className="text-muted-foreground">Points Awarded</Label><p className="font-medium">{detailVisit.total_points_awarded}</p></div>
+                                <div><Label className="text-muted-foreground">Status</Label><p className="font-medium">{detailVisit.visit_status}</p></div>
+                                <div><Label className="text-muted-foreground">Date Created</Label><p className="font-medium">{new Date(detailVisit.created_at).toLocaleString()}</p></div>
                             </div>
 
                             <div>
