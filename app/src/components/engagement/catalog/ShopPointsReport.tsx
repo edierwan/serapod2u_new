@@ -203,7 +203,7 @@ export function ShopPointsReport() {
                 <Store className="h-4 w-4" /> Shop Collection Ranking
               </CardTitle>
               <CardDescription className="mt-0.5">
-                {filtered.length} shop{filtered.length !== 1 ? 's' : ''} · sorted by {sortKey.replace(/_/g,' ')}
+                {filtered.length} shop{filtered.length !== 1 ? 's' : ''} · sorted by {sortKey.replace(/_/g, ' ')}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">

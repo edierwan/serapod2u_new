@@ -24,11 +24,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initializeSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
-        
+
         if (error) {
           console.error('❌ Session initialization error:', error)
-          if (error.message?.includes('refresh_token_not_found') || 
-              error.message?.includes('Invalid Refresh Token')) {
+          if (error.message?.includes('refresh_token_not_found') ||
+            error.message?.includes('Invalid Refresh Token')) {
             // Clear invalid session and redirect to login
             await supabase.auth.signOut()
             router.push('/login')
@@ -105,12 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         const { data: { session }, error } = await supabase.auth.getSession()
-        
+
         if (error) {
           console.error('⚠️ Session check error:', error.message)
-          if (error.message?.includes('refresh_token_not_found') || 
-              error.message?.includes('Invalid Refresh Token') ||
-              error.message?.includes('JWT expired')) {
+          if (error.message?.includes('refresh_token_not_found') ||
+            error.message?.includes('Invalid Refresh Token') ||
+            error.message?.includes('JWT expired')) {
             console.error('❌ Invalid session detected - clearing and redirecting')
             await supabase.auth.signOut()
             router.push('/login')
@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (expiresAt) {
             const now = Math.floor(Date.now() / 1000)
             const timeUntilExpiry = expiresAt - now
-            
+
             if (timeUntilExpiry < 600) {
               console.log('⏰ Token expiring soon, forcing refresh...')
               const { error: refreshError } = await supabase.auth.refreshSession()

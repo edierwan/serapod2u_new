@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     const pointRewardAmount = (reward as any).point_reward_amount || 0
     const collectionMode = (reward as any).collection_mode || 'always'
     const perUserLimit = (reward as any).per_user_limit || false
-    
+
     // For Point category, points_required should be 0 (free to collect)
     const pointsRequired = isPointCategory ? 0 : (reward.point_offer || reward.points_required)
 
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     // 3.5 For Point category, check collection restrictions
     if (isPointCategory) {
       const consumerPhone = userProfile.phone || ''
-      
+
       // Check per-user limit
       if (perUserLimit) {
         // Get previous collections of this reward by this user
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
           .eq('redeem_item_id', reward_id)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
-        
+
         if (previousCollections && previousCollections.length > 0) {
           if (collectionMode === 'once') {
             // One-time collection only
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
             today.setHours(0, 0, 0, 0)
             const lastCollection = new Date(previousCollections[0].created_at)
             lastCollection.setHours(0, 0, 0, 0)
-            
+
             if (lastCollection.getTime() >= today.getTime()) {
               return NextResponse.json(
                 { success: false, error: 'You have already collected today! Come back tomorrow to collect again.' },
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
           .eq('redeem_item_id', reward_id)
           .eq('consumer_phone', consumerPhone)
           .gte('created_at', `${today}T00:00:00.000Z`)
-        
+
         if (count && count > 0) {
           return NextResponse.json(
             { success: false, error: 'You have already collected today! Come back tomorrow.' },
@@ -272,13 +272,13 @@ export async function POST(request: NextRequest) {
     // IMPORTANT: Use shopId (the shop's organization ID) as company_id
     // so the shop_points_ledger view can properly filter by shop_id
     const consumerPhone = userProfile.phone || ''
-    
+
     // For Point category, we ADD points instead of deducting
     const pointsChange = isPointCategory ? pointRewardAmount : -pointsRequired
     const newBalance = currentBalance + pointsChange
 
     // Generate redemption code (will be finalized after insert with transaction ID)
-    const tempRedemptionCode = isPointCategory 
+    const tempRedemptionCode = isPointCategory
       ? `BONUS-${Date.now().toString(36).toUpperCase()}`
       : `RED-${Date.now().toString(36).toUpperCase()}`
 
@@ -300,8 +300,8 @@ export async function POST(request: NextRequest) {
         points_amount: pointsChange,
         balance_after: newBalance,
         redeem_item_id: reward_id,
-        description: isPointCategory 
-          ? `Bonus Points: ${reward.item_name}` 
+        description: isPointCategory
+          ? `Bonus Points: ${reward.item_name}`
           : `Redeemed: ${reward.item_name}`,
         transaction_date: new Date().toISOString(),
         fulfillment_status: isPointCategory ? 'fulfilled' : 'pending',
@@ -322,7 +322,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Transaction recorded:', transaction.id)
 
     // Generate final redemption code using transaction ID
-    const redemptionCode = isPointCategory 
+    const redemptionCode = isPointCategory
       ? `BONUS-${transaction.id.split('-')[0].toUpperCase()}`
       : `RED-${transaction.id.split('-')[0].toUpperCase()}`
 
@@ -355,7 +355,7 @@ export async function POST(request: NextRequest) {
       // Determine congratulatory message based on collection mode
       let congratsMessage = 'Congratulations! You\'ve earned bonus points!'
       let encourageMessage = ''
-      
+
       if (perUserLimit && collectionMode === 'daily') {
         congratsMessage = '🎉 Daily Bonus Collected!'
         encourageMessage = 'Come back tomorrow to collect more points. Stay loyal, earn more!'
@@ -369,7 +369,7 @@ export async function POST(request: NextRequest) {
         congratsMessage = '🎁 Bonus Points Added!'
         encourageMessage = reward.reward_message || 'Thank you for being an amazing customer!'
       }
-      
+
       return NextResponse.json({
         success: true,
         is_bonus_points: true,

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { success: false, error: 'Please log in to view points history' },
@@ -109,16 +109,16 @@ export async function GET(request: NextRequest) {
     // Get images for variants and redeem items
     const variantIds = Array.from(new Set((ledgerData || []).map((entry: any) => entry.variant_id).filter(Boolean)))
     const redeemItemIds = Array.from(new Set((ledgerData || []).map((entry: any) => entry.redeem_item_id).filter(Boolean)))
-    
+
     let variantImagesMap: { [key: string]: string } = {}
     let redeemItemImagesMap: { [key: string]: string } = {}
-    
+
     if (variantIds.length > 0) {
       const { data: variants } = await supabaseAdmin
         .from('product_variants')
         .select('id, image_url')
         .in('id', variantIds)
-      
+
       if (variants) {
         variantImagesMap = variants.reduce((acc: any, v: any) => {
           acc[v.id] = v.image_url
@@ -126,13 +126,13 @@ export async function GET(request: NextRequest) {
         }, {})
       }
     }
-    
+
     if (redeemItemIds.length > 0) {
       const { data: redeemItems } = await supabaseAdmin
         .from('redeem_items')
         .select('id, item_image_url')
         .in('id', redeemItemIds)
-      
+
       if (redeemItems) {
         redeemItemImagesMap = redeemItems.reduce((acc: any, r: any) => {
           acc[r.id] = r.item_image_url
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
       } else if (entry.redeem_item_id) {
         imageUrl = redeemItemImagesMap[entry.redeem_item_id]
       }
-      
+
       return {
         id: entry.id,
         type: entry.transaction_type,
@@ -167,7 +167,7 @@ export async function GET(request: NextRequest) {
     const totalEarned = formattedTransactions
       .filter((t: any) => t.points > 0)
       .reduce((sum: number, t: any) => sum + t.points, 0)
-    
+
     const totalRedeemed = formattedTransactions
       .filter((t: any) => t.points < 0)
       .reduce((sum: number, t: any) => sum + Math.abs(t.points), 0)

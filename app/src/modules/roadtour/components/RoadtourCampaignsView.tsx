@@ -145,11 +145,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     // Load shop counts by state
     useEffect(() => {
         (async () => {
-            const { data } = await (supabase as any).from('organizations').select('state').eq('org_type_code', 'SHOP')
+            const { data } = await (supabase as any).from('organizations').select('state_id, states:state_id(state_name)').eq('org_type_code', 'SHOP').eq('is_active', true)
             if (data) {
                 const counts: Record<string, number> = {}
                 for (const r of data) {
-                    const st = (r as any).state?.trim()
+                    const st = (r as any).states?.state_name?.trim()
                     if (st) counts[st] = (counts[st] || 0) + 1
                 }
                 setShopCountByState(counts)
@@ -162,8 +162,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setRegionDialogOpen(true)
         setRegionShopsLoading(true)
         try {
-            const { data } = await (supabase as any).from('organizations').select('id, org_name, branch_name').eq('org_type_code', 'SHOP').eq('state', stateName).order('org_name')
-            setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch_name ?? null })))
+            // First get the state_id for this state name
+            const { data: stateRow } = await (supabase as any).from('states').select('id').eq('state_name', stateName).single()
+            if (!stateRow) { setRegionShops([]); return }
+            const { data } = await (supabase as any).from('organizations').select('id, org_name, branch').eq('org_type_code', 'SHOP').eq('is_active', true).eq('state_id', stateRow.id).order('org_name')
+            setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch ?? null })))
         } catch {
             setRegionShops([])
         } finally {
@@ -433,56 +436,56 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 const workDays = calcWorkingDays(c.start_date, c.end_date)
                                 const costPerReward = c.default_points * pointValueRm
                                 return (
-                                <TableRow key={c.id}>
-                                    <TableCell>
-                                        <div>
-                                            <p className="font-medium">{c.name}</p>
-                                            {c.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{c.description}</p>}
-                                            <p className="text-xs text-muted-foreground md:hidden">{c.start_date} — {c.end_date}</p>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
-                                    <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
-                                    <TableCell>
-                                        <div>
-                                            <p className="font-medium">{c.default_points}</p>
-                                            <p className="text-xs text-muted-foreground">RM {costPerReward.toFixed(2)}</p>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="hidden md:table-cell text-sm">{workDays}</TableCell>
-                                    <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
-                                    <TableCell className="text-sm hidden lg:table-cell">
-                                        {c.region_scope && c.region_scope.length > 0 ? (
-                                            <div className="flex flex-wrap gap-1">
-                                                {c.region_scope.map((r) => (
-                                                    <Badge key={r} variant="outline" className="text-xs cursor-pointer hover:bg-primary/10" onClick={() => openRegionShops(r)}>{r}</Badge>
-                                                ))}
+                                    <TableRow key={c.id}>
+                                        <TableCell>
+                                            <div>
+                                                <p className="font-medium">{c.name}</p>
+                                                {c.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{c.description}</p>}
+                                                <p className="text-xs text-muted-foreground md:hidden">{c.start_date} — {c.end_date}</p>
                                             </div>
-                                        ) : '—'}
-                                    </TableCell>
-                                    <TableCell>
-                                        {(c._managers && c._managers.length > 0) ? (
-                                            <button
-                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                                                onClick={() => { setRefsDialogCampaignName(c.name); setRefsDialogManagers(c._managers || []); setRefsDialogOpen(true) }}
-                                            >
-                                                Show ({c._managers.length})
-                                            </button>
-                                        ) : (
-                                            <span className="text-xs text-muted-foreground">No references</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <div className="flex gap-1 justify-end">
-                                            <Button size="sm" variant="ghost" onClick={() => openManagers(c.id, c.name)} title="Manage references"><Users className="h-4 w-4" /></Button>
-                                            <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit"><Edit className="h-4 w-4" /></Button>
-                                            {c.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Activate"><Play className="h-4 w-4 text-emerald-600" /></Button>}
-                                            {c.status === 'active' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'paused')} title="Pause"><Pause className="h-4 w-4 text-amber-600" /></Button>}
-                                            {c.status === 'paused' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Resume"><Play className="h-4 w-4 text-emerald-600" /></Button>}
-                                            {['completed', 'paused'].includes(c.status) && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'archived')} title="Archive"><Archive className="h-4 w-4 text-slate-500" /></Button>}
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
+                                        </TableCell>
+                                        <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
+                                        <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
+                                        <TableCell>
+                                            <div>
+                                                <p className="font-medium">{c.default_points}</p>
+                                                <p className="text-xs text-muted-foreground">RM {costPerReward.toFixed(2)}</p>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell text-sm">{workDays}</TableCell>
+                                        <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
+                                        <TableCell className="text-sm hidden lg:table-cell">
+                                            {c.region_scope && c.region_scope.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {c.region_scope.map((r) => (
+                                                        <Badge key={r} variant="outline" className="text-xs cursor-pointer hover:bg-primary/10" onClick={() => openRegionShops(r)}>{r}</Badge>
+                                                    ))}
+                                                </div>
+                                            ) : '—'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {(c._managers && c._managers.length > 0) ? (
+                                                <button
+                                                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                                    onClick={() => { setRefsDialogCampaignName(c.name); setRefsDialogManagers(c._managers || []); setRefsDialogOpen(true) }}
+                                                >
+                                                    Show ({c._managers.length})
+                                                </button>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">No references</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex gap-1 justify-end">
+                                                <Button size="sm" variant="ghost" onClick={() => openManagers(c.id, c.name)} title="Manage references"><Users className="h-4 w-4" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit"><Edit className="h-4 w-4" /></Button>
+                                                {c.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Activate"><Play className="h-4 w-4 text-emerald-600" /></Button>}
+                                                {c.status === 'active' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'paused')} title="Pause"><Pause className="h-4 w-4 text-amber-600" /></Button>}
+                                                {c.status === 'paused' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Resume"><Play className="h-4 w-4 text-emerald-600" /></Button>}
+                                                {['completed', 'paused'].includes(c.status) && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'archived')} title="Archive"><Archive className="h-4 w-4 text-slate-500" /></Button>}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
                                 )
                             })}
                         </TableBody>
@@ -538,7 +541,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             </div>
                             {formRegions.length > 0 && (
                                 <p className="text-xs text-muted-foreground">
-                                    🏪 {formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops in selected regions
+                                    🏪 <button type="button" className="font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer" onClick={() => {
+                                        setRegionDialogState(formRegions.join(', '))
+                                        setRegionDialogOpen(true)
+                                        setRegionShopsLoading(true)
+                                        ;(async () => {
+                                            try {
+                                                const { data: stateRows } = await (supabase as any).from('states').select('id').in('state_name', formRegions)
+                                                const stateIds = (stateRows || []).map((s: any) => s.id)
+                                                if (stateIds.length === 0) { setRegionShops([]); setRegionShopsLoading(false); return }
+                                                const { data } = await (supabase as any).from('organizations').select('id, org_name, branch').eq('org_type_code', 'SHOP').eq('is_active', true).in('state_id', stateIds).order('org_name')
+                                                setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch ?? null })))
+                                            } catch { setRegionShops([]) } finally { setRegionShopsLoading(false) }
+                                        })()
+                                    }}>{formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops</button> in selected regions
                                 </p>
                             )}
                         </div>
