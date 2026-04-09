@@ -347,15 +347,14 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const assignManager = async (userId: string) => {
         if (!selectedCampaignId) return
         try {
-            const { error } = await (supabase as any).from('roadtour_campaign_managers').insert({
+            const { error } = await (supabase as any).from('roadtour_campaign_managers').upsert({
                 campaign_id: selectedCampaignId,
                 user_id: userId,
                 assigned_by: userProfile.id,
-            })
-            if (error) {
-                if (error.code === '23505') { toast({ title: 'Already Assigned', description: 'This account manager is already assigned.', variant: 'destructive' }); return }
-                throw error
-            }
+                is_active: true,
+                assigned_at: new Date().toISOString(),
+            }, { onConflict: 'campaign_id,user_id' })
+            if (error) throw error
             toast({ title: 'Assigned', description: 'Reference assigned to campaign.' })
             openManagers(selectedCampaignId, selectedCampaignName)
         } catch (err: any) {
