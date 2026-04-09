@@ -145,11 +145,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     // Load shop counts by state
     useEffect(() => {
         (async () => {
-            const { data } = await supabase.from('organizations').select('state').eq('org_type_code', 'SHOP')
+            const { data } = await (supabase as any).from('organizations').select('state').eq('org_type_code', 'SHOP')
             if (data) {
                 const counts: Record<string, number> = {}
                 for (const r of data) {
-                    const st = r.state?.trim()
+                    const st = (r as any).state?.trim()
                     if (st) counts[st] = (counts[st] || 0) + 1
                 }
                 setShopCountByState(counts)
@@ -162,8 +162,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setRegionDialogOpen(true)
         setRegionShopsLoading(true)
         try {
-            const { data } = await supabase.from('organizations').select('id, org_name, branch_name').eq('org_type_code', 'SHOP').eq('state', stateName).order('org_name')
-            setRegionShops(data || [])
+            const { data } = await (supabase as any).from('organizations').select('id, org_name, branch_name').eq('org_type_code', 'SHOP').eq('state', stateName).order('org_name')
+            setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch_name ?? null })))
         } catch {
             setRegionShops([])
         } finally {
