@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
 
-// Gateway and Moltbot URLs from env - server-side only
-const GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://wa.getouch.cloud'
+// Moltbot URL from env - server-side only
 const MOLTBOT_URL = process.env.MOLTBOT_URL || 'https://bot.serapod2u.com'
 
 interface ServiceHealth {
@@ -21,65 +21,96 @@ interface StatusResponse {
 // GET /api/settings/notifications/providers/status - Server-side health check
 export async function GET(request: NextRequest) {
     try {
-        // Authenticate user (optional but good practice)
         const supabase = await createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Fetch both health endpoints in parallel with timeout
-        const [gatewayResult, moltbotResult] = await Promise.allSettled([
-            fetchWithTimeout(`${GATEWAY_URL}/healthz`, 5000),
-            fetchWithTimeout(`${MOLTBOT_URL}/health`, 5000)
-        ])
+        // Get user org for WhatsApp config lookup
+        const { data: profile } = await supabase
+            .from('users')
+            .select('organization_id')
+            .eq('id', user.id)
+            .single()
 
-        let gatewayHealth = processResult(gatewayResult)
+        // Check Moltbot health in parallel while we do gateway checks
+        const moltbotPromise = fetchWithTimeout(`${MOLTBOT_URL}/health`, 5000)
 
-        // If healthz fails, try the WhatsApp status API as fallback
-        // The gateway might not expose /healthz but the connection works fine
-        if (!gatewayHealth.up) {
-            try {
-                const statusRes = await fetch(
-                    `${request.nextUrl.origin}/api/settings/whatsapp/status`,
-                    {
-                        headers: { cookie: request.headers.get('cookie') || '' },
-                        signal: AbortSignal.timeout(6000),
+        let gatewayHealth: ServiceHealth
+        const startTime = Date.now()
+
+        if (profile?.organization_id) {
+            // Load org-specific gateway config and call /status directly
+            // This avoids unreliable self-referential HTTP calls
+            const config = await getWhatsAppConfig(supabase, profile.organization_id)
+
+            if (config?.baseUrl) {
+                try {
+                    const gatewayStatus = await callGateway(
+                        config.baseUrl,
+                        config.apiKey,
+                        'GET',
+                        '/status',
+                        undefined,
+                        config.tenantId
+                    )
+                    const latencyMs = Date.now() - startTime
+                    // Determine if the gateway is actually connected
+                    const isGetouch = gatewayStatus.state !== undefined
+                    const connected = isGetouch
+                        ? gatewayStatus.state === 'open' && gatewayStatus.authenticated === true
+                        : !!gatewayStatus.connected
+
+                    gatewayHealth = {
+                        up: true,
+                        latencyMs,
+                        waConnected: connected,
                     }
-                )
-                if (statusRes.ok) {
-                    const waStatus = await statusRes.json()
-                    if (waStatus.connected) {
-                        // WhatsApp is actually connected - override the Down status
-                        gatewayHealth = {
-                            up: true,
-                            latencyMs: gatewayHealth.latencyMs,
-                            waConnected: true,
-                        }
+                } catch (err: any) {
+                    const latencyMs = Date.now() - startTime
+                    const isTimeout = err?.name === 'AbortError' || err?.code === 'ETIMEDOUT'
+                    gatewayHealth = {
+                        up: false,
+                        latencyMs,
+                        error: isTimeout ? 'timeout' : 'connection_failed',
                     }
                 }
-            } catch {
-                // Fallback failed too, keep original result
+            } else {
+                // No config found – gateway not configured
+                gatewayHealth = { up: false, latencyMs: 0, error: 'not_configured' }
+            }
+        } else {
+            // No org – fall back to generic healthz probe
+            const result = await fetchWithTimeout(
+                `${process.env.BAILEYS_GATEWAY_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://wa.getouch.cloud'}/healthz`,
+                5000
+            )
+            gatewayHealth = {
+                up: result.ok,
+                latencyMs: result.latencyMs,
+                error: result.error,
             }
         }
+
+        const moltbotResult = await moltbotPromise.catch((): FetchResult => ({ ok: false, latencyMs: 0, error: 'fetch_failed' }))
 
         const response: StatusResponse = {
             whatsappGateway: gatewayHealth,
-            moltbot: processResult(moltbotResult),
+            moltbot: {
+                up: moltbotResult.ok,
+                latencyMs: moltbotResult.latencyMs,
+                error: moltbotResult.error,
+            },
             checkedAt: new Date().toISOString()
         }
 
-        // Set cache headers - no store to prevent caching
         return NextResponse.json(response, {
-            headers: {
-                'Cache-Control': 'no-store, max-age=0'
-            }
+            headers: { 'Cache-Control': 'no-store, max-age=0' }
         })
     } catch (error: any) {
         console.error('Status check error:', error)
-        return NextResponse.json({
-            error: 'Failed to check service status'
-        }, { status: 500 })
+        return NextResponse.json({ error: 'Failed to check service status' }, { status: 500 })
     }
 }
 
@@ -139,21 +170,5 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<FetchRe
             latencyMs,
             error: error.code === 'ECONNREFUSED' ? 'connection_refused' : 'connection_failed'
         }
-    }
-}
-
-function processResult(result: PromiseSettledResult<FetchResult>): ServiceHealth {
-    if (result.status === 'fulfilled') {
-        return {
-            up: result.value.ok,
-            latencyMs: result.value.latencyMs,
-            error: result.value.error
-        }
-    }
-
-    return {
-        up: false,
-        latencyMs: 0,
-        error: 'fetch_failed'
     }
 }
