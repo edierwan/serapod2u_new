@@ -17,24 +17,24 @@ const cardAccents: Record<string, { bg: string; text: string; hoverBorder: strin
 
 export function RoadtourLandingView({ userProfile, onViewChange }: RoadtourLandingViewProps) {
     return (
-        <div className="space-y-6">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white">
+        <div className="space-y-4 sm:space-y-6">
+            <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 p-5 sm:p-8 text-white">
                 <div className="flex items-center gap-3 opacity-80 text-sm mb-2">
                     <Map className="h-5 w-5" />
                     ROADTOUR MODULE
                 </div>
-                <h1 className="text-3xl font-bold tracking-tight">ROADTOUR</h1>
-                <p className="mt-2 text-blue-100 max-w-2xl">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">ROADTOUR</h1>
+                <p className="mt-2 text-blue-100 max-w-2xl text-sm sm:text-base">
                     Plan road tour campaigns, assign account managers, generate QR codes, track field visits,
                     capture surveys, and monitor performance across your shop network.
                 </p>
             </div>
 
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground text-sm sm:text-base">
                 Plan road tour campaigns, assign account managers, generate QR codes, track field visits, and monitor performance.
             </p>
 
-            <div className="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 sm:gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                 {roadtourNavGroups.map((group) => {
                     const accent = cardAccents[group.id] || { bg: 'bg-gray-50', text: 'text-gray-700', hoverBorder: 'hover:border-gray-300' }
                     const Icon = group.icon

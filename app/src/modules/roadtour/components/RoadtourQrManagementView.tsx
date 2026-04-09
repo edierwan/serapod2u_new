@@ -33,6 +33,7 @@ interface QrCode {
     campaign_name?: string
     account_manager_user_id: string
     user_name?: string
+    user_phone?: string
     token: string
     status: string
     expires_at: string | null
@@ -75,7 +76,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
             const [campaignRes, qrRes] = await Promise.all([
                 (supabase as any).from('roadtour_campaigns').select('id, name, status').eq('org_id', companyId).order('name'),
                 (supabase as any).from('roadtour_qr_codes')
-                    .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name)')
+                    .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone)')
                     .eq('roadtour_campaigns.org_id', companyId)
                     .order('created_at', { ascending: false })
                     .limit(200),
@@ -90,6 +91,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                     ...q,
                     campaign_name: q.roadtour_campaigns?.name || '—',
                     user_name: q.users?.full_name || '—',
+                    user_phone: q.users?.phone || '',
                 }))
             )
         } catch (err: any) {
@@ -116,7 +118,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
     const generateQr = async () => {
         if (!genCampaignId || !genManagerId) {
-            toast({ title: 'Validation', description: 'Select a campaign and an account manager.', variant: 'destructive' })
+            toast({ title: 'Validation', description: 'Select a campaign and a reference.', variant: 'destructive' })
             return
         }
         try {
@@ -145,7 +147,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
             if (error) {
                 if (error.code === '23505') {
-                    toast({ title: 'Duplicate', description: 'This account manager already has an active QR for this campaign.', variant: 'destructive' })
+                    toast({ title: 'Duplicate', description: 'This reference already has an active QR for this campaign.', variant: 'destructive' })
                     return
                 }
                 throw error
@@ -217,7 +219,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
             // Get the manager's phone
             const { data: usr } = await supabase.from('users').select('phone').eq('id', qr.account_manager_user_id).single()
-            if (!usr?.phone) { toast({ title: 'Error', description: 'Account manager has no phone number.', variant: 'destructive' }); return }
+            if (!usr?.phone) { toast({ title: 'Error', description: 'Reference has no phone number.', variant: 'destructive' }); return }
 
             const resp = await fetch('/api/settings/whatsapp/send', {
                 method: 'POST',
@@ -259,30 +261,30 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><QrCode className="h-5 w-5 text-primary" />QR Management</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Generate, preview, and distribute RoadTour QR codes to account managers.</p>
+                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><QrCode className="h-5 w-5 text-primary" />QR Management</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Generate, preview, and distribute RoadTour QR codes to references.</p>
                 </div>
-                <Button onClick={() => setGenerateOpen(true)} className="gap-2"><QrCode className="h-4 w-4" />Generate QR</Button>
+                <Button onClick={() => setGenerateOpen(true)} className="gap-2 w-full sm:w-auto"><QrCode className="h-4 w-4" />Generate QR</Button>
             </div>
 
             {/* Filters */}
             <div className="flex gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <div className="relative flex-1 min-w-[180px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search by manager or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+                    <Input placeholder="Search by reference or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                    <SelectTrigger className="w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Campaigns</SelectItem>
                         {campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-36"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Status</SelectItem>
                         <SelectItem value="active">Active</SelectItem>
@@ -294,15 +296,15 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
             {/* QR Table */}
             <Card>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Reference</TableHead>
                                 <TableHead>Campaign</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Scans</TableHead>
-                                <TableHead>Expires</TableHead>
+                                <TableHead className="hidden sm:table-cell">Scans</TableHead>
+                                <TableHead className="hidden md:table-cell">Expires</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -312,11 +314,16 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                             )}
                             {filtered.map((q) => (
                                 <TableRow key={q.id}>
-                                    <TableCell className="font-medium">{q.user_name}</TableCell>
+                                    <TableCell>
+                                        <div>
+                                            <p className="font-medium">{q.user_name}</p>
+                                            {q.user_phone && <p className="text-xs text-muted-foreground">{q.user_phone}</p>}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>{q.campaign_name}</TableCell>
                                     <TableCell><Badge className={statusColors[q.status] || ''}>{q.status}</Badge></TableCell>
-                                    <TableCell>{q.usage_count}</TableCell>
-                                    <TableCell className="text-sm">{q.expires_at ? new Date(q.expires_at).toLocaleString() : '—'}</TableCell>
+                                    <TableCell className="hidden sm:table-cell">{q.usage_count}</TableCell>
+                                    <TableCell className="text-sm hidden md:table-cell">{q.expires_at ? new Date(q.expires_at).toLocaleString() : '—'}</TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex gap-1 justify-end">
                                             <Button size="sm" variant="ghost" onClick={() => previewQrCode(q)} title="Preview"><Eye className="h-4 w-4" /></Button>
@@ -353,15 +360,15 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <Label>Account Manager *</Label>
+                            <Label>Reference *</Label>
                             <Select value={genManagerId} onValueChange={setGenManagerId}>
-                                <SelectTrigger><SelectValue placeholder={assignedManagers.length === 0 ? 'Select campaign first' : 'Select manager'} /></SelectTrigger>
+                                <SelectTrigger><SelectValue placeholder={assignedManagers.length === 0 ? 'Select campaign first' : 'Select reference'} /></SelectTrigger>
                                 <SelectContent>
                                     {assignedManagers.map((m) => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                             {genCampaignId && assignedManagers.length === 0 && (
-                                <p className="text-xs text-amber-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />No managers assigned to this campaign yet.</p>
+                                <p className="text-xs text-amber-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />No references assigned to this campaign yet.</p>
                             )}
                         </div>
                     </div>

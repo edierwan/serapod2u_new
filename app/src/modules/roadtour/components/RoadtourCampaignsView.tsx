@@ -38,6 +38,7 @@ interface Campaign {
     _manager_count?: number
     _visit_count?: number
     _scan_count?: number
+    _managers?: { full_name: string; phone: string }[]
 }
 
 interface AccountManager {
@@ -108,7 +109,31 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 .order('created_at', { ascending: false })
 
             if (error) throw error
-            setCampaigns(data || [])
+
+            // Fetch managers for all campaigns
+            const campaignIds = (data || []).map((c: any) => c.id)
+            let managerMap: Record<string, { full_name: string; phone: string }[]> = {}
+            if (campaignIds.length > 0) {
+                const { data: mgrs } = await (supabase as any)
+                    .from('roadtour_campaign_managers')
+                    .select('campaign_id, users:user_id(full_name, phone)')
+                    .in('campaign_id', campaignIds)
+                    .eq('is_active', true)
+                if (mgrs) {
+                    for (const m of mgrs) {
+                        if (!managerMap[m.campaign_id]) managerMap[m.campaign_id] = []
+                        managerMap[m.campaign_id].push({
+                            full_name: m.users?.full_name || '—',
+                            phone: m.users?.phone || '',
+                        })
+                    }
+                }
+            }
+
+            setCampaigns((data || []).map((c: any) => ({
+                ...c,
+                _managers: managerMap[c.id] || [],
+            })))
         } catch (err: any) {
             toast({ title: 'Error', description: 'Failed to load campaigns.', variant: 'destructive' })
         } finally {
@@ -256,7 +281,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 if (error.code === '23505') { toast({ title: 'Already Assigned', description: 'This account manager is already assigned.', variant: 'destructive' }); return }
                 throw error
             }
-            toast({ title: 'Assigned', description: 'Account manager assigned to campaign.' })
+            toast({ title: 'Assigned', description: 'Reference assigned to campaign.' })
             openManagers(selectedCampaignId, selectedCampaignName)
         } catch (err: any) {
             toast({ title: 'Error', description: err.message, variant: 'destructive' })
@@ -267,7 +292,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         try {
             const { error } = await (supabase as any).from('roadtour_campaign_managers').update({ is_active: false }).eq('id', assignmentId)
             if (error) throw error
-            toast({ title: 'Removed', description: 'Account manager removed from campaign.' })
+            toast({ title: 'Removed', description: 'Reference removed from campaign.' })
             if (selectedCampaignId) openManagers(selectedCampaignId, selectedCampaignName)
         } catch (err: any) {
             toast({ title: 'Error', description: err.message, variant: 'destructive' })
@@ -283,18 +308,18 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
+        <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><Map className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign account managers to road tour campaigns.</p>
+                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><Map className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign references to road tour campaigns.</p>
                 </div>
-                <Button onClick={openCreate} className="gap-2"><Plus className="h-4 w-4" />Create Campaign</Button>
+                <Button onClick={openCreate} className="gap-2 w-full sm:w-auto"><Plus className="h-4 w-4" />Create Campaign</Button>
             </div>
 
             {/* Filters */}
-            <div className="flex gap-3">
-                <div className="relative flex-1 max-w-sm">
+            <div className="flex gap-3 flex-wrap">
+                <div className="relative flex-1 min-w-[180px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search campaigns..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                 </div>
@@ -313,22 +338,23 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
             {/* Campaigns Table */}
             <Card>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Campaign</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Period</TableHead>
+                                <TableHead className="hidden md:table-cell">Period</TableHead>
                                 <TableHead>Points</TableHead>
-                                <TableHead>Mode</TableHead>
-                                <TableHead>Region</TableHead>
+                                <TableHead className="hidden lg:table-cell">Mode</TableHead>
+                                <TableHead className="hidden lg:table-cell">Region</TableHead>
+                                <TableHead>References</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
                             )}
                             {filtered.map((c) => (
                                 <TableRow key={c.id}>
@@ -336,16 +362,31 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         <div>
                                             <p className="font-medium">{c.name}</p>
                                             {c.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{c.description}</p>}
+                                            <p className="text-xs text-muted-foreground md:hidden">{c.start_date} — {c.end_date}</p>
                                         </div>
                                     </TableCell>
                                     <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
-                                    <TableCell className="text-sm">{c.start_date} — {c.end_date}</TableCell>
+                                    <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
                                     <TableCell>{c.default_points}</TableCell>
-                                    <TableCell><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
-                                    <TableCell className="text-sm">{c.region_scope?.join(', ') || '—'}</TableCell>
+                                    <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
+                                    <TableCell className="text-sm hidden lg:table-cell">{c.region_scope?.join(', ') || '—'}</TableCell>
+                                    <TableCell>
+                                        {(c._managers && c._managers.length > 0) ? (
+                                            <div className="space-y-0.5">
+                                                {c._managers.map((m, i) => (
+                                                    <div key={i} className="text-sm">
+                                                        <span className="font-medium">{m.full_name}</span>
+                                                        {m.phone && <span className="text-xs text-muted-foreground ml-1">({m.phone})</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">No references</span>
+                                        )}
+                                    </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex gap-1 justify-end">
-                                            <Button size="sm" variant="ghost" onClick={() => openManagers(c.id, c.name)} title="Manage account managers"><Users className="h-4 w-4" /></Button>
+                                            <Button size="sm" variant="ghost" onClick={() => openManagers(c.id, c.name)} title="Manage references"><Users className="h-4 w-4" /></Button>
                                             <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit"><Edit className="h-4 w-4" /></Button>
                                             {c.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Activate"><Play className="h-4 w-4 text-emerald-600" /></Button>}
                                             {c.status === 'active' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'paused')} title="Pause"><Pause className="h-4 w-4 text-amber-600" /></Button>}
@@ -404,8 +445,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             <Dialog open={managersDialogOpen} onOpenChange={setManagersDialogOpen}>
                 <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Account Managers — {selectedCampaignName}</DialogTitle>
-                        <DialogDescription>Assign eligible account managers (marked as &quot;Eligible as Reference&quot;) to this campaign.</DialogDescription>
+                        <DialogTitle>References — {selectedCampaignName}</DialogTitle>
+                        <DialogDescription>Assign eligible references (marked as &quot;Eligible as Reference&quot;) to this campaign.</DialogDescription>
                     </DialogHeader>
                     {managersLoading ? (
                         <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
@@ -414,7 +455,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             {/* Current Assignments */}
                             <div>
                                 <Label className="text-sm font-semibold">Currently Assigned ({managers.filter((m) => m.is_active).length})</Label>
-                                {managers.filter((m) => m.is_active).length === 0 && <p className="text-sm text-muted-foreground mt-1">No managers assigned yet.</p>}
+                                {managers.filter((m) => m.is_active).length === 0 && <p className="text-sm text-muted-foreground mt-1">No references assigned yet.</p>}
                                 <div className="space-y-2 mt-2">
                                     {managers.filter((m) => m.is_active).map((m) => (
                                         <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
@@ -430,7 +471,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                             {/* Add New */}
                             <div>
-                                <Label className="text-sm font-semibold">Add Account Manager</Label>
+                                <Label className="text-sm font-semibold">Add Reference</Label>
                                 <Input placeholder="Search by name..." value={managerSearch} onChange={(e) => setManagerSearch(e.target.value)} className="mt-2" />
                                 <div className="space-y-1 mt-2 max-h-48 overflow-y-auto">
                                     {availableManagers

@@ -26,12 +26,12 @@ interface OfficialVisit {
     campaign_name?: string
     account_manager_user_id: string
     user_name?: string
+    user_phone?: string
     shop_id: string
     shop_name?: string
     visit_date: string
-    verified_scans: number
-    surveys_completed: number
-    total_points_awarded: number
+    visit_status: string
+    notes: string | null
     created_at: string
 }
 
@@ -70,7 +70,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name), organizations:shop_id(name)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(name)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .limit(200)
@@ -87,6 +87,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     ...v,
                     campaign_name: v.roadtour_campaigns?.name || '—',
                     user_name: v.users?.full_name || '—',
+                    user_phone: v.users?.phone || '',
                     shop_name: v.organizations?.name || '—',
                 }))
             )
@@ -154,20 +155,20 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             <div>
-                <h3 className="text-xl font-semibold flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Visit Tracking</h3>
-                <p className="text-sm text-muted-foreground mt-1">Track official visits by account managers across campaigns.</p>
+                <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><MapPin className="h-5 w-5 text-primary" />Visit Tracking</h3>
+                <p className="text-sm text-muted-foreground mt-1">Track official visits by references across campaigns.</p>
             </div>
 
             {/* Filters */}
             <div className="flex gap-3 flex-wrap">
-                <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <div className="relative flex-1 min-w-[180px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search by manager, shop, or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
+                    <Input placeholder="Search by reference, shop, or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                    <SelectTrigger className="w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Campaigns</SelectItem>
                         {campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -178,42 +179,43 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             </div>
 
             {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
                 <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{filtered.length}</p><p className="text-xs text-muted-foreground">Total Visits</p></CardContent></Card>
-                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.account_manager_user_id)).size}</p><p className="text-xs text-muted-foreground">Active Managers</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.account_manager_user_id)).size}</p><p className="text-xs text-muted-foreground">Active References</p></CardContent></Card>
                 <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.shop_id)).size}</p><p className="text-xs text-muted-foreground">Shops Visited</p></CardContent></Card>
-                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{filtered.reduce((s, v) => s + v.total_points_awarded, 0)}</p><p className="text-xs text-muted-foreground">Total Points Awarded</p></CardContent></Card>
+                <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{new Set(filtered.map((v) => v.campaign_id)).size}</p><p className="text-xs text-muted-foreground">Campaigns</p></CardContent></Card>
             </div>
 
             {/* Visits Table */}
             <Card>
-                <CardContent className="p-0">
+                <CardContent className="p-0 overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Date</TableHead>
-                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Reference</TableHead>
                                 <TableHead>Shop</TableHead>
                                 <TableHead>Campaign</TableHead>
-                                <TableHead>Scans</TableHead>
-                                <TableHead>Surveys</TableHead>
-                                <TableHead>Points</TableHead>
+                                <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
                             )}
                             {filtered.map((v) => (
                                 <TableRow key={v.id}>
                                     <TableCell className="text-sm">{v.visit_date}</TableCell>
-                                    <TableCell className="font-medium">{v.user_name}</TableCell>
+                                    <TableCell>
+                                        <div>
+                                            <p className="font-medium">{v.user_name}</p>
+                                            {v.user_phone && <p className="text-xs text-muted-foreground">{v.user_phone}</p>}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>{v.shop_name}</TableCell>
                                     <TableCell>{v.campaign_name}</TableCell>
-                                    <TableCell>{v.verified_scans}</TableCell>
-                                    <TableCell>{v.surveys_completed}</TableCell>
-                                    <TableCell>{v.total_points_awarded}</TableCell>
+                                    <TableCell><Badge className={v.visit_status === 'official' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>{v.visit_status}</Badge></TableCell>
                                     <TableCell className="text-right">
                                         <Button size="sm" variant="ghost" onClick={() => openDetail(v)}><Eye className="h-4 w-4" /></Button>
                                     </TableCell>
@@ -235,7 +237,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div><Label className="text-muted-foreground">Date</Label><p className="font-medium">{detailVisit.visit_date}</p></div>
                                 <div><Label className="text-muted-foreground">Campaign</Label><p className="font-medium">{detailVisit.campaign_name}</p></div>
-                                <div><Label className="text-muted-foreground">Account Manager</Label><p className="font-medium">{detailVisit.user_name}</p></div>
+                                <div><Label className="text-muted-foreground">Reference</Label><p className="font-medium">{detailVisit.user_name}</p>{detailVisit.user_phone && <p className="text-xs text-muted-foreground">{detailVisit.user_phone}</p>}</div>
                                 <div><Label className="text-muted-foreground">Shop</Label><p className="font-medium">{detailVisit.shop_name}</p></div>
                                 <div><Label className="text-muted-foreground">Verified Scans</Label><p className="font-medium">{detailVisit.verified_scans}</p></div>
                                 <div><Label className="text-muted-foreground">Points Awarded</Label><p className="font-medium">{detailVisit.total_points_awarded}</p></div>
