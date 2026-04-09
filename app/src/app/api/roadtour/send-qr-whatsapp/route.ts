@@ -4,14 +4,19 @@
  * POST /api/roadtour/send-qr-whatsapp
  * Generates a QR code image and sends it via WhatsApp to the Account Manager.
  * The QR image is sent with a caption containing the clickable link.
+ * 
+ * Uses the local baileys-gateway directly for image sending (base64 support).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { getWhatsAppConfig, isAdminUser } from '@/app/api/settings/whatsapp/_utils'
 import QRCode from 'qrcode'
 
 export const dynamic = 'force-dynamic'
+
+// Local baileys-gateway for image sending (supports base64)
+const BAILEYS_GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || 'http://127.0.0.1:3001'
 
 export async function POST(request: NextRequest) {
     try {
@@ -44,14 +49,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Phone and token are required' }, { status: 400 })
         }
 
+        // Still need config for API key auth
         const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
-        if (!config?.baseUrl || !config?.apiKey) {
+        if (!config?.apiKey) {
             return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
         }
 
         // Build the scan URL
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stg.serapod2u.com'
-        const scanUrl = `${baseUrl}/scan?rt=${token}`
+        const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stg.serapod2u.com'
+        const scanUrl = `${appBaseUrl}/scan?rt=${token}`
 
         // Generate QR code as PNG buffer (base64)
         const qrBuffer = await QRCode.toBuffer(scanUrl, {
@@ -67,18 +73,32 @@ export async function POST(request: NextRequest) {
 
         const recipientDigits = String(phone).replace(/^\+/, '')
 
-        const result = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send-image',
-            { to: recipientDigits, image: qrBase64, caption },
-            config.tenantId,
-        )
+        // Call local baileys-gateway directly for image support
+        const gatewayUrl = `${BAILEYS_GATEWAY_URL}/messages/send-image`
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 15000) // 15s for image
+
+        const resp = await fetch(gatewayUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': config.apiKey,
+            },
+            body: JSON.stringify({ to: recipientDigits, image: qrBase64, caption }),
+            signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        if (!resp.ok) {
+            const errBody = await resp.text()
+            throw new Error(`Gateway error (${resp.status}): ${errBody}`)
+        }
+
+        const result = await resp.json()
 
         return NextResponse.json({
             ok: true,
-            messageId: result?.key?.id || result?.messageId || null,
+            messageId: result?.message_id || null,
         })
     } catch (error: any) {
         console.error('[RoadTour QR WhatsApp]', error)
