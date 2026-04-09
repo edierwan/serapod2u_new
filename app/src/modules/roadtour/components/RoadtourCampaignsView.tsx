@@ -467,7 +467,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                             {(c._managers && c._managers.length > 0) ? (
                                                 <button
                                                     className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                                                    onClick={() => { setRefsDialogCampaignName(c.name); setRefsDialogManagers(c._managers || []); setRefsDialogOpen(true) }}
+                                                    onClick={() => openManagers(c.id, c.name)}
                                                 >
                                                     Show ({c._managers.length})
                                                 </button>
@@ -545,15 +545,15 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         setRegionDialogState(formRegions.join(', '))
                                         setRegionDialogOpen(true)
                                         setRegionShopsLoading(true)
-                                        ;(async () => {
-                                            try {
-                                                const { data: stateRows } = await (supabase as any).from('states').select('id').in('state_name', formRegions)
-                                                const stateIds = (stateRows || []).map((s: any) => s.id)
-                                                if (stateIds.length === 0) { setRegionShops([]); setRegionShopsLoading(false); return }
-                                                const { data } = await (supabase as any).from('organizations').select('id, org_name, branch').eq('org_type_code', 'SHOP').eq('is_active', true).in('state_id', stateIds).order('org_name')
-                                                setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch ?? null })))
-                                            } catch { setRegionShops([]) } finally { setRegionShopsLoading(false) }
-                                        })()
+                                            ; (async () => {
+                                                try {
+                                                    const { data: stateRows } = await (supabase as any).from('states').select('id').in('state_name', formRegions)
+                                                    const stateIds = (stateRows || []).map((s: any) => s.id)
+                                                    if (stateIds.length === 0) { setRegionShops([]); setRegionShopsLoading(false); return }
+                                                    const { data } = await (supabase as any).from('organizations').select('id, org_name, branch').eq('org_type_code', 'SHOP').eq('is_active', true).in('state_id', stateIds).order('org_name')
+                                                    setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch ?? null })))
+                                                } catch { setRegionShops([]) } finally { setRegionShopsLoading(false) }
+                                            })()
                                     }}>{formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops</button> in selected regions
                                 </p>
                             )}
@@ -568,7 +568,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             </Dialog>
 
             {/* Account Managers Dialog */}
-            <Dialog open={managersDialogOpen} onOpenChange={setManagersDialogOpen}>
+            <Dialog open={managersDialogOpen} onOpenChange={(open) => { setManagersDialogOpen(open); if (!open) loadCampaigns() }}>
                 <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>References — {selectedCampaignName}</DialogTitle>
