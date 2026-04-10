@@ -88,13 +88,12 @@ export function ShopPicker({
         setSearchTerm(val)
         if (selectedShop) {
             setSelectedShop(null)
+            // Clear selection when user starts typing again
+            onSelect(null, '')
         }
 
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
         searchTimeoutRef.current = setTimeout(() => doSearch(val), 300)
-
-        // Also pass the typed value as free-text (backward compatibility)
-        onSelect(null, val)
     }
 
     const handleSelect = (shop: ShopResult) => {
@@ -158,7 +157,7 @@ export function ShopPicker({
                 </p>
             )}
             {!selectedShop && searchTerm && (
-                <p className="text-xs text-muted-foreground mt-1">{searchTerm.length}/{maxLength}</p>
+                <p className="text-xs text-amber-600 mt-1">Please select a shop from the list below</p>
             )}
 
             {/* Dropdown results */}
@@ -209,7 +208,7 @@ export function ShopPicker({
             {isOpen && !isSearching && results.length === 0 && searchTerm.trim().length >= 1 && (
                 <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">No shops found</p>
-                    <p className="text-xs text-muted-foreground/70 mt-1">You can still type a custom shop name</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">Try searching with a different name</p>
                 </div>
             )}
         </div>
