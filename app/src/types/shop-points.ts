@@ -32,6 +32,12 @@ export interface ShopPointsLedgerRow {
   reward_name: string | null
   reward_code: string | null
   order_no: string | null
+  // Taxonomy columns (Phase 2)
+  claim_lane: 'consumer' | 'shop' | null
+  point_category: string | null
+  point_indicator: string | null
+  point_owner_type: string | null
+  point_direction: 'earn' | 'spend' | null
 }
 
 /**

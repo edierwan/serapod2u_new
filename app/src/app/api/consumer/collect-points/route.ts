@@ -475,7 +475,8 @@ export async function POST(request: NextRequest) {
     const { data: result, error: rpcError } = await supabaseAdmin.rpc('consumer_collect_points', {
       p_raw_qr_code: qr_code,
       p_shop_id: authenticatedUserId, // Pass user ID, RPC will look up org
-      p_points_amount: pointsToAward
+      p_points_amount: pointsToAward,
+      p_claim_lane: 'consumer'
     })
 
     console.log('⚠️ RPC RESULT:', result)

@@ -256,7 +256,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           const productMap = new Map<string, {product: string, variant: string, count: number, points: number, imageUrl?: string | null}>()
           
           enrichedLedger.forEach((entry: any) => {
-            if (entry.transaction_type === 'scan' && entry.product_name) {
+            if ((entry.point_category === 'scan' || entry.transaction_type === 'scan') && entry.product_name) {
               const productName = entry.product_name || 'Unknown Product'
               const variantName = entry.variant_name || 'Unknown Variant'
               const key = `${productName}|${variantName}`
@@ -489,7 +489,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
     return ledgerTransactions
-      .filter((txn) => txn.transaction_type === "scan" && txn.points_change > 0)
+      .filter((txn) => (txn.point_category === "scan" || txn.transaction_type === "scan") && txn.points_change > 0)
       .filter((txn) => {
         const date = new Date(txn.occurred_at)
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear
@@ -502,7 +502,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
     return ledgerTransactions
-      .filter((txn) => txn.transaction_type === "redeem")
+      .filter((txn) => txn.point_category === "redemption" || txn.transaction_type === "redeem")
       .filter((txn) => {
         const date = new Date(txn.occurred_at)
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear
@@ -1114,7 +1114,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                           
                           <div className="flex justify-between items-center text-xs text-muted-foreground">
                             <div className="flex flex-col gap-0.5">
-                              <span>{txn.variant_name || (txn.transaction_type === 'redeem' ? 'Redemption' : 'Standard')}</span>
+                              <span>{txn.variant_name || (txn.point_category === 'redemption' || txn.transaction_type === 'redeem' ? 'Redemption' : 'Standard')}</span>
                               <span className="text-[10px] opacity-70">{formatDateLabel(txn.occurred_at)}</span>
                             </div>
                             <div className="text-right">
@@ -1154,19 +1154,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 Redemptions
               </h3>
               <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
-                {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length} items
+                {ledgerTransactions.filter(t => t.point_category === 'redemption' || t.transaction_type === 'redeem').length} items
               </span>
             </div>
             
             <CardContent className="p-0">
-              {ledgerTransactions.filter(t => t.transaction_type === 'redeem').length === 0 ? (
+              {ledgerTransactions.filter(t => t.point_category === 'redemption' || t.transaction_type === 'redeem').length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground bg-white rounded-lg border border-slate-200">
                   <Gift className="h-10 w-10" />
                   <p className="text-sm">No redemptions yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {ledgerTransactions.filter(t => t.transaction_type === 'redeem').slice(0, 50).map((txn) => {
+                  {ledgerTransactions.filter(t => t.point_category === 'redemption' || t.transaction_type === 'redeem').slice(0, 50).map((txn) => {
                     return (
                       <div key={txn.id} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm flex gap-4 items-start">
                         {/* Icon/Image Section */}
