@@ -3,13 +3,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { normalizePhone } from '@/lib/utils'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import {
     AlertCircle, CheckCircle2, Eye, EyeOff, Gift, Loader2, Map, MapPin,
-    QrCode, Star, XCircle
+    QrCode, Star, User, XCircle
 } from 'lucide-react'
 
-type ScanStep = 'loading' | 'invalid' | 'expired' | 'ready' | 'shop-select' | 'survey' | 'done' | 'duplicate'
+type ScanStep = 'loading' | 'invalid' | 'expired' | 'ready' | 'complete-profile' | 'shop-select' | 'survey' | 'done' | 'duplicate'
 
 interface QrValidation {
     qr_code_id: string
@@ -62,6 +63,12 @@ export default function RoadtourScanPage() {
     // Registration redirect
     const [showRegisterInfo, setShowRegisterInfo] = useState(false)
 
+    // Profile completion (same gate as product flow)
+    const [profileShopName, setProfileShopName] = useState('')
+    const [profileReference, setProfileReference] = useState('')
+    const [profileSaving, setProfileSaving] = useState(false)
+    const [profileError, setProfileError] = useState('')
+
     // Forgot password
     const [showForgotPassword, setShowForgotPassword] = useState(false)
     const [forgotEmail, setForgotEmail] = useState('')
@@ -110,7 +117,7 @@ export default function RoadtourScanPage() {
     useEffect(() => {
         if (!token) { setStep('invalid'); setErrorMsg('No QR token provided.'); return }
 
-        ;(async () => {
+        ; (async () => {
             try {
                 const { data: rawData, error } = await (supabase as any).rpc('validate_roadtour_qr_token', { p_token: token })
                 if (error) throw error
@@ -126,11 +133,15 @@ export default function RoadtourScanPage() {
 
                 setQr(data)
 
-                // Check existing session
+                // Check existing session (aligned with product flow session marker)
+                const hasSessionMarker = typeof window !== 'undefined' && sessionStorage.getItem('serapod_active_session') === 'logged_in'
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user) {
                     setIsAuthenticated(true)
                     setUserId(user.id)
+                    if (typeof window !== 'undefined') {
+                        sessionStorage.setItem('serapod_active_session', 'logged_in')
+                    }
                 }
 
                 // Request geolocation if enabled
@@ -207,7 +218,7 @@ export default function RoadtourScanPage() {
         }
     }
 
-    // Handle login submission
+    // Handle login submission — uses same get_email_by_phone RPC as product flow
     const handleLogin = async () => {
         if (!loginEmail.trim() || !loginPassword.trim()) return
         setLoginLoading(true)
@@ -219,25 +230,31 @@ export default function RoadtourScanPage() {
             let email = loginEmail.trim()
 
             if (isPhone) {
-                // Look up email by phone number
-                const phoneDigits = email.replace(/\D/g, '')
-                const phoneLookups = [phoneDigits]
-                if (phoneDigits.startsWith('0')) phoneLookups.push('6' + phoneDigits)
-                if (phoneDigits.startsWith('60')) phoneLookups.push(phoneDigits.slice(1))
+                // Use same normalizePhone + get_email_by_phone RPC as product flow
+                const normalized = normalizePhone(email)
 
-                const { data: userRow } = await (supabase as any)
-                    .from('users')
-                    .select('email')
-                    .or(phoneLookups.map(p => `phone.eq.${p}`).join(','))
-                    .limit(1)
-                    .maybeSingle()
+                // Retry up to 3 times (same as product flow)
+                let resolvedEmail: string | null = null
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const { data: rpcResult, error: rpcError } = await (supabase as any).rpc('get_email_by_phone', { p_phone: normalized })
+                    if (!rpcError && rpcResult) {
+                        // Handle array/object/string response formats (same as product flow)
+                        if (typeof rpcResult === 'string') {
+                            resolvedEmail = rpcResult
+                        } else if (Array.isArray(rpcResult) && rpcResult.length > 0) {
+                            resolvedEmail = rpcResult[0]
+                        }
+                        break
+                    }
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 1000))
+                }
 
-                if (!userRow?.email) {
+                if (!resolvedEmail) {
                     setLoginError('No account found with this phone number.')
                     setLoginLoading(false)
                     return
                 }
-                email = userRow.email
+                email = resolvedEmail
             }
 
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -254,6 +271,10 @@ export default function RoadtourScanPage() {
             if (authData?.user) {
                 setIsAuthenticated(true)
                 setUserId(authData.user.id)
+                // Session persistence aligned with product flow
+                if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('serapod_active_session', 'logged_in')
+                }
                 setShowLoginModal(false)
                 proceedAfterAuth()
             }
@@ -320,6 +341,13 @@ export default function RoadtourScanPage() {
             const result = await resp.json()
 
             if (!resp.ok) {
+                // Profile completion gate — same behavior as product flow
+                if (result.code === 'PROFILE_INCOMPLETE') {
+                    setProfileError('')
+                    setStep('complete-profile')
+                    setProcessing(false)
+                    return
+                }
                 if (result.code === 'DUPLICATE') {
                     setStep('duplicate')
                     setErrorMsg(result.message || 'You have already claimed this reward.')
@@ -338,6 +366,49 @@ export default function RoadtourScanPage() {
             setErrorMsg(err.message || 'An error occurred.')
         } finally {
             setProcessing(false)
+        }
+    }
+
+    // Handle profile completion save — reuses existing /api/user/update-profile
+    const handleProfileSave = async () => {
+        if (!profileShopName.trim() || !profileReference.trim()) {
+            setProfileError('Please fill in both Shop Name and Reference.')
+            return
+        }
+        if (!userId) {
+            setProfileError('Not authenticated. Please log in again.')
+            return
+        }
+        setProfileSaving(true)
+        setProfileError('')
+
+        try {
+            const resp = await fetch('/api/user/update-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    userId,
+                    shop_name: profileShopName.trim(),
+                    referral_phone: profileReference.trim(),
+                }),
+            })
+
+            const result = await resp.json()
+
+            if (!resp.ok || !result.success) {
+                setProfileError(result.error || 'Failed to update profile.')
+                setProfileSaving(false)
+                return
+            }
+
+            // Profile updated — retry the reward claim
+            setStep('ready')
+            setProfileSaving(false)
+            await claimReward()
+        } catch (err: any) {
+            setProfileError(err.message || 'Failed to save profile.')
+            setProfileSaving(false)
         }
     }
 
@@ -470,6 +541,76 @@ export default function RoadtourScanPage() {
                         >
                             {processing ? 'Processing...' : 'Continue'}
                         </button>
+                    </div>
+                )}
+
+                {/* ======================== PROFILE COMPLETION (same gate as product flow) ======================== */}
+                {step === 'complete-profile' && (
+                    <div className="bg-white rounded-2xl shadow-sm p-6">
+                        <div className="text-center mb-4">
+                            <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center bg-orange-50">
+                                <AlertCircle className="h-7 w-7" style={{ color: primaryColor }} />
+                            </div>
+                            <h2 className="text-lg font-bold text-gray-800">Complete Your Profile</h2>
+                            <p className="text-sm text-gray-500 mt-1">Update your shop details before collecting points</p>
+                        </div>
+
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
+                            <p className="text-sm text-amber-700">Please update your Shop Name and Reference in Profile before collecting points.</p>
+                        </div>
+
+                        {profileError && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl mb-4">
+                                <p className="text-sm text-red-700">{profileError}</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-3 mb-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                                <input
+                                    type="text"
+                                    value={profileShopName}
+                                    onChange={(e) => setProfileShopName(e.target.value)}
+                                    placeholder="Enter your shop name"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    disabled={profileSaving}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                                <input
+                                    type="text"
+                                    value={profileReference}
+                                    onChange={(e) => setProfileReference(e.target.value)}
+                                    placeholder="Enter reference phone / code"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    disabled={profileSaving}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setStep('ready')}
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                disabled={profileSaving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleProfileSave}
+                                disabled={profileSaving || !profileShopName.trim() || !profileReference.trim()}
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ backgroundColor: primaryColor }}
+                            >
+                                {profileSaving ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+                                    </span>
+                                ) : 'Go to Profile'}
+                            </button>
+                        </div>
                     </div>
                 )}
 

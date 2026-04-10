@@ -58,6 +58,36 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // 2b. Profile completion gate — same check as product collect-points flow
+        // Independent/no-org consumers must have shop_name + referral_phone filled
+        if (userId) {
+            const { data: userProfile } = await (supabase as any)
+                .from('users')
+                .select('shop_name, referral_phone, org_id, organizations:org_id(org_type_code)')
+                .eq('id', userId)
+                .single()
+
+            if (userProfile) {
+                const orgType = userProfile.organizations?.org_type_code
+                const needsProfile = (!orgType || orgType === 'INDEP') &&
+                    (!userProfile.shop_name?.trim() || !userProfile.referral_phone?.trim())
+
+                if (needsProfile) {
+                    const missing: string[] = []
+                    if (!userProfile.shop_name?.trim()) missing.push('Shop Name')
+                    if (!userProfile.referral_phone?.trim()) missing.push('Reference')
+                    return NextResponse.json(
+                        {
+                            message: `Please update your ${missing.join(' and ')} in Profile before collecting points.`,
+                            code: 'PROFILE_INCOMPLETE',
+                            missing,
+                        },
+                        { status: 400 }
+                    )
+                }
+            }
+        }
+
         // 3. Record scan event with geolocation
         const { data: scanEvent, error: scanError } = await (supabase as any)
             .from('roadtour_scan_events')
