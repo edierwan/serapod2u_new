@@ -96,7 +96,11 @@ export async function POST(request: NextRequest) {
         const require_shop_context = (validation as any).require_shop_context
         if (require_shop_context && !resolved_shop_id) {
             return NextResponse.json(
-                { message: 'Please select the shop you are visiting.', code: 'SHOP_REQUIRED' },
+                {
+                    requiresProfileUpdate: true,
+                    message: 'Please update your Shop Name in Profile before collecting points.',
+                    code: 'SHOP_REQUIRED',
+                },
                 { status: 400 }
             )
         }

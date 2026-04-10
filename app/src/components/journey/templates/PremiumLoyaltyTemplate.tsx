@@ -5907,7 +5907,8 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
 
-                            {/* Address */}
+                            {/* Address - hidden for RoadTour (master data shop has address) */}
+                            {!roadtourContext && (
                             <div className="p-4">
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-gray-700">Address</label>
@@ -5961,6 +5962,7 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             {/* Shop Name - Only for independent consumers */}
                             {!shopName && (
