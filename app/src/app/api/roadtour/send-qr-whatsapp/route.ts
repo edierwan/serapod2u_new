@@ -13,6 +13,8 @@ import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+    const reqId = Date.now().toString(36)
+    console.log(`[RoadTour QR WA][${reqId}] === REQUEST START ===`)
     try {
         const supabase = await createClient()
 
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
         const { phone, token, campaignName, userName } = body
 
+        console.log(`[RoadTour QR WA][${reqId}] campaign=${campaignName} token=${token?.substring(0, 8)}... rawPhone=${phone}`)
+
         if (!phone || !token) {
             return NextResponse.json({ error: 'Phone and token are required' }, { status: 400 })
         }
@@ -53,12 +57,35 @@ export async function POST(request: NextRequest) {
         const scanUrl = `${appBaseUrl}/scan?rt=${token}`
         const imageUrl = `${appBaseUrl}/api/roadtour/qr-image/${token}`
 
+        const recipientDigits = String(phone).replace(/^\+/, '')
+        console.log(`[RoadTour QR WA][${reqId}] imageUrl=${imageUrl}`)
+        console.log(`[RoadTour QR WA][${reqId}] recipientDigits=${recipientDigits}`)
+        console.log(`[RoadTour QR WA][${reqId}] gateway=${config.baseUrl} tenantId=${config.tenantId || 'none'}`)
+
+        // Pre-flight: verify the image URL is fetchable
+        try {
+            const preflight = await fetch(imageUrl, { method: 'HEAD' })
+            console.log(`[RoadTour QR WA][${reqId}] preflight imageUrl status=${preflight.status} content-type=${preflight.headers.get('content-type')} content-length=${preflight.headers.get('content-length')}`)
+            if (!preflight.ok) {
+                console.error(`[RoadTour QR WA][${reqId}] FAIL: imageUrl not accessible, status=${preflight.status}`)
+                return NextResponse.json(
+                    { error: `QR image endpoint returned ${preflight.status}`, step: 'image_endpoint_access' },
+                    { status: 502 },
+                )
+            }
+        } catch (preflightErr: any) {
+            console.error(`[RoadTour QR WA][${reqId}] FAIL: preflight fetch error:`, preflightErr.message)
+            return NextResponse.json(
+                { error: `Cannot reach QR image endpoint: ${preflightErr.message}`, step: 'image_endpoint_access' },
+                { status: 502 },
+            )
+        }
+
         // Caption with clickable link
         const caption = `🗺️ *Rewards Road Tour*\n\nCampaign: *${campaignName || 'RoadTour'}*\nAM: ${userName || 'Account Manager'}\n\nShow this QR to shop owners for them to scan and earn reward points.\n\n${scanUrl}`
 
-        const recipientDigits = String(phone).replace(/^\+/, '')
-
         // Send via WhatsApp gateway (getouch uses imageUrl format)
+        console.log(`[RoadTour QR WA][${reqId}] calling gateway POST /messages/send-image`)
         const result = await callGateway(
             config.baseUrl,
             config.apiKey,
@@ -68,14 +95,17 @@ export async function POST(request: NextRequest) {
             config.tenantId,
         )
 
+        console.log(`[RoadTour QR WA][${reqId}] gateway response:`, JSON.stringify(result))
+        console.log(`[RoadTour QR WA][${reqId}] === REQUEST END (success) ===`)
+
         return NextResponse.json({
             ok: true,
             messageId: result?.messageId || result?.message_id || null,
         })
     } catch (error: any) {
-        console.error('[RoadTour QR WhatsApp]', error)
+        console.error(`[RoadTour QR WA][${reqId}] === REQUEST END (error) ===`, error?.message || error)
         return NextResponse.json(
-            { error: error?.message || 'Failed to send QR via WhatsApp' },
+            { error: error?.message || 'Failed to send QR via WhatsApp', step: 'gateway_send_image' },
             { status: 500 },
         )
     }

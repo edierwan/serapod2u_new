@@ -229,7 +229,10 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                 }),
             })
 
-            if (!resp.ok) throw new Error('WhatsApp send failed')
+            if (!resp.ok) {
+                const errBody = await resp.json().catch(() => ({}))
+                throw new Error(errBody.error || `WhatsApp send failed (${resp.status})${errBody.step ? ` [${errBody.step}]` : ''}`)
+            }
 
             // Log delivery
             await (supabase as any).from('roadtour_qr_delivery_logs').insert({
