@@ -63,12 +63,12 @@ export async function POST(request: NextRequest) {
         if (userId) {
             const { data: userProfile } = await (supabase as any)
                 .from('users')
-                .select('shop_name, referral_phone, org_id, organizations:org_id(org_type_code)')
+                .select('shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code)')
                 .eq('id', userId)
                 .single()
 
             if (userProfile) {
-                const orgType = userProfile.organizations?.org_type_code
+                const orgType = (userProfile.organizations as any)?.org_type_code
                 const needsProfile = (!orgType || orgType === 'INDEP') &&
                     (!userProfile.shop_name?.trim() || !userProfile.referral_phone?.trim())
 
@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
                     if (!userProfile.referral_phone?.trim()) missing.push('Reference')
                     return NextResponse.json(
                         {
+                            requiresProfileUpdate: true,
                             message: `Please update your ${missing.join(' and ')} in Profile before collecting points.`,
                             code: 'PROFILE_INCOMPLETE',
                             missing,

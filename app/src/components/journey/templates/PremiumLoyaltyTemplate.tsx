@@ -2986,6 +2986,10 @@ export default function PremiumLoyaltyTemplate({
                 openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
                 return
             }
+            if (data.code === 'SHOP_REQUIRED') {
+                openCollectPointsProfilePrompt(data.message || 'Please update your shop details in Profile before collecting points.')
+                return
+            }
             if (!response.ok) {
                 if (data.code === 'DUPLICATE') {
                     setPointsCollected(true)
@@ -3031,6 +3035,9 @@ export default function PremiumLoyaltyTemplate({
             const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: shopPassword })
             if (signInError) { setPointsError(signInError.message || 'Invalid credentials.'); setCollectingPoints(false); return }
             setIsAuthenticated(true)
+            setUserEmail(email)
+            const { data: { user: authUser } } = await supabase.auth.getUser()
+            if (authUser) setUserId(authUser.id)
             sessionStorage.setItem('serapod_active_session', 'logged_in')
             // Now claim via session
             const response = await fetch('/api/roadtour/claim-reward', {
@@ -3042,6 +3049,10 @@ export default function PremiumLoyaltyTemplate({
             const data = await response.json()
             if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
                 openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
+                return
+            }
+            if (data.code === 'SHOP_REQUIRED') {
+                openCollectPointsProfilePrompt(data.message || 'Please update your shop details in Profile before collecting points.')
                 return
             }
             if (!response.ok) {
