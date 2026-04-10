@@ -27,6 +27,9 @@ export async function POST(request: NextRequest) {
             duplicate_rule_reward
         } = validation as any
 
+        // Use QR code's built-in shop_id as fallback (the QR knows which shop/location it belongs to)
+        const resolved_shop_id = shop_id || (validation as any).shop_id || null
+
         // 2. Resolve authenticated user
         let userId: string | null = null
         let userPhone: string | null = consumer_phone || null
@@ -89,9 +92,9 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 2c. Shop context gate — if campaign requires shop selection and none provided
+        // 2c. Shop context gate — use QR's shop_id when user didn't provide one
         const require_shop_context = (validation as any).require_shop_context
-        if (require_shop_context && !shop_id) {
+        if (require_shop_context && !resolved_shop_id) {
             return NextResponse.json(
                 { message: 'Please select the shop you are visiting.', code: 'SHOP_REQUIRED' },
                 { status: 400 }
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest) {
                 account_manager_user_id,
                 scanned_by_user_id: userId || null,
                 consumer_phone: userPhone || null,
-                shop_id: shop_id || null,
+                shop_id: resolved_shop_id,
                 scan_status: 'opened',
                 geolocation: geolocation || null,
             })
@@ -166,7 +169,7 @@ export async function POST(request: NextRequest) {
             p_qr_code_id: qr_code_id,
             p_account_manager_user_id: account_manager_user_id,
             p_scanned_by_user_id: userId || null,
-            p_shop_id: shop_id || null,
+            p_shop_id: resolved_shop_id,
             p_points: default_points,
             p_scan_event_id: scanEvent.id,
             p_survey_response_id: surveyResponseId,

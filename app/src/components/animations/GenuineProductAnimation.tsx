@@ -15,12 +15,16 @@ interface GenuineProductAnimationProps {
     isVisible: boolean
     productInfo?: ProductInfo
     onClose: () => void
+    title?: string
+    subtitle?: string
 }
 
 export function GenuineProductAnimation({ 
     isVisible, 
     productInfo, 
-    onClose 
+    onClose,
+    title,
+    subtitle,
 }: GenuineProductAnimationProps) {
     const [showCheckmark, setShowCheckmark] = useState(false)
 
@@ -121,7 +125,7 @@ export function GenuineProductAnimation({
                                 transition={{ delay: 0.3 }}
                                 className="text-2xl font-bold text-center mb-2"
                             >
-                                ✓ Genuine Product
+                                {title || '✓ Genuine Product'}
                             </motion.h2>
 
                             <motion.p
@@ -130,7 +134,7 @@ export function GenuineProductAnimation({
                                 transition={{ delay: 0.4 }}
                                 className="text-white/80 text-center text-sm mb-4"
                             >
-                                This product is verified authentic
+                                {subtitle || 'This product is verified authentic'}
                             </motion.p>
 
                             {/* Product Info */}

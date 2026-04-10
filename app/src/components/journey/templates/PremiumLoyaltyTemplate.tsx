@@ -1224,7 +1224,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Show genuine product verified animation on page load
     useEffect(() => {
-        if (isLive && productInfo?.product_name) {
+        if (isLive && (productInfo?.product_name || roadtourContext)) {
             // Show animation after a brief delay
             const timer = setTimeout(() => {
                 setShowGenuineVerified(true)
@@ -1240,7 +1240,7 @@ export default function PremiumLoyaltyTemplate({
             const timer = setTimeout(() => setShowPointsAnimation(true), 500)
             return () => clearTimeout(timer)
         }
-    }, [isLive, productInfo])
+    }, [isLive, productInfo, roadtourContext])
 
     // Fetch rewards on mount for Featured Rewards section
     useEffect(() => {
@@ -6580,6 +6580,8 @@ export default function PremiumLoyaltyTemplate({
             <GenuineProductAnimation
                 isVisible={showGenuineVerified}
                 productInfo={productInfo}
+                title={roadtourContext ? '🎉 Bonus Points Await!' : undefined}
+                subtitle={roadtourContext ? 'You are entitled for bonus points' : undefined}
                 onClose={() => {
                     setShowGenuineVerified(false)
                     setShowPointsAnimation(true)
