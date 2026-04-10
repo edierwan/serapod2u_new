@@ -88,6 +88,23 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // 2c. Shop context gate — if campaign requires shop selection and none provided
+        const require_shop_context = (validation as any).require_shop_context
+        if (require_shop_context && !shop_id) {
+            return NextResponse.json(
+                { message: 'Please select the shop you are visiting.', code: 'SHOP_REQUIRED' },
+                { status: 400 }
+            )
+        }
+
+        // 2d. Survey gate — if campaign requires survey and none submitted
+        if (reward_mode === 'survey_submit' && survey_template_id && !survey_answers) {
+            return NextResponse.json(
+                { message: 'Please complete the survey to claim your reward.', code: 'SURVEY_REQUIRED' },
+                { status: 400 }
+            )
+        }
+
         // 3. Record scan event with geolocation
         const { data: scanEvent, error: scanError } = await (supabase as any)
             .from('roadtour_scan_events')

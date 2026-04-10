@@ -202,20 +202,12 @@ export default function RoadtourScanPage() {
         proceedAfterAuth()
     }
 
-    // After authentication, proceed to next step or claim directly
+    // After authentication, always attempt claim directly.
+    // The API is the gatekeeper — it will return PROFILE_INCOMPLETE, SHOP_REQUIRED,
+    // or SURVEY_REQUIRED if prerequisites are missing (same pattern as product flow).
     const proceedAfterAuth = async () => {
         if (!qr) return
-
-        if (qr.require_shop_context) {
-            await loadShops()
-            setStep('shop-select')
-        } else if (qr.reward_mode === 'survey_submit' && qr.survey_template_id) {
-            await loadSurvey(qr.survey_template_id)
-            setStep('survey')
-        } else {
-            // Direct claim
-            await claimReward()
-        }
+        await claimReward()
     }
 
     // Handle login submission — uses same get_email_by_phone RPC as product flow
@@ -296,15 +288,10 @@ export default function RoadtourScanPage() {
         setForgotSending(false)
     }
 
-    // Handle shop selected → next step
+    // Handle shop selected → retry claim (API will gate survey if needed)
     const handleShopSelected = async () => {
         if (!selectedShopId) return
-        if (qr?.reward_mode === 'survey_submit' && qr?.survey_template_id) {
-            await loadSurvey(qr.survey_template_id)
-            setStep('survey')
-        } else {
-            await claimReward()
-        }
+        await claimReward()
     }
 
     // Claim reward
@@ -345,6 +332,20 @@ export default function RoadtourScanPage() {
                 if (result.code === 'PROFILE_INCOMPLETE') {
                     setProfileError('')
                     setStep('complete-profile')
+                    setProcessing(false)
+                    return
+                }
+                // Shop context required — shown only after auth + profile are confirmed
+                if (result.code === 'SHOP_REQUIRED') {
+                    await loadShops()
+                    setStep('shop-select')
+                    setProcessing(false)
+                    return
+                }
+                // Survey required — shown only after auth + profile + shop are confirmed
+                if (result.code === 'SURVEY_REQUIRED') {
+                    if (qr?.survey_template_id) await loadSurvey(qr.survey_template_id)
+                    setStep('survey')
                     setProcessing(false)
                     return
                 }
@@ -402,9 +403,9 @@ export default function RoadtourScanPage() {
                 return
             }
 
-            // Profile updated — retry the reward claim
-            setStep('ready')
+            // Profile updated — retry the reward claim (API will gate shop/survey if needed)
             setProfileSaving(false)
+            setStep('ready')
             await claimReward()
         } catch (err: any) {
             setProfileError(err.message || 'Failed to save profile.')
