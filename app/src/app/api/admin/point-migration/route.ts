@@ -325,7 +325,12 @@ async function processBatch(
             balance_after: realCurrentBalance + delta,
             description: `Migration: ${newMigrationValue} (Prev: ${lastMigrationValue})`,
             transaction_date: new Date().toISOString(),
-            created_by: createdBy || null
+            created_by: createdBy || null,
+            // Taxonomy dual-write (Phase 1)
+            point_category: 'migration',
+            point_indicator: 'csv_import',
+            point_owner_type: 'consumer',
+            point_direction: delta < 0 ? 'spend' : 'earn',
           });
 
         if (transactionError) {

@@ -164,7 +164,12 @@ export async function POST(request: Request) {
                         balance_after: newBalance,
                         qr_code_id: play.qr_code_id,
                         description: `Won from Scratch Card: ${reward?.name || 'Reward'}`,
-                        transaction_date: new Date().toISOString()
+                        transaction_date: new Date().toISOString(),
+                        // Taxonomy dual-write (Phase 1)
+                        point_category: 'game',
+                        point_indicator: 'scratch_card',
+                        point_owner_type: 'consumer',
+                        point_direction: 'earn',
                     })
 
                 if (txnError) {

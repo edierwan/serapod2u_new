@@ -750,6 +750,11 @@ export async function registerConsumer(userData: {
                 transaction_date: new Date().toISOString(),
                 user_id: authUser.user.id,
                 created_by: authUser.user.id,
+                // Taxonomy dual-write (Phase 1)
+                point_category: 'registration',
+                point_indicator: 'welcome_bonus',
+                point_owner_type: 'consumer',
+                point_direction: 'earn',
               })
               .select('id')
               .single()

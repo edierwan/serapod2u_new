@@ -598,7 +598,12 @@ export async function POST(request: NextRequest) {
                                 ? `Migration: ${r.rawPointsFromFile} × ${r.multiplierApplied} = ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`
                                 : `Migration: ${r.newMigrationValue} (Prev: ${r.lastMigrationValue})`,
                             transaction_date: new Date().toISOString(),
-                            created_by: createdBy || null
+                            created_by: createdBy || null,
+                            // Taxonomy dual-write (Phase 1)
+                            point_category: 'migration',
+                            point_indicator: 'csv_import',
+                            point_owner_type: 'consumer',
+                            point_direction: r.delta < 0 ? 'spend' : 'earn',
                         }));
 
                     if (transactions.length > 0) {

@@ -637,7 +637,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         points_amount: finalAmount,
         balance_after: newBalance,
         description: pointsAdjustment.description || 'Admin adjustment - manual modification',
-        transaction_date: new Date().toISOString()
+        transaction_date: new Date().toISOString(),
+        // Taxonomy dual-write (Phase 1)
+        point_category: 'adjustment',
+        point_indicator: 'manual',
+        point_owner_type: isConsumer ? 'consumer' : 'shop',
+        point_direction: finalAmount < 0 ? 'spend' : 'earn',
       }
 
       if (isConsumer) {

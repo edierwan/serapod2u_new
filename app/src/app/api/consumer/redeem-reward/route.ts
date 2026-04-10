@@ -306,7 +306,12 @@ export async function POST(request: NextRequest) {
         transaction_date: new Date().toISOString(),
         fulfillment_status: isPointCategory ? 'fulfilled' : 'pending',
         redemption_code: tempRedemptionCode,
-        user_id: user.id // Record the user ID for independent consumers
+        user_id: user.id, // Record the user ID for independent consumers
+        // Taxonomy dual-write (Phase 1)
+        point_category: isPointCategory ? 'bonus' : 'redemption',
+        point_indicator: isPointCategory ? 'point_reward' : 'physical_reward',
+        point_owner_type: 'consumer',
+        point_direction: isPointCategory ? 'earn' : 'spend',
       } as any)
       .select()
       .single()

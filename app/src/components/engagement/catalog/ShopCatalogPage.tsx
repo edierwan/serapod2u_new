@@ -359,7 +359,12 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           balance_after: currentBalance - reward.points_required,
           redeem_item_id: reward.id,
           description: `Redeemed: ${reward.item_name}`,
-          transaction_date: new Date().toISOString()
+          transaction_date: new Date().toISOString(),
+          // Taxonomy dual-write (Phase 1)
+          point_category: 'redemption',
+          point_indicator: 'physical_reward',
+          point_owner_type: 'consumer',
+          point_direction: 'spend',
         })
         .select()
 
