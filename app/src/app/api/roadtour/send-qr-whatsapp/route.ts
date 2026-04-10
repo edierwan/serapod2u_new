@@ -2,14 +2,13 @@
  * RoadTour Send QR Image via WhatsApp
  * 
  * POST /api/roadtour/send-qr-whatsapp
- * Generates a QR code image, uploads to Supabase storage, then sends via
- * WhatsApp gateway as an image message with caption.
+ * Sends a QR code image via WhatsApp using the app's own public QR image
+ * endpoint (/api/roadtour/qr-image/[token]) as the imageUrl.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
-import QRCode from 'qrcode'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,37 +48,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
         }
 
-        // Build the scan URL
+        // Build URLs
         const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stg.serapod2u.com'
         const scanUrl = `${appBaseUrl}/scan?rt=${token}`
-
-        // Generate QR code as PNG buffer
-        const qrBuffer = await QRCode.toBuffer(scanUrl, {
-            type: 'png',
-            width: 400,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-        })
-
-        // Upload to Supabase storage (public bucket for URL access)
-        const fileName = `roadtour-wa/${token.substring(0, 8)}-${Date.now()}.png`
-        const { error: uploadError } = await supabase.storage
-            .from('qr-codes')
-            .upload(fileName, qrBuffer, {
-                contentType: 'image/png',
-                upsert: true,
-            })
-
-        if (uploadError) {
-            throw new Error(`Failed to upload QR image: ${uploadError.message}`)
-        }
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-            .from('qr-codes')
-            .getPublicUrl(fileName)
-
-        const imageUrl = urlData.publicUrl
+        const imageUrl = `${appBaseUrl}/api/roadtour/qr-image/${token}`
 
         // Caption with clickable link
         const caption = `🗺️ *Rewards Road Tour*\n\nCampaign: *${campaignName || 'RoadTour'}*\nAM: ${userName || 'Account Manager'}\n\nShow this QR to shop owners for them to scan and earn reward points.\n\n${scanUrl}`
