@@ -233,6 +233,13 @@ interface PremiumLoyaltyTemplateProps {
     isLive?: boolean
     consumerPhone?: string
     productInfo?: ProductInfo
+    roadtourContext?: {
+        token: string
+        campaign_name: string
+        account_manager_name: string
+        default_points: number
+        org_id: string
+    }
 }
 
 // Variant Media Component for Animations
@@ -310,7 +317,8 @@ export default function PremiumLoyaltyTemplate({
     orgId,
     isLive = false,
     consumerPhone,
-    productInfo
+    productInfo,
+    roadtourContext
 }: PremiumLoyaltyTemplateProps) {
     const supabase = createClient()
     const { toast } = useToast()
@@ -2688,7 +2696,12 @@ export default function PremiumLoyaltyTemplate({
                             setUserId(user.id)
                             sessionStorage.setItem('serapod_active_session', 'logged_in')
                         }
-                        handleCollectPointsWithSession()
+                        // Branch: RoadTour uses its own claim API
+                        if (roadtourContext) {
+                            handleRoadtourClaimWithSession()
+                        } else {
+                            handleCollectPointsWithSession()
+                        }
                         return
                     }
                 } catch (e) {
@@ -2944,6 +2957,110 @@ export default function PremiumLoyaltyTemplate({
                 setShowPointsLoginModal(true)
             }
             // Otherwise, just show the error (will be displayed in the UI)
+        } finally {
+            setCollectingPoints(false)
+        }
+    }
+
+    // --- RoadTour claim handlers (only used when roadtourContext is provided) ---
+    const handleRoadtourClaimWithSession = async () => {
+        if (!roadtourContext) return
+        setCollectingPoints(true)
+        setPointsError('')
+        try {
+            const response = await fetch('/api/roadtour/claim-reward', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ token: roadtourContext.token }),
+            })
+            const data = await response.json()
+
+            if (data.requiresLogin || data.code === 'AUTH_FAILED') {
+                setCollectPointsStep('login')
+                setShowPointsLoginModal(true)
+                setCollectingPoints(false)
+                return
+            }
+            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
+                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
+                return
+            }
+            if (!response.ok) {
+                if (data.code === 'DUPLICATE') {
+                    setPointsCollected(true)
+                    setShowPointsLoginModal(false)
+                }
+                throw new Error(data.message || 'Failed to claim reward')
+            }
+            // Success
+            const earned = data.points_awarded || roadtourContext.default_points || 0
+            const balance = data.balance_after || earned
+            setPreviousBalance(balance - earned)
+            setPointsEarned(earned)
+            setLastEarnedPoints(earned)
+            setTotalBalance(balance)
+            setUserPoints(balance)
+            setPointsCollected(true)
+            setShowPointsLoginModal(false)
+            setShowPointsSuccessModal(true)
+        } catch (error: any) {
+            setPointsError(error.message || 'Failed to claim reward')
+            if (!isAuthenticated) setShowPointsLoginModal(true)
+        } finally {
+            setCollectingPoints(false)
+        }
+    }
+
+    const handleRoadtourClaimWithLogin = async () => {
+        if (!roadtourContext || !shopId.trim() || !shopPassword.trim()) return
+        setCollectingPoints(true)
+        setPointsError('')
+        try {
+            // Resolve phone to email using same RPC as product flow
+            const isPhone = /^[0-9+]/.test(shopId.trim())
+            let email = shopId.trim()
+            if (isPhone) {
+                const normalized = normalizePhone(email)
+                const { data: rpcResult } = await (supabase as any).rpc('get_email_by_phone', { p_phone: normalized })
+                if (typeof rpcResult === 'string' && rpcResult) email = rpcResult
+                else if (Array.isArray(rpcResult) && rpcResult.length > 0) email = rpcResult[0]
+                else { setPointsError('No account found with this phone number.'); setCollectingPoints(false); return }
+            }
+            // Sign in client-side to establish session (same as product flow)
+            const { error: signInError } = await supabase.auth.signInWithPassword({ email, password: shopPassword })
+            if (signInError) { setPointsError(signInError.message || 'Invalid credentials.'); setCollectingPoints(false); return }
+            setIsAuthenticated(true)
+            sessionStorage.setItem('serapod_active_session', 'logged_in')
+            // Now claim via session
+            const response = await fetch('/api/roadtour/claim-reward', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ token: roadtourContext.token }),
+            })
+            const data = await response.json()
+            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
+                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
+                return
+            }
+            if (!response.ok) {
+                if (data.code === 'DUPLICATE') { setPointsCollected(true); setShowPointsLoginModal(false) }
+                throw new Error(data.message || 'Failed to claim reward')
+            }
+            const earned = data.points_awarded || roadtourContext.default_points || 0
+            const balance = data.balance_after || earned
+            setPreviousBalance(balance - earned)
+            setPointsEarned(earned)
+            setLastEarnedPoints(earned)
+            setTotalBalance(balance)
+            setUserPoints(balance)
+            setPointsCollected(true)
+            setShowPointsLoginModal(false)
+            setShowPointsSuccessModal(true)
+            setShopId(''); setShopPassword('')
+        } catch (error: any) {
+            setPointsError(error.message || 'Failed to claim reward')
         } finally {
             setCollectingPoints(false)
         }
@@ -3342,7 +3459,18 @@ export default function PremiumLoyaltyTemplate({
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             {/* Show product info when scanned, otherwise show welcome */}
-                            {productInfo?.product_name ? (
+                            {roadtourContext ? (
+                                <>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Gift className="w-4 h-4 text-orange-200" />
+                                        <p className="text-orange-200 text-sm font-medium">RoadTour Campaign</p>
+                                    </div>
+                                    <h1 className="text-xl font-bold leading-tight">
+                                        {roadtourContext.campaign_name}
+                                    </h1>
+                                    <p className="text-white/80 text-sm mt-0.5">Account Manager: {roadtourContext.account_manager_name}</p>
+                                </>
+                            ) : productInfo?.product_name ? (
                                 <>
                                     <div className="flex items-center gap-2 mb-1">
                                         <Shield className="w-4 h-4 text-green-300" />
@@ -3483,7 +3611,7 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
                             <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
-                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : 'Collect'}
+                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : roadtourContext ? 'RoadTour Rewards' : 'Collect'}
                             </span>
                         </button>
                     )}
@@ -6350,7 +6478,7 @@ export default function PremiumLoyaltyTemplate({
                                         Back
                                     </button>
                                     <button
-                                        onClick={handleCollectPoints}
+                                        onClick={roadtourContext ? handleRoadtourClaimWithLogin : handleCollectPoints}
                                         disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
@@ -6361,7 +6489,7 @@ export default function PremiumLoyaltyTemplate({
                                                 Collecting...
                                             </span>
                                         ) : (
-                                            'Collect Points'
+                                            roadtourContext ? 'RoadTour Rewards' : 'Collect Points'
                                         )}
                                     </button>
                                 </div>
