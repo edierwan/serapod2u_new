@@ -39,16 +39,40 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    // Compute totals
-    const totals = {
-      total_shops: data?.length ?? 0,
-      shops_with_consumers: data?.filter(d => d.total_consumers > 0).length ?? 0,
-      grand_total_balance: data?.reduce((s, d) => s + (d.total_points_balance || 0), 0) ?? 0,
-      grand_total_consumers: data?.reduce((s, d) => s + (d.total_consumers || 0), 0) ?? 0,
-      grand_total_redeemed: data?.reduce((s, d) => s + (d.total_redeemed || 0), 0) ?? 0,
+    const shopIds = (data || []).map((row: any) => row.shop_id).filter(Boolean)
+    let bonusByShop = new Map<string, number>()
+
+    if (shopIds.length > 0) {
+      const { data: bonusRows, error: bonusError } = await admin
+        .from('shop_points_ledger')
+        .select('shop_id, points_change, transaction_type, point_category')
+        .in('shop_id', shopIds)
+        .or('transaction_type.eq.earn,point_category.eq.bonus')
+
+      if (bonusError) throw bonusError
+
+      for (const row of bonusRows || []) {
+        if (!row.shop_id) continue
+        bonusByShop.set(row.shop_id, (bonusByShop.get(row.shop_id) || 0) + Number(row.points_change || 0))
+      }
     }
 
-    return NextResponse.json({ success: true, data, totals })
+    const enrichedData = (data || []).map((row: any) => ({
+      ...row,
+      total_bonus_points: bonusByShop.get(row.shop_id) || 0,
+    }))
+
+    // Compute totals
+    const totals = {
+      total_shops: enrichedData.length,
+      shops_with_consumers: enrichedData.filter(d => d.total_consumers > 0).length,
+      grand_total_balance: enrichedData.reduce((s, d) => s + (d.total_points_balance || 0), 0),
+      grand_total_consumers: enrichedData.reduce((s, d) => s + (d.total_consumers || 0), 0),
+      grand_total_redeemed: enrichedData.reduce((s, d) => s + (d.total_redeemed || 0), 0),
+      grand_total_bonus: enrichedData.reduce((s, d) => s + (d.total_bonus_points || 0), 0),
+    }
+
+    return NextResponse.json({ success: true, data: enrichedData, totals })
   } catch (err: any) {
     console.error('shop-points-report error:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })

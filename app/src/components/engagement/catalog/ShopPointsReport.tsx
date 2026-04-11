@@ -27,6 +27,7 @@ interface ShopSummary {
   total_consumers: number
   total_points_balance: number
   total_collected_system: number
+  total_bonus_points?: number
   total_collected_manual: number
   total_migration_points: number
   total_redeemed: number
@@ -40,6 +41,7 @@ interface Totals {
   grand_total_balance: number
   grand_total_consumers: number
   grand_total_redeemed: number
+  grand_total_bonus?: number
 }
 
 type SortKey = keyof ShopSummary
@@ -134,10 +136,10 @@ export function ShopPointsReport() {
   }
 
   const exportCSV = () => {
-    const headers = ['Shop Name', 'Branch', 'State', 'Contact', 'Phone', 'Consumers', 'Total Balance', 'System Collected', 'Manual Collected', 'Migration', 'Redeemed', 'Transactions', 'Last Activity']
+    const headers = ['Shop Name', 'Branch', 'State', 'Contact', 'Phone', 'Linked Users', 'Total Balance', 'System Collected', 'Bonus', 'Manual Collected', 'Migration', 'Redeemed', 'Transactions', 'Last Activity']
     const rows = filtered.map(s => [
       s.shop_name, s.branch_name || '', s.state || '', s.contact_name || '', s.contact_phone || '',
-      s.total_consumers, s.total_points_balance, s.total_collected_system, s.total_collected_manual,
+      s.total_consumers, s.total_points_balance, s.total_collected_system, s.total_bonus_points || 0, s.total_collected_manual,
       s.total_migration_points, s.total_redeemed, s.total_transactions, s.last_activity || '',
     ])
     const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -174,7 +176,7 @@ export function ShopPointsReport() {
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-emerald-900">Shop Points Report</h3>
               <p className="mt-0.5 text-sm text-emerald-700/80">
-                Overview of point collection performance by shop. Shows which shops have the highest point balances and how many linked shop accounts they have.
+                Overview of point collection performance by shop. Shows which shops have the highest point balances, linked shop accounts, and bonus daily-claim points.
               </p>
               {totals && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -186,6 +188,9 @@ export function ShopPointsReport() {
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
                     <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_balance)} Total Points
+                  </Badge>
+                  <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
+                    <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_bonus || 0)} Bonus
                   </Badge>
                 </div>
               )}
@@ -251,6 +256,7 @@ export function ShopPointsReport() {
                       <SortHeader label="Linked Users" field="total_consumers" />
                       <SortHeader label="Total Balance" field="total_points_balance" />
                       <SortHeader label="System" field="total_collected_system" />
+                      <SortHeader label="Bonus" field="total_bonus_points" />
                       <SortHeader label="Manual" field="total_collected_manual" />
                       <SortHeader label="Migration" field="total_migration_points" />
                       <SortHeader label="Redeemed" field="total_redeemed" />
@@ -280,6 +286,7 @@ export function ShopPointsReport() {
                         </td>
                         <td className="px-3 py-2.5 text-sm font-semibold text-emerald-700">{formatNumber(shop.total_points_balance)}</td>
                         <td className="px-3 py-2.5 text-sm">{formatNumber(shop.total_collected_system)}</td>
+                        <td className="px-3 py-2.5 text-sm text-indigo-600">{formatNumber(shop.total_bonus_points || 0)}</td>
                         <td className="px-3 py-2.5 text-sm">{formatNumber(shop.total_collected_manual)}</td>
                         <td className="px-3 py-2.5 text-sm">{formatNumber(shop.total_migration_points)}</td>
                         <td className="px-3 py-2.5 text-sm text-red-600">{formatNumber(shop.total_redeemed)}</td>

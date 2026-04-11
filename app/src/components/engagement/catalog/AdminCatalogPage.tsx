@@ -519,14 +519,126 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   async function loadShopStaffUsers() {
     setUsersLoading(true)
     try {
-      const response = await fetch('/api/admin/shop-staff-performance')
-      const result = await response.json()
+      const supabaseClient = createClient()
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to load shop staff performance')
+      const { data: distributors, error: distError } = await supabaseClient
+        .from('organizations')
+        .select('id')
+        .eq('parent_org_id', companyId)
+        .in('org_type_code', ['DIST'])
+        .eq('is_active', true)
+
+      if (distError) throw distError
+
+      const distributorIds = distributors?.map((item) => item.id) || []
+
+      let shopQuery = supabaseClient
+        .from('organizations')
+        .select('id, org_name')
+        .in('org_type_code', ['SHOP'])
+        .eq('is_active', true)
+
+      if (distributorIds.length > 0) {
+        shopQuery = shopQuery.or(`parent_org_id.in.(${distributorIds.join(',')}),parent_org_id.eq.${companyId}`)
+      } else {
+        shopQuery = shopQuery.eq('parent_org_id', companyId)
       }
 
-      setShopStaffUsers(result.data || [])
+      const { data: shopOrgs, error: shopError } = await shopQuery
+      if (shopError) throw shopError
+
+      const shopOrgIds = shopOrgs?.map((item) => item.id) || []
+      if (shopOrgIds.length === 0) {
+        setShopStaffUsers([])
+        return
+      }
+
+      const shopNameById = new Map((shopOrgs || []).map((item) => [item.id, item.org_name]))
+
+      const { data: staffUsers, error: usersError } = await supabaseClient
+        .from('users')
+        .select('id, full_name, phone, email, role_code, created_at, organization_id')
+        .in('organization_id', shopOrgIds)
+        .in('role_code', ['GUEST', 'CONSUMER', 'USER'])
+        .eq('is_active', true)
+        .order('full_name')
+
+      if (usersError) throw usersError
+
+      const userIds = staffUsers?.map((item) => item.id) || []
+      const statsByUser = new Map<string, {
+        current_balance: number
+        total_collected_system: number
+        total_collected_manual: number
+        transaction_count: number
+        last_transaction_date: string | null
+      }>()
+
+      if (userIds.length > 0) {
+        const { data: scanRows, error: scanError } = await supabaseClient
+          .from('consumer_qr_scans')
+          .select('consumer_id, points_amount, points_collected_at, is_manual_adjustment')
+          .in('shop_id', shopOrgIds)
+          .eq('claim_lane', 'shop')
+          .eq('collected_points', true)
+          .in('consumer_id', userIds)
+
+        if (scanError) throw scanError
+
+        for (const row of scanRows || []) {
+          const userId = row.consumer_id
+          if (!userId) continue
+
+          const current = statsByUser.get(userId) || {
+            current_balance: 0,
+            total_collected_system: 0,
+            total_collected_manual: 0,
+            transaction_count: 0,
+            last_transaction_date: null,
+          }
+
+          const amount = Number(row.points_amount || 0)
+          current.current_balance += amount
+          current.transaction_count += 1
+          if (row.is_manual_adjustment) {
+            current.total_collected_manual += amount
+          } else {
+            current.total_collected_system += amount
+          }
+          if (!current.last_transaction_date || (row.points_collected_at && row.points_collected_at > current.last_transaction_date)) {
+            current.last_transaction_date = row.points_collected_at
+          }
+          statsByUser.set(userId, current)
+        }
+      }
+
+      const data = (staffUsers || []).map((staff) => {
+        const stats = statsByUser.get(staff.id)
+        return {
+          user_id: staff.id,
+          consumer_name: staff.full_name || 'Unknown Shop Staff',
+          consumer_phone: staff.phone,
+          consumer_email: staff.email,
+          consumer_location: null,
+          consumer_reference: staff.role_code,
+          referral_name: null,
+          referral_email: null,
+          referral_phone_full: null,
+          consumer_shop_name: shopNameById.get(staff.organization_id || '') || null,
+          current_balance: stats?.current_balance || 0,
+          total_collected_system: stats?.total_collected_system || 0,
+          total_collected_manual: stats?.total_collected_manual || 0,
+          total_migration: 0,
+          total_other: 0,
+          other_types: null,
+          total_redeemed: 0,
+          transaction_count: stats?.transaction_count || 0,
+          last_transaction_date: stats?.last_transaction_date || null,
+          last_migration_by_name: null,
+        }
+      })
+
+      setShopStaffUsers(data)
     } catch (error) {
       console.error('Error loading shop staff users:', error)
     } finally {
@@ -1411,14 +1523,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             onRefresh={() => loadShopStaffUsers()}
             storageKey="shop-staff-points-columns"
             bannerTitle="Shop Staff Performance"
-            bannerDescription="Shop-attached staff accounts are tracked here based on shop-lane scan contribution. Customer balances are tracked separately under Consumer Performance."
+            bannerDescription="Shop-attached staff accounts are tracked here based on shop-lane scan contribution. Consumer balances are tracked separately under Consumer Performance."
             badgeLabels={['Shop Staff Accounts', 'Shop-lane Contribution', 'Scan History']}
             tableTitle="Shop Staff Point Contributions"
             entityLabelSingular="shop staff"
             entityLabelPlural="shop staff"
             emptyTitle="No shop staff found"
             emptyDescription="Monitor point contribution and scan activity for shop staff accounts."
-            emptySearchDescription="Try adjusting your search terms. Customer balances appear under Consumer Performance."
+            emptySearchDescription="Try adjusting your search terms. Consumer balances appear under Consumer Performance."
             exportFilenamePrefix="shop-staff-performance"
             columnLabelOverrides={{
               consumer: 'Shop Staff',
@@ -1440,19 +1552,19 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               setShowAdjustPointsModal(true)
             }}
             onRefresh={() => loadConsumerUsers()}
-            storageKey="customer-points-columns"
-            bannerTitle="Customer Point Collection System"
-            bannerDescription="Customer accounts collect points through the mobile app. Shop staff performance is tracked separately under Shop Staff Performance."
-            badgeLabels={['Customer Accounts', 'Real-time Balance Updates', 'Transaction History']}
-            tableTitle="Customer Point Balances"
-            entityLabelSingular="customer"
-            entityLabelPlural="customers"
-            emptyTitle="No customers found"
-            emptyDescription="Monitor point collections and balances for customer accounts."
+            storageKey="consumer-points-columns"
+            bannerTitle="Consumer Point Collection System"
+            bannerDescription="Consumer accounts collect points through the mobile app. Shop staff performance is tracked separately under Shop Staff Performance."
+            badgeLabels={['Consumer Accounts', 'Real-time Balance Updates', 'Transaction History']}
+            tableTitle="Consumer Point Balances"
+            entityLabelSingular="consumer"
+            entityLabelPlural="consumers"
+            emptyTitle="No consumers found"
+            emptyDescription="Monitor point collections and balances for consumer accounts."
             emptySearchDescription="Try adjusting your search terms. Shop-attached staff appear under Shop Staff Performance."
-            exportFilenamePrefix="customer-performance"
+            exportFilenamePrefix="consumer-performance"
             columnLabelOverrides={{
-              consumer: 'Customer',
+              consumer: 'Consumer',
             }}
           />
         </TabsContent>
