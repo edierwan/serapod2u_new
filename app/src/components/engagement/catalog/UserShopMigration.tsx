@@ -74,6 +74,8 @@ interface ShopOrg {
   branch: string | null
 }
 
+type MatchStatus = MigrationUser['match_status']
+
 interface UserShopMigrationProps {
   onMigrationComplete?: () => void
 }
@@ -92,6 +94,13 @@ function normalizePhoneSearch(value: string | null | undefined) {
   if (digits.startsWith('60')) return digits
   if (digits.startsWith('0')) return `6${digits}`
   return digits
+}
+
+function resolveEffectiveMatchStatus(user: MigrationUser): MatchStatus {
+  if (user.current_org_id) return 'linked'
+  if (!user.current_shop_name?.trim()) return 'no_shop'
+  if (user.matched_org_id) return 'auto_matchable'
+  return 'unmatched'
 }
 
 export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProps) {
@@ -148,12 +157,20 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
     loadShops()
   }, [loadData, loadShops])
 
+  const effectiveSummary = useMemo<Summary>(() => ({
+    total: users.length,
+    linked: users.filter((user) => resolveEffectiveMatchStatus(user) === 'linked').length,
+    auto_matchable: users.filter((user) => resolveEffectiveMatchStatus(user) === 'auto_matchable').length,
+    unmatched: users.filter((user) => resolveEffectiveMatchStatus(user) === 'unmatched').length,
+    no_shop: users.filter((user) => resolveEffectiveMatchStatus(user) === 'no_shop').length,
+  }), [users])
+
   // ── Filtering & pagination ─────────────────────────────────────
 
   const filteredUsers = useMemo(() => {
     let result = users
     if (statusFilter !== 'all') {
-      result = result.filter(u => u.match_status === statusFilter)
+      result = result.filter(u => resolveEffectiveMatchStatus(u) === statusFilter)
     }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase()
@@ -290,19 +307,19 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
               <p className="mt-0.5 text-sm text-blue-700/80">
                 Link consumers to their shop organizations. Consumers with a free-text shop name can be auto-matched to registered organizations, or manually assigned.
               </p>
-              {summary && (
+              {effectiveSummary && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   <Badge variant="secondary" className="bg-green-100/80 text-green-700 text-[11px]">
-                    ✓ {summary.linked} Linked
+                    ✓ {effectiveSummary.linked} Linked
                   </Badge>
                   <Badge variant="secondary" className="bg-blue-100/80 text-blue-700 text-[11px]">
-                    ⚡ {summary.auto_matchable} Auto-matchable
+                    ⚡ {effectiveSummary.auto_matchable} Auto-matchable
                   </Badge>
                   <Badge variant="secondary" className="bg-amber-100/80 text-amber-700 text-[11px]">
-                    ⚠ {summary.unmatched} Unmatched
+                    ⚠ {effectiveSummary.unmatched} Unmatched
                   </Badge>
                   <Badge variant="secondary" className="bg-gray-100/80 text-gray-500 text-[11px]">
-                    — {summary.no_shop} No Shop
+                    — {effectiveSummary.no_shop} No Shop
                   </Badge>
                 </div>
               )}
@@ -413,7 +430,8 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                   </thead>
                   <tbody className="divide-y divide-border/50">
                     {paginatedUsers.map((user, idx) => {
-                      const cfg = STATUS_CONFIG[user.match_status]
+                      const effectiveStatus = resolveEffectiveMatchStatus(user)
+                      const cfg = STATUS_CONFIG[effectiveStatus]
                       const StatusIcon = cfg.icon
                       const isAssigning = assigningUserId === user.user_id
 
@@ -436,13 +454,13 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                             </Badge>
                           </td>
                           <td className="px-3 py-2.5 text-sm">
-                            {user.match_status === 'linked' && (
+                            {effectiveStatus === 'linked' && (
                               <span className="text-green-700 font-medium">{user.current_org_name}{user.current_org_branch && ` (${user.current_org_branch})`}</span>
                             )}
-                            {user.match_status === 'auto_matchable' && (
+                            {effectiveStatus === 'auto_matchable' && (
                               <span className="text-blue-700">{user.matched_org_name}{user.matched_org_branch && ` (${user.matched_org_branch})`}</span>
                             )}
-                            {(user.match_status === 'unmatched' || user.match_status === 'no_shop') && (
+                            {(effectiveStatus === 'unmatched' || effectiveStatus === 'no_shop') && (
                               isAssigning ? (
                                 <div className="flex items-center gap-2">
                                   <Popover>
@@ -509,7 +527,7 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                             )}
                           </td>
                           <td className="px-3 py-2.5 text-right">
-                            {user.match_status === 'linked' && (
+                            {effectiveStatus === 'linked' && (
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -520,7 +538,7 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
                                 <Unlink className="h-3 w-3" /> Unlink
                               </Button>
                             )}
-                            {(user.match_status === 'unmatched' || user.match_status === 'no_shop') && !isAssigning && (
+                            {(effectiveStatus === 'unmatched' || effectiveStatus === 'no_shop') && !isAssigning && (
                               <Button
                                 size="sm"
                                 variant="ghost"

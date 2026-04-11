@@ -94,6 +94,10 @@ export interface AudienceFilters {
     inactive_days?: number | null;
     never_scanned?: boolean;
     never_login?: boolean;
+    winback_category?: 'shop_performance' | 'shop_staff_performance' | 'consumer_performance' | null;
+    winback_status?: 'all' | 'active' | 'inactive';
+    winback_last_scan_mode?: 'any' | 'within_days' | 'older_than_days' | 'no_scan';
+    winback_last_scan_days?: number | null;
 }
 
 interface AudienceFilterBuilderProps {

@@ -20,6 +20,9 @@ interface JourneyConfig {
 interface QRStats {
   total_valid_links: number
   links_scanned: number
+  claim_mode?: 'single_shop' | 'dual'
+  shop_links_scanned?: number
+  consumer_links_scanned?: number
   lucky_draw_entries: number
   redemptions: number
   points_collected: number
@@ -90,6 +93,9 @@ export default function JourneyConfigCard({
   const [stats, setStats] = useState<QRStats>({
     total_valid_links: 0,
     links_scanned: 0,
+    claim_mode: 'single_shop',
+    shop_links_scanned: 0,
+    consumer_links_scanned: 0,
     lucky_draw_entries: 0,
     redemptions: 0,
     points_collected: 0
@@ -235,13 +241,33 @@ export default function JourneyConfigCard({
                 <AnimatedNumber value={stats.total_valid_links} className="text-lg font-bold text-blue-900" />
               </div>
 
-              <div className="bg-white rounded p-2 border border-green-100">
-                <div className="flex items-center gap-1 mb-1">
-                  <Scan className="w-3 h-3 text-gray-600" />
-                  <p className="text-[10px] text-gray-600">Scanned</p>
+              {stats.claim_mode === 'dual' ? (
+                <>
+                  <div className="bg-white rounded p-2 border border-green-100">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Scan className="w-3 h-3 text-gray-600" />
+                      <p className="text-[10px] text-gray-600">Shop Staff Scanned</p>
+                    </div>
+                    <AnimatedNumber value={stats.shop_links_scanned || 0} className="text-lg font-bold text-green-900" />
+                  </div>
+
+                  <div className="bg-white rounded p-2 border border-amber-100">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Scan className="w-3 h-3 text-gray-600" />
+                      <p className="text-[10px] text-gray-600">Consumer Scanned</p>
+                    </div>
+                    <AnimatedNumber value={stats.consumer_links_scanned || 0} className="text-lg font-bold text-amber-900" />
+                  </div>
+                </>
+              ) : (
+                <div className="bg-white rounded p-2 border border-green-100">
+                  <div className="flex items-center gap-1 mb-1">
+                    <Scan className="w-3 h-3 text-gray-600" />
+                    <p className="text-[10px] text-gray-600">Scanned</p>
+                  </div>
+                  <AnimatedNumber value={stats.links_scanned} className="text-lg font-bold text-green-900" />
                 </div>
-                <AnimatedNumber value={stats.links_scanned} className="text-lg font-bold text-green-900" />
-              </div>
+              )}
 
               {journey.redemption_enabled && (
                 <div className="bg-white rounded p-2 border border-emerald-100">

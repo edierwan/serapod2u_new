@@ -41,6 +41,106 @@ type WizardProps = {
     onLanguageChange?: (lang: 'EN' | 'BM') => void;
 };
 
+type WinbackCategory = NonNullable<AudienceFilters['winback_category']>;
+type WinbackStatus = NonNullable<AudienceFilters['winback_status']>;
+type WinbackScanMode = NonNullable<AudienceFilters['winback_last_scan_mode']>;
+
+const DEFAULT_WINBACK_FILTERS: Pick<AudienceFilters, 'winback_category' | 'winback_status' | 'winback_last_scan_mode' | 'winback_last_scan_days'> = {
+    winback_category: 'shop_performance',
+    winback_status: 'inactive',
+    winback_last_scan_mode: 'older_than_days',
+    winback_last_scan_days: 30,
+};
+
+const WINBACK_CATEGORY_OPTIONS: Array<{ value: WinbackCategory; label: string; description: string }> = [
+    { value: 'shop_performance', label: 'Shop Performance', description: 'Target shop contacts based on shop report activity or balance.' },
+    { value: 'shop_staff_performance', label: 'Shop Staff Performance', description: 'Target shop-linked user accounts from the staff performance report.' },
+    { value: 'consumer_performance', label: 'Consumer Performance', description: 'Target consumer accounts that collect through the consumer lane.' },
+];
+
+const WINBACK_TEMPLATE_PRESETS: Array<{
+    id: string;
+    language: 'EN' | 'BM';
+    category: WinbackCategory;
+    status: Exclude<WinbackStatus, 'all'>;
+    title: string;
+    description: string;
+    message: string;
+}> = [
+    {
+        id: 'winback-shop-inactive-en',
+        language: 'EN',
+        category: 'shop_performance',
+        status: 'inactive',
+        title: 'Re-activate inactive shops',
+        description: 'Invite dormant shop partners back into the program with a direct action CTA.',
+        message: 'Hi {name}, we noticed your shop has been quiet lately on Serapod2u. Scan your next QR and get back into the reward flow. Reply if you need support from our team.',
+    },
+    {
+        id: 'winback-shop-active-en',
+        language: 'EN',
+        category: 'shop_performance',
+        status: 'active',
+        title: 'Keep active shops engaged',
+        description: 'Nudge active shop partners to keep scanning consistently.',
+        message: 'Hi {name}, your shop is actively collecting on Serapod2u. Keep the momentum going and continue scanning your QR codes to maximise your rewards this month.',
+    },
+    {
+        id: 'winback-staff-inactive-en',
+        language: 'EN',
+        category: 'shop_staff_performance',
+        status: 'inactive',
+        title: 'Bring staff back to scanning',
+        description: 'Prompt inactive staff users to resume collection.',
+        message: 'Hi {name}, your point collection activity has slowed down. Open your Serapod2u journey link and start scanning again to continue earning rewards for your shop.',
+    },
+    {
+        id: 'winback-consumer-inactive-en',
+        language: 'EN',
+        category: 'consumer_performance',
+        status: 'inactive',
+        title: 'Reconnect inactive consumers',
+        description: 'Bring consumer-lane users back with a simple reminder.',
+        message: 'Hi {name}, it has been a while since your last Serapod2u scan. Your account is still ready. Scan your next QR to continue collecting points and rewards.',
+    },
+    {
+        id: 'winback-shop-inactive-bm',
+        language: 'BM',
+        category: 'shop_performance',
+        status: 'inactive',
+        title: 'Aktifkan semula kedai tidak aktif',
+        description: 'Ajak semula rakan kedai yang lama tidak membuat imbasan.',
+        message: 'Hi {name}, kami perasan kedai anda sudah lama tidak aktif di Serapod2u. Buat imbasan QR seterusnya untuk terus kumpul ganjaran. Balas mesej ini jika perlukan bantuan daripada pasukan kami.',
+    },
+    {
+        id: 'winback-shop-active-bm',
+        language: 'BM',
+        category: 'shop_performance',
+        status: 'active',
+        title: 'Kekalkan kedai aktif',
+        description: 'Galakkan kedai aktif untuk terus konsisten membuat imbasan.',
+        message: 'Hi {name}, kedai anda sedang aktif mengumpul ganjaran di Serapod2u. Teruskan momentum ini dengan mengimbas kod QR anda secara konsisten untuk maksimakan ganjaran bulan ini.',
+    },
+    {
+        id: 'winback-staff-inactive-bm',
+        language: 'BM',
+        category: 'shop_staff_performance',
+        status: 'inactive',
+        title: 'Aktifkan semula staf kedai',
+        description: 'Ingatkan staf kedai yang tidak aktif untuk mula imbas semula.',
+        message: 'Hi {name}, aktiviti kutipan mata anda semakin perlahan. Buka semula pautan journey Serapod2u anda dan mula imbas semula untuk terus kumpul ganjaran bagi kedai anda.',
+    },
+    {
+        id: 'winback-consumer-inactive-bm',
+        language: 'BM',
+        category: 'consumer_performance',
+        status: 'inactive',
+        title: 'Hubungi semula pengguna tidak aktif',
+        description: 'Bawa semula pengguna consumer lane dengan peringatan ringkas.',
+        message: 'Hi {name}, sudah lama anda tidak membuat imbasan Serapod2u. Akaun anda masih aktif. Buat imbasan QR seterusnya untuk terus kumpul mata dan ganjaran.',
+    },
+];
+
 export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, selectedLanguage: propLanguage, onLanguageChange }: WizardProps) {
     const { toast } = useToast();
     const router = useRouter();
@@ -298,10 +398,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     name: formData.name,
                     objective: formData.objective,
                     audience_filters: {
-                        mode: formData.audienceMode,
+                        mode: effectiveAudienceMode,
                         filters: formData.filters,
-                        segment_id: formData.selectedSegmentId,
-                        user_ids: formData.selectedUserIds,
+                        segment_id: isWinbackObjective ? '' : formData.selectedSegmentId,
+                        user_ids: isWinbackObjective ? [] : formData.selectedUserIds,
                         estimated_count: estimatedRecipients,
                         overrides: {
                             include_ids: formData.overrideIncludeIds,
@@ -380,10 +480,18 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     };
 
     const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
+    const isWinbackObjective = formData.objective === 'Winback';
+    const effectiveAudienceMode = isWinbackObjective ? 'filters' : formData.audienceMode;
 
     const templatesByLanguage = templates.filter(
         (t) => (t.language || 'EN').toString().toUpperCase() === selectedLanguage
     );
+    const winbackTemplateSuggestions = WINBACK_TEMPLATE_PRESETS.filter((preset) => {
+        if (preset.language !== selectedLanguage) return false;
+        if (formData.filters.winback_category && preset.category !== formData.filters.winback_category) return false;
+        if (formData.filters.winback_status && formData.filters.winback_status !== 'all' && preset.status !== formData.filters.winback_status) return false;
+        return true;
+    });
 
     // Helper function for category badge colors
     const getCategoryBadgeColor = (category: string) => {
@@ -439,7 +547,23 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                             </div>
                             <div className="space-y-3">
                                 <Label className="text-base">Objective</Label>
-                                <Select value={formData.objective} onValueChange={v => setFormData({ ...formData, objective: v })}>
+                                <Select
+                                    value={formData.objective}
+                                    onValueChange={v => setFormData(prev => ({
+                                        ...prev,
+                                        objective: v,
+                                        audienceMode: v === 'Winback' ? 'filters' : prev.audienceMode,
+                                        filters: v === 'Winback'
+                                            ? {
+                                                ...prev.filters,
+                                                winback_category: prev.filters.winback_category || DEFAULT_WINBACK_FILTERS.winback_category,
+                                                winback_status: prev.filters.winback_status || DEFAULT_WINBACK_FILTERS.winback_status,
+                                                winback_last_scan_mode: prev.filters.winback_last_scan_mode || DEFAULT_WINBACK_FILTERS.winback_last_scan_mode,
+                                                winback_last_scan_days: prev.filters.winback_last_scan_days ?? DEFAULT_WINBACK_FILTERS.winback_last_scan_days,
+                                            }
+                                            : prev.filters,
+                                    }))}
+                                >
                                     <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="Promo">Marketing / Promo</SelectItem>
@@ -461,26 +585,134 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         <div className="md:col-span-2 space-y-4 flex flex-col h-full order-2 md:order-1">
                             <h3 className="font-medium">Define Audience</h3>
 
-                            <div className="space-y-2">
-                                <Label>Audience Source</Label>
-                                <Tabs value={formData.audienceMode} onValueChange={(v: any) => setFormData({ ...formData, audienceMode: v })} className="w-full">
-                                    <TabsList className="grid w-full grid-cols-3">
-                                        <TabsTrigger value="filters">Filters</TabsTrigger>
-                                        <TabsTrigger value="segment">Saved Segment</TabsTrigger>
-                                        <TabsTrigger value="specific_users">Manual</TabsTrigger>
-                                    </TabsList>
-                                </Tabs>
-                            </div>
+                            {isWinbackObjective ? (
+                                <div className="rounded-lg border bg-amber-50/60 p-4 space-y-3">
+                                    <div>
+                                        <Label className="text-sm font-medium">Winback Audience Source</Label>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            User Winback targets the same report groups used in Shop Performance, Shop Staff Performance, and Consumer Performance.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Report Category</Label>
+                                        <Select
+                                            value={formData.filters.winback_category || DEFAULT_WINBACK_FILTERS.winback_category}
+                                            onValueChange={(value: WinbackCategory) => setFormData(prev => ({
+                                                ...prev,
+                                                audienceMode: 'filters',
+                                                filters: {
+                                                    ...prev.filters,
+                                                    winback_category: value,
+                                                }
+                                            }))}
+                                        >
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {WINBACK_CATEGORY_OPTIONS.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            {WINBACK_CATEGORY_OPTIONS.find((option) => option.value === (formData.filters.winback_category || DEFAULT_WINBACK_FILTERS.winback_category))?.description}
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label>Report Status</Label>
+                                            <Select
+                                                value={formData.filters.winback_status || DEFAULT_WINBACK_FILTERS.winback_status}
+                                                onValueChange={(value: WinbackStatus) => setFormData(prev => ({
+                                                    ...prev,
+                                                    audienceMode: 'filters',
+                                                    filters: {
+                                                        ...prev.filters,
+                                                        winback_status: value,
+                                                    }
+                                                }))}
+                                            >
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All</SelectItem>
+                                                    <SelectItem value="active">Active</SelectItem>
+                                                    <SelectItem value="inactive">Inactive</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>Last Scan</Label>
+                                            <Select
+                                                value={formData.filters.winback_last_scan_mode || DEFAULT_WINBACK_FILTERS.winback_last_scan_mode}
+                                                onValueChange={(value: WinbackScanMode) => setFormData(prev => ({
+                                                    ...prev,
+                                                    audienceMode: 'filters',
+                                                    filters: {
+                                                        ...prev.filters,
+                                                        winback_last_scan_mode: value,
+                                                        winback_last_scan_days: value === 'any' || value === 'no_scan'
+                                                            ? null
+                                                            : (prev.filters.winback_last_scan_days ?? DEFAULT_WINBACK_FILTERS.winback_last_scan_days),
+                                                    }
+                                                }))}
+                                            >
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="any">Any timing</SelectItem>
+                                                    <SelectItem value="within_days">Within last X days</SelectItem>
+                                                    <SelectItem value="older_than_days">Older than X days</SelectItem>
+                                                    <SelectItem value="no_scan">Never scanned</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {(formData.filters.winback_last_scan_mode === 'within_days' || formData.filters.winback_last_scan_mode === 'older_than_days') && (
+                                        <div className="space-y-2">
+                                            <Label>Number of Days</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={formData.filters.winback_last_scan_days ?? DEFAULT_WINBACK_FILTERS.winback_last_scan_days}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    audienceMode: 'filters',
+                                                    filters: {
+                                                        ...prev.filters,
+                                                        winback_last_scan_days: e.target.value ? Number(e.target.value) : null,
+                                                    }
+                                                }))}
+                                            />
+                                            <p className="text-xs text-muted-foreground">
+                                                Active or inactive uses the configured report rules. This filter adds a second check based on actual scan recency.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Label>Audience Source</Label>
+                                    <Tabs value={formData.audienceMode} onValueChange={(v: any) => setFormData({ ...formData, audienceMode: v })} className="w-full">
+                                        <TabsList className="grid w-full grid-cols-3">
+                                            <TabsTrigger value="filters">Filters</TabsTrigger>
+                                            <TabsTrigger value="segment">Saved Segment</TabsTrigger>
+                                            <TabsTrigger value="specific_users">Manual</TabsTrigger>
+                                        </TabsList>
+                                    </Tabs>
+                                </div>
+                            )}
 
                             <ScrollArea className="flex-1 pr-4">
-                                {formData.audienceMode === 'filters' && (
+                                {!isWinbackObjective && effectiveAudienceMode === 'filters' && (
                                     <AudienceFilterBuilder
                                         filters={formData.filters}
                                         onChange={(f: AudienceFilters) => setFormData({ ...formData, filters: f })}
                                     />
                                 )}
 
-                                {formData.audienceMode === 'segment' && (
+                                {!isWinbackObjective && formData.audienceMode === 'segment' && (
                                     <div className="space-y-2 pt-2">
                                         <Label>Select Segment</Label>
                                         <Select
@@ -506,7 +738,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                     </div>
                                 )}
 
-                                {formData.audienceMode === 'specific_users' && (
+                                {!isWinbackObjective && formData.audienceMode === 'specific_users' && (
                                     <SpecificUserSelector
                                         selectedUserIds={formData.selectedUserIds}
                                         onSelect={(ids) => setFormData({ ...formData, selectedUserIds: ids })}
@@ -518,10 +750,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         {/* Right Column: Preview - 3/5 = 60% */}
                         <div className="md:col-span-3 h-full order-1 md:order-2">
                             <AudienceEstimator
-                                mode={formData.audienceMode}
+                                mode={effectiveAudienceMode}
                                 filters={formData.filters}
-                                segmentId={formData.selectedSegmentId}
-                                userIds={formData.selectedUserIds}
+                                segmentId={isWinbackObjective ? '' : formData.selectedSegmentId}
+                                userIds={isWinbackObjective ? [] : formData.selectedUserIds}
                                 onCountChange={(count) => setEstimatedRecipients(count)}
                                 overrides={{
                                     include_ids: formData.overrideIncludeIds,
@@ -552,6 +784,32 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     <div className="grid md:grid-cols-2 gap-8 h-[500px]">
                         <div className="flex flex-col gap-4 h-full overflow-hidden">
                             <div className="space-y-4">
+                                {isWinbackObjective && winbackTemplateSuggestions.length > 0 && (
+                                    <div className="space-y-2">
+                                        <Label>Suggested Winback Starters</Label>
+                                        <div className="grid gap-2">
+                                            {winbackTemplateSuggestions.slice(0, 3).map((preset) => (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    className="rounded-lg border bg-muted/30 p-3 text-left transition-colors hover:bg-muted"
+                                                    onClick={() => setFormData(prev => ({
+                                                        ...prev,
+                                                        templateId: '',
+                                                        message: preset.message,
+                                                    }))}
+                                                >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="font-medium text-sm">{preset.title}</span>
+                                                        <Badge variant="outline">{preset.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label>Template Language</Label>
                                     <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePointClaimSettings } from '@/lib/engagement/point-claim-settings'
 
 /**
  * Get QR code statistics for a journey (order)
@@ -25,6 +26,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('company_id')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    let claimMode: 'single_shop' | 'dual' = 'single_shop'
+    if (orderRow?.company_id) {
+      const { data: orgRow } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', orderRow.company_id)
+        .maybeSingle()
+
+      claimMode = normalizePointClaimSettings(orgRow?.settings, 100).claimMode
+    }
+
     // Get the batch for this order
     const { data: batches, error: batchError } = await supabase
       .from('qr_batches')
@@ -46,6 +64,9 @@ export async function GET(request: NextRequest) {
         data: {
           total_valid_links: 0,
           links_scanned: 0,
+          claim_mode: claimMode,
+          shop_links_scanned: 0,
+          consumer_links_scanned: 0,
           lucky_draw_entries: 0,
           redemptions: 0,
           points_collected: 0,
@@ -90,12 +111,48 @@ export async function GET(request: NextRequest) {
         data: {
           total_valid_links: totalValidLinks,
           links_scanned: 0,
+          claim_mode: claimMode,
+          shop_links_scanned: 0,
+          consumer_links_scanned: 0,
           lucky_draw_entries: 0,
           redemptions: 0,
           points_collected: 0,
           scratch_card_plays: 0
         }
       })
+    }
+
+    let shopLinksScanned = 0
+    let consumerLinksScanned = 0
+    try {
+      const { data: claimRows, error: claimRowsError } = await supabase
+        .from('consumer_qr_scans')
+        .select('qr_code_id, claim_lane, qr_codes!inner(order_id)')
+        .eq('collected_points', true)
+        .eq('qr_codes.order_id', orderId)
+
+      if (claimRowsError) {
+        console.error('Error fetching lane scan stats:', claimRowsError)
+      } else {
+        const shopQrIds = new Set<string>()
+        const consumerQrIds = new Set<string>()
+
+        for (const row of claimRows || []) {
+          const qrCodeId = (row as any).qr_code_id as string | null
+          if (!qrCodeId) continue
+          const lane = (row as any).claim_lane as string | null
+          if (lane === 'consumer') {
+            consumerQrIds.add(qrCodeId)
+          } else {
+            shopQrIds.add(qrCodeId)
+          }
+        }
+
+        shopLinksScanned = shopQrIds.size
+        consumerLinksScanned = consumerQrIds.size
+      }
+    } catch (e) {
+      console.error('Exception fetching lane scan stats:', e)
     }
 
     // Fetch scratch card plays count separately since it's not in the RPC yet
@@ -129,6 +186,9 @@ export async function GET(request: NextRequest) {
       data: {
         total_valid_links: Number(statsData?.total_qr_codes || 0),
         links_scanned: Number(statsData?.unique_consumer_scans || 0),
+        claim_mode: claimMode,
+        shop_links_scanned: shopLinksScanned,
+        consumer_links_scanned: consumerLinksScanned,
         lucky_draw_entries: Number(statsData?.lucky_draw_entries || 0),
         redemptions: Number(statsData?.redemptions || 0),
         points_collected: Number(statsData?.points_collected_count || 0),

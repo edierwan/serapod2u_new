@@ -1,13 +1,43 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient as createServerClient } from '@/lib/supabase/server';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { loadScopedShopUsers } from '@/app/api/admin/_user-management-scope';
+import { isReportRowActive, normalizeReportStatusSettings } from '@/lib/engagement/report-status-settings';
 
 // Organization types that should target organization contacts (company contact_phone)
 const ORG_CONTACT_TYPES = ['DIST', 'MFG', 'SHOP', 'WH'];
 // Organization types that should target individual users within those organizations
 const ORG_USER_TYPES = ['HQ'];
 
+function hasUsablePhone(phone?: string | null) {
+    return Boolean(phone && phone.trim().length >= 8);
+}
+
+function toDateOrNull(value?: string | null) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function passesWinbackScanFilter(filters: any, lastScanAt?: string | null) {
+    const mode = filters?.winback_last_scan_mode || 'any';
+    const days = Number(filters?.winback_last_scan_days);
+    const scanDate = toDateOrNull(lastScanAt);
+
+    if (mode === 'any') return true;
+    if (mode === 'no_scan') return !scanDate;
+    if (!scanDate) return false;
+
+    const cutoffDays = Number.isFinite(days) && days > 0 ? days : 30;
+    const diffDays = (Date.now() - scanDate.getTime()) / (1000 * 60 * 60 * 24);
+
+    if (mode === 'within_days') return diffDays <= cutoffDays;
+    if (mode === 'older_than_days') return diffDays > cutoffDays;
+    return true;
+}
+
 export async function POST(request: NextRequest) {
-    const supabase = await createClient();
+    const supabase = await createServerClient();
 
     // Auth check
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -89,6 +119,263 @@ export async function POST(request: NextRequest) {
                 console.warn('Could not fetch opt-outs:', e);
             }
         }
+
+        const isWinbackRequest = mode === 'filters' && Boolean(activeFilters.winback_category);
+
+        if (isWinbackRequest) {
+            const admin = createServiceClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                { auth: { autoRefreshToken: false, persistSession: false } }
+            );
+
+            const { data: profile } = await admin
+                .from('users')
+                .select('role_code, organization_id')
+                .eq('id', user.id)
+                .single();
+
+            if (!profile || !['SA', 'HQ', 'POWER_USER'].includes(profile.role_code)) {
+                return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            }
+
+            const { data: organization } = profile.organization_id
+                ? await admin
+                    .from('organizations')
+                    .select('settings')
+                    .eq('id', profile.organization_id)
+                    .single()
+                : { data: null as any };
+
+            const reportStatusSettings = normalizeReportStatusSettings(organization?.settings);
+            const winbackStatus = activeFilters.winback_status || 'all';
+
+            const pushWinbackRecipient = (recipient: any, isActive: boolean, lastScanAt?: string | null) => {
+                if (locationStates.length > 0 && recipient.state && !locationStates.includes(recipient.state)) {
+                    return;
+                }
+
+                totalMatched++;
+
+                if (!hasUsablePhone(recipient.phone)) {
+                    excludedMissingPhone++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Missing/Invalid Phone' });
+                    return;
+                }
+
+                if (activeFilters.only_valid_whatsapp !== false && recipient.whatsapp_valid === false) {
+                    excludedInvalidWA++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Invalid WhatsApp' });
+                    return;
+                }
+
+                if (activeFilters.opt_in_only !== false && optOutPhones.has(recipient.phone)) {
+                    excludedOptOut++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Opt-out' });
+                    return;
+                }
+
+                if (winbackStatus === 'active' && !isActive) {
+                    excludedActivity++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Status (Inactive)' });
+                    return;
+                }
+
+                if (winbackStatus === 'inactive' && isActive) {
+                    excludedActivity++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Status (Active)' });
+                    return;
+                }
+
+                if (!passesWinbackScanFilter(activeFilters, lastScanAt)) {
+                    excludedActivity++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Last Scan Filter' });
+                    return;
+                }
+
+                validPhones++;
+                eligibleRecipients.push({ ...recipient, status: 'eligible' });
+            };
+
+            if (activeFilters.winback_category === 'shop_performance') {
+                const { data: shopRows, error: shopRowsError } = await admin
+                    .from('v_shop_points_summary')
+                    .select('shop_id, shop_name, contact_name, contact_phone, state, total_points_balance, last_activity')
+                    .order('total_points_balance', { ascending: false });
+
+                if (shopRowsError) throw shopRowsError;
+
+                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id);
+                const shopUserIds = shopUsers.map((item) => item.id);
+                const shopOrgByUserId = new Map(shopUsers.map((item) => [item.id, item.organization_id]));
+                const lastScanByShopId = new Map<string, string>();
+
+                for (let index = 0; index < shopUserIds.length; index += 100) {
+                    const userIdChunk = shopUserIds.slice(index, index + 100);
+                    if (userIdChunk.length === 0) continue;
+                    const { data: scanRows, error: scanError } = await admin
+                        .from('consumer_qr_scans')
+                        .select('consumer_id, scanned_at')
+                        .eq('claim_lane', 'shop')
+                        .in('consumer_id', userIdChunk);
+
+                    if (scanError) throw scanError;
+
+                    for (const row of scanRows || []) {
+                        const shopId = shopOrgByUserId.get(row.consumer_id);
+                        if (!shopId || !row.scanned_at) continue;
+                        const current = lastScanByShopId.get(shopId);
+                        if (!current || row.scanned_at > current) {
+                            lastScanByShopId.set(shopId, row.scanned_at);
+                        }
+                    }
+                }
+
+                for (const shop of shopRows || []) {
+                    const recipient = {
+                        id: shop.shop_id,
+                        name: shop.contact_name || shop.shop_name,
+                        phone: shop.contact_phone || 'No Phone',
+                        state: shop.state || 'No Location',
+                        city: shop.state || '',
+                        organization_type: 'SHOP',
+                        org_name: shop.shop_name,
+                        is_organization: true,
+                    };
+                    const isActive = isReportRowActive(shop.total_points_balance, shop.last_activity, reportStatusSettings.shopPerformance);
+                    pushWinbackRecipient(recipient, isActive, lastScanByShopId.get(shop.shop_id) || shop.last_activity);
+                }
+            }
+
+            if (activeFilters.winback_category === 'shop_staff_performance') {
+                const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id);
+                const userIds = shopUsers.map((item) => item.id);
+                const shopOrgIds = Array.from(new Set(shopUsers.map((item) => item.organization_id).filter(Boolean))) as string[];
+                const statsByUser = new Map<string, { current_balance: number; last_transaction_date: string | null; last_scan_at: string | null }>();
+                const { data: shopOrgs } = shopOrgIds.length > 0
+                    ? await admin.from('organizations').select('id, org_name, states(state_name)').in('id', shopOrgIds)
+                    : { data: [] as any[] };
+                const shopNameById = new Map((shopOrgs || []).map((item: any) => [item.id, item.org_name]));
+                const shopStateById = new Map((shopOrgs || []).map((item: any) => [item.id, item.states?.state_name || null]));
+
+                for (let index = 0; index < userIds.length; index += 100) {
+                    const userIdChunk = userIds.slice(index, index + 100);
+                    if (userIdChunk.length === 0) continue;
+
+                    const { data: scanRows, error: scanError } = await admin
+                        .from('consumer_qr_scans')
+                        .select('consumer_id, points_amount, scanned_at, points_collected_at')
+                        .eq('collected_points', true)
+                        .eq('claim_lane', 'shop')
+                        .in('consumer_id', userIdChunk);
+
+                    if (scanError) throw scanError;
+
+                    for (const row of scanRows || []) {
+                        const userId = row.consumer_id;
+                        if (!userId) continue;
+                        const current = statsByUser.get(userId) || { current_balance: 0, last_transaction_date: null, last_scan_at: null };
+                        current.current_balance += Number(row.points_amount || 0);
+                        if (!current.last_transaction_date || (row.points_collected_at && row.points_collected_at > current.last_transaction_date)) {
+                            current.last_transaction_date = row.points_collected_at;
+                        }
+                        if (!current.last_scan_at || (row.scanned_at && row.scanned_at > current.last_scan_at)) {
+                            current.last_scan_at = row.scanned_at;
+                        }
+                        statsByUser.set(userId, current);
+                    }
+
+                    const { data: transactionRows, error: transactionError } = await admin
+                        .from('points_transactions')
+                        .select('user_id, transaction_type, points_amount, transaction_date')
+                        .in('user_id', userIdChunk);
+
+                    if (transactionError) throw transactionError;
+
+                    for (const row of transactionRows || []) {
+                        const userId = row.user_id;
+                        if (!userId) continue;
+                        const current = statsByUser.get(userId) || { current_balance: 0, last_transaction_date: null, last_scan_at: null };
+                        const amount = Number(row.points_amount || 0);
+                        const type = row.transaction_type || '';
+
+                        if (type !== 'adjust') {
+                            current.current_balance += amount;
+                        } else {
+                            current.current_balance += amount;
+                        }
+
+                        if (!current.last_transaction_date || (row.transaction_date && row.transaction_date > current.last_transaction_date)) {
+                            current.last_transaction_date = row.transaction_date;
+                        }
+                        statsByUser.set(userId, current);
+                    }
+                }
+
+                for (const staff of shopUsers) {
+                    const stats = statsByUser.get(staff.id) || { current_balance: 0, last_transaction_date: null, last_scan_at: null };
+                    const recipient = {
+                        id: staff.id,
+                        user_id: staff.id,
+                        name: staff.full_name || 'Unknown Shop Staff',
+                        phone: staff.phone || 'No Phone',
+                        state: shopStateById.get(staff.organization_id || '') || 'No Location',
+                        city: shopStateById.get(staff.organization_id || '') || '',
+                        organization_type: 'SHOP',
+                        org_name: shopNameById.get(staff.organization_id || '') || 'Shop',
+                    };
+                    const isActive = isReportRowActive(stats.current_balance, stats.last_transaction_date, reportStatusSettings.shopStaffPerformance);
+                    pushWinbackRecipient(recipient, isActive, stats.last_scan_at);
+                }
+            }
+
+            if (activeFilters.winback_category === 'consumer_performance') {
+                const { data: consumerScanRows, error: consumerScanError } = await admin
+                    .from('consumer_qr_scans')
+                    .select('consumer_id, scanned_at')
+                    .eq('claim_lane', 'consumer')
+                    .eq('collected_points', true);
+
+                if (consumerScanError) throw consumerScanError;
+
+                const consumerIds = new Set<string>();
+                const lastScanByConsumerId = new Map<string, string>();
+                for (const row of consumerScanRows || []) {
+                    if (!row.consumer_id) continue;
+                    consumerIds.add(row.consumer_id);
+                    if (!lastScanByConsumerId.has(row.consumer_id) || (row.scanned_at && row.scanned_at > lastScanByConsumerId.get(row.consumer_id)!)) {
+                        lastScanByConsumerId.set(row.consumer_id, row.scanned_at);
+                    }
+                }
+
+                const { data: consumerRows, error: consumerRowsError } = await admin
+                    .from('v_consumer_points_summary' as any)
+                    .select('user_id, name, whatsapp_phone, whatsapp_valid, state, organization_id, current_balance, last_activity_at, is_active')
+                    .eq('is_active', true)
+                    .is('organization_id', null);
+
+                if (consumerRowsError) throw consumerRowsError;
+
+                for (const consumer of consumerRows || []) {
+                    if (!consumerIds.has(consumer.user_id)) continue;
+                    const recipient = {
+                        id: consumer.user_id,
+                        user_id: consumer.user_id,
+                        name: consumer.name || 'Unknown',
+                        phone: consumer.whatsapp_phone || 'No Phone',
+                        state: consumer.state || 'No Location',
+                        city: consumer.state || '',
+                        organization_type: 'End User',
+                        org_name: 'End User',
+                        whatsapp_valid: consumer.whatsapp_valid,
+                    };
+                    const isActive = isReportRowActive(consumer.current_balance, consumer.last_activity_at, reportStatusSettings.consumerPerformance);
+                    pushWinbackRecipient(recipient, isActive, lastScanByConsumerId.get(consumer.user_id));
+                }
+            }
+        }
+
+        if (!isWinbackRequest) {
 
         // ============================================
         // PART 0: Target Users in Organization Types (e.g., HQ)
@@ -592,6 +879,8 @@ export async function POST(request: NextRequest) {
                 validPhones++;
                 eligibleRecipients.push({ ...userInfo, status: 'eligible' });
             }
+        }
+
         }
 
         // Apply manual overrides (exclude_ids and include_ids)
