@@ -388,12 +388,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                 <Users className="h-5 w-5 text-purple-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-purple-900">Consumer Point Collection System</h3>
+                <h3 className="font-semibold text-purple-900">Individual Point Collection System</h3>
                 <p className="mt-0.5 text-sm text-purple-700/80">
-                  Individual consumers collect points through the mobile app. All point collections are tracked here for monitoring and management.
+                  Non-shop users collect points through the mobile app. Shop-attached staff accounts are monitored under Shop Performance Monitor.
                 </p>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {['Individual Accounts', 'Real-time Balance Updates', 'Transaction History'].map(tag => (
+                  {['Non-shop Accounts', 'Real-time Balance Updates', 'Transaction History'].map(tag => (
                     <Badge key={tag} variant="secondary" className="bg-purple-100/80 text-purple-700 text-[11px] font-medium">
                       ✓ {tag}
                     </Badge>
@@ -410,12 +410,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Trophy className="h-4 w-4" /> Consumer Point Balances
+                  <Trophy className="h-4 w-4" /> Individual Point Balances
                 </CardTitle>
                 <CardDescription className="mt-0.5">
                   {sortedUsers.length > 0
-                    ? `${formatNumber(sortedUsers.length)} consumer${sortedUsers.length !== 1 ? 's' : ''} · ${visibleCount} columns visible`
-                    : 'Monitor consumer point collections and balances.'}
+                    ? `${formatNumber(sortedUsers.length)} individual user${sortedUsers.length !== 1 ? 's' : ''} · ${visibleCount} columns visible`
+                    : 'Monitor point collections and balances for non-shop users.'}
                 </CardDescription>
               </div>
 
@@ -527,9 +527,9 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                 <div className="rounded-full bg-muted p-4 mb-4">
                   <Users className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold">No consumers found</h3>
+                <h3 className="text-lg font-semibold">No individual users found</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {searchTerm ? "Try adjusting your search terms." : "No consumers have collected points yet."}
+                  {searchTerm ? "Try adjusting your search terms. Shop-attached staff appear under Shop Performance Monitor." : "No non-shop users have collected points yet."}
                 </p>
               </div>
             ) : (

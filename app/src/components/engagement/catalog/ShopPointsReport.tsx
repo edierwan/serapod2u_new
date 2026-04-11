@@ -174,7 +174,7 @@ export function ShopPointsReport() {
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-emerald-900">Shop Points Report</h3>
               <p className="mt-0.5 text-sm text-emerald-700/80">
-                Overview of point collection performance by shop. Shows which shops have the most consumers and highest point balances.
+                Overview of point collection performance by shop. Shows which shops have the highest point balances and how many linked shop accounts they have.
               </p>
               {totals && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -182,7 +182,7 @@ export function ShopPointsReport() {
                     <Store className="h-3 w-3 mr-1" /> {totals.total_shops} Shops
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
-                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Consumers
+                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Linked Users
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
                     <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_balance)} Total Points
@@ -237,7 +237,7 @@ export function ShopPointsReport() {
                 <Store className="h-8 w-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-semibold">No shops found</h3>
-              <p className="text-sm text-muted-foreground mt-1">No shop organizations or no linked consumers yet.</p>
+              <p className="text-sm text-muted-foreground mt-1">No shop organizations or no linked shop users yet.</p>
             </div>
           ) : (
             <>
@@ -248,7 +248,7 @@ export function ShopPointsReport() {
                       <th className="px-3 py-3 text-xs font-semibold uppercase text-muted-foreground w-[40px] text-center">#</th>
                       <SortHeader label="Shop" field="shop_name" />
                       <SortHeader label="State" field="state" />
-                      <SortHeader label="Consumers" field="total_consumers" />
+                      <SortHeader label="Linked Users" field="total_consumers" />
                       <SortHeader label="Total Balance" field="total_points_balance" />
                       <SortHeader label="System" field="total_collected_system" />
                       <SortHeader label="Manual" field="total_collected_manual" />

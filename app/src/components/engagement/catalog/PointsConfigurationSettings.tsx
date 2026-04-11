@@ -594,7 +594,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                     <li>• They authenticate with their Shop ID and password</li>
                     <li>• Points are awarded automatically based on this configuration</li>
                     <li>• Shops can redeem points for rewards in the catalog</li>
-                    <li>• All point collections are tracked in the "Shop Points Monitor" tab</li>
+                    <li>• Shop performance is tracked in the "Shop Performance Monitor" tab</li>
                   </ul>
                 </div>
               </div>

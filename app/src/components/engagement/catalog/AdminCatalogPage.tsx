@@ -897,10 +897,10 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" /> Shop Points Monitor
+            <Users className="h-4 w-4" /> Shop Performance Monitor
           </TabsTrigger>
           <TabsTrigger value="consumers" className="gap-2">
-            <Users className="h-4 w-4" /> User Points Monitor
+            <Users className="h-4 w-4" /> Individual Points Monitor
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
