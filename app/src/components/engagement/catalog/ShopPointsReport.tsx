@@ -334,7 +334,7 @@ export function ShopPointsReport() {
         </CardContent>
       </Card>
 
-      {/* Consumer Detail Dialog */}
+      {/* Shop Staff Detail Dialog */}
       {selectedShop && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedShop(null)}>
           <div className="relative mx-4 w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -342,7 +342,7 @@ export function ShopPointsReport() {
               <div>
                 <h3 className="text-lg font-semibold">{selectedShop.shop_name}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {selectedShop.total_consumers} consumer{selectedShop.total_consumers !== 1 ? 's' : ''}
+                  {selectedShop.total_consumers} shop staff{selectedShop.total_consumers !== 1 ? 's' : ''}
                   {selectedShop.branch_name && ` · ${selectedShop.branch_name}`}
                   {selectedShop.state && ` · ${selectedShop.state}`}
                 </p>
@@ -357,7 +357,7 @@ export function ShopPointsReport() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : consumers.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">No consumers found for this shop.</div>
+                <div className="py-12 text-center text-sm text-muted-foreground">No shop staff found for this shop.</div>
               ) : (
                 <div className="space-y-3">
                   {consumers.map((c) => (

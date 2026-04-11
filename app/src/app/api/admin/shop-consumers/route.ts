@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 /**
  * GET /api/admin/shop-consumers?shop_id=xxx
- * Returns consumers linked to a specific shop organization
+ * Returns shop staff linked to a specific shop organization.
  */
 export async function GET(request: NextRequest) {
     try {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'shop_id is required' }, { status: 400 })
         }
 
-        // Get consumers linked to this shop via organization_id
+        // Get shop-linked users via organization_id.
         const { data: consumers, error } = await admin
             .from('users')
             .select('id, full_name, phone, email, role_code, created_at')
@@ -47,18 +47,26 @@ export async function GET(request: NextRequest) {
 
         if (error) throw error
 
-        // Also get point balances for each consumer
+        // For shop-linked users, show contribution points from shop-lane scans.
+        // SHOP users are intentionally excluded from v_consumer_points_balance.
         const consumerIds = consumers?.map(c => c.id) || []
         let balances: Record<string, number> = {}
 
         if (consumerIds.length > 0) {
             const { data: balanceData } = await admin
-                .from('v_consumer_points_balance')
-                .select('user_id, current_balance')
-                .in('user_id', consumerIds)
+                .from('consumer_qr_scans')
+                .select('consumer_id, points_amount')
+                .eq('shop_id', shopId)
+                .eq('claim_lane', 'shop')
+                .eq('collected_points', true)
+                .in('consumer_id', consumerIds)
 
             if (balanceData) {
-                balances = Object.fromEntries(balanceData.map(b => [b.user_id, b.current_balance]))
+                balances = balanceData.reduce((acc: Record<string, number>, row: any) => {
+                    if (!row.consumer_id) return acc
+                    acc[row.consumer_id] = (acc[row.consumer_id] || 0) + Number(row.points_amount || 0)
+                    return acc
+                }, {})
             }
         }
 
