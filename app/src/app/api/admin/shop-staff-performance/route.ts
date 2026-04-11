@@ -78,20 +78,6 @@ export async function GET(_request: NextRequest) {
     if (usersError) throw usersError
 
     const userIds = staffUsers?.map((item) => item.id) || []
-    if (userIds.length === 0) {
-      return NextResponse.json({ success: true, data: [] })
-    }
-
-    const { data: scanRows, error: scanError } = await admin
-      .from('consumer_qr_scans')
-      .select('consumer_id, points_amount, points_collected_at, is_manual_adjustment')
-      .in('shop_id', shopOrgIds)
-      .eq('claim_lane', 'shop')
-      .eq('collected_points', true)
-      .in('consumer_id', userIds)
-
-    if (scanError) throw scanError
-
     const statsByUser = new Map<string, {
       current_balance: number
       total_collected_system: number
@@ -100,29 +86,45 @@ export async function GET(_request: NextRequest) {
       last_transaction_date: string | null
     }>()
 
-    for (const row of scanRows || []) {
-      const userId = row.consumer_id
-      if (!userId) continue
-      const current = statsByUser.get(userId) || {
-        current_balance: 0,
-        total_collected_system: 0,
-        total_collected_manual: 0,
-        transaction_count: 0,
-        last_transaction_date: null,
-      }
+    if (userIds.length > 0) {
+      const chunkSize = 100
 
-      const amount = Number(row.points_amount || 0)
-      current.current_balance += amount
-      current.transaction_count += 1
-      if (row.is_manual_adjustment) {
-        current.total_collected_manual += amount
-      } else {
-        current.total_collected_system += amount
+      for (let index = 0; index < userIds.length; index += chunkSize) {
+        const userIdChunk = userIds.slice(index, index + chunkSize)
+        const { data: scanRows, error: scanError } = await admin
+          .from('consumer_qr_scans')
+          .select('consumer_id, points_amount, points_collected_at, is_manual_adjustment')
+          .eq('claim_lane', 'shop')
+          .eq('collected_points', true)
+          .in('consumer_id', userIdChunk)
+
+        if (scanError) throw scanError
+
+        for (const row of scanRows || []) {
+          const userId = row.consumer_id
+          if (!userId) continue
+          const current = statsByUser.get(userId) || {
+            current_balance: 0,
+            total_collected_system: 0,
+            total_collected_manual: 0,
+            transaction_count: 0,
+            last_transaction_date: null,
+          }
+
+          const amount = Number(row.points_amount || 0)
+          current.current_balance += amount
+          current.transaction_count += 1
+          if (row.is_manual_adjustment) {
+            current.total_collected_manual += amount
+          } else {
+            current.total_collected_system += amount
+          }
+          if (!current.last_transaction_date || (row.points_collected_at && row.points_collected_at > current.last_transaction_date)) {
+            current.last_transaction_date = row.points_collected_at
+          }
+          statsByUser.set(userId, current)
+        }
       }
-      if (!current.last_transaction_date || (row.points_collected_at && row.points_collected_at > current.last_transaction_date)) {
-        current.last_transaction_date = row.points_collected_at
-      }
-      statsByUser.set(userId, current)
     }
 
     const data = (staffUsers || []).map((staff) => {
