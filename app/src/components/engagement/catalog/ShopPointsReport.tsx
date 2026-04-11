@@ -21,6 +21,7 @@ interface ShopSummary {
   shop_id: string
   shop_name: string
   branch_name: string | null
+  shop_reference_am?: string | null
   contact_name: string | null
   contact_phone: string | null
   state: string | null
@@ -136,9 +137,9 @@ export function ShopPointsReport() {
   }
 
   const exportCSV = () => {
-    const headers = ['Shop Name', 'Branch', 'State', 'Contact', 'Phone', 'Linked Users', 'Total Balance', 'System Collected', 'Bonus', 'Manual Collected', 'Migration', 'Redeemed', 'Transactions', 'Last Activity']
+    const headers = ['Shop Name', 'Branch', 'State', 'Reference (AM)', 'Contact', 'Phone', 'Shop Staff', 'Total Balance', 'System Collected', 'Bonus', 'Manual Collected', 'Migration', 'Redeemed', 'Transactions', 'Last Activity']
     const rows = filtered.map(s => [
-      s.shop_name, s.branch_name || '', s.state || '', s.contact_name || '', s.contact_phone || '',
+      s.shop_name, s.branch_name || '', s.state || '', s.shop_reference_am || '', s.contact_name || '', s.contact_phone || '',
       s.total_consumers, s.total_points_balance, s.total_collected_system, s.total_bonus_points || 0, s.total_collected_manual,
       s.total_migration_points, s.total_redeemed, s.total_transactions, s.last_activity || '',
     ])
@@ -184,7 +185,7 @@ export function ShopPointsReport() {
                     <Store className="h-3 w-3 mr-1" /> {totals.total_shops} Shops
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
-                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Linked Users
+                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Shop Staff
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
                     <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_balance)} Total Points
@@ -253,7 +254,8 @@ export function ShopPointsReport() {
                       <th className="px-3 py-3 text-xs font-semibold uppercase text-muted-foreground w-[40px] text-center">#</th>
                       <SortHeader label="Shop" field="shop_name" />
                       <SortHeader label="State" field="state" />
-                      <SortHeader label="Linked Users" field="total_consumers" />
+                      <SortHeader label="Reference (AM)" field="shop_reference_am" />
+                      <SortHeader label="Shop Staff" field="total_consumers" />
                       <SortHeader label="Total Balance" field="total_points_balance" />
                       <SortHeader label="System" field="total_collected_system" />
                       <SortHeader label="Bonus" field="total_bonus_points" />
@@ -272,6 +274,7 @@ export function ShopPointsReport() {
                           {shop.branch_name && <div className="text-xs text-muted-foreground">{shop.branch_name}</div>}
                         </td>
                         <td className="px-3 py-2.5 text-sm">{shop.state || '—'}</td>
+                        <td className="px-3 py-2.5 text-sm">{shop.shop_reference_am || '—'}</td>
                         <td className="px-3 py-2.5 text-sm">
                           {shop.total_consumers > 0 ? (
                             <button

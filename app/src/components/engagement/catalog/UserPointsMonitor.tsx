@@ -63,6 +63,7 @@ interface UserPointsMonitorProps {
   exportFilenamePrefix?: string
   columnLabelOverrides?: Partial<Record<ColumnDef['id'], string>>
   defaultVisibleColumnIds?: string[]
+  initialSortConfig?: { key: keyof ConsumerUser; direction: 'asc' | 'desc' }
 }
 
 // ── Column definition ────────────────────────────────────────────
@@ -131,11 +132,12 @@ export function UserPointsMonitor({
   exportFilenamePrefix = 'individual-points',
   columnLabelOverrides,
   defaultVisibleColumnIds,
+  initialSortConfig,
 }: UserPointsMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
-  const [sortConfig, setSortConfig] = useState<{ key: keyof ConsumerUser; direction: 'asc' | 'desc' } | null>(null)
+  const [sortConfig, setSortConfig] = useState<{ key: keyof ConsumerUser; direction: 'asc' | 'desc' } | null>(initialSortConfig || null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
 

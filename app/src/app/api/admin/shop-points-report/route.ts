@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
 
     const shopIds = (data || []).map((row: any) => row.shop_id).filter(Boolean)
     let bonusByShop = new Map<string, number>()
+    let referenceByShop = new Map<string, string>()
 
     if (shopIds.length > 0) {
       const chunkSize = 100
@@ -59,12 +60,46 @@ export async function GET(request: NextRequest) {
           if (!row.shop_id) continue
           bonusByShop.set(row.shop_id, (bonusByShop.get(row.shop_id) || 0) + Number(row.points_change || 0))
         }
+
+        const { data: shopUsers, error: shopUsersError } = await admin
+          .from('users')
+          .select('organization_id, referral_phone')
+          .in('organization_id', shopIdChunk)
+
+        if (shopUsersError) throw shopUsersError
+
+        const normalizedReferralPhones = Array.from(new Set((shopUsers || []).map((row: any) => row.referral_phone).filter(Boolean)))
+        const normalizedPhoneMap = new Map<string, any>()
+
+        if (normalizedReferralPhones.length > 0) {
+          const { data: referenceUsers, error: referenceUsersError } = await admin
+            .from('users')
+            .select('full_name, phone')
+
+          if (referenceUsersError) throw referenceUsersError
+
+          for (const item of referenceUsers || []) {
+            const phone = String(item.phone || '').replace(/\D/g, '')
+            if (!phone) continue
+            normalizedPhoneMap.set(phone, item)
+            if (phone.startsWith('0')) normalizedPhoneMap.set(`6${phone}`, item)
+          }
+        }
+
+        for (const shopUser of shopUsers || []) {
+          const shopId = shopUser.organization_id
+          if (!shopId || referenceByShop.has(shopId) || !shopUser.referral_phone) continue
+          const normalized = String(shopUser.referral_phone).replace(/\D/g, '')
+          const referenceUser = normalizedPhoneMap.get(normalized) || normalizedPhoneMap.get(normalized.startsWith('0') ? `6${normalized}` : normalized)
+          referenceByShop.set(shopId, referenceUser?.full_name || shopUser.referral_phone)
+        }
       }
     }
 
     const enrichedData = (data || []).map((row: any) => ({
       ...row,
       total_bonus_points: bonusByShop.get(row.shop_id) || 0,
+      shop_reference_am: referenceByShop.get(row.shop_id) || null,
     }))
 
     // Compute totals

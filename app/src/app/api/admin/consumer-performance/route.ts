@@ -35,6 +35,20 @@ export async function GET(_request: NextRequest) {
     const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
     const excludedUserIds = new Set(shopUsers.map((item) => item.id))
 
+    const { data: consumerScanRows, error: consumerScanError } = await admin
+      .from('consumer_qr_scans')
+      .select('consumer_id')
+      .eq('claim_lane', 'consumer')
+      .eq('collected_points', true)
+
+    if (consumerScanError) throw consumerScanError
+
+    const consumerLaneUserIds = new Set(
+      (consumerScanRows || [])
+        .map((row: any) => row.consumer_id)
+        .filter(Boolean)
+    )
+
     const { data: consumerRows, error: consumerError } = await admin
       .from('v_consumer_points_balance')
       .select('*')
@@ -42,7 +56,11 @@ export async function GET(_request: NextRequest) {
 
     if (consumerError) throw consumerError
 
-    const data = (consumerRows || []).filter((row: any) => !excludedUserIds.has(row.user_id))
+    const data = (consumerRows || []).filter((row: any) => {
+      if (excludedUserIds.has(row.user_id)) return false
+      if (!consumerLaneUserIds.has(row.user_id)) return false
+      return true
+    })
 
     return NextResponse.json({ success: true, data })
   } catch (err: any) {

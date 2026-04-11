@@ -7,6 +7,7 @@ export interface ScopedUserRow {
   email: string
   full_name: string | null
   phone: string | null
+  referral_phone: string | null
   is_active: boolean
   role_code: string
   organization_id: string | null
@@ -51,6 +52,7 @@ export async function loadScopedShopUsers(
         email,
         full_name,
         phone,
+        referral_phone,
         is_active,
         role_code,
         organization_id,
@@ -103,4 +105,13 @@ export async function loadScopedShopUsers(
     shopUsers,
     allVisibleUsers: visibleUsers,
   }
+}
+
+export function normalizePhone(value?: string | null): string {
+  if (!value) return ''
+  const digits = value.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('60')) return digits
+  if (digits.startsWith('0')) return `6${digits}`
+  return digits
 }

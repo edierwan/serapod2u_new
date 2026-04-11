@@ -1421,10 +1421,12 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             exportFilenamePrefix="shop-staff-performance"
             columnLabelOverrides={{
               consumer: 'Shop Staff',
-              reference: 'Role',
+              reference: 'Reference (AM)',
+              location: 'State',
               shop_name: 'Shop',
             }}
-            defaultVisibleColumnIds={['row_num', 'consumer', 'shop_name', 'current_balance', 'collected_system', 'migration', 'transactions', 'last_activity', 'actions']}
+            defaultVisibleColumnIds={['row_num', 'consumer', 'shop_name', 'location', 'reference', 'current_balance', 'collected_system', 'migration', 'transactions', 'last_activity', 'actions']}
+            initialSortConfig={{ key: 'current_balance', direction: 'desc' }}
           />
         </TabsContent>
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { loadScopedShopUsers } from '../_user-management-scope'
+import { loadScopedShopUsers, normalizePhone } from '../_user-management-scope'
 
 /**
  * GET /api/admin/shop-staff-performance
@@ -32,7 +32,7 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
+    const { shopUsers, allVisibleUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
 
     if (shopUsers.length === 0) {
       return NextResponse.json({
@@ -51,12 +51,18 @@ export async function GET(_request: NextRequest) {
     const shopOrgIds = Array.from(new Set(shopUsers.map((item) => item.organization_id).filter(Boolean))) as string[]
     const { data: shopOrgs, error: shopError } = await admin
       .from('organizations')
-      .select('id, org_name')
+      .select('id, org_name, state_id, states(state_name)')
       .in('id', shopOrgIds)
 
     if (shopError) throw shopError
 
     const shopNameById = new Map((shopOrgs || []).map((item) => [item.id, item.org_name]))
+    const shopStateById = new Map((shopOrgs || []).map((item: any) => [item.id, item.states?.state_name || null]))
+    const userByNormalizedPhone = new Map(
+      (allVisibleUsers || [])
+        .filter((item) => item.phone)
+        .map((item) => [normalizePhone(item.phone), item])
+    )
     const staffUsers = shopUsers
 
     const userIds = staffUsers?.map((item) => item.id) || []
@@ -172,16 +178,17 @@ export async function GET(_request: NextRequest) {
 
     const data = (staffUsers || []).map((staff) => {
       const stats = statsByUser.get(staff.id)
+      const referenceUser = userByNormalizedPhone.get(normalizePhone(staff.referral_phone))
       return {
         user_id: staff.id,
         consumer_name: staff.full_name || 'Unknown Shop Staff',
         consumer_phone: staff.phone,
         consumer_email: staff.email,
-        consumer_location: null,
-        consumer_reference: staff.role_code,
-        referral_name: null,
-        referral_email: null,
-        referral_phone_full: null,
+        consumer_location: shopStateById.get(staff.organization_id || '') || null,
+        consumer_reference: staff.referral_phone || null,
+        referral_name: referenceUser?.full_name || null,
+        referral_email: referenceUser?.email || null,
+        referral_phone_full: referenceUser?.phone || null,
         consumer_shop_name: shopNameById.get(staff.organization_id || '') || null,
         current_balance: stats?.current_balance || 0,
         total_collected_system: stats?.total_collected_system || 0,
@@ -194,7 +201,7 @@ export async function GET(_request: NextRequest) {
         last_transaction_date: stats?.last_transaction_date || null,
         last_migration_by_name: null,
       }
-    })
+    }).sort((left, right) => right.current_balance - left.current_balance)
 
     const shopUsersWithPointsCount = data.filter((item) => item.transaction_count > 0 || item.current_balance !== 0).length
 
