@@ -43,17 +43,22 @@ export async function GET(request: NextRequest) {
     let bonusByShop = new Map<string, number>()
 
     if (shopIds.length > 0) {
-      const { data: bonusRows, error: bonusError } = await admin
-        .from('shop_points_ledger')
-        .select('shop_id, points_change, transaction_type, point_category')
-        .in('shop_id', shopIds)
-        .or('transaction_type.eq.earn,point_category.eq.bonus')
+      const chunkSize = 100
 
-      if (bonusError) throw bonusError
+      for (let index = 0; index < shopIds.length; index += chunkSize) {
+        const shopIdChunk = shopIds.slice(index, index + chunkSize)
+        const { data: bonusRows, error: bonusError } = await admin
+          .from('shop_points_ledger')
+          .select('shop_id, points_change, transaction_type, point_category')
+          .in('shop_id', shopIdChunk)
+          .or('transaction_type.eq.earn,point_category.eq.bonus')
 
-      for (const row of bonusRows || []) {
-        if (!row.shop_id) continue
-        bonusByShop.set(row.shop_id, (bonusByShop.get(row.shop_id) || 0) + Number(row.points_change || 0))
+        if (bonusError) throw bonusError
+
+        for (const row of bonusRows || []) {
+          if (!row.shop_id) continue
+          bonusByShop.set(row.shop_id, (bonusByShop.get(row.shop_id) || 0) + Number(row.points_change || 0))
+        }
       }
     }
 
