@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import {
   Search, Download, Store, TrendingUp, Users, Trophy,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ArrowUpDown, X, Phone, Mail, Loader2,
+  ArrowUpDown, X, Phone, Mail, Loader2, FileSpreadsheet, FileText,
 } from "lucide-react"
 import {
   Select,
@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatNumber } from "./catalog-utils"
+import { describeReportStatusRule, isReportRowActive, type ReportStatusRule } from "@/lib/engagement/report-status-settings"
 
 interface ShopSummary {
   shop_id: string
@@ -57,7 +58,11 @@ interface ShopConsumer {
   current_balance: number
 }
 
-export function ShopPointsReport() {
+interface ShopPointsReportProps {
+  reportStatusRule: ReportStatusRule
+}
+
+export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
   const [data, setData] = useState<ShopSummary[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [loading, setLoading] = useState(true)
@@ -67,6 +72,7 @@ export function ShopPointsReport() {
   const [sortAsc, setSortAsc] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
+  const [statusView, setStatusView] = useState<'all' | 'active' | 'inactive'>('all')
 
   // Consumer detail dialog state
   const [selectedShop, setSelectedShop] = useState<ShopSummary | null>(null)
@@ -107,7 +113,12 @@ export function ShopPointsReport() {
   }, [])
 
   const filtered = useMemo(() => {
-    let result = data
+    let result = data.filter((shop) => {
+      const isActive = isReportRowActive(shop.total_points_balance, shop.last_activity, reportStatusRule)
+      if (statusView === 'active') return isActive
+      if (statusView === 'inactive') return !isActive
+      return true
+    })
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase()
       result = result.filter(s =>
@@ -124,7 +135,27 @@ export function ShopPointsReport() {
       return sortAsc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av))
     })
     return result
-  }, [data, searchTerm, sortKey, sortAsc])
+  }, [data, searchTerm, sortKey, sortAsc, reportStatusRule, statusView])
+
+  const summaryStats = useMemo(() => {
+    return data.reduce((acc, shop) => {
+      const isActive = isReportRowActive(shop.total_points_balance, shop.last_activity, reportStatusRule)
+      acc.totalShops += 1
+      acc.totalBalance += shop.total_points_balance || 0
+      acc.totalEarned += (shop.total_collected_system || 0) + (shop.total_bonus_points || 0) + (shop.total_collected_manual || 0) + (shop.total_migration_points || 0)
+      acc.totalTransactions += shop.total_transactions || 0
+      if (isActive) acc.activeShops += 1
+      else acc.inactiveShops += 1
+      return acc
+    }, {
+      totalShops: 0,
+      activeShops: 0,
+      inactiveShops: 0,
+      totalBalance: 0,
+      totalEarned: 0,
+      totalTransactions: 0,
+    })
+  }, [data, reportStatusRule])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
   const startIdx = (currentPage - 1) * itemsPerPage
@@ -193,12 +224,69 @@ export function ShopPointsReport() {
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
                     <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_bonus || 0)} Bonus
                   </Badge>
+                  <Badge variant="secondary" className="bg-white/80 text-emerald-700 text-[11px]">
+                    {describeReportStatusRule(reportStatusRule)}
+                  </Badge>
                 </div>
               )}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <Store className="h-5 w-5 text-slate-600" /> Total Shops
+            </CardTitle>
+            <CardDescription>Coverage across this performance report</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-slate-800">{formatNumber(summaryStats.totalShops)}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{formatNumber(summaryStats.activeShops)} active • {formatNumber(summaryStats.inactiveShops)} inactive</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200 bg-emerald-50/70 shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-emerald-700">
+              <Trophy className="h-5 w-5" /> Total Balance
+            </CardTitle>
+            <CardDescription className="text-emerald-700/80">Live balance held by listed shops</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-emerald-700">{formatNumber(summaryStats.totalBalance)}</p>
+            <p className="mt-2 text-xs text-emerald-700/70">Filtered view: {formatNumber(filtered.length)} shops</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-blue-200 bg-blue-50/70 shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-blue-700">
+              <FileSpreadsheet className="h-5 w-5" /> Total Earned
+            </CardTitle>
+            <CardDescription className="text-blue-700/80">System, bonus, manual, and migration inflows</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-blue-700">{formatNumber(summaryStats.totalEarned)}</p>
+            <p className="mt-2 text-xs text-blue-700/70">{formatNumber(totals?.grand_total_bonus || 0)} bonus included</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-amber-200 bg-amber-50/70 shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-700">
+              <FileText className="h-5 w-5" /> Activity Snapshot
+            </CardTitle>
+            <CardDescription className="text-amber-700/80">Shop transaction volume across the report</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-amber-700">{formatNumber(summaryStats.totalTransactions)}</p>
+            <p className="mt-2 text-xs text-amber-700/70">{formatNumber(totals?.grand_total_consumers || 0)} linked shop staff</p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Main Table */}
       <Card>
@@ -213,6 +301,25 @@ export function ShopPointsReport() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <div className="rounded-lg border border-border bg-muted/20 p-1 flex items-center gap-1">
+                {([
+                  ['all', 'All'],
+                  ['active', 'Active'],
+                  ['inactive', 'Inactive'],
+                ] as Array<['all' | 'active' | 'inactive', string]>).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant={statusView === value ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => { setStatusView(value); setCurrentPage(1) }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input

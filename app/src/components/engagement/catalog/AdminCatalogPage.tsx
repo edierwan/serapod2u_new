@@ -81,6 +81,7 @@ import { ReferralMonitor } from './ReferralMonitor'
 import { ReferenceChangeLog } from './ReferenceChangeLog'
 import { ReferralDetail } from './ReferralDetail'
 import { ShopPointsReport } from './ShopPointsReport'
+import { DEFAULT_REPORT_STATUS_SETTINGS, normalizeReportStatusSettings, type ReportStatusSettings } from '@/lib/engagement/report-status-settings'
 
 type RedeemItemRow = Database["public"]["Tables"]["redeem_items"]["Row"]
 type PointsTransactionRow = Database["public"]["Tables"]["points_transactions"]["Row"]
@@ -162,6 +163,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
+  const [reportStatusSettings, setReportStatusSettings] = useState<ReportStatusSettings>(DEFAULT_REPORT_STATUS_SETTINGS)
 
   // Referral states
   const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null)
@@ -202,6 +204,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         if (settings.category_labels) {
           setCategoryLabels({ ...CATEGORY_LABELS, ...settings.category_labels })
         }
+        setReportStatusSettings(normalizeReportStatusSettings(settings))
       }
     }
     loadSettings()
@@ -1395,7 +1398,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* SHOP POINTS MONITOR TAB */}
         <TabsContent value="users" className="space-y-4">
-          <ShopPointsReport />
+          <ShopPointsReport reportStatusRule={reportStatusSettings.shopPerformance} />
         </TabsContent>
 
         <TabsContent value="staff" className="space-y-4">
@@ -1427,6 +1430,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             }}
             defaultVisibleColumnIds={['row_num', 'consumer', 'shop_name', 'location', 'reference', 'current_balance', 'collected_system', 'migration', 'transactions', 'last_activity', 'actions']}
             initialSortConfig={{ key: 'current_balance', direction: 'desc' }}
+            reportStatusRule={reportStatusSettings.shopStaffPerformance}
           />
         </TabsContent>
 
@@ -1455,6 +1459,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             columnLabelOverrides={{
               consumer: 'Consumer',
             }}
+            reportStatusRule={reportStatusSettings.consumerPerformance}
           />
         </TabsContent>
 

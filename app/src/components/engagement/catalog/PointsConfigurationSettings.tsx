@@ -28,6 +28,8 @@ import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
 import { RoadtourRewardSettings } from './RoadtourRewardSettings'
 import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
 import { normalizePointClaimSettings, type PointClaimMode } from '@/lib/engagement/point-claim-settings'
+import { DEFAULT_REPORT_STATUS_SETTINGS, describeReportStatusRule, normalizeReportStatusSettings, type ReportStatusSettings, type ReportStatusTarget } from '@/lib/engagement/report-status-settings'
+import { toast } from '@/components/ui/use-toast'
 
 type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
 type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
@@ -57,9 +59,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [pointClaimMode, setPointClaimMode] = useState<PointClaimMode>('single_shop')
   const [consumerPointsPerScan, setConsumerPointsPerScan] = useState<number>(50)
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
+  const [reportStatusSettings, setReportStatusSettings] = useState<ReportStatusSettings>(DEFAULT_REPORT_STATUS_SETTINGS)
 
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'roadtour' | 'registration' | 'media' | 'referral'>('points')
+  const [settingsTab, setSettingsTab] = useState<'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status'>('points')
 
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -112,6 +115,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           setPointValueRM(claimSettings.pointValueRM)
           setPointClaimMode(claimSettings.claimMode)
           setConsumerPointsPerScan(claimSettings.consumerPointsPerScan)
+          setReportStatusSettings(normalizeReportStatusSettings(settings))
           if (settings.migration_multiplier !== undefined) {
             setMigrationMultiplier(settings.migration_multiplier)
           }
@@ -151,6 +155,12 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         return
       }
 
+      const invalidActivityRule = Object.values(reportStatusSettings).find((rule) => rule.mode === 'activity' && rule.inactiveAfterDays < 1)
+      if (invalidActivityRule) {
+        showAlert('error', 'Inactive days must be at least 1 for activity-based rules')
+        return
+      }
+
       // Save point value to organization settings
       const { data: orgData } = await supabase
         .from('organizations')
@@ -166,6 +176,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         media_display_duration: mediaDisplayDuration,
         point_claim_mode: pointClaimMode,
         consumer_points_per_scan: consumerPointsPerScan,
+        report_status_settings: reportStatusSettings,
       }
 
       const { error: settingsError } = await supabase
@@ -201,6 +212,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         if (updateError) throw updateError
 
         showAlert('success', 'Point configuration updated successfully!')
+        toast({ title: 'Settings Saved', description: 'Point collection and report status settings updated successfully.' })
 
         // Refresh the rule
         const { data: updated } = await supabase
@@ -239,15 +251,37 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         if (createError) throw createError
 
         showAlert('success', 'Point configuration created successfully!')
+        toast({ title: 'Settings Saved', description: 'Initial point collection settings created successfully.' })
         setActiveRule(created)
         setAllRules([created, ...allRules])
       }
     } catch (error: any) {
       console.error('Error saving rule:', error)
       showAlert('error', `Failed to save: ${error.message}`)
+      toast({ title: 'Save Failed', description: error.message || 'Failed to save settings.', variant: 'destructive' })
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleClaimModeChange = (mode: PointClaimMode) => {
+    if (mode === pointClaimMode) return
+    setPointClaimMode(mode)
+    const description = mode === 'single_shop'
+      ? 'Shop Staff Only selected. QR point claim stays on the previous shop staff flow after you save.'
+      : 'Dual Claim selected. Shop staff and consumer lanes will both be enabled after you save.'
+    showAlert('info', description)
+    toast({ title: 'Claim Mode Changed', description })
+  }
+
+  const updateReportStatusRule = (target: ReportStatusTarget, patch: Partial<ReportStatusSettings[ReportStatusTarget]>) => {
+    setReportStatusSettings((current) => ({
+      ...current,
+      [target]: {
+        ...current[target],
+        ...patch,
+      },
+    }))
   }
 
   // Activate a different rule
@@ -324,8 +358,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'roadtour' | 'registration' | 'media' | 'referral')}>
-        <TabsList className="grid w-full max-w-5xl grid-cols-5">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status')}>
+        <TabsList className="grid w-full max-w-6xl grid-cols-6">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
@@ -345,6 +379,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           <TabsTrigger value="referral" className="gap-2">
             <Banknote className="h-4 w-4" />
             Referral Incentives
+          </TabsTrigger>
+          <TabsTrigger value="status" className="gap-2">
+            <Users className="h-4 w-4" />
+            Report Status
           </TabsTrigger>
         </TabsList>
 
@@ -382,7 +420,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                       type="button"
                       variant={pointClaimMode === 'single_shop' ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setPointClaimMode('single_shop')}
+                      onClick={() => handleClaimModeChange('single_shop')}
                     >
                       Shop Staff Only
                     </Button>
@@ -390,7 +428,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                       type="button"
                       variant={pointClaimMode === 'dual' ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setPointClaimMode('dual')}
+                      onClick={() => handleClaimModeChange('dual')}
                     >
                       Dual Claim
                     </Button>
@@ -795,6 +833,83 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         {/* Referral Incentives Settings Tab */}
         <TabsContent value="referral" className="space-y-6 mt-6">
           <ReferralIncentiveSettings userProfile={userProfile} />
+        </TabsContent>
+
+        <TabsContent value="status" className="space-y-6 mt-6">
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Report Status Rules
+              </CardTitle>
+              <CardDescription>
+                Control how Active and Inactive tabs classify rows for Shop Performance, Shop Staff Performance, and Consumer Performance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {([
+                ['shopPerformance', 'Shop Performance'],
+                ['shopStaffPerformance', 'Shop Staff Performance'],
+                ['consumerPerformance', 'Consumer Performance'],
+              ] as Array<[ReportStatusTarget, string]>).map(([target, label]) => {
+                const rule = reportStatusSettings[target]
+                return (
+                  <div key={target} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                      <div className="space-y-1 min-w-0">
+                        <Label className="text-base font-semibold">{label}</Label>
+                        <p className="text-xs text-muted-foreground">{describeReportStatusRule(rule)}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-[220px_180px]">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Inactive rule</Label>
+                          <Select
+                            value={rule.mode}
+                            onValueChange={(value) => updateReportStatusRule(target, { mode: value as 'balance' | 'activity' })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="balance">Balance is 0</SelectItem>
+                              <SelectItem value="activity">No activity for X days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">Inactive after days</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={rule.inactiveAfterDays}
+                            onChange={(e) => updateReportStatusRule(target, { inactiveAfterDays: parseInt(e.target.value) || 1 })}
+                            disabled={rule.mode !== 'activity'}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              <div className="flex items-center gap-3 pt-4 border-t">
+                <Button onClick={handleSave} disabled={saving} className="gap-2" size="lg">
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Report Status Rules
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">These rules drive the Active and Inactive filters across all three performance reports.</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
       </Tabs>

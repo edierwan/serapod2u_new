@@ -18,6 +18,7 @@ import { PointMigration } from "./PointMigration"
 import { MigrationHistory } from "./MigrationHistory"
 import { UserShopMigration } from "./UserShopMigration"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { describeReportStatusRule, isReportRowActive, type ReportStatusRule } from "@/lib/engagement/report-status-settings"
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ interface UserPointsMonitorProps {
   columnLabelOverrides?: Partial<Record<ColumnDef['id'], string>>
   defaultVisibleColumnIds?: string[]
   initialSortConfig?: { key: keyof ConsumerUser; direction: 'asc' | 'desc' }
+  reportStatusRule: ReportStatusRule
 }
 
 // ── Column definition ────────────────────────────────────────────
@@ -133,6 +135,7 @@ export function UserPointsMonitor({
   columnLabelOverrides,
   defaultVisibleColumnIds,
   initialSortConfig,
+  reportStatusRule,
 }: UserPointsMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -140,6 +143,7 @@ export function UserPointsMonitor({
   const [sortConfig, setSortConfig] = useState<{ key: keyof ConsumerUser; direction: 'asc' | 'desc' } | null>(initialSortConfig || null)
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [statusView, setStatusView] = useState<'all' | 'active' | 'inactive'>('all')
 
   const columns = useMemo(
     () => ALL_COLUMNS.map((column) => ({
@@ -179,20 +183,28 @@ export function UserPointsMonitor({
   // ── Search & sort ──────────────────────────────────────────────
 
   const filteredUsers = useMemo(() => {
+    const baseUsers = users.filter((user) => {
+      const isActive = isReportRowActive(user.current_balance, user.last_transaction_date, reportStatusRule)
+      if (statusView === 'active') return isActive
+      if (statusView === 'inactive') return !isActive
+      return true
+    })
+
     const term = searchTerm.toLowerCase()
-    if (!term) return users
-    return users.filter(user =>
+    if (!term) return baseUsers
+    return baseUsers.filter(user =>
       user.consumer_name.toLowerCase().includes(term) ||
       (user.consumer_phone || "").toLowerCase().includes(term) ||
       (user.consumer_email || "").toLowerCase().includes(term) ||
       (user.consumer_reference || "").toLowerCase().includes(term) ||
       (user.consumer_shop_name || "").toLowerCase().includes(term)
     )
-  }, [users, searchTerm])
+  }, [users, searchTerm, reportStatusRule, statusView])
 
   const summaryStats = useMemo(() => {
     return users.reduce(
       (acc, user) => {
+        const isActive = isReportRowActive(user.current_balance, user.last_transaction_date, reportStatusRule)
         acc.totalUsers += 1
         acc.totalBalance += user.current_balance || 0
         acc.totalSystem += user.total_collected_system || 0
@@ -201,10 +213,14 @@ export function UserPointsMonitor({
         acc.totalRedeemed += user.total_redeemed || 0
         acc.totalTransactions += user.transaction_count || 0
         if ((user.current_balance || 0) > 0) acc.usersWithBalance += 1
+        if (isActive) acc.activeUsers += 1
+        else acc.inactiveUsers += 1
         return acc
       },
       {
         totalUsers: 0,
+        activeUsers: 0,
+        inactiveUsers: 0,
         usersWithBalance: 0,
         totalBalance: 0,
         totalSystem: 0,
@@ -214,7 +230,7 @@ export function UserPointsMonitor({
         totalTransactions: 0,
       }
     )
-  }, [users])
+  }, [users, reportStatusRule])
 
   const handleSort = (key: keyof ConsumerUser) => {
     setSortConfig(prev => {
@@ -245,6 +261,11 @@ export function UserPointsMonitor({
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
+    setCurrentPage(1)
+  }
+
+  const handleStatusViewChange = (value: 'all' | 'active' | 'inactive') => {
+    setStatusView(value)
     setCurrentPage(1)
   }
 
@@ -465,6 +486,9 @@ export function UserPointsMonitor({
                       ✓ {tag}
                     </Badge>
                   ))}
+                  <Badge variant="secondary" className="bg-white/70 text-purple-700 text-[11px] font-medium">
+                    {describeReportStatusRule(reportStatusRule)}
+                  </Badge>
                 </div>
               </div>
             </div>
@@ -481,7 +505,7 @@ export function UserPointsMonitor({
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-semibold text-slate-800">{formatNumber(summaryStats.totalUsers)}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{formatNumber(filteredUsers.length)} matching current search</p>
+              <p className="mt-2 text-xs text-muted-foreground">{formatNumber(summaryStats.activeUsers)} active • {formatNumber(summaryStats.inactiveUsers)} inactive</p>
             </CardContent>
           </Card>
 
@@ -542,6 +566,25 @@ export function UserPointsMonitor({
 
               {/* Toolbar */}
               <div className="flex items-center gap-2 flex-wrap">
+                <div className="rounded-lg border border-border bg-muted/20 p-1 flex items-center gap-1">
+                  {([
+                    ['all', 'All'],
+                    ['active', 'Active'],
+                    ['inactive', 'Inactive'],
+                  ] as Array<['all' | 'active' | 'inactive', string]>).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant={statusView === value ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => handleStatusViewChange(value)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   <Input
