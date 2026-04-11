@@ -148,6 +148,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [rewards, setRewards] = useState<RedeemItemRow[]>([])
   const [transactions, setTransactions] = useState<PointsTransactionRow[]>([])
   const [shopUsers, setShopUsers] = useState<ShopUser[]>([])
+  const [shopStaffUsers, setShopStaffUsers] = useState<any[]>([])
   const [consumerUsers, setConsumerUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [usersLoading, setUsersLoading] = useState(false)
@@ -157,7 +158,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [userSearchTerm, setUserSearchTerm] = useState("")
   const [sortOption, setSortOption] = useState<string>("updated-desc")
-  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "consumers" | "settings" | "redemptions" | "feedback" | "referral">("rewards")
+  const [activeTab, setActiveTab] = useState<"rewards" | "users" | "staff" | "consumers" | "settings" | "redemptions" | "feedback" | "referral">("rewards")
 
   const [categoryLabels, setCategoryLabels] = useState<Record<RewardCategory, string>>(CATEGORY_LABELS)
   const [showCategorySettings, setShowCategorySettings] = useState(false)
@@ -269,6 +270,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   useEffect(() => {
     if (activeTab === 'users' && shopUsers.length === 0) {
       loadShopUsers()
+    } else if (activeTab === 'staff' && shopStaffUsers.length === 0) {
+      loadShopStaffUsers()
     } else if (activeTab === 'consumers' && consumerUsers.length === 0) {
       loadConsumerUsers()
     }
@@ -508,6 +511,24 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
       setConsumerUsers(data || [])
     } catch (error) {
       console.error("Error loading consumer users:", error)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  async function loadShopStaffUsers() {
+    setUsersLoading(true)
+    try {
+      const response = await fetch('/api/admin/shop-staff-performance')
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load shop staff performance')
+      }
+
+      setShopStaffUsers(result.data || [])
+    } catch (error) {
+      console.error('Error loading shop staff users:', error)
     } finally {
       setUsersLoading(false)
     }
@@ -897,10 +918,13 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             <Package className="h-4 w-4" /> Manage Rewards
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" /> Shop Performance Monitor
+            <Users className="h-4 w-4" /> Shop Performance
+          </TabsTrigger>
+          <TabsTrigger value="staff" className="gap-2">
+            <Users className="h-4 w-4" /> Shop Staff Performance
           </TabsTrigger>
           <TabsTrigger value="consumers" className="gap-2">
-            <Users className="h-4 w-4" /> Individual Points Monitor
+            <Users className="h-4 w-4" /> Consumer Performance
           </TabsTrigger>
           <TabsTrigger value="redemptions" className="gap-2">
             <Gift className="h-4 w-4" /> Redemption History
@@ -1375,6 +1399,36 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
           <ShopPointsReport />
         </TabsContent>
 
+        <TabsContent value="staff" className="space-y-4">
+          <UserPointsMonitor
+            users={shopStaffUsers}
+            loading={usersLoading}
+            onAdjustPoints={(user) => {
+              setSelectedUser(user)
+              setPointsAdjustment({ amount: 0, type: 'add', description: '' })
+              setShowAdjustPointsModal(true)
+            }}
+            onRefresh={() => loadShopStaffUsers()}
+            storageKey="shop-staff-points-columns"
+            bannerTitle="Shop Staff Performance"
+            bannerDescription="Shop-attached staff accounts are tracked here based on shop-lane scan contribution. Customer balances are tracked separately under Consumer Performance."
+            badgeLabels={['Shop Staff Accounts', 'Shop-lane Contribution', 'Scan History']}
+            tableTitle="Shop Staff Point Contributions"
+            entityLabelSingular="shop staff"
+            entityLabelPlural="shop staff"
+            emptyTitle="No shop staff found"
+            emptyDescription="Monitor point contribution and scan activity for shop staff accounts."
+            emptySearchDescription="Try adjusting your search terms. Customer balances appear under Consumer Performance."
+            exportFilenamePrefix="shop-staff-performance"
+            columnLabelOverrides={{
+              consumer: 'Shop Staff',
+              reference: 'Role',
+              shop_name: 'Shop',
+            }}
+            defaultVisibleColumnIds={['row_num', 'consumer', 'shop_name', 'current_balance', 'collected_system', 'migration', 'transactions', 'last_activity', 'actions']}
+          />
+        </TabsContent>
+
         {/* CONSUMER POINTS MONITOR TAB */}
         <TabsContent value="consumers" className="space-y-4">
           <UserPointsMonitor
@@ -1386,6 +1440,20 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
               setShowAdjustPointsModal(true)
             }}
             onRefresh={() => loadConsumerUsers()}
+            storageKey="customer-points-columns"
+            bannerTitle="Customer Point Collection System"
+            bannerDescription="Customer accounts collect points through the mobile app. Shop staff performance is tracked separately under Shop Staff Performance."
+            badgeLabels={['Customer Accounts', 'Real-time Balance Updates', 'Transaction History']}
+            tableTitle="Customer Point Balances"
+            entityLabelSingular="customer"
+            entityLabelPlural="customers"
+            emptyTitle="No customers found"
+            emptyDescription="Monitor point collections and balances for customer accounts."
+            emptySearchDescription="Try adjusting your search terms. Shop-attached staff appear under Shop Staff Performance."
+            exportFilenamePrefix="customer-performance"
+            columnLabelOverrides={{
+              consumer: 'Customer',
+            }}
           />
         </TabsContent>
 

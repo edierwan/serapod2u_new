@@ -50,6 +50,19 @@ interface UserPointsMonitorProps {
   loading: boolean
   onAdjustPoints: (user: ConsumerUser) => void
   onRefresh?: () => void
+  storageKey?: string
+  bannerTitle?: string
+  bannerDescription?: string
+  badgeLabels?: string[]
+  tableTitle?: string
+  entityLabelSingular?: string
+  entityLabelPlural?: string
+  emptyTitle?: string
+  emptyDescription?: string
+  emptySearchDescription?: string
+  exportFilenamePrefix?: string
+  columnLabelOverrides?: Partial<Record<ColumnDef['id'], string>>
+  defaultVisibleColumnIds?: string[]
 }
 
 // ── Column definition ────────────────────────────────────────────
@@ -86,21 +99,39 @@ const ALL_COLUMNS: ColumnDef[] = [
 const STORAGE_KEY = 'consumer-points-columns'
 const GROUP_LABELS: Record<string, string> = { identity: 'Identity', balance: 'Points & Balance', activity: 'Activity' }
 
-function loadSavedColumns(): string[] | null {
+function loadSavedColumns(storageKey: string): string[] | null {
   if (typeof window === 'undefined') return null
   try {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    const saved = localStorage.getItem(storageKey)
     return saved ? JSON.parse(saved) : null
   } catch { return null }
 }
 
-function saveColumns(ids: string[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)) } catch { /* noop */ }
+function saveColumns(storageKey: string, ids: string[]) {
+  try { localStorage.setItem(storageKey, JSON.stringify(ids)) } catch { /* noop */ }
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }: UserPointsMonitorProps) {
+export function UserPointsMonitor({
+  users,
+  loading,
+  onAdjustPoints,
+  onRefresh,
+  storageKey = STORAGE_KEY,
+  bannerTitle = 'Individual Point Collection System',
+  bannerDescription = 'Non-shop users collect points through the mobile app. Shop-attached staff accounts are monitored under Shop Performance Monitor.',
+  badgeLabels = ['Non-shop Accounts', 'Real-time Balance Updates', 'Transaction History'],
+  tableTitle = 'Individual Point Balances',
+  entityLabelSingular = 'individual user',
+  entityLabelPlural = 'individual users',
+  emptyTitle = 'No individual users found',
+  emptyDescription = 'Monitor point collections and balances for non-shop users.',
+  emptySearchDescription = 'Try adjusting your search terms. Shop-attached staff appear under Shop Performance Monitor.',
+  exportFilenamePrefix = 'individual-points',
+  columnLabelOverrides,
+  defaultVisibleColumnIds,
+}: UserPointsMonitorProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
@@ -108,29 +139,37 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
 
+  const columns = useMemo(
+    () => ALL_COLUMNS.map((column) => ({
+      ...column,
+      label: columnLabelOverrides?.[column.id] ?? column.label,
+    })),
+    [columnLabelOverrides]
+  )
+
   // Column visibility – persisted in localStorage
   const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>(() => {
-    const saved = loadSavedColumns()
-    return saved || ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id)
+    const saved = loadSavedColumns(storageKey)
+    return saved || defaultVisibleColumnIds || ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id)
   })
 
   const visibleColumns = useMemo(
-    () => ALL_COLUMNS.filter(c => visibleColumnIds.includes(c.id)),
-    [visibleColumnIds]
+    () => columns.filter(c => visibleColumnIds.includes(c.id)),
+    [columns, visibleColumnIds]
   )
 
   const toggleColumn = (id: string) => {
     setVisibleColumnIds(prev => {
       const next = prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-      saveColumns(next)
+      saveColumns(storageKey, next)
       return next
     })
   }
 
   const resetColumns = () => {
-    const defaults = ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id)
+    const defaults = defaultVisibleColumnIds || ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.id)
     setVisibleColumnIds(defaults)
-    saveColumns(defaults)
+    saveColumns(storageKey, defaults)
   }
 
   const visibleCount = visibleColumnIds.filter(id => id !== 'row_num' && id !== 'actions').length
@@ -213,9 +252,9 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
     }
     const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    downloadBlob(blob, `consumer-points-${new Date().toISOString().slice(0, 10)}.csv`)
+    downloadBlob(blob, `${exportFilenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`)
     setExportOpen(false)
-  }, [buildExportData])
+  }, [buildExportData, exportFilenamePrefix])
 
   const exportExcel = useCallback(() => {
     const { headers, rows } = buildExportData()
@@ -223,9 +262,9 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
     const bodyRows = rows.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`).join('')
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>td,th{border:1px solid #ddd;padding:6px 10px;font-family:Segoe UI,sans-serif;font-size:11pt}th{background:#4F46E5;color:#fff;font-weight:600}tr:nth-child(even){background:#F9FAFB}</style></head><body><table><thead><tr>${thCells}</tr></thead><tbody>${bodyRows}</tbody></table></body></html>`
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
-    downloadBlob(blob, `consumer-points-${new Date().toISOString().slice(0, 10)}.xls`)
+    downloadBlob(blob, `${exportFilenamePrefix}-${new Date().toISOString().slice(0, 10)}.xls`)
     setExportOpen(false)
-  }, [buildExportData])
+  }, [buildExportData, exportFilenamePrefix])
 
   // ── Sortable header ────────────────────────────────────────────
 
@@ -388,12 +427,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                 <Users className="h-5 w-5 text-purple-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-purple-900">Individual Point Collection System</h3>
+                <h3 className="font-semibold text-purple-900">{bannerTitle}</h3>
                 <p className="mt-0.5 text-sm text-purple-700/80">
-                  Non-shop users collect points through the mobile app. Shop-attached staff accounts are monitored under Shop Performance Monitor.
+                  {bannerDescription}
                 </p>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  {['Non-shop Accounts', 'Real-time Balance Updates', 'Transaction History'].map(tag => (
+                  {badgeLabels.map(tag => (
                     <Badge key={tag} variant="secondary" className="bg-purple-100/80 text-purple-700 text-[11px] font-medium">
                       ✓ {tag}
                     </Badge>
@@ -410,12 +449,12 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Trophy className="h-4 w-4" /> Individual Point Balances
+                  <Trophy className="h-4 w-4" /> {tableTitle}
                 </CardTitle>
                 <CardDescription className="mt-0.5">
                   {sortedUsers.length > 0
-                    ? `${formatNumber(sortedUsers.length)} individual user${sortedUsers.length !== 1 ? 's' : ''} · ${visibleCount} columns visible`
-                    : 'Monitor point collections and balances for non-shop users.'}
+                    ? `${formatNumber(sortedUsers.length)} ${sortedUsers.length !== 1 ? entityLabelPlural : entityLabelSingular} · ${visibleCount} columns visible`
+                    : emptyDescription}
                 </CardDescription>
               </div>
 
@@ -447,11 +486,11 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                           <RotateCcw className="h-3 w-3" /> Reset
                         </Button>
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{visibleCount} of {ALL_COLUMNS.length - 2} columns selected</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{visibleCount} of {columns.length - 2} columns selected</p>
                     </div>
                     <div className="max-h-[340px] overflow-y-auto p-2 space-y-3">
                       {Object.entries(GROUP_LABELS).map(([groupKey, groupLabel]) => {
-                        const groupCols = ALL_COLUMNS.filter(c => c.group === groupKey && c.id !== 'row_num' && c.id !== 'actions')
+                        const groupCols = columns.filter(c => c.group === groupKey && c.id !== 'row_num' && c.id !== 'actions')
                         if (groupCols.length === 0) return null
                         return (
                           <div key={groupKey}>
@@ -527,9 +566,9 @@ export function UserPointsMonitor({ users, loading, onAdjustPoints, onRefresh }:
                 <div className="rounded-full bg-muted p-4 mb-4">
                   <Users className="h-8 w-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold">No individual users found</h3>
+                <h3 className="text-lg font-semibold">{emptyTitle}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {searchTerm ? "Try adjusting your search terms. Shop-attached staff appear under Shop Performance Monitor." : "No non-shop users have collected points yet."}
+                  {searchTerm ? emptySearchDescription : emptyDescription}
                 </p>
               </div>
             ) : (
