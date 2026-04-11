@@ -374,7 +374,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                   <div className="space-y-1">
                     <Label className="text-base font-semibold">Claim Mode</Label>
                     <p className="text-xs text-muted-foreground">
-                      `Shop Staff Only` keeps the previous single-claim behavior. `Dual Claim` allows both shop staff and consumer to collect on separate lanes.
+                      Shop Staff Only keeps the previous single-claim behavior. Dual Claim allows both shop staff and consumer to collect on separate lanes.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -455,7 +455,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Used when claim mode is `Dual Claim`.
+                    Used when claim mode is Dual Claim.
                   </p>
                   {consumerPointsPerScan > 0 && pointValueRM > 0 && (
                     <div className="text-sm font-medium text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100 inline-block">
