@@ -527,6 +527,9 @@ export default function PremiumLoyaltyTemplate({
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile'>('login')
+    const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
+    const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
+    const [qrConsumerLaneCollected, setQrConsumerLaneCollected] = useState(false)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -1348,8 +1351,8 @@ export default function PremiumLoyaltyTemplate({
     }, [activeTab, isAuthenticated, userId, supabase, userName, shopName, userPhone, userAvatarUrl, isShopUser, userPoints])
 
     // Check QR status function - reusable for multiple calls
-    const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean }> => {
-        if (!qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false }
+    const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean, claimMode: 'single_shop' | 'dual', shopLaneCollected: boolean, consumerLaneCollected: boolean }> => {
+        if (!qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false, claimMode: 'single_shop', shopLaneCollected: false, consumerLaneCollected: false }
 
         try {
             const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
@@ -1358,14 +1361,30 @@ export default function PremiumLoyaltyTemplate({
             if (data.success) {
                 return {
                     isLuckyDrawEntered: data.is_lucky_draw_entered || false,
-                    isPointsCollected: data.is_points_collected || false
+                    isPointsCollected: data.is_points_collected || false,
+                    claimMode: data.claim_mode === 'dual' ? 'dual' : 'single_shop',
+                    shopLaneCollected: data.is_shop_points_collected || false,
+                    consumerLaneCollected: data.is_consumer_points_collected || false
                 }
             }
         } catch (error) {
             console.error('Error checking QR status:', error)
         }
-        return { isLuckyDrawEntered: false, isPointsCollected: false }
+        return { isLuckyDrawEntered: false, isPointsCollected: false, claimMode: 'single_shop', shopLaneCollected: false, consumerLaneCollected: false }
     }
+
+    useEffect(() => {
+        if (qrClaimMode === 'dual') {
+            if (!isAuthenticated) {
+                setQrPointsCollected(qrShopLaneCollected && qrConsumerLaneCollected)
+            } else {
+                setQrPointsCollected(isShopUser ? qrShopLaneCollected : qrConsumerLaneCollected)
+            }
+            return
+        }
+
+        setQrPointsCollected(qrShopLaneCollected || qrConsumerLaneCollected)
+    }, [qrClaimMode, qrShopLaneCollected, qrConsumerLaneCollected, isAuthenticated, isShopUser])
 
     // Check QR status on mount - this prevents button clicks if already used
     useEffect(() => {
@@ -1396,11 +1415,9 @@ export default function PremiumLoyaltyTemplate({
                 const data = await response.json()
 
                 if (data.success) {
-                    // Check if points already collected from this QR
-                    if (data.is_points_collected) {
-                        setQrPointsCollected(true)
-                        setPointsCollected(true)
-                    }
+                    setQrClaimMode(data.claim_mode === 'dual' ? 'dual' : 'single_shop')
+                    setQrShopLaneCollected(data.is_shop_points_collected || false)
+                    setQrConsumerLaneCollected(data.is_consumer_points_collected || false)
 
                     // Check if lucky draw already entered from this QR
                     if (data.is_lucky_draw_entered) {
@@ -2471,7 +2488,7 @@ export default function PremiumLoyaltyTemplate({
                 }
             }
 
-            if (Object.keys(updateData).length === 0) {
+            if (Object.keys(updateData).length === 0 && !referralPhoneChanged) {
                 setProfileSaveError('No changes to save')
                 setSavingProfile(false)
                 return
@@ -2807,6 +2824,10 @@ export default function PremiumLoyaltyTemplate({
 
             if (!response.ok) {
                 if (data.already_collected) {
+                    if (data.remaining_lane_available) {
+                        setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                        return
+                    }
                     // Points already collected for this QR
                     setPointsEarned(data.points_earned || 0)
                     setPreviousBalance(data.total_balance || 0)
@@ -2830,6 +2851,11 @@ export default function PremiumLoyaltyTemplate({
             setTotalBalance(newBalance)
             setUserPoints(newBalance)
             setPointsCollected(true)
+            if (data.claim_lane === 'shop') {
+                setQrShopLaneCollected(true)
+            } else if (data.claim_lane === 'consumer') {
+                setQrConsumerLaneCollected(true)
+            }
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
 
@@ -2922,6 +2948,10 @@ export default function PremiumLoyaltyTemplate({
 
             if (!response.ok) {
                 if (data.already_collected) {
+                    if (data.remaining_lane_available) {
+                        setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                        return
+                    }
                     // Points already collected for this QR
                     setPointsEarned(data.points_earned || 0)
                     setPreviousBalance(data.total_balance || 0)
@@ -2944,6 +2974,11 @@ export default function PremiumLoyaltyTemplate({
             setTotalBalance(newBalance)
             setUserPoints(newBalance)
             setPointsCollected(true)
+            if (data.claim_lane === 'shop') {
+                setQrShopLaneCollected(true)
+            } else if (data.claim_lane === 'consumer') {
+                setQrConsumerLaneCollected(true)
+            }
             setShowPointsSuccessModal(true)
             if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
 
@@ -5860,7 +5895,7 @@ export default function PremiumLoyaltyTemplate({
                                         <div className="flex gap-2 items-start">
                                             <div className="flex-1">
                                                 <ReferencePicker
-                                                    value={userReferralPhone}
+                                                    value={newReferralPhone}
                                                     onSelect={(ref: ReferenceUser | null, phone: string) => {
                                                         setNewReferralPhone(phone)
                                                         if (ref) {
@@ -5893,7 +5928,7 @@ export default function PremiumLoyaltyTemplate({
                                         <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
                                     </div>
                                 )}
-                                {!userReferralPhone && (
+                                {!((editingReferralPhone ? newReferralPhone : userReferralPhone) || '').trim() && (
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your reference to collect points</p>
                                 )}
                             </div>
@@ -5954,15 +5989,10 @@ export default function PremiumLoyaltyTemplate({
                                     ) : (
                                         <div className="flex items-start gap-2">
                                             <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
-                                            <div className="space-y-1">
-                                                <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
-                                                {shopName && (
-                                                    <p className="text-xs text-gray-500">Shop is managed from master data.</p>
-                                                )}
-                                            </div>
+                                            <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
                                         </div>
                                     )}
-                                    {!shopName && !userShopName && (
+                                    {!((!shopName && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
                                         <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                     )}
                             </div>

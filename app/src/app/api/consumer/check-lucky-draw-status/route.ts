@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveQrCodeRecord } from '@/lib/utils/qr-resolver'
+import { normalizePointClaimSettings } from '@/lib/engagement/point-claim-settings'
 
 /**
  * GET /api/consumer/check-lucky-draw-status
@@ -44,6 +45,9 @@ export async function GET(request: NextRequest) {
         success: true,
         is_lucky_draw_entered: false,
         is_points_collected: false,
+        claim_mode: 'single_shop',
+        is_shop_points_collected: false,
+        is_consumer_points_collected: false,
         message: 'QR code not found'
       })
     }
@@ -53,7 +57,7 @@ export async function GET(request: NextRequest) {
     // Fetch the full QR code data with lucky draw and points status
     const { data: qrData, error: qrError } = await supabase
       .from('qr_codes')
-      .select('id, code, is_lucky_draw_entered, is_points_collected')
+      .select('id, code, company_id, is_lucky_draw_entered, is_points_collected, is_shop_points_collected, is_consumer_points_collected')
       .eq('id', qrCodeData.id)
       .single()
 
@@ -63,13 +67,36 @@ export async function GET(request: NextRequest) {
         success: true,
         is_lucky_draw_entered: false,
         is_points_collected: false,
+        claim_mode: 'single_shop',
+        is_shop_points_collected: false,
+        is_consumer_points_collected: false,
         message: 'Error fetching QR details'
       })
     }
 
+    let claimMode: 'single_shop' | 'dual' = 'single_shop'
+    if (qrData.company_id) {
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', qrData.company_id)
+        .maybeSingle()
+
+      claimMode = normalizePointClaimSettings(orgData?.settings, 100).claimMode
+    }
+
+    const shopLaneCollected = Boolean(qrData.is_shop_points_collected || (qrData.is_points_collected && !qrData.is_consumer_points_collected))
+    const consumerLaneCollected = Boolean(qrData.is_consumer_points_collected)
+    const anyPointsCollected = claimMode === 'dual'
+      ? shopLaneCollected && consumerLaneCollected
+      : Boolean(qrData.is_points_collected || shopLaneCollected || consumerLaneCollected)
+
     console.log('📊 QR Status:', {
       is_lucky_draw_entered: qrData.is_lucky_draw_entered,
-      is_points_collected: qrData.is_points_collected
+      is_points_collected: anyPointsCollected,
+      claim_mode: claimMode,
+      is_shop_points_collected: shopLaneCollected,
+      is_consumer_points_collected: consumerLaneCollected
     })
 
     // BULLETPROOF: Check lucky_draw_entries table as fallback
@@ -138,7 +165,10 @@ export async function GET(request: NextRequest) {
       success: true,
       qr_code_id: qrData.id,
       is_lucky_draw_entered: isLuckyDrawEntered,
-      is_points_collected: qrData.is_points_collected || false,
+      is_points_collected: anyPointsCollected,
+      claim_mode: claimMode,
+      is_shop_points_collected: shopLaneCollected,
+      is_consumer_points_collected: consumerLaneCollected,
       is_gift_redeemed: isGiftRedeemed,
       is_scratch_card_played: isScratchCardPlayed,
       scratch_card_reward: scratchCardReward,

@@ -347,14 +347,23 @@ export async function POST(request: NextRequest) {
             .select('current_balance')
             .eq('user_id', user.id)
             .maybeSingle()).data?.current_balance || 0)
+        const remainingLane = pointClaimSettings.claimMode === 'dual'
+          ? (claimLane === 'shop' ? 'consumer' : 'shop')
+          : null
+        const errorMessage = remainingLane
+          ? `This QR code was already collected by the ${claimLane === 'shop' ? 'shop staff' : 'consumer'} lane. Only ${remainingLane === 'shop' ? 'shop staff' : 'consumer'} can collect it now.`
+          : 'Points for this QR code have already been collected.'
 
         return NextResponse.json(
           {
             success: false,
             already_collected: true,
-            error: 'Points for this QR code have already been collected.',
+            error: errorMessage,
             points_earned: result.points_earned || 0,
-            total_balance: totalBalance
+            total_balance: totalBalance,
+            claim_mode: pointClaimSettings.claimMode,
+            claim_lane: claimLane,
+            remaining_lane_available: remainingLane
           },
           { status: 409 }
         )
@@ -391,7 +400,9 @@ export async function POST(request: NextRequest) {
       shop_name: shopUser.full_name || shopUser.email,
       qr_code: qrCodeData.code,
       message: 'Points collected successfully!',
-      avatar_url: shopUser.avatar_url
+      avatar_url: shopUser.avatar_url,
+      claim_mode: pointClaimSettings.claimMode,
+      claim_lane: claimLane
     })
 
   } catch (error) {
