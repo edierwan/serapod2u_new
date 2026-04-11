@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { loadScopedShopUsers } from '../_user-management-scope'
 
 /**
  * GET /api/admin/shop-staff-performance
@@ -31,53 +32,36 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const companyId = profile.organization_id
-    if (!companyId) {
-      return NextResponse.json({ success: true, data: [] })
+    const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
+
+    if (shopUsers.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        meta: {
+          scopedShopUserCount: 0,
+          shopUsersWithPointsCount: 0,
+          scanRowCount: 0,
+          pointsTransactionRowCount: 0,
+          finalReturnedCount: 0,
+        },
+      })
     }
 
-    const { data: distributors } = await admin
-      .from('organizations')
-      .select('id')
-      .eq('parent_org_id', companyId)
-      .in('org_type_code', ['DIST'])
-      .eq('is_active', true)
-
-    const distributorIds = distributors?.map((item) => item.id) || []
-
-    let shopQuery = admin
+    const shopOrgIds = Array.from(new Set(shopUsers.map((item) => item.organization_id).filter(Boolean))) as string[]
+    const { data: shopOrgs, error: shopError } = await admin
       .from('organizations')
       .select('id, org_name')
-      .in('org_type_code', ['SHOP'])
-      .eq('is_active', true)
+      .in('id', shopOrgIds)
 
-    if (distributorIds.length > 0) {
-      shopQuery = shopQuery.or(`parent_org_id.in.(${distributorIds.join(',')}),parent_org_id.eq.${companyId}`)
-    } else {
-      shopQuery = shopQuery.eq('parent_org_id', companyId)
-    }
-
-    const { data: shopOrgs, error: shopError } = await shopQuery
     if (shopError) throw shopError
 
-    const shopOrgIds = shopOrgs?.map((item) => item.id) || []
-    if (shopOrgIds.length === 0) {
-      return NextResponse.json({ success: true, data: [] })
-    }
-
     const shopNameById = new Map((shopOrgs || []).map((item) => [item.id, item.org_name]))
-
-    const { data: staffUsers, error: usersError } = await admin
-      .from('users')
-      .select('id, full_name, phone, email, role_code, created_at, organization_id')
-      .in('organization_id', shopOrgIds)
-      .in('role_code', ['GUEST', 'CONSUMER', 'USER'])
-      .eq('is_active', true)
-      .order('full_name')
-
-    if (usersError) throw usersError
+    const staffUsers = shopUsers
 
     const userIds = staffUsers?.map((item) => item.id) || []
+    let scanRowCount = 0
+    let pointsTransactionRowCount = 0
     const statsByUser = new Map<string, {
       current_balance: number
       total_collected_system: number
@@ -102,6 +86,7 @@ export async function GET(_request: NextRequest) {
           .in('consumer_id', userIdChunk)
 
         if (scanError) throw scanError
+        scanRowCount += (scanRows || []).length
 
         for (const row of scanRows || []) {
           const userId = row.consumer_id
@@ -138,6 +123,7 @@ export async function GET(_request: NextRequest) {
           .in('user_id', userIdChunk)
 
         if (transactionError) throw transactionError
+        pointsTransactionRowCount += (transactionRows || []).length
 
         for (const row of transactionRows || []) {
           const userId = row.user_id
@@ -210,7 +196,19 @@ export async function GET(_request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ success: true, data })
+    const shopUsersWithPointsCount = data.filter((item) => item.transaction_count > 0 || item.current_balance !== 0).length
+
+    return NextResponse.json({
+      success: true,
+      data,
+      meta: {
+        scopedShopUserCount: staffUsers.length,
+        shopUsersWithPointsCount,
+        scanRowCount,
+        pointsTransactionRowCount,
+        finalReturnedCount: data.length,
+      },
+    })
   } catch (err: any) {
     console.error('shop-staff-performance error:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })

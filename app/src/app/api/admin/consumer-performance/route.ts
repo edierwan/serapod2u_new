@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { loadScopedShopUsers } from '../_user-management-scope'
 
 /**
  * GET /api/admin/consumer-performance
@@ -31,57 +32,8 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const companyId = profile.organization_id
-    if (!companyId) {
-      return NextResponse.json({ success: true, data: [] })
-    }
-
-    const { data: distributors, error: distributorError } = await admin
-      .from('organizations')
-      .select('id')
-      .eq('parent_org_id', companyId)
-      .in('org_type_code', ['DIST'])
-      .eq('is_active', true)
-
-    if (distributorError) throw distributorError
-
-    const distributorIds = distributors?.map((item) => item.id) || []
-    let shopQuery = admin
-      .from('organizations')
-      .select('id')
-      .in('org_type_code', ['SHOP'])
-      .eq('is_active', true)
-
-    if (distributorIds.length > 0) {
-      shopQuery = shopQuery.or(`parent_org_id.in.(${distributorIds.join(',')}),parent_org_id.eq.${companyId}`)
-    } else {
-      shopQuery = shopQuery.eq('parent_org_id', companyId)
-    }
-
-    const { data: shopOrgs, error: shopError } = await shopQuery
-    if (shopError) throw shopError
-
-    const shopOrgIds = shopOrgs?.map((item) => item.id) || []
-    const excludedUserIds = new Set<string>()
-
-    if (shopOrgIds.length > 0) {
-      const chunkSize = 100
-      for (let index = 0; index < shopOrgIds.length; index += chunkSize) {
-        const orgChunk = shopOrgIds.slice(index, index + chunkSize)
-        const { data: shopUsers, error: shopUsersError } = await admin
-          .from('users')
-          .select('id')
-          .in('organization_id', orgChunk)
-          .in('role_code', ['GUEST', 'CONSUMER', 'USER'])
-          .eq('is_active', true)
-
-        if (shopUsersError) throw shopUsersError
-
-        for (const item of shopUsers || []) {
-          if (item.id) excludedUserIds.add(item.id)
-        }
-      }
-    }
+    const { shopUsers } = await loadScopedShopUsers(admin, profile.role_code, profile.organization_id)
+    const excludedUserIds = new Set(shopUsers.map((item) => item.id))
 
     const { data: consumerRows, error: consumerError } = await admin
       .from('v_consumer_points_balance')
