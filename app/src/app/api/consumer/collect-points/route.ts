@@ -187,18 +187,19 @@ export async function POST(request: NextRequest) {
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
     const claimLane = resolvePointClaimLane(organization?.org_type_code)
-    const needsShopProfile = claimLane === 'shop' && (!organization || organization.org_type_code === 'INDEP') &&
-      (!shopUser.shop_name?.trim() || !shopUser.referral_phone?.trim())
+    const requiresShopReference = claimLane === 'shop' && !shopUser.referral_phone?.trim()
+    const requiresShopName = claimLane === 'shop' && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
 
-    if (needsShopProfile) {
+    if (requiresShopReference || requiresShopName) {
       const missing: string[] = []
-      if (!shopUser.shop_name?.trim()) missing.push('Shop Name')
-      if (!shopUser.referral_phone?.trim()) missing.push('Reference')
+      if (requiresShopName) missing.push('Shop Name')
+      if (requiresShopReference) missing.push('Reference')
       return NextResponse.json(
         {
           success: false,
           requiresProfileUpdate: true,
           email: emailToAuth,
+          missingFields: missing,
           error: `Please update your ${missing.join(' and ')} in Profile before collecting points.`
         },
         { status: 400 }

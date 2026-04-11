@@ -5907,69 +5907,12 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
 
-                            {/* Address - hidden for RoadTour (master data shop has address) */}
-                            {!roadtourContext && (
-                            <div className="p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-sm font-medium text-gray-700">Address</label>
-                                    {!editingAddress && (
-                                        <button
-                                            onClick={() => {
-                                                setEditingAddress(true)
-                                                setNewAddress(userAddress)
-                                            }}
-                                            className="text-sm font-medium"
-                                            style={{ color: config.primary_color }}
-                                        >
-                                            Edit
-                                        </button>
-                                    )}
-                                </div>
-                                {editingAddress ? (
-                                    <div className="space-y-2">
-                                        <textarea
-                                            value={newAddress}
-                                            onChange={(e) => {
-                                                const value = e.target.value
-                                                // Convert to title case as user types
-                                                const titleCased = value.replace(/\b\w/g, (char) => char.toUpperCase())
-                                                if (titleCased.length <= 255) {
-                                                    setNewAddress(titleCased)
-                                                }
-                                            }}
-                                            placeholder="Enter your delivery address"
-                                            className="w-full h-20 p-2 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            maxLength={255}
-                                        />
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-500">{newAddress.length}/255</span>
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() => {
-                                                    setEditingAddress(false)
-                                                    setNewAddress(userAddress)
-                                                }}
-                                            >
-                                                <X className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-start gap-2">
-                                        <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                                        <span className="text-gray-900 text-sm">{userAddress || 'Not set'}</span>
-                                    </div>
-                                )}
-                            </div>
-                            )}
-
-                            {/* Shop Name - Only for independent consumers */}
-                            {!shopName && (
-                                <div className="p-4 border-t border-gray-100">
+                            {/* Shop Name */}
+                            <div className="p-4 border-t border-gray-100">
                                     <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium text-gray-700">Shop Name</label>
+                                        <label className="text-sm font-medium text-gray-700">Shop</label>
                                         {!editingShopName && (
+                                            !shopName && (
                                             <button
                                                 onClick={() => {
                                                     setEditingShopName(true)
@@ -5980,9 +5923,10 @@ export default function PremiumLoyaltyTemplate({
                                             >
                                                 Edit
                                             </button>
+                                            )
                                         )}
                                     </div>
-                                    {editingShopName ? (
+                                    {!shopName && editingShopName ? (
                                         <div className="space-y-2">
                                             <div className="flex gap-2 items-start">
                                                 <div className="flex-1">
@@ -6010,17 +5954,21 @@ export default function PremiumLoyaltyTemplate({
                                     ) : (
                                         <div className="flex items-start gap-2">
                                             <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
-                                            <span className="text-gray-900 text-sm">{userShopName || 'Not set'}</span>
+                                            <div className="space-y-1">
+                                                <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
+                                                {shopName && (
+                                                    <p className="text-xs text-gray-500">Shop is managed from master data.</p>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
-                                    {!userShopName && (
+                                    {!shopName && !userShopName && (
                                         <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                     )}
-                                </div>
-                            )}
+                            </div>
 
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingAddress || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || newAddress !== userAddress || (!shopName && newShopName !== userShopName) || newReferralPhone !== userReferralPhone) && (
+                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!shopName && newShopName !== userShopName) || newReferralPhone !== userReferralPhone) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}

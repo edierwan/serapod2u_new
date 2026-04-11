@@ -269,8 +269,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
     if (mode === pointClaimMode) return
     setPointClaimMode(mode)
     const description = mode === 'single_shop'
-      ? 'Shop Staff Only selected. QR point claim stays on the previous shop staff flow after you save.'
-      : 'Dual Claim selected. Shop staff and consumer lanes will both be enabled after you save.'
+      ? 'Shop Staff Only selected. Click Update Configuration below to apply the staff-only flow.'
+      : 'Dual Claim selected. Click Update Configuration below to apply dual-claim for shop staff and consumer.'
     showAlert('info', description)
     toast({ title: 'Claim Mode Changed', description })
   }
