@@ -24,6 +24,8 @@ import {
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
+import { RoadtourRewardSettings } from './RoadtourRewardSettings'
+import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
 
 type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
 type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
@@ -53,7 +55,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
 
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'media' | 'referral'>('points')
+  const [settingsTab, setSettingsTab] = useState<'points' | 'roadtour' | 'registration' | 'media' | 'referral'>('points')
 
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -159,6 +161,15 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         .eq('id', companyId)
 
       if (settingsError) throw settingsError
+
+      await (supabase as any)
+        .from('roadtour_settings')
+        .update({
+          point_value_rm_snapshot: pointValueRM,
+          updated_by: userProfile.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('org_id', companyId)
 
       if (activeRule) {
         // Update existing rule
@@ -283,7 +294,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           Settings
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure point collection and media display settings for your organization.
+          Configure point collection, RoadTour reward points, registration bonus, and media display settings for your organization.
         </p>
       </div>
 
@@ -300,11 +311,19 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'media' | 'referral')}>
-        <TabsList className="grid w-full max-w-3xl grid-cols-3">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'roadtour' | 'registration' | 'media' | 'referral')}>
+        <TabsList className="grid w-full max-w-5xl grid-cols-5">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
+          </TabsTrigger>
+          <TabsTrigger value="roadtour" className="gap-2">
+            <TrendingUp className="h-4 w-4" />
+            RoadTour Rewards
+          </TabsTrigger>
+          <TabsTrigger value="registration" className="gap-2">
+            <Calendar className="h-4 w-4" />
+            User Registration
           </TabsTrigger>
           <TabsTrigger value="media" className="gap-2">
             <PlayCircle className="h-4 w-4" />
@@ -600,6 +619,14 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="roadtour" className="space-y-6 mt-6">
+          <RoadtourRewardSettings userProfile={userProfile} />
+        </TabsContent>
+
+        <TabsContent value="registration" className="space-y-6 mt-6">
+          <UserRegistrationBonusSettings userProfile={userProfile} />
         </TabsContent>
 
         {/* Media Display Settings Tab */}

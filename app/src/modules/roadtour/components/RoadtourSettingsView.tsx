@@ -10,13 +10,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     AlertCircle, CheckCircle2, Coins, Gift, Info, Loader2, Map, Save,
     Settings, ShieldCheck, Sparkles, QrCode, ClipboardList
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
-import { UserRegistrationBonusSettings } from '@/components/engagement/catalog/UserRegistrationBonusSettings'
 
 interface RoadtourSettingsViewProps {
     userProfile: any
@@ -194,20 +192,8 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                     <Settings className="h-5 w-5 text-primary" />
                     RoadTour Settings
                 </h3>
-                <p className="text-sm text-muted-foreground mt-1">Configure RoadTour program and user registration bonus settings.</p>
+                <p className="text-sm text-muted-foreground mt-1">Configure RoadTour operational rules. Point-related reward settings are now managed under Point Catalog Management → Settings.</p>
             </div>
-
-            <Tabs defaultValue="roadtour" className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-2">
-                    <TabsTrigger value="roadtour" className="gap-2"><Map className="h-4 w-4" />RoadTour</TabsTrigger>
-                    <TabsTrigger value="registration" className="gap-2"><Gift className="h-4 w-4" />User Registration</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="registration" className="space-y-6 mt-6">
-                    <UserRegistrationBonusSettings userProfile={userProfile} />
-                </TabsContent>
-
-                <TabsContent value="roadtour" className="space-y-6 mt-6">
 
                     {/* Enable Toggle */}
                     <Card className={isEnabled ? 'border-emerald-200 bg-emerald-50/30' : 'border-muted'}>
@@ -220,56 +206,6 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                                 <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
                             </div>
                             <Badge variant={isEnabled ? 'default' : 'secondary'} className="mt-3">{isEnabled ? 'Active' : 'Disabled'}</Badge>
-                        </CardContent>
-                    </Card>
-
-                    {/* Reward Configuration */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-base"><Coins className="h-5 w-5 text-amber-500" />Reward Configuration</CardTitle>
-                            <CardDescription>Define how rewards are granted during RoadTour activities.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label>Default Reward Points</Label>
-                                    <Input type="number" min={1} value={defaultPoints} onChange={(e) => setDefaultPoints(parseInt(e.target.value || '0', 10) || 0)} />
-                                    <p className="text-xs text-muted-foreground">Suggested: 20 points per successful reward.</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Point Value (RM)</Label>
-                                    <Input value={pointValueRm.toFixed(2)} readOnly disabled />
-                                    <p className="text-xs text-muted-foreground">From organization settings.</p>
-                                </div>
-                            </div>
-                            <div className="grid gap-6 md:grid-cols-2">
-                                <div className="space-y-2">
-                                    <Label>Estimated Cost Per Reward</Label>
-                                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">RM {estimatedCost.toFixed(2)}</div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Reward Mode</Label>
-                                    <Select value={rewardMode} onValueChange={(v) => setRewardMode(v as any)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="direct_scan">Direct Reward After Valid Scan</SelectItem>
-                                            <SelectItem value="survey_submit">Reward After Survey Submission</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            {rewardMode === 'survey_submit' && (
-                                <div className="space-y-2">
-                                    <Label>Survey Template</Label>
-                                    <Select value={surveyTemplateId || ''} onValueChange={(v) => setSurveyTemplateId(v || null)}>
-                                        <SelectTrigger><SelectValue placeholder="Select survey template..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {surveyTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                                            {surveyTemplates.length === 0 && <SelectItem value="" disabled>No templates available — create one in Surveys</SelectItem>}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
 
@@ -368,9 +304,6 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                             {saving ? 'Saving...' : 'Save RoadTour Settings'}
                         </Button>
                     </div>
-
-                </TabsContent>
-            </Tabs>
         </div>
     )
 }

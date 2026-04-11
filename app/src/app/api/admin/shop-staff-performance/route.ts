@@ -82,6 +82,10 @@ export async function GET(_request: NextRequest) {
       current_balance: number
       total_collected_system: number
       total_collected_manual: number
+      total_migration: number
+      total_other: number
+      total_redeemed: number
+      other_types: Set<string>
       transaction_count: number
       last_transaction_date: string | null
     }>()
@@ -94,7 +98,6 @@ export async function GET(_request: NextRequest) {
         const { data: scanRows, error: scanError } = await admin
           .from('consumer_qr_scans')
           .select('consumer_id, points_amount, points_collected_at, is_manual_adjustment')
-          .eq('claim_lane', 'shop')
           .eq('collected_points', true)
           .in('consumer_id', userIdChunk)
 
@@ -107,6 +110,10 @@ export async function GET(_request: NextRequest) {
             current_balance: 0,
             total_collected_system: 0,
             total_collected_manual: 0,
+            total_migration: 0,
+            total_other: 0,
+            total_redeemed: 0,
+            other_types: new Set<string>(),
             transaction_count: 0,
             last_transaction_date: null,
           }
@@ -122,6 +129,56 @@ export async function GET(_request: NextRequest) {
           if (!current.last_transaction_date || (row.points_collected_at && row.points_collected_at > current.last_transaction_date)) {
             current.last_transaction_date = row.points_collected_at
           }
+          statsByUser.set(userId, current)
+        }
+
+        const { data: transactionRows, error: transactionError } = await admin
+          .from('points_transactions')
+          .select('user_id, transaction_type, points_amount, transaction_date')
+          .in('user_id', userIdChunk)
+
+        if (transactionError) throw transactionError
+
+        for (const row of transactionRows || []) {
+          const userId = row.user_id
+          if (!userId) continue
+
+          const current = statsByUser.get(userId) || {
+            current_balance: 0,
+            total_collected_system: 0,
+            total_collected_manual: 0,
+            total_migration: 0,
+            total_other: 0,
+            total_redeemed: 0,
+            other_types: new Set<string>(),
+            transaction_count: 0,
+            last_transaction_date: null,
+          }
+
+          const amount = Number(row.points_amount || 0)
+          const type = row.transaction_type || ''
+
+          if (type !== 'adjust') {
+            current.current_balance += amount
+          }
+
+          if (type === 'adjust') {
+            current.total_collected_manual += amount
+            current.current_balance += amount
+          } else if (type === 'MIGRATION') {
+            current.total_migration += amount
+          } else if (type === 'redeem') {
+            current.total_redeemed += Math.abs(amount)
+          } else {
+            current.total_other += amount
+            if (type) current.other_types.add(type)
+          }
+
+          current.transaction_count += 1
+          if (!current.last_transaction_date || (row.transaction_date && row.transaction_date > current.last_transaction_date)) {
+            current.last_transaction_date = row.transaction_date
+          }
+
           statsByUser.set(userId, current)
         }
       }
@@ -143,10 +200,10 @@ export async function GET(_request: NextRequest) {
         current_balance: stats?.current_balance || 0,
         total_collected_system: stats?.total_collected_system || 0,
         total_collected_manual: stats?.total_collected_manual || 0,
-        total_migration: 0,
-        total_other: 0,
-        other_types: null,
-        total_redeemed: 0,
+        total_migration: stats?.total_migration || 0,
+        total_other: stats?.total_other || 0,
+        other_types: stats?.other_types ? Array.from(stats.other_types).join(', ') : null,
+        total_redeemed: stats?.total_redeemed || 0,
         transaction_count: stats?.transaction_count || 0,
         last_transaction_date: stats?.last_transaction_date || null,
         last_migration_by_name: null,

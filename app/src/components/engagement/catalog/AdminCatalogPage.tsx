@@ -500,15 +500,14 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   async function loadConsumerUsers() {
     setUsersLoading(true)
     try {
-      const supabaseClient = createClient()
-      const { data, error } = await supabaseClient
-        .from('v_consumer_points_balance')
-        .select('*')
-        .order('current_balance', { ascending: false })
+      const response = await fetch('/api/admin/consumer-performance', { cache: 'no-store' })
+      const result = await response.json()
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to load consumer performance')
+      }
 
-      setConsumerUsers(data || [])
+      setConsumerUsers(result.data || [])
     } catch (error) {
       console.error("Error loading consumer users:", error)
     } finally {
@@ -519,7 +518,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
   async function loadShopStaffUsers() {
     setUsersLoading(true)
     try {
-      const response = await fetch('/api/admin/shop-staff-performance')
+      const response = await fetch('/api/admin/shop-staff-performance', { cache: 'no-store' })
       const result = await response.json()
 
       if (!response.ok) {
