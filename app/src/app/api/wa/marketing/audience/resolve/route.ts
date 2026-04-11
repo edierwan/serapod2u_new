@@ -36,6 +36,12 @@ function passesWinbackScanFilter(filters: any, lastScanAt?: string | null) {
     return true;
 }
 
+function passesWinbackPointsFilter(filters: any, pointsBalance?: number | null) {
+    const minPoints = Number(filters?.winback_points_min);
+    if (!Number.isFinite(minPoints)) return true;
+    return Number(pointsBalance || 0) >= minPoints;
+}
+
 export async function POST(request: NextRequest) {
     const supabase = await createServerClient();
 
@@ -150,7 +156,7 @@ export async function POST(request: NextRequest) {
             const reportStatusSettings = normalizeReportStatusSettings(organization?.settings);
             const winbackStatus = activeFilters.winback_status || 'all';
 
-            const pushWinbackRecipient = (recipient: any, isActive: boolean, lastScanAt?: string | null) => {
+            const pushWinbackRecipient = (recipient: any, isActive: boolean, lastScanAt?: string | null, pointsBalance?: number | null) => {
                 if (locationStates.length > 0 && recipient.state && !locationStates.includes(recipient.state)) {
                     return;
                 }
@@ -193,22 +199,46 @@ export async function POST(request: NextRequest) {
                     return;
                 }
 
+                if (!passesWinbackPointsFilter(activeFilters, pointsBalance)) {
+                    excludedActivity++;
+                    excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Points Filter' });
+                    return;
+                }
+
                 validPhones++;
                 eligibleRecipients.push({ ...recipient, status: 'eligible' });
             };
 
             if (activeFilters.winback_category === 'shop_performance') {
+                const { data: shopOrganizations, error: shopOrganizationsError } = await admin
+                    .from('organizations')
+                    .select('id, org_name, contact_name, contact_phone, parent_org_id, states(state_name)')
+                    .eq('is_active', true)
+                    .eq('org_type_code', 'SHOP')
+                    .order('org_name', { ascending: true });
+
+                if (shopOrganizationsError) throw shopOrganizationsError;
+
                 const { data: shopRows, error: shopRowsError } = await admin
                     .from('v_shop_points_summary')
-                    .select('shop_id, shop_name, contact_name, contact_phone, state, total_points_balance, last_activity')
-                    .order('total_points_balance', { ascending: false });
+                    .select('shop_id, shop_name, contact_name, contact_phone, state, total_points_balance, last_activity');
 
                 if (shopRowsError) throw shopRowsError;
+
+                const shopSummaryById = new Map((shopRows || []).map((row: any) => [row.shop_id, row]));
 
                 const { shopUsers } = await loadScopedShopUsers(admin as any, profile.role_code, profile.organization_id);
                 const shopUserIds = shopUsers.map((item) => item.id);
                 const shopOrgByUserId = new Map(shopUsers.map((item) => [item.id, item.organization_id]));
                 const lastScanByShopId = new Map<string, string>();
+                const shopUsersByOrgId = new Map<string, any[]>();
+
+                for (const staff of shopUsers) {
+                    if (!staff.organization_id) continue;
+                    const current = shopUsersByOrgId.get(staff.organization_id) || [];
+                    current.push(staff);
+                    shopUsersByOrgId.set(staff.organization_id, current);
+                }
 
                 for (let index = 0; index < shopUserIds.length; index += 100) {
                     const userIdChunk = shopUserIds.slice(index, index + 100);
@@ -231,19 +261,42 @@ export async function POST(request: NextRequest) {
                     }
                 }
 
-                for (const shop of shopRows || []) {
+                for (const shop of shopOrganizations || []) {
+                    const summary = shopSummaryById.get(shop.id);
+                    const shopState = (shop.states as any)?.state_name || summary?.state || 'No Location';
+                    const shopName = summary?.shop_name || shop.org_name;
+                    const pointsBalance = Number(summary?.total_points_balance || 0);
+                    const shopLastScanAt = lastScanByShopId.get(shop.id) || summary?.last_activity || null;
+                    const isActive = isReportRowActive(pointsBalance, summary?.last_activity || null, reportStatusSettings.shopPerformance);
+
                     const recipient = {
-                        id: shop.shop_id,
-                        name: shop.contact_name || shop.shop_name,
-                        phone: shop.contact_phone || 'No Phone',
-                        state: shop.state || 'No Location',
-                        city: shop.state || '',
+                        id: shop.id,
+                        name: summary?.contact_name || shop.contact_name || shopName,
+                        phone: summary?.contact_phone || shop.contact_phone || 'No Phone',
+                        state: shopState,
+                        city: shopState || '',
                         organization_type: 'SHOP',
-                        org_name: shop.shop_name,
+                        org_name: shopName,
                         is_organization: true,
                     };
-                    const isActive = isReportRowActive(shop.total_points_balance, shop.last_activity, reportStatusSettings.shopPerformance);
-                    pushWinbackRecipient(recipient, isActive, lastScanByShopId.get(shop.shop_id) || shop.last_activity);
+
+                    pushWinbackRecipient(recipient, isActive, shopLastScanAt, pointsBalance);
+
+                    for (const staff of shopUsersByOrgId.get(shop.id) || []) {
+                        const staffRecipient = {
+                            id: staff.id,
+                            user_id: staff.id,
+                            name: staff.full_name || recipient.name,
+                            phone: staff.phone || 'No Phone',
+                            state: shopState,
+                            city: shopState || '',
+                            organization_type: 'SHOP',
+                            org_name: shopName,
+                            is_organization_user: true,
+                        };
+
+                        pushWinbackRecipient(staffRecipient, isActive, shopLastScanAt, pointsBalance);
+                    }
                 }
             }
 
@@ -325,7 +378,7 @@ export async function POST(request: NextRequest) {
                         org_name: shopNameById.get(staff.organization_id || '') || 'Shop',
                     };
                     const isActive = isReportRowActive(stats.current_balance, stats.last_transaction_date, reportStatusSettings.shopStaffPerformance);
-                    pushWinbackRecipient(recipient, isActive, stats.last_scan_at);
+                    pushWinbackRecipient(recipient, isActive, stats.last_scan_at, stats.current_balance);
                 }
             }
 
@@ -370,7 +423,7 @@ export async function POST(request: NextRequest) {
                         whatsapp_valid: consumer.whatsapp_valid,
                     };
                     const isActive = isReportRowActive(consumer.current_balance, consumer.last_activity_at, reportStatusSettings.consumerPerformance);
-                    pushWinbackRecipient(recipient, isActive, lastScanByConsumerId.get(consumer.user_id));
+                    pushWinbackRecipient(recipient, isActive, lastScanByConsumerId.get(consumer.user_id), consumer.current_balance);
                 }
             }
         }

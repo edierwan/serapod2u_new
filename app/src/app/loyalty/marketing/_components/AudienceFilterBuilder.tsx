@@ -98,6 +98,7 @@ export interface AudienceFilters {
     winback_status?: 'all' | 'active' | 'inactive';
     winback_last_scan_mode?: 'any' | 'within_days' | 'older_than_days' | 'no_scan';
     winback_last_scan_days?: number | null;
+    winback_points_min?: number | null;
 }
 
 interface AudienceFilterBuilderProps {

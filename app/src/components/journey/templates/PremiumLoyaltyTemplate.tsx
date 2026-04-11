@@ -72,6 +72,7 @@ import { RewardRedemptionAnimation } from '@/components/animations/RewardRedempt
 import { GiftClaimedAnimation } from '@/components/animations/GiftClaimedAnimation'
 import { InsufficientPointsAnimation } from '@/components/animations/InsufficientPointsAnimation'
 import { RegistrationCelebrationAnimation } from '@/components/animations/RegistrationCelebrationAnimation'
+import { ShopLinkCelebrationAnimation } from '@/components/animations/ShopLinkCelebrationAnimation'
 import dynamic from 'next/dynamic'
 
 // Dynamically import QrScanner to avoid SSR issues
@@ -524,9 +525,12 @@ export default function PremiumLoyaltyTemplate({
     const [shopPassword, setShopPassword] = useState('')
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
+    const [pointsErrorAction, setPointsErrorAction] = useState<'shop-profile-link' | null>(null)
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile'>('login')
+    const [pendingProfileCollectLane, setPendingProfileCollectLane] = useState<'shop' | null>(null)
+    const [pendingProfileCollectEmail, setPendingProfileCollectEmail] = useState('')
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
     const [qrConsumerLaneCollected, setQrConsumerLaneCollected] = useState(false)
@@ -700,6 +704,8 @@ export default function PremiumLoyaltyTemplate({
     // Registration celebration animation state
     const [showRegistrationCelebration, setShowRegistrationCelebration] = useState(false)
     const [registrationBonusInfo, setRegistrationBonusInfo] = useState<{ points: number; awarded: boolean; mode: string | null }>({ points: 0, awarded: false, mode: null })
+    const [showShopLinkCelebration, setShowShopLinkCelebration] = useState(false)
+    const [shopLinkCelebrationName, setShopLinkCelebrationName] = useState('')
 
     // Points animation state
     const [showPointsAnimation, setShowPointsAnimation] = useState(false)
@@ -2391,6 +2397,8 @@ export default function PremiumLoyaltyTemplate({
     const handleSaveProfile = async () => {
         if (!userId) return
 
+        const pendingLaneRetry = pendingProfileCollectLane
+
         setSavingProfile(true)
         setProfileSaveError('')
         setProfileSaveSuccess(false)
@@ -2566,6 +2574,15 @@ export default function PremiumLoyaltyTemplate({
             setEditingAddress(false)
             setEditingShopName(false)
             setEditingReferralPhone(false)
+
+            if (pendingLaneRetry === 'shop') {
+                setShowProfileInfo(false)
+                if (isAuthenticated) {
+                    await handleCollectPointsWithSession('shop')
+                } else {
+                    await handleCollectPoints('shop')
+                }
+            }
 
             // Clear success message after 3 seconds
             setTimeout(() => setProfileSaveSuccess(false), 3000)
@@ -2757,15 +2774,79 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    const populateProfileEditor = async (targetUserId: string) => {
+        const profileResult = await checkUserOrganization(targetUserId) as any
+        if (profileResult?.success) {
+            setUserName(profileResult.fullName || '')
+            setNewName(profileResult.fullName || '')
+            setUserPhone(profileResult.phone || '')
+            setNewPhone(profileResult.phone || '')
+            setUserAddress(profileResult.address || '')
+            setNewAddress(profileResult.address || '')
+            setUserShopName(profileResult.shop_name || '')
+            setNewShopName(profileResult.shop_name || '')
+            setUserReferralPhone(profileResult.referralPhone || '')
+            setNewReferralPhone(profileResult.referralPhone || '')
+            if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
+        }
+    }
+
+    const openProfileForPendingShopLane = async () => {
+        try {
+            if (!isAuthenticated && pendingProfileCollectEmail && shopPassword) {
+                const { error: signInError } = await supabase.auth.signInWithPassword({
+                    email: pendingProfileCollectEmail,
+                    password: shopPassword,
+                })
+
+                if (!signInError) {
+                    setIsAuthenticated(true)
+                    setUserEmail(pendingProfileCollectEmail)
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (user) {
+                        setUserId(user.id)
+                        sessionStorage.setItem('serapod_active_session', 'logged_in')
+                    }
+                }
+            }
+
+            const targetUserId = userId || (await supabase.auth.getUser()).data.user?.id
+            if (targetUserId) {
+                await populateProfileEditor(targetUserId)
+                setUserId(targetUserId)
+            }
+
+            setShowPointsLoginModal(false)
+            setPointsError('')
+            setPointsErrorAction(null)
+            setActiveTab('account-settings')
+            setShowProfileInfo(true)
+        } catch (error) {
+            console.error('Error preparing profile editor for shop-lane retry:', error)
+            setPointsError('Unable to open your profile right now. Please try again.')
+        }
+    }
+
     const openCollectPointsProfilePrompt = (message: string) => {
         setCollectingPoints(false)
         setPointsError(message)
+        setPointsErrorAction(null)
+        setCollectPointsStep('complete-profile')
+        setShowPointsLoginModal(true)
+    }
+
+    const openShopLaneConflictPrompt = (message?: string, email?: string | null) => {
+        setCollectingPoints(false)
+        setPendingProfileCollectLane('shop')
+        setPendingProfileCollectEmail(email || userEmail)
+        setPointsError(message || 'Sudah dituntut oleh pelanggan. Staf kedai sahaja boleh tuntut sekarang.')
+        setPointsErrorAction('shop-profile-link')
         setCollectPointsStep('complete-profile')
         setShowPointsLoginModal(true)
     }
 
     // Handle points collection
-    const handleCollectPoints = async () => {
+    const handleCollectPoints = async (preferredClaimLane?: 'shop') => {
         if (!shopId || !shopPassword) {
             setPointsError('Please enter your Shop ID and password')
             return
@@ -2791,7 +2872,8 @@ export default function PremiumLoyaltyTemplate({
                 body: JSON.stringify({
                     qr_code: qrCode,
                     shop_id: shopId.trim(),
-                    password: shopPassword
+                    password: shopPassword,
+                    preferred_claim_lane: preferredClaimLane
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
@@ -2825,7 +2907,12 @@ export default function PremiumLoyaltyTemplate({
             if (!response.ok) {
                 if (data.already_collected) {
                     if (data.remaining_lane_available) {
-                        setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                        if (data.remaining_lane_available === 'shop') {
+                            openShopLaneConflictPrompt(data.error, data.email)
+                        } else {
+                            setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                            setPointsErrorAction(null)
+                        }
                         return
                     }
                     // Points already collected for this QR
@@ -2856,8 +2943,15 @@ export default function PremiumLoyaltyTemplate({
             } else if (data.claim_lane === 'consumer') {
                 setQrConsumerLaneCollected(true)
             }
+            if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
+                setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
+                setShowShopLinkCelebration(true)
+                setPendingProfileCollectLane(null)
+                setPendingProfileCollectEmail('')
+            }
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
+            setPointsErrorAction(null)
 
             // IMPORTANT: Establish client-side session so next time user doesn't need to login again
             if (data.email && shopPassword) {
@@ -2907,7 +3001,7 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection using existing session (for authenticated shop users)
-    const handleCollectPointsWithSession = async () => {
+    const handleCollectPointsWithSession = async (preferredClaimLane?: 'shop') => {
         if (!qrCode) {
             setPointsError('QR code not available')
             return
@@ -2925,7 +3019,8 @@ export default function PremiumLoyaltyTemplate({
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
-                    qr_code: qrCode
+                    qr_code: qrCode,
+                    preferred_claim_lane: preferredClaimLane
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
@@ -2949,7 +3044,12 @@ export default function PremiumLoyaltyTemplate({
             if (!response.ok) {
                 if (data.already_collected) {
                     if (data.remaining_lane_available) {
-                        setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                        if (data.remaining_lane_available === 'shop') {
+                            openShopLaneConflictPrompt(data.error)
+                        } else {
+                            setPointsError(data.error || 'This QR code is only available for the other claim lane.')
+                            setPointsErrorAction(null)
+                        }
                         return
                     }
                     // Points already collected for this QR
@@ -2979,7 +3079,14 @@ export default function PremiumLoyaltyTemplate({
             } else if (data.claim_lane === 'consumer') {
                 setQrConsumerLaneCollected(true)
             }
+            if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
+                setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
+                setShowShopLinkCelebration(true)
+                setPendingProfileCollectLane(null)
+                setPendingProfileCollectEmail('')
+            }
             setShowPointsSuccessModal(true)
+            setPointsErrorAction(null)
             if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
 
         } catch (error: any) {
@@ -5944,10 +6051,10 @@ export default function PremiumLoyaltyTemplate({
 
                             {/* Shop Name */}
                             <div className="p-4 border-t border-gray-100">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium text-gray-700">Shop</label>
-                                        {!editingShopName && (
-                                            !shopName && (
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium text-gray-700">Shop</label>
+                                    {!editingShopName && (
+                                        !shopName && (
                                             <button
                                                 onClick={() => {
                                                     setEditingShopName(true)
@@ -5958,43 +6065,43 @@ export default function PremiumLoyaltyTemplate({
                                             >
                                                 Edit
                                             </button>
-                                            )
-                                        )}
-                                    </div>
-                                    {!shopName && editingShopName ? (
-                                        <div className="space-y-2">
-                                            <div className="flex gap-2 items-start">
-                                                <div className="flex-1">
-                                                    <ShopPicker
-                                                        value={userShopName}
-                                                        onSelect={(_shop: ShopResult | null, displayName: string) => {
-                                                            setNewShopName(displayName)
-                                                        }}
-                                                        placeholder="Search shop by name..."
-                                                        maxLength={50}
-                                                    />
-                                                </div>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => {
-                                                        setEditingShopName(false)
-                                                        setNewShopName(userShopName)
+                                        )
+                                    )}
+                                </div>
+                                {!shopName && editingShopName ? (
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2 items-start">
+                                            <div className="flex-1">
+                                                <ShopPicker
+                                                    value={userShopName}
+                                                    onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                        setNewShopName(displayName)
                                                     }}
-                                                >
-                                                    <X className="w-4 h-4" />
-                                                </Button>
+                                                    placeholder="Search shop by name..."
+                                                    maxLength={50}
+                                                />
                                             </div>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                    setEditingShopName(false)
+                                                    setNewShopName(userShopName)
+                                                }}
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </Button>
                                         </div>
-                                    ) : (
-                                        <div className="flex items-start gap-2">
-                                            <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
-                                            <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
-                                        </div>
-                                    )}
-                                    {!((!shopName && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
-                                        <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
-                                    )}
+                                    </div>
+                                ) : (
+                                    <div className="flex items-start gap-2">
+                                        <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
+                                        <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
+                                    </div>
+                                )}
+                                {!((!shopName && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
+                                    <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
+                                )}
                             </div>
 
                             {/* Save Button */}
@@ -6359,9 +6466,22 @@ export default function PremiumLoyaltyTemplate({
                         {collectPointsStep === 'complete-profile' ? (
                             <>
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                                    <p className="text-sm text-amber-700 text-center">
-                                        {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
-                                    </p>
+                                    {pointsErrorAction === 'shop-profile-link' ? (
+                                        <p className="text-sm text-amber-700 text-center">
+                                            Sudah dituntut oleh pelanggan. Staf kedai sahaja boleh tuntut sekarang.{' '}
+                                            <button
+                                                type="button"
+                                                onClick={openProfileForPendingShopLane}
+                                                className="font-semibold underline underline-offset-2"
+                                            >
+                                                Anda staff Kedai?
+                                            </button>
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm text-amber-700 text-center">
+                                            {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="flex gap-3 pt-2">
@@ -6369,6 +6489,9 @@ export default function PremiumLoyaltyTemplate({
                                         onClick={() => {
                                             setShowPointsLoginModal(false)
                                             setPointsError('')
+                                            setPointsErrorAction(null)
+                                            setPendingProfileCollectLane(null)
+                                            setPendingProfileCollectEmail('')
                                             setCollectPointsStep('login')
                                         }}
                                         className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
@@ -6376,33 +6499,11 @@ export default function PremiumLoyaltyTemplate({
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={async () => {
-                                            setShowPointsLoginModal(false)
-                                            setPointsError('')
-                                            // Load profile data before navigating
-                                            if (userId) {
-                                                const profileResult = await checkUserOrganization(userId) as any
-                                                if (profileResult?.success) {
-                                                    setUserName(profileResult.fullName || '')
-                                                    setNewName(profileResult.fullName || '')
-                                                    setUserPhone(profileResult.phone || '')
-                                                    setNewPhone(profileResult.phone || '')
-                                                    setUserAddress(profileResult.address || '')
-                                                    setNewAddress(profileResult.address || '')
-                                                    setUserShopName(profileResult.shop_name || '')
-                                                    setNewShopName(profileResult.shop_name || '')
-                                                    setUserReferralPhone(profileResult.referralPhone || '')
-                                                    setNewReferralPhone(profileResult.referralPhone || '')
-                                                    if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
-                                                }
-                                            }
-                                            setActiveTab('account-settings')
-                                            setShowProfileInfo(true)
-                                        }}
+                                        onClick={openProfileForPendingShopLane}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
-                                        Go to Profile
+                                        {pointsErrorAction === 'shop-profile-link' ? 'Kemaskini Profil Kedai' : 'Go to Profile'}
                                     </button>
                                 </div>
                             </>
@@ -6527,6 +6628,13 @@ export default function PremiumLoyaltyTemplate({
                 }}
                 primaryColor={config.primary_color}
                 buttonColor={config.button_color}
+            />
+
+            <ShopLinkCelebrationAnimation
+                isOpen={showShopLinkCelebration}
+                shopName={shopLinkCelebrationName}
+                primaryColor={config.button_color}
+                onClose={() => setShowShopLinkCelebration(false)}
             />
 
             {/* Collect Points Success Animation */}

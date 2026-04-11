@@ -45,11 +45,12 @@ type WinbackCategory = NonNullable<AudienceFilters['winback_category']>;
 type WinbackStatus = NonNullable<AudienceFilters['winback_status']>;
 type WinbackScanMode = NonNullable<AudienceFilters['winback_last_scan_mode']>;
 
-const DEFAULT_WINBACK_FILTERS: Pick<AudienceFilters, 'winback_category' | 'winback_status' | 'winback_last_scan_mode' | 'winback_last_scan_days'> = {
+const DEFAULT_WINBACK_FILTERS: Pick<AudienceFilters, 'winback_category' | 'winback_status' | 'winback_last_scan_mode' | 'winback_last_scan_days' | 'winback_points_min'> = {
     winback_category: 'shop_performance',
     winback_status: 'inactive',
     winback_last_scan_mode: 'older_than_days',
     winback_last_scan_days: 30,
+    winback_points_min: null,
 };
 
 const WINBACK_CATEGORY_OPTIONS: Array<{ value: WinbackCategory; label: string; description: string }> = [
@@ -560,6 +561,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                                 winback_status: prev.filters.winback_status || DEFAULT_WINBACK_FILTERS.winback_status,
                                                 winback_last_scan_mode: prev.filters.winback_last_scan_mode || DEFAULT_WINBACK_FILTERS.winback_last_scan_mode,
                                                 winback_last_scan_days: prev.filters.winback_last_scan_days ?? DEFAULT_WINBACK_FILTERS.winback_last_scan_days,
+                                                winback_points_min: prev.filters.winback_points_min ?? DEFAULT_WINBACK_FILTERS.winback_points_min,
                                             }
                                             : prev.filters,
                                     }))}
@@ -690,6 +692,27 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                             </p>
                                         </div>
                                     )}
+
+                                    <div className="space-y-2">
+                                        <Label>Minimum Points</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            placeholder="Leave empty to include all balances"
+                                            value={formData.filters.winback_points_min ?? ''}
+                                            onChange={(e) => setFormData(prev => ({
+                                                ...prev,
+                                                audienceMode: 'filters',
+                                                filters: {
+                                                    ...prev.filters,
+                                                    winback_points_min: e.target.value === '' ? null : Number(e.target.value),
+                                                }
+                                            }))}
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Filters recipients to report rows with at least this many points or balance.
+                                        </p>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-2">

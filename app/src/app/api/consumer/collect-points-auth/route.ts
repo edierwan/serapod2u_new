@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ User authenticated from session:', user.email)
 
-    const { qr_code } = await request.json()
+    const { qr_code, preferred_claim_lane } = await request.json()
 
     // Validate required fields
     if (!qr_code) {
@@ -93,9 +93,14 @@ export async function POST(request: NextRequest) {
 
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const claimLane = resolvePointClaimLane(organization?.org_type_code)
-    const requiresShopReference = claimLane === 'shop' && !shopUser.referral_phone?.trim()
-    const requiresShopName = claimLane === 'shop' && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
+    const organizationClaimLane = resolvePointClaimLane(organization?.org_type_code)
+    const requestedClaimLane = preferred_claim_lane === 'shop' ? 'shop' : null
+    const canUseProfileBasedShopLane = organizationClaimLane !== 'shop' && !!shopUser.referral_phone?.trim() && !!shopUser.shop_name?.trim()
+    const claimLane = requestedClaimLane === 'shop' && (organizationClaimLane === 'shop' || canUseProfileBasedShopLane)
+      ? 'shop'
+      : organizationClaimLane
+    const requiresShopReference = (claimLane === 'shop' || requestedClaimLane === 'shop') && !shopUser.referral_phone?.trim()
+    const requiresShopName = (claimLane === 'shop' || requestedClaimLane === 'shop') && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
 
     if (requiresShopReference || requiresShopName) {
       const missing: string[] = []
@@ -129,7 +134,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Type:', organization?.org_type_code || 'none', '| Claim lane:', claimLane)
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Type:', organization?.org_type_code || 'none', '| Claim lane:', claimLane, '| Requested lane:', requestedClaimLane)
 
     // Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)

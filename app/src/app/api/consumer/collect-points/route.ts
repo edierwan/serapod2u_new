@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    const { qr_code, shop_id, password } = await request.json()
+    const { qr_code, shop_id, password, preferred_claim_lane } = await request.json()
 
     // Validate required fields
     if (!qr_code || !shop_id || !password) {
@@ -186,9 +186,14 @@ export async function POST(request: NextRequest) {
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const claimLane = resolvePointClaimLane(organization?.org_type_code)
-    const requiresShopReference = claimLane === 'shop' && !shopUser.referral_phone?.trim()
-    const requiresShopName = claimLane === 'shop' && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
+    const organizationClaimLane = resolvePointClaimLane(organization?.org_type_code)
+    const requestedClaimLane = preferred_claim_lane === 'shop' ? 'shop' : null
+    const canUseProfileBasedShopLane = organizationClaimLane !== 'shop' && !!shopUser.referral_phone?.trim() && !!shopUser.shop_name?.trim()
+    const claimLane = requestedClaimLane === 'shop' && (organizationClaimLane === 'shop' || canUseProfileBasedShopLane)
+      ? 'shop'
+      : organizationClaimLane
+    const requiresShopReference = (claimLane === 'shop' || requestedClaimLane === 'shop') && !shopUser.referral_phone?.trim()
+    const requiresShopName = (claimLane === 'shop' || requestedClaimLane === 'shop') && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
 
     if (requiresShopReference || requiresShopName) {
       const missing: string[] = []
