@@ -17,6 +17,7 @@ export async function createUserWithAuth(userData: {
   email: string
   password: string
   full_name: string
+  call_name?: string
   role_code: string
   organization_id?: string
   phone?: string
@@ -110,6 +111,17 @@ export async function createUserWithAuth(userData: {
       }
     }
 
+    if (userData.call_name !== undefined) {
+      const { error: callNameError } = await adminClient
+        .from('users')
+        .update({ call_name: userData.call_name || null })
+        .eq('id', authUser.user.id)
+
+      if (callNameError) {
+        console.error('Failed to set call_name:', callNameError.message)
+      }
+    }
+
     // Step 3: Return success
     revalidatePath('/dashboard')
     return {
@@ -128,6 +140,7 @@ export async function createUserWithAuth(userData: {
 
 export async function updateUserWithAuth(userId: string, userData: {
   full_name?: string
+  call_name?: string | null
   role_code?: string
   organization_id?: string
   phone?: string
@@ -260,6 +273,9 @@ export async function updateUserWithAuth(userId: string, userData: {
     // Update Public User - prepare data for database update
     // Phone is normalized to E.164 format with + prefix for consistency, or null if cleared
     const updateData: any = { ...userData }
+    if (updateData.call_name !== undefined) {
+      updateData.call_name = updateData.call_name || null
+    }
     if (updateData.phone && updateData.phone.trim()) {
       updateData.phone = normalizePhone(updateData.phone)
       // Also update phone_verified_at since we confirmed it in Auth

@@ -167,6 +167,7 @@ export default function UserDialogNew({
     user || {
       email: '',
       full_name: '',
+      call_name: '',
       phone: '',
       password: '',
       confirmPassword: '',
@@ -998,6 +999,21 @@ export default function UserDialogNew({
                 {errors.full_name && <p className="text-[11px] text-red-500">{errors.full_name}</p>}
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="call_name" className="text-xs font-medium text-gray-700">
+                  Call Name <span className="text-gray-400 font-normal">(Optional)</span>
+                </Label>
+                <Input
+                  id="call_name"
+                  placeholder="Short name / preferred name"
+                  value={(formData as any).call_name || ''}
+                  onChange={(e) => handleInputChange('call_name', e.target.value)}
+                  disabled={isSaving}
+                  className="h-9 text-sm placeholder:text-gray-400"
+                />
+                <p className="text-[11px] text-gray-400">Optional field for future display/use. Leaving it blank does not affect current flows.</p>
+              </div>
+
               {/* Phone */}
               <div className="space-y-1.5">
                 <Label htmlFor="phone" className="text-xs font-medium text-gray-700">Phone Number</Label>
@@ -1150,6 +1166,7 @@ export default function UserDialogNew({
                     disabled={isSaving}
                     placeholder="Search shop or type name..."
                   />
+                  <p className="text-[11px] text-gray-400">Business-facing shop name. This can be typed or selected and is used as display and matching info.</p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -1205,7 +1222,7 @@ export default function UserDialogNew({
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-[11px] text-gray-400">Optional: link to an organization</p>
+                  <p className="text-[11px] text-gray-400">Optional masterdata link. This is the actual organization attachment used for org-based reporting, permissions, and classification.</p>
                 </div>
               </TabsContent>
             )}

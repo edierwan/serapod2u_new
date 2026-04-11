@@ -21,11 +21,13 @@ import {
   Info,
   Banknote,
   PlayCircle,
+  Users,
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
 import { RoadtourRewardSettings } from './RoadtourRewardSettings'
 import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
+import { normalizePointClaimSettings, type PointClaimMode } from '@/lib/engagement/point-claim-settings'
 
 type PointsRuleRow = Database['public']['Tables']['points_rules']['Row']
 type PointsRuleInsert = Database['public']['Tables']['points_rules']['Insert']
@@ -52,6 +54,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [expiresAfterDays, setExpiresAfterDays] = useState<number | null>(null)
   const [allowManualAdjustment, setAllowManualAdjustment] = useState<boolean>(true)
   const [migrationMultiplier, setMigrationMultiplier] = useState<number | null>(null)
+  const [pointClaimMode, setPointClaimMode] = useState<PointClaimMode>('single_shop')
+  const [consumerPointsPerScan, setConsumerPointsPerScan] = useState<number>(50)
   const [mediaDisplayDuration, setMediaDisplayDuration] = useState<number>(3)
 
   // Sub-tab state
@@ -92,6 +96,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           setRuleName(active.name)
           setExpiresAfterDays(active.expires_after_days)
           setAllowManualAdjustment(active.allow_manual_adjustment)
+          setConsumerPointsPerScan(active.points_per_scan)
         }
 
         // Fetch organization settings for point value
@@ -103,9 +108,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
 
         if (orgData?.settings && typeof orgData.settings === 'object') {
           const settings = orgData.settings as any
-          if (settings.point_value_rm !== undefined) {
-            setPointValueRM(settings.point_value_rm)
-          }
+          const claimSettings = normalizePointClaimSettings(settings, active?.points_per_scan || 50)
+          setPointValueRM(claimSettings.pointValueRM)
+          setPointClaimMode(claimSettings.claimMode)
+          setConsumerPointsPerScan(claimSettings.consumerPointsPerScan)
           if (settings.migration_multiplier !== undefined) {
             setMigrationMultiplier(settings.migration_multiplier)
           }
@@ -140,6 +146,11 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         return
       }
 
+      if (pointClaimMode === 'dual' && consumerPointsPerScan < 1) {
+        showAlert('error', 'Consumer points per scan must be at least 1 when dual claim is enabled')
+        return
+      }
+
       // Save point value to organization settings
       const { data: orgData } = await supabase
         .from('organizations')
@@ -152,7 +163,9 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
         ...currentSettings,
         point_value_rm: pointValueRM,
         migration_multiplier: migrationMultiplier,
-        media_display_duration: mediaDisplayDuration
+        media_display_duration: mediaDisplayDuration,
+        point_claim_mode: pointClaimMode,
+        consumer_points_per_scan: consumerPointsPerScan,
       }
 
       const { error: settingsError } = await supabase
@@ -352,15 +365,44 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                 )}
               </CardTitle>
               <CardDescription>
-                Set the number of points awarded to shops for each consumer QR scan
+                Configure whether QR point claim stays with shop staff only or runs in dual-claim mode with a separate consumer point value.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-1">
+                    <Label className="text-base font-semibold">Claim Mode</Label>
+                    <p className="text-xs text-muted-foreground">
+                      `Shop Staff Only` keeps the previous single-claim behavior. `Dual Claim` allows both shop staff and consumer to collect on separate lanes.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant={pointClaimMode === 'single_shop' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPointClaimMode('single_shop')}
+                    >
+                      Shop Staff Only
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={pointClaimMode === 'dual' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setPointClaimMode('dual')}
+                    >
+                      Dual Claim
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               {/* Points Per Scan Input */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="pointsPerScan" className="text-base font-semibold">
-                    Points Per QR Scan <span className="text-red-500">*</span>
+                    Shop Staff Points Per QR Scan <span className="text-red-500">*</span>
                   </Label>
                   <div className="flex items-center gap-4">
                     <div className="relative flex-1 max-w-xs">
@@ -385,7 +427,39 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                   </p>
                   {pointsPerScan > 0 && pointValueRM > 0 && (
                     <div className="text-sm font-medium text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 inline-block">
-                      Estimated Cost: RM {(pointsPerScan * pointValueRM).toFixed(2)} per scan
+                      Shop Staff Cost: RM {(pointsPerScan * pointValueRM).toFixed(2)} per scan
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="consumerPointsPerScan" className="text-base font-semibold">
+                    Consumer Points Per QR Scan
+                  </Label>
+                  <div className="flex items-center gap-4">
+                    <div className="relative flex-1 max-w-xs">
+                      <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="consumerPointsPerScan"
+                        type="number"
+                        min="0"
+                        max="10000"
+                        value={consumerPointsPerScan}
+                        onChange={(e) => setConsumerPointsPerScan(parseInt(e.target.value) || 0)}
+                        className="pl-10 text-lg font-semibold"
+                        placeholder="50"
+                      />
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      points per scan
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Used when claim mode is `Dual Claim`.
+                  </p>
+                  {consumerPointsPerScan > 0 && pointValueRM > 0 && (
+                    <div className="text-sm font-medium text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100 inline-block">
+                      Consumer Cost: RM {(consumerPointsPerScan * pointValueRM).toFixed(2)} per scan
                     </div>
                   )}
                 </div>
@@ -609,11 +683,11 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
                 <div className="space-y-2 text-sm">
                   <p className="font-medium text-blue-900">How Point Collection Works</p>
                   <ul className="space-y-1 text-blue-800/80">
-                    <li>• Shops scan consumer QR codes through the mobile app</li>
-                    <li>• They authenticate with their Shop ID and password</li>
-                    <li>• Points are awarded automatically based on this configuration</li>
-                    <li>• Shops can redeem points for rewards in the catalog</li>
-                    <li>• Shop performance is tracked in the "Shop Performance Monitor" tab</li>
+                    <li>• Shop staff scans use the shop lane and follow the shop staff point amount above</li>
+                    <li>• Single claim mode preserves the previous flow where only shop staff can claim QR points</li>
+                    <li>• Dual claim mode enables an additional consumer lane with its own point amount</li>
+                    <li>• Each lane is tracked separately in reporting so staging tests can surface split behavior clearly</li>
+                    <li>• Shop and consumer balances will now follow the selected claim mode instead of one shared fallback</li>
                   </ul>
                 </div>
               </div>

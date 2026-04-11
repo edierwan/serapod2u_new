@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { resolveQrCodeRecord, checkPointsCollected, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
+import { resolveQrCodeRecord, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
+import { normalizePointClaimSettings, resolvePointClaimLane } from '@/lib/engagement/point-claim-settings'
 
 /**
  * POST /api/consumer/collect-points
@@ -185,7 +186,8 @@ export async function POST(request: NextRequest) {
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const needsShopProfile = (!organization || organization.org_type_code === 'INDEP') &&
+    const claimLane = resolvePointClaimLane(organization?.org_type_code)
+    const needsShopProfile = claimLane === 'shop' && (!organization || organization.org_type_code === 'INDEP') &&
       (!shopUser.shop_name?.trim() || !shopUser.referral_phone?.trim())
 
     if (needsShopProfile) {
@@ -219,7 +221,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer')
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Claim lane:', claimLane)
 
     // 2. Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
@@ -237,35 +239,6 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ QR Code found:', qrCodeData.code)
-
-    // CRITICAL: Check if points already collected BEFORE any other validation
-    // This ensures idempotency - once collected, always return already_collected
-    const existingCollection = await checkPointsCollected(supabaseAdmin, qrCodeData.id)
-
-    if (existingCollection) {
-      console.log('⚠️ Points already collected for this QR code')
-      console.log('   Collected at:', existingCollection.points_collected_at)
-      console.log('   Shop:', existingCollection.shop_id)
-      console.log('   Points:', existingCollection.points_amount)
-
-      // Calculate total balance for response
-      const totalBalance = existingCollection.shop_id
-        ? await calculateShopTotalPoints(supabaseAdmin, existingCollection.shop_id)
-        : existingCollection.points_amount || 0
-
-      return NextResponse.json(
-        {
-          success: false,
-          already_collected: true,
-          error: 'Points for this QR code have already been collected.',
-          points_earned: existingCollection.points_amount || 0,
-          total_balance: totalBalance
-        },
-        { status: 409 }
-      )
-    }
-
-    console.log('✅ No existing collection found, proceeding with validation')
 
     // Only allow valid statuses - must be shipped/activated/verified to collect points
     // Include 'redeemed' and 'scanned' for already-used codes that might still need points collection
@@ -455,7 +428,32 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ Using default: 100 points')
     }
 
-    const pointsToAward = pointRule?.points_per_scan || 100 // Default to 100 if no rule
+    const settingsOrgId = pointRule?.org_id || orderData.company_id || organization?.parent_org_id || organization?.id
+    let pointClaimSettings = normalizePointClaimSettings(null, pointRule?.points_per_scan || 100)
+
+    if (settingsOrgId) {
+      const { data: settingsOrg } = await supabaseAdmin
+        .from('organizations')
+        .select('settings')
+        .eq('id', settingsOrgId)
+        .maybeSingle()
+
+      pointClaimSettings = normalizePointClaimSettings(settingsOrg?.settings, pointRule?.points_per_scan || 100)
+    }
+
+    if (claimLane === 'consumer' && pointClaimSettings.claimMode !== 'dual') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Consumer QR point claim is disabled for this organization. Current mode is Shop Staff Only.'
+        },
+        { status: 403 }
+      )
+    }
+
+    const pointsToAward = claimLane === 'shop'
+      ? pointClaimSettings.shopPointsPerScan
+      : pointClaimSettings.consumerPointsPerScan
 
     console.log('💰 Points configuration:', {
       rule_id: pointRule?.id,
@@ -463,7 +461,9 @@ export async function POST(request: NextRequest) {
       org_id: pointRule?.org_id,
       is_active: pointRule?.is_active,
       points_per_scan: pointRule?.points_per_scan,
-      points_to_award: pointsToAward
+      points_to_award: pointsToAward,
+      claim_mode: pointClaimSettings.claimMode,
+      claim_lane: claimLane
     })
     console.log('⚠️ PASSING TO RPC:', {
       p_raw_qr_code: qr_code,
@@ -476,7 +476,8 @@ export async function POST(request: NextRequest) {
       p_raw_qr_code: qr_code,
       p_shop_id: authenticatedUserId, // Pass user ID, RPC will look up org
       p_points_amount: pointsToAward,
-      p_claim_lane: 'consumer'
+      p_claim_lane: claimLane,
+      p_allow_dual_claim: pointClaimSettings.claimMode === 'dual'
     })
 
     console.log('⚠️ RPC RESULT:', result)
@@ -491,17 +492,16 @@ export async function POST(request: NextRequest) {
 
     // Helper to calculate balance based on user type
     const calculateBalance = async () => {
-      if (shopUser.organization_id) {
+      if (claimLane === 'shop' && shopUser.organization_id) {
         return await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
-      } else {
-        // Independent consumer balance
-        const { data: consumerBalance } = await supabaseAdmin
-          .from('v_consumer_points_balance')
-          .select('current_balance')
-          .eq('user_id', authenticatedUserId)
-          .maybeSingle()
-        return consumerBalance?.current_balance || 0
       }
+
+      const { data: consumerBalance } = await supabaseAdmin
+        .from('v_consumer_points_balance')
+        .select('current_balance')
+        .eq('user_id', authenticatedUserId)
+        .maybeSingle()
+      return consumerBalance?.current_balance || 0
     }
 
     // Handle RPC result

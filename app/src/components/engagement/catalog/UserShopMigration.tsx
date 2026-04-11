@@ -85,6 +85,15 @@ const STATUS_CONFIG = {
   no_shop: { label: 'No Shop', color: 'bg-gray-100 text-gray-500', icon: Unlink },
 }
 
+function normalizePhoneSearch(value: string | null | undefined) {
+  if (!value) return ''
+  const digits = value.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('60')) return digits
+  if (digits.startsWith('0')) return `6${digits}`
+  return digits
+}
+
 export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProps) {
   const [users, setUsers] = useState<MigrationUser[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -148,13 +157,18 @@ export function UserShopMigration({ onMigrationComplete }: UserShopMigrationProp
     }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase()
+      const normalizedSearchPhone = normalizePhoneSearch(searchTerm)
       result = result.filter(u =>
-        (u.full_name && u.full_name.toLowerCase().includes(q)) ||
-        (u.phone && u.phone.includes(q)) ||
-        (u.email && u.email.toLowerCase().includes(q)) ||
-        (u.current_shop_name && u.current_shop_name.toLowerCase().includes(q)) ||
-        (u.current_org_name && u.current_org_name.toLowerCase().includes(q)) ||
-        (u.matched_org_name && u.matched_org_name.toLowerCase().includes(q))
+        normalizedSearchPhone.length >= 8
+          ? normalizePhoneSearch(u.phone).includes(normalizedSearchPhone)
+          : (
+            (u.full_name && u.full_name.toLowerCase().includes(q)) ||
+            (u.phone && normalizePhoneSearch(u.phone).includes(normalizedSearchPhone || q.replace(/\D/g, ''))) ||
+            (u.email && u.email.toLowerCase().includes(q)) ||
+            (u.current_shop_name && u.current_shop_name.toLowerCase().includes(q)) ||
+            (u.current_org_name && u.current_org_name.toLowerCase().includes(q)) ||
+            (u.matched_org_name && u.matched_org_name.toLowerCase().includes(q))
+          )
       )
     }
     return result

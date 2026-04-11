@@ -566,6 +566,7 @@ export default function UserManagementNew({
 
         let updateData: any = {
           full_name: userData.full_name,
+          call_name: (userData as any).call_name || null,
           phone: userData.phone,
           role_code: userData.role_code,
           organization_id: userData.organization_id,
@@ -767,6 +768,7 @@ export default function UserManagementNew({
           email: userData.email,
           password: userData.password,
           full_name: userData.full_name,
+          call_name: (userData as any).call_name || undefined,
           role_code: userData.role_code,
           organization_id:
             userData.organization_id || undefined, // Don't auto-assign to admin's org - allow independent users

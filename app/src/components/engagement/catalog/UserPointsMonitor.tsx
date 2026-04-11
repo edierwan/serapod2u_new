@@ -190,6 +190,32 @@ export function UserPointsMonitor({
     )
   }, [users, searchTerm])
 
+  const summaryStats = useMemo(() => {
+    return users.reduce(
+      (acc, user) => {
+        acc.totalUsers += 1
+        acc.totalBalance += user.current_balance || 0
+        acc.totalSystem += user.total_collected_system || 0
+        acc.totalManual += user.total_collected_manual || 0
+        acc.totalMigration += user.total_migration || 0
+        acc.totalRedeemed += user.total_redeemed || 0
+        acc.totalTransactions += user.transaction_count || 0
+        if ((user.current_balance || 0) > 0) acc.usersWithBalance += 1
+        return acc
+      },
+      {
+        totalUsers: 0,
+        usersWithBalance: 0,
+        totalBalance: 0,
+        totalSystem: 0,
+        totalManual: 0,
+        totalMigration: 0,
+        totalRedeemed: 0,
+        totalTransactions: 0,
+      }
+    )
+  }, [users])
+
   const handleSort = (key: keyof ConsumerUser) => {
     setSortConfig(prev => {
       if (prev?.key === key && prev.direction === 'asc') return { key, direction: 'desc' }
@@ -444,6 +470,60 @@ export function UserPointsMonitor({
             </div>
           </CardContent>
         </Card>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Users className="h-5 w-5 text-slate-600" /> Total {entityLabelPlural}
+              </CardTitle>
+              <CardDescription>Current rows in this performance lane</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold text-slate-800">{formatNumber(summaryStats.totalUsers)}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{formatNumber(filteredUsers.length)} matching current search</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-emerald-200 bg-emerald-50/70 shadow-none">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-emerald-700">
+                <Trophy className="h-5 w-5" /> Total Balance
+              </CardTitle>
+              <CardDescription className="text-emerald-700/80">Live balance held by this group</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold text-emerald-700">{formatNumber(summaryStats.totalBalance)}</p>
+              <p className="mt-2 text-xs text-emerald-700/70">{formatNumber(summaryStats.usersWithBalance)} with positive balance</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-blue-200 bg-blue-50/70 shadow-none">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-blue-700">
+                <FileSpreadsheet className="h-5 w-5" /> Total Earned
+              </CardTitle>
+              <CardDescription className="text-blue-700/80">System, manual, and migration inflows</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold text-blue-700">{formatNumber(summaryStats.totalSystem + summaryStats.totalManual + summaryStats.totalMigration)}</p>
+              <p className="mt-2 text-xs text-blue-700/70">{formatNumber(summaryStats.totalSystem)} system • {formatNumber(summaryStats.totalManual)} manual • {formatNumber(summaryStats.totalMigration)} migration</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-amber-200 bg-amber-50/70 shadow-none">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-amber-700">
+                <FileText className="h-5 w-5" /> Activity Snapshot
+              </CardTitle>
+              <CardDescription className="text-amber-700/80">Redeemed points and transaction volume</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold text-amber-700">{formatNumber(summaryStats.totalTransactions)}</p>
+              <p className="mt-2 text-xs text-amber-700/70">{formatNumber(summaryStats.totalRedeemed)} points redeemed</p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Main card */}
         <Card>
