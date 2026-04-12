@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -47,10 +48,16 @@ export async function POST(request: NextRequest) {
             console.log('[RT] session auth exception:', e?.message || 'unknown')
         }
 
-        // Try login with email/password if provided
+        // Try login with email/password if provided — use a SEPARATE anon client
+        // to avoid clobbering the admin client's service_role session.
         if (!userId && login_email && login_password) {
             console.log('[RT] trying email/password login for:', login_email)
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            const anonClient = createSupabaseClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                { auth: { autoRefreshToken: false, persistSession: false } }
+            )
+            const { data: authData, error: authError } = await anonClient.auth.signInWithPassword({
                 email: login_email,
                 password: login_password,
             })

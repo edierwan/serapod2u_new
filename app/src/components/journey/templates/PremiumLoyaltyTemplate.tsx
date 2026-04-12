@@ -3190,12 +3190,12 @@ export default function PremiumLoyaltyTemplate({
                 setCollectingPoints(false)
                 return
             }
-            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
-                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
-                return
-            }
             if (data.code === 'SHOP_REQUIRED') {
                 openRoadtourShopOnlyPrompt(data.message)
+                return
+            }
+            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
+                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
                 return
             }
             if (!response.ok) {
@@ -3247,20 +3247,21 @@ export default function PremiumLoyaltyTemplate({
             const { data: { user: authUser } } = await supabase.auth.getUser()
             if (authUser) setUserId(authUser.id)
             sessionStorage.setItem('serapod_active_session', 'logged_in')
-            // Now claim via session
+            // Now claim via session — also send credentials as server-side auth fallback
+            // (SSR cookies may not be set yet immediately after client-side signIn)
             const response = await fetch('/api/roadtour/claim-reward', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ token: roadtourContext.token }),
+                body: JSON.stringify({ token: roadtourContext.token, login_email: email, login_password: shopPassword }),
             })
             const data = await response.json()
-            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
-                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
-                return
-            }
             if (data.code === 'SHOP_REQUIRED') {
                 openRoadtourShopOnlyPrompt(data.message)
+                return
+            }
+            if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
+                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
                 return
             }
             if (!response.ok) {
