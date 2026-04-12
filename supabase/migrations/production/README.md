@@ -4,13 +4,19 @@ This folder is a staging-prep checklist for SQL scripts that should be reviewed 
 
 Keep the original migration files in the main `supabase/migrations/` folder so local tooling and history stay intact.
 
-Current production-later queue:
+Current production-later queue (run in order):
 
+- `20260408_roadtour.sql` — RoadTour full schema (tables, functions, RLS, grants)
+- `20260409_roadtour_fixes.sql` — RoadTour grant fixes (authenticated + anon)
+- `20260410_roadtour_scan_premium_flow.sql` — Updated validate function with org settings
+- `20260410_user_registration_bonus_and_roadtour_defaults.sql` — Registration bonus tables + roadtour defaults fix
 - `20260411_add_user_call_name.sql`
+- `20260411_fix_roadtour_timezone.sql` — Malaysia timezone fix for validate function
 - `20260411_point_claim_mode_single_or_dual.sql`
+- `20260412_consumer_claim_confirmation.sql`
 - `20260412_dual_claim_and_taxonomy_phase1.sql`
 - `20260412_dual_claim_and_taxonomy_phase2.sql`
-- `20260412_consumer_claim_confirmation.sql`
+- `20260412_roadtour_scan_consumer_phone.sql` — Add consumer_phone column to scan events
 
 *** Add File: /Users/macbook/serapod2u_main/supabase/migrations/20260412_consumer_claim_confirmation.sql
 BEGIN;
