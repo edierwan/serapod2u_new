@@ -37,6 +37,35 @@ function buildScanInsertErrorPayload(error: any) {
     }
 }
 
+function isMissingRoadtourBalanceGuardError(error: any) {
+    const combined = [error?.message, error?.details, error?.hint]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+    return combined.includes('balance_after') && combined.includes('not-null')
+}
+
+function buildRewardErrorPayload(error: any) {
+    if (isMissingRoadtourBalanceGuardError(error)) {
+        return {
+            message: 'RoadTour reward setup is outdated on the server. The reward function is missing the balance fallback fix for first-time claimers.',
+            issue: 'missing_roadtour_balance_guard',
+            detail: error?.message || null,
+            hint: 'Apply migration 20260413_fix_roadtour_reward_balance_null.sql and refresh PostgREST schema cache.',
+            code: 'REWARD_SCHEMA_MISMATCH',
+        }
+    }
+
+    return {
+        message: error?.message || 'Reward processing failed.',
+        issue: 'reward_processing_failed',
+        detail: error?.details || null,
+        hint: error?.hint || null,
+        code: error?.code || 'ERROR',
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
@@ -284,7 +313,7 @@ export async function POST(request: NextRequest) {
                 await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
                 return NextResponse.json({ message: 'You have already claimed this reward.', code: 'DUPLICATE' }, { status: 409 })
             }
-            return NextResponse.json({ message: rewardError.message || 'Reward processing failed.', code: 'ERROR' }, { status: 500 })
+            return NextResponse.json(buildRewardErrorPayload(rewardError), { status: 500 })
         }
 
         // Check if rewardResult indicates duplicate
