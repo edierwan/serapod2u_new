@@ -72,8 +72,11 @@ export async function POST(request: NextRequest) {
         const isShopUser = orgType === 'SHOP'
         const isConsumerLaneUser = !orgType || orgType === 'INDEP'
 
-        // Use explicit shop_id first, then QR-bound shop_id, then authenticated SHOP organization.
-        const resolved_shop_id = shop_id || (validation as any).shop_id || (isShopUser ? userProfile?.organization_id || null : null)
+        const qrShopId = (validation as any).shop_id || null
+        const explicitShopId = shop_id || null
+        const resolvedScanShopId = explicitShopId || qrShopId
+        // Use authenticated SHOP organization only for reward context and duplicate rules.
+        const resolvedRewardShopId = resolvedScanShopId || (isShopUser ? userProfile?.organization_id || null : null)
 
         // 2b. Profile completion gate — same check as product collect-points flow
         // Independent/no-org consumers must have shop_name + referral_phone filled
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest) {
 
         // 2c. Shop context gate — use QR's shop_id when user didn't provide one
         const require_shop_context = (validation as any).require_shop_context
-        if (require_shop_context && !resolved_shop_id) {
+        if (require_shop_context && !resolvedRewardShopId) {
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
@@ -135,7 +138,7 @@ export async function POST(request: NextRequest) {
                 account_manager_user_id,
                 scanned_by_user_id: userId || null,
                 consumer_phone: userPhone || null,
-                shop_id: resolved_shop_id,
+                shop_id: resolvedScanShopId,
                 scan_status: 'opened',
                 geolocation: geolocation || null,
             })
@@ -143,6 +146,18 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (scanError) {
+            console.error('RoadTour scan event insert failed:', {
+                message: scanError.message,
+                code: scanError.code,
+                details: scanError.details,
+                hint: scanError.hint,
+                campaign_id,
+                qr_code_id,
+                account_manager_user_id,
+                scanned_by_user_id: userId || null,
+                scan_shop_id: resolvedScanShopId,
+                reward_shop_id: resolvedRewardShopId,
+            })
             return NextResponse.json({ message: 'Failed to record scan.', detail: scanError.message }, { status: 500 })
         }
 
@@ -186,7 +201,7 @@ export async function POST(request: NextRequest) {
             p_qr_code_id: qr_code_id,
             p_account_manager_user_id: account_manager_user_id,
             p_scanned_by_user_id: userId || null,
-            p_shop_id: resolved_shop_id,
+            p_shop_id: resolvedRewardShopId,
             p_points: default_points,
             p_scan_event_id: scanEvent.id,
             p_survey_response_id: surveyResponseId,
