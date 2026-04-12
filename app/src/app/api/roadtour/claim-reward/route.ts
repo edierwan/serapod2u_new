@@ -3,6 +3,40 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
+function isMissingConsumerPhoneColumnError(error: any) {
+    const combined = [error?.message, error?.details, error?.hint]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+    return combined.includes('consumer_phone') && (
+        combined.includes('column') ||
+        combined.includes('schema cache') ||
+        error?.code === 'PGRST204' ||
+        error?.code === '42703'
+    )
+}
+
+function buildScanInsertErrorPayload(error: any) {
+    if (isMissingConsumerPhoneColumnError(error)) {
+        return {
+            message: 'RoadTour scan setup is outdated on the server. The scan record schema is missing the consumer phone field.',
+            issue: 'missing_consumer_phone_column',
+            detail: error?.message || null,
+            hint: error?.hint || 'Apply migration 20260412_roadtour_scan_consumer_phone.sql and refresh PostgREST schema cache.',
+            code: 'SCAN_SCHEMA_MISMATCH',
+        }
+    }
+
+    return {
+        message: error?.message || 'Failed to record RoadTour scan event.',
+        issue: 'scan_insert_failed',
+        detail: error?.details || null,
+        hint: error?.hint || null,
+        code: error?.code || 'SCAN_RECORD_FAILED',
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
@@ -147,20 +181,38 @@ export async function POST(request: NextRequest) {
 
         // 3. Record scan event with geolocation
         console.log('[RT] inserting scan event:', { campaign_id, qr_code_id, account_manager_user_id, userId, resolvedScanShopId })
-        const { data: scanEvent, error: scanError } = await (supabase as any)
+
+        const scanInsertPayload = {
+            campaign_id,
+            qr_code_id,
+            account_manager_user_id,
+            scanned_by_user_id: userId || null,
+            consumer_phone: userPhone || null,
+            shop_id: resolvedScanShopId,
+            scan_status: 'opened',
+            geolocation: geolocation || null,
+        }
+
+        let { data: scanEvent, error: scanError } = await (supabase as any)
             .from('roadtour_scan_events')
-            .insert({
-                campaign_id,
-                qr_code_id,
-                account_manager_user_id,
-                scanned_by_user_id: userId || null,
-                consumer_phone: userPhone || null,
-                shop_id: resolvedScanShopId,
-                scan_status: 'opened',
-                geolocation: geolocation || null,
-            })
+            .insert(scanInsertPayload)
             .select('id')
             .single()
+
+        if (scanError && isMissingConsumerPhoneColumnError(scanError)) {
+            console.warn('[RT] retrying scan event insert without consumer_phone due to schema drift')
+
+            const { consumer_phone: _consumerPhone, ...fallbackScanInsertPayload } = scanInsertPayload
+
+            const fallbackResult = await (supabase as any)
+                .from('roadtour_scan_events')
+                .insert(fallbackScanInsertPayload)
+                .select('id')
+                .single()
+
+            scanEvent = fallbackResult.data
+            scanError = fallbackResult.error
+        }
 
         if (scanError) {
             console.error('[RT] scan event insert FAILED:', JSON.stringify({
@@ -175,7 +227,7 @@ export async function POST(request: NextRequest) {
                 scan_shop_id: resolvedScanShopId,
                 reward_shop_id: resolvedRewardShopId,
             }))
-            return NextResponse.json({ message: 'Failed to record scan.', detail: scanError.message, code: scanError.code }, { status: 500 })
+            return NextResponse.json(buildScanInsertErrorPayload(scanError), { status: 500 })
         }
 
         // 4. If survey mode, save survey response
