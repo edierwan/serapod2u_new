@@ -33,31 +33,39 @@ export async function POST(request: NextRequest) {
         let userPhone: string | null = consumer_phone || null
         let userProfile: any = null
 
+        console.log('[RT] claim-reward called, token:', token?.substring(0, 8), 'login_email:', login_email || 'none')
+
         // Try session-based auth first
         try {
             const serverSupabase = await createClient()
-            const { data: { user } } = await serverSupabase.auth.getUser()
+            const { data: { user }, error: userError } = await serverSupabase.auth.getUser()
+            console.log('[RT] session auth:', user ? `userId=${user.id}` : 'no user', userError ? `error=${userError.message}` : '')
             if (user) {
                 userId = user.id
             }
-        } catch { /* no session, continue */ }
+        } catch (e: any) {
+            console.log('[RT] session auth exception:', e?.message || 'unknown')
+        }
 
         // Try login with email/password if provided
         if (!userId && login_email && login_password) {
+            console.log('[RT] trying email/password login for:', login_email)
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email: login_email,
                 password: login_password,
             })
             if (authError) {
+                console.log('[RT] signInWithPassword failed:', authError.message)
                 return NextResponse.json({ message: authError.message || 'Invalid credentials.', code: 'AUTH_FAILED' }, { status: 401 })
             }
             if (authData?.user) {
                 userId = authData.user.id
+                console.log('[RT] email/password login OK, userId:', userId)
             }
         }
 
         if (userId) {
-            const { data: profile } = await (supabase as any)
+            const { data: profile, error: profileError } = await (supabase as any)
                 .from('users')
                 .select('phone, full_name, shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code)')
                 .eq('id', userId)
@@ -65,6 +73,7 @@ export async function POST(request: NextRequest) {
 
             userProfile = profile || null
             if (userProfile?.phone) userPhone = userProfile.phone
+            console.log('[RT] profile:', userProfile ? `org=${userProfile.organization_id}, orgType=${userProfile.organizations?.org_type_code}, shop=${userProfile.shop_name}` : 'null', profileError ? `err=${profileError.message}` : '')
         }
 
         const orgType = userProfile?.organizations?.org_type_code || null
@@ -130,6 +139,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Record scan event with geolocation
+        console.log('[RT] inserting scan event:', { campaign_id, qr_code_id, account_manager_user_id, userId, resolvedScanShopId })
         const { data: scanEvent, error: scanError } = await (supabase as any)
             .from('roadtour_scan_events')
             .insert({
@@ -146,7 +156,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (scanError) {
-            console.error('RoadTour scan event insert failed:', {
+            console.error('[RT] scan event insert FAILED:', JSON.stringify({
                 message: scanError.message,
                 code: scanError.code,
                 details: scanError.details,
@@ -157,8 +167,8 @@ export async function POST(request: NextRequest) {
                 scanned_by_user_id: userId || null,
                 scan_shop_id: resolvedScanShopId,
                 reward_shop_id: resolvedRewardShopId,
-            })
-            return NextResponse.json({ message: 'Failed to record scan.', detail: scanError.message }, { status: 500 })
+            }))
+            return NextResponse.json({ message: 'Failed to record scan.', detail: scanError.message, code: scanError.code }, { status: 500 })
         }
 
         // 4. If survey mode, save survey response
@@ -232,7 +242,7 @@ export async function POST(request: NextRequest) {
             survey_response_id: surveyResponseId,
         })
     } catch (err: any) {
-        console.error('RoadTour claim-reward error:', err)
-        return NextResponse.json({ message: 'Internal server error.' }, { status: 500 })
+        console.error('[RT] claim-reward EXCEPTION:', err?.message, err?.stack?.substring(0, 300))
+        return NextResponse.json({ message: 'Internal server error.', detail: err?.message }, { status: 500 })
     }
 }
