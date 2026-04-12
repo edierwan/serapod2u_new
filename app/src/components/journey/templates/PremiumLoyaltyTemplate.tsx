@@ -2846,7 +2846,9 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection
-    const handleCollectPoints = async (preferredClaimLane?: 'shop') => {
+    const handleCollectPoints = async (preferredClaimLane?: 'shop' | React.MouseEvent<HTMLButtonElement>) => {
+        const normalizedClaimLane = preferredClaimLane === 'shop' ? 'shop' : undefined
+
         if (!shopId || !shopPassword) {
             setPointsError('Please enter your Shop ID and password')
             return
@@ -2873,7 +2875,7 @@ export default function PremiumLoyaltyTemplate({
                     qr_code: qrCode,
                     shop_id: shopId.trim(),
                     password: shopPassword,
-                    preferred_claim_lane: preferredClaimLane
+                    preferred_claim_lane: normalizedClaimLane
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
@@ -2943,7 +2945,7 @@ export default function PremiumLoyaltyTemplate({
             } else if (data.claim_lane === 'consumer') {
                 setQrConsumerLaneCollected(true)
             }
-            if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
+            if (normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
                 setShowShopLinkCelebration(true)
                 setPendingProfileCollectLane(null)
@@ -6570,7 +6572,13 @@ export default function PremiumLoyaltyTemplate({
                                         Back
                                     </button>
                                     <button
-                                        onClick={roadtourContext ? handleRoadtourClaimWithLogin : handleCollectPoints}
+                                        onClick={() => {
+                                            if (roadtourContext) {
+                                                void handleRoadtourClaimWithLogin()
+                                                return
+                                            }
+                                            void handleCollectPoints()
+                                        }}
                                         disabled={collectingPoints || !shopId.trim() || !shopPassword.trim()}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
