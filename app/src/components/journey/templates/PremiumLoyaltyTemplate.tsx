@@ -528,9 +528,10 @@ export default function PremiumLoyaltyTemplate({
     const [pointsErrorAction, setPointsErrorAction] = useState<'shop-profile-link' | null>(null)
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
-    const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile'>('login')
+    const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm'>('login')
     const [pendingProfileCollectLane, setPendingProfileCollectLane] = useState<'shop' | null>(null)
     const [pendingProfileCollectEmail, setPendingProfileCollectEmail] = useState('')
+    const [consumerClaimConfirmed, setConsumerClaimConfirmed] = useState(false)
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
     const [qrConsumerLaneCollected, setQrConsumerLaneCollected] = useState(false)
@@ -913,7 +914,8 @@ export default function PremiumLoyaltyTemplate({
                 bankName: profile.bankName || '',
                 bankAccountNumber: profile.bankAccountNumber || '',
                 bankAccountHolderName: profile.bankAccountHolderName || '',
-                referralPhone: profile.referralPhone || ''
+                referralPhone: profile.referralPhone || '',
+                consumerClaimConfirmedAt: profile.consumerClaimConfirmedAt || null
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
@@ -1000,7 +1002,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -1013,6 +1015,7 @@ export default function PremiumLoyaltyTemplate({
                         setUserAvatarUrl(null)
                         setShopName('')
                         setUserPhone('')
+                        setConsumerClaimConfirmed(false)
                         setUserId(null)
                         initialAuthCheckDoneRef.current = true
                         return
@@ -1030,6 +1033,7 @@ export default function PremiumLoyaltyTemplate({
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                         setNewPhone(phone)
                         setNewReferralPhone(referralPhone || '')
+                        setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                         // Set points and bank details for ALL users (Shop and Independent)
                         console.log('🔐 Setting user points balance:', pointsBalance)
@@ -1108,7 +1112,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -1121,6 +1125,7 @@ export default function PremiumLoyaltyTemplate({
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             setNewReferralPhone(referralPhone || '')
+                            setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                             // Set points and bank details for ALL users
                             setUserPoints(pointsBalance)
@@ -1148,6 +1153,7 @@ export default function PremiumLoyaltyTemplate({
                     setUserAvatarUrl(null)
                     setShopName('')
                     setUserPhone('')
+                    setConsumerClaimConfirmed(false)
                     setUserId(null)
                 }
             })
@@ -1328,6 +1334,7 @@ export default function PremiumLoyaltyTemplate({
                     setUserAvatarUrl(null)
                     setShopName('')
                     setUserPhone('')
+                    setConsumerClaimConfirmed(false)
                     setUserId(null)
                     setShowLoginForm(true)
                     return
@@ -1343,6 +1350,7 @@ export default function PremiumLoyaltyTemplate({
                 if (newOrgName !== shopName) setShopName(newOrgName)
                 const newPhone = profile.phone || userPhone
                 if (newPhone !== userPhone) setUserPhone(newPhone)
+                setConsumerClaimConfirmed(Boolean((profile as any).consumerClaimConfirmedAt))
                 if (profile.pointsBalance !== userPoints) {
                     setUserPoints(profile.pointsBalance)
                 }
@@ -2177,7 +2185,7 @@ export default function PremiumLoyaltyTemplate({
                     console.log('🔐 Forcing profile fetch after login...')
                     try {
                         const profileData = await checkUserOrganization(data.user.id, true) // Force fetch, bypass duplicate check
-                        const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance } = profileData
+                        const { success, isShop, fullName, avatarUrl, orgName, phone, pointsBalance, consumerClaimConfirmedAt } = profileData as any
 
                         if (success) {
                             console.log('🔐 Profile loaded successfully after login')
@@ -2189,6 +2197,7 @@ export default function PremiumLoyaltyTemplate({
                             setUserAvatarUrl(avatarUrl)
                             setShopName(orgName)
                             setUserPhone(phone)
+                            setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
                             // Set points for all users
                             setUserPoints(pointsBalance)
                         }
@@ -2290,6 +2299,7 @@ export default function PremiumLoyaltyTemplate({
             setUserAvatarUrl(null)
             setShopName('')
             setUserPhone('')
+            setConsumerClaimConfirmed(false)
             setUserId(null)
 
             // IMPORTANT: Clear login form fields to prevent auto-login on next visit
@@ -2578,9 +2588,9 @@ export default function PremiumLoyaltyTemplate({
             if (pendingLaneRetry === 'shop') {
                 setShowProfileInfo(false)
                 if (isAuthenticated) {
-                    await handleCollectPointsWithSession('shop')
+                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
                 } else {
-                    await handleCollectPoints('shop')
+                    await handleCollectPoints({ preferredClaimLane: 'shop' })
                 }
             }
 
@@ -2791,7 +2801,7 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
-    const openProfileForPendingShopLane = async () => {
+    const openProfileForPendingCollectFlow = async () => {
         try {
             if (!isAuthenticated && pendingProfileCollectEmail && shopPassword) {
                 const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -2835,6 +2845,15 @@ export default function PremiumLoyaltyTemplate({
         setShowPointsLoginModal(true)
     }
 
+    const openConsumerClaimConfirmationPrompt = (message?: string, email?: string | null) => {
+        setCollectingPoints(false)
+        setPointsError(message || "You're not linked to any shop yet. Continue collecting points as a consumer?")
+        setPointsErrorAction(null)
+        setPendingProfileCollectEmail(email || userEmail)
+        setCollectPointsStep('consumer-confirm')
+        setShowPointsLoginModal(true)
+    }
+
     const openShopLaneConflictPrompt = (message?: string, email?: string | null) => {
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
@@ -2846,8 +2865,9 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection
-    const handleCollectPoints = async (preferredClaimLane?: 'shop' | React.MouseEvent<HTMLButtonElement>) => {
-        const normalizedClaimLane = preferredClaimLane === 'shop' ? 'shop' : undefined
+    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+        const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
+        const consumerConfirmation = options.consumerConfirmation === true
 
         if (!shopId || !shopPassword) {
             setPointsError('Please enter your Shop ID and password')
@@ -2875,7 +2895,8 @@ export default function PremiumLoyaltyTemplate({
                     qr_code: qrCode,
                     shop_id: shopId.trim(),
                     password: shopPassword,
-                    preferred_claim_lane: normalizedClaimLane
+                    preferred_claim_lane: normalizedClaimLane,
+                    consumer_confirmation: consumerConfirmation
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
@@ -2903,6 +2924,11 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }
                 openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                return
+            }
+
+            if (data.requiresConsumerConfirmation) {
+                openConsumerClaimConfirmationPrompt(data.error, data.email)
                 return
             }
 
@@ -2950,6 +2976,9 @@ export default function PremiumLoyaltyTemplate({
                 setShowShopLinkCelebration(true)
                 setPendingProfileCollectLane(null)
                 setPendingProfileCollectEmail('')
+            }
+            if (data.consumer_claim_confirmed_at) {
+                setConsumerClaimConfirmed(true)
             }
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
@@ -3003,7 +3032,10 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection using existing session (for authenticated shop users)
-    const handleCollectPointsWithSession = async (preferredClaimLane?: 'shop') => {
+    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+        const preferredClaimLane = options.preferredClaimLane
+        const consumerConfirmation = options.consumerConfirmation === true
+
         if (!qrCode) {
             setPointsError('QR code not available')
             return
@@ -3022,7 +3054,8 @@ export default function PremiumLoyaltyTemplate({
                 credentials: 'include',
                 body: JSON.stringify({
                     qr_code: qrCode,
-                    preferred_claim_lane: preferredClaimLane
+                    preferred_claim_lane: preferredClaimLane,
+                    consumer_confirmation: consumerConfirmation
                 }),
                 signal: controller.signal
             }).finally(() => clearTimeout(timeoutId))
@@ -3040,6 +3073,11 @@ export default function PremiumLoyaltyTemplate({
 
             if (data.requiresProfileUpdate) {
                 openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                return
+            }
+
+            if (data.requiresConsumerConfirmation) {
+                openConsumerClaimConfirmationPrompt(data.error, userEmail)
                 return
             }
 
@@ -3086,6 +3124,9 @@ export default function PremiumLoyaltyTemplate({
                 setShowShopLinkCelebration(true)
                 setPendingProfileCollectLane(null)
                 setPendingProfileCollectEmail('')
+            }
+            if (data.consumer_claim_confirmed_at) {
+                setConsumerClaimConfirmed(true)
             }
             setShowPointsSuccessModal(true)
             setPointsErrorAction(null)
@@ -6449,19 +6490,25 @@ export default function PremiumLoyaltyTemplate({
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
                             >
-                                {collectPointsStep === 'complete-profile' ? (
+                                {collectPointsStep === 'complete-profile' || collectPointsStep === 'consumer-confirm' ? (
                                     <AlertCircle className="w-8 h-8" style={{ color: config.primary_color }} />
                                 ) : (
                                     <Gift className="w-8 h-8" style={{ color: config.primary_color }} />
                                 )}
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">
-                                {collectPointsStep === 'complete-profile' ? 'Complete Your Profile' : 'Collect Points'}
+                                {collectPointsStep === 'complete-profile'
+                                    ? 'Complete Your Profile'
+                                    : collectPointsStep === 'consumer-confirm'
+                                        ? 'Confirm Consumer Lane'
+                                        : 'Collect Points'}
                             </h3>
                             <p className="text-sm text-gray-500 mt-1">
                                 {collectPointsStep === 'complete-profile'
                                     ? 'Update your shop details before collecting points'
-                                    : 'Enter your credentials to collect points'}
+                                    : collectPointsStep === 'consumer-confirm'
+                                        ? 'Choose whether to continue as a consumer or link to a shop first'
+                                        : 'Enter your credentials to collect points'}
                             </p>
                         </div>
 
@@ -6473,7 +6520,7 @@ export default function PremiumLoyaltyTemplate({
                                             Sudah dituntut oleh pelanggan. Staf kedai sahaja boleh tuntut sekarang.{' '}
                                             <button
                                                 type="button"
-                                                onClick={openProfileForPendingShopLane}
+                                                onClick={openProfileForPendingCollectFlow}
                                                 className="font-semibold underline underline-offset-2"
                                             >
                                                 Anda staff Kedai?
@@ -6501,11 +6548,48 @@ export default function PremiumLoyaltyTemplate({
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={openProfileForPendingShopLane}
+                                        onClick={openProfileForPendingCollectFlow}
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
                                         {pointsErrorAction === 'shop-profile-link' ? 'Kemaskini Profil Kedai' : 'Go to Profile'}
+                                    </button>
+                                </div>
+                            </>
+                        ) : collectPointsStep === 'consumer-confirm' ? (
+                            <>
+                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                                    <p className="text-sm text-amber-700 text-center">
+                                        {pointsError || "You're not linked to any shop yet. Continue collecting points as a consumer?"}
+                                    </p>
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={openProfileForPendingCollectFlow}
+                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                        Link to Shop
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (isAuthenticated) {
+                                                void handleCollectPointsWithSession({ consumerConfirmation: true })
+                                                return
+                                            }
+
+                                            void handleCollectPoints({ consumerConfirmation: true })
+                                        }}
+                                        disabled={collectingPoints || consumerClaimConfirmed}
+                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        style={{ backgroundColor: config.button_color }}
+                                    >
+                                        {collectingPoints ? (
+                                            <span className="flex items-center justify-center gap-2">
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                Confirming...
+                                            </span>
+                                        ) : consumerClaimConfirmed ? 'Confirmed' : 'Yes'}
                                     </button>
                                 </div>
                             </>

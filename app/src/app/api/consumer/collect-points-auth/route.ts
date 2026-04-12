@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { resolveQrCodeRecord, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
-import { normalizePointClaimSettings, resolvePointClaimLane } from '@/lib/engagement/point-claim-settings'
+import {
+  hasLinkedShopProfile,
+  normalizePointClaimSettings,
+  requiresConsumerClaimConfirmation,
+  resolvePointClaimLane,
+} from '@/lib/engagement/point-claim-settings'
 
 /**
  * POST /api/consumer/collect-points-auth
@@ -47,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ User authenticated from session:', user.email)
 
-    const { qr_code, preferred_claim_lane } = await request.json()
+    const { qr_code, preferred_claim_lane, consumer_confirmation } = await request.json()
 
     // Validate required fields
     if (!qr_code) {
@@ -71,6 +76,7 @@ export async function POST(request: NextRequest) {
         full_name,
         shop_name,
         referral_phone,
+        consumer_claim_confirmed_at,
         avatar_url,
         organizations!fk_users_organization(
           id,
@@ -95,7 +101,7 @@ export async function POST(request: NextRequest) {
     const organization = shopUser.organizations as any
     const organizationClaimLane = resolvePointClaimLane(organization?.org_type_code)
     const requestedClaimLane = preferred_claim_lane === 'shop' ? 'shop' : null
-    const canUseProfileBasedShopLane = organizationClaimLane !== 'shop' && !!shopUser.referral_phone?.trim() && !!shopUser.shop_name?.trim()
+    const canUseProfileBasedShopLane = organizationClaimLane !== 'shop' && hasLinkedShopProfile(shopUser)
     const claimLane = requestedClaimLane === 'shop' && (organizationClaimLane === 'shop' || canUseProfileBasedShopLane)
       ? 'shop'
       : organizationClaimLane
@@ -115,6 +121,40 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       )
+    }
+
+    if (requiresConsumerClaimConfirmation({
+      claimLane,
+      shop_name: shopUser.shop_name,
+      referral_phone: shopUser.referral_phone,
+      consumerClaimConfirmedAt: shopUser.consumer_claim_confirmed_at,
+    })) {
+      if (!consumer_confirmation) {
+        return NextResponse.json(
+          {
+            success: false,
+            requiresConsumerConfirmation: true,
+            error: 'You\'re not linked to any shop yet. Continue collecting points as a consumer?'
+          },
+          { status: 409 }
+        )
+      }
+
+      const confirmedAt = new Date().toISOString()
+      const { error: confirmationError } = await supabaseAdmin
+        .from('users')
+        .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+        .eq('id', shopUser.id)
+
+      if (confirmationError) {
+        console.error('Failed to persist consumer claim confirmation:', confirmationError)
+        return NextResponse.json(
+          { success: false, error: 'Unable to save consumer confirmation right now. Please try again.' },
+          { status: 500 }
+        )
+      }
+
+      shopUser.consumer_claim_confirmed_at = confirmedAt
     }
 
     // Allow if:
@@ -407,7 +447,8 @@ export async function POST(request: NextRequest) {
       message: 'Points collected successfully!',
       avatar_url: shopUser.avatar_url,
       claim_mode: pointClaimSettings.claimMode,
-      claim_lane: claimLane
+      claim_lane: claimLane,
+      consumer_claim_confirmed_at: shopUser.consumer_claim_confirmed_at || null
     })
 
   } catch (error) {
