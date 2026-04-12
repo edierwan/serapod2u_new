@@ -17,6 +17,7 @@ Current production-later queue (run in order):
 - `20260412_dual_claim_and_taxonomy_phase1.sql`
 - `20260412_dual_claim_and_taxonomy_phase2.sql`
 - `20260412_roadtour_scan_consumer_phone.sql` — Add consumer_phone column to scan events
+- `20260413_fix_roadtour_reward_balance_null.sql` — Fix NULL balance_after crash for first-time users
 
 *** Add File: /Users/macbook/serapod2u_main/supabase/migrations/20260412_consumer_claim_confirmation.sql
 BEGIN;
