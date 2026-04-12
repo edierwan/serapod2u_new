@@ -525,7 +525,7 @@ export default function PremiumLoyaltyTemplate({
     const [shopPassword, setShopPassword] = useState('')
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
-    const [pointsErrorAction, setPointsErrorAction] = useState<'shop-profile-link' | null>(null)
+    const [pointsErrorAction, setPointsErrorAction] = useState<'shop-profile-link' | 'roadtour-shop-only' | null>(null)
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm'>('login')
@@ -2864,6 +2864,21 @@ export default function PremiumLoyaltyTemplate({
         setShowPointsLoginModal(true)
     }
 
+    const openRoadtourShopOnlyPrompt = (message?: string) => {
+        setCollectingPoints(false)
+        setPendingProfileCollectLane(null)
+        setPointsError(message || 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus')
+        setPointsErrorAction('roadtour-shop-only')
+        setCollectPointsStep('complete-profile')
+        setShowPointsLoginModal(true)
+    }
+
+    const canAutoRetryShopLane = () => {
+        const effectiveShopName = (newShopName || userShopName || shopName || '').trim()
+        const effectiveReferralPhone = (newReferralPhone || userReferralPhone || '').trim()
+        return !isShopUser && Boolean(effectiveShopName && effectiveReferralPhone)
+    }
+
     // Handle points collection
     const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
@@ -2936,6 +2951,10 @@ export default function PremiumLoyaltyTemplate({
                 if (data.already_collected) {
                     if (data.remaining_lane_available) {
                         if (data.remaining_lane_available === 'shop') {
+                            if (normalizedClaimLane !== 'shop' && canAutoRetryShopLane()) {
+                                await handleCollectPoints({ preferredClaimLane: 'shop' })
+                                return
+                            }
                             openShopLaneConflictPrompt(data.error, data.email)
                         } else {
                             setPointsError(data.error || 'This QR code is only available for the other claim lane.')
@@ -3085,6 +3104,10 @@ export default function PremiumLoyaltyTemplate({
                 if (data.already_collected) {
                     if (data.remaining_lane_available) {
                         if (data.remaining_lane_available === 'shop') {
+                            if (preferredClaimLane !== 'shop' && canAutoRetryShopLane()) {
+                                await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
+                                return
+                            }
                             openShopLaneConflictPrompt(data.error)
                         } else {
                             setPointsError(data.error || 'This QR code is only available for the other claim lane.')
@@ -3172,7 +3195,7 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
             if (data.code === 'SHOP_REQUIRED') {
-                openCollectPointsProfilePrompt(data.message || 'Please update your shop details in Profile before collecting points.')
+                openRoadtourShopOnlyPrompt(data.message)
                 return
             }
             if (!response.ok) {
@@ -3237,7 +3260,7 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
             if (data.code === 'SHOP_REQUIRED') {
-                openCollectPointsProfilePrompt(data.message || 'Please update your shop details in Profile before collecting points.')
+                openRoadtourShopOnlyPrompt(data.message)
                 return
             }
             if (!response.ok) {
@@ -6526,6 +6549,10 @@ export default function PremiumLoyaltyTemplate({
                                                 Are you shop staff?
                                             </button>
                                         </p>
+                                    ) : pointsErrorAction === 'roadtour-shop-only' ? (
+                                        <p className="text-sm text-amber-700 text-center">
+                                            {pointsError || 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus'}
+                                        </p>
                                     ) : (
                                         <p className="text-sm text-amber-700 text-center">
                                             {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
@@ -6552,7 +6579,11 @@ export default function PremiumLoyaltyTemplate({
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
-                                        {pointsErrorAction === 'shop-profile-link' ? 'Update Your Profile' : 'Go to Profile'}
+                                        {pointsErrorAction === 'shop-profile-link'
+                                            ? 'Update Your Profile'
+                                            : pointsErrorAction === 'roadtour-shop-only'
+                                                ? 'Update My profile'
+                                                : 'Go to Profile'}
                                     </button>
                                 </div>
                             </>

@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
         const { token, shop_id, consumer_phone, consumer_name, survey_answers, geolocation, login_email, login_password } = body
+        const roadtourShopOnlyMessage = 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus'
 
         if (!token) {
             return NextResponse.json({ message: 'Missing QR token.' }, { status: 400 })
@@ -27,12 +28,10 @@ export async function POST(request: NextRequest) {
             duplicate_rule_reward
         } = validation as any
 
-        // Use QR code's built-in shop_id as fallback (the QR knows which shop/location it belongs to)
-        const resolved_shop_id = shop_id || (validation as any).shop_id || null
-
         // 2. Resolve authenticated user
         let userId: string | null = null
         let userPhone: string | null = consumer_phone || null
+        let userProfile: any = null
 
         // Try session-based auth first
         try {
@@ -40,8 +39,6 @@ export async function POST(request: NextRequest) {
             const { data: { user } } = await serverSupabase.auth.getUser()
             if (user) {
                 userId = user.id
-                const { data: profile } = await supabase.from('users').select('phone, full_name').eq('id', user.id).single()
-                if (profile?.phone) userPhone = profile.phone
             }
         } catch { /* no session, continue */ }
 
@@ -56,39 +53,55 @@ export async function POST(request: NextRequest) {
             }
             if (authData?.user) {
                 userId = authData.user.id
-                const { data: profile } = await supabase.from('users').select('phone, full_name').eq('id', authData.user.id).single()
-                if (profile?.phone) userPhone = profile.phone
             }
         }
 
-        // 2b. Profile completion gate — same check as product collect-points flow
-        // Independent/no-org consumers must have shop_name + referral_phone filled
         if (userId) {
-            const { data: userProfile } = await (supabase as any)
+            const { data: profile } = await (supabase as any)
                 .from('users')
-                .select('shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code)')
+                .select('phone, full_name, shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code)')
                 .eq('id', userId)
                 .single()
 
-            if (userProfile) {
-                const orgType = (userProfile.organizations as any)?.org_type_code
-                const needsProfile = (!orgType || orgType === 'INDEP') &&
-                    (!userProfile.shop_name?.trim() || !userProfile.referral_phone?.trim())
+            userProfile = profile || null
+            if (userProfile?.phone) userPhone = userProfile.phone
+        }
 
-                if (needsProfile) {
-                    const missing: string[] = []
-                    if (!userProfile.shop_name?.trim()) missing.push('Shop Name')
-                    if (!userProfile.referral_phone?.trim()) missing.push('Reference')
-                    return NextResponse.json(
-                        {
-                            requiresProfileUpdate: true,
-                            message: `Please update your ${missing.join(' and ')} in Profile before collecting points.`,
-                            code: 'PROFILE_INCOMPLETE',
-                            missing,
-                        },
-                        { status: 400 }
-                    )
-                }
+        const orgType = userProfile?.organizations?.org_type_code || null
+        const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
+        const isShopUser = orgType === 'SHOP'
+        const isConsumerLaneUser = !orgType || orgType === 'INDEP'
+
+        // Use explicit shop_id first, then QR-bound shop_id, then authenticated SHOP organization.
+        const resolved_shop_id = shop_id || (validation as any).shop_id || (isShopUser ? userProfile?.organization_id || null : null)
+
+        // 2b. Profile completion gate — same check as product collect-points flow
+        // Independent/no-org consumers must have shop_name + referral_phone filled
+        if (userId && userProfile) {
+            if (isConsumerLaneUser && !hasShopProfile) {
+                const missing: string[] = []
+                if (!userProfile.shop_name?.trim()) missing.push('Shop Name')
+                if (!userProfile.referral_phone?.trim()) missing.push('Reference')
+                return NextResponse.json(
+                    {
+                        requiresProfileUpdate: true,
+                        message: `Please update your ${missing.join(' and ')} in Profile before collecting points.`,
+                        code: 'PROFILE_INCOMPLETE',
+                        missing,
+                    },
+                    { status: 400 }
+                )
+            }
+
+            if (!isShopUser) {
+                return NextResponse.json(
+                    {
+                        requiresProfileUpdate: true,
+                        message: roadtourShopOnlyMessage,
+                        code: 'SHOP_REQUIRED',
+                    },
+                    { status: 400 }
+                )
             }
         }
 
@@ -98,7 +111,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
-                    message: 'Please update your Shop Name in Profile before collecting points.',
+                    message: roadtourShopOnlyMessage,
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }

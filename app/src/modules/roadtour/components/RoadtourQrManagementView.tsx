@@ -39,6 +39,8 @@ interface QrCode {
     expires_at: string | null
     usage_count: number
     created_at: string
+    campaign_reference_count?: number
+    campaign_references?: { full_name: string; phone: string }[]
 }
 
 export function RoadtourQrManagementView({ userProfile, onViewChange }: RoadtourQrManagementViewProps) {
@@ -64,6 +66,9 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const [previewQr, setPreviewQr] = useState<QrCode | null>(null)
     const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null)
     const [previewLoading, setPreviewLoading] = useState(false)
+    const [refsDialogOpen, setRefsDialogOpen] = useState(false)
+    const [refsDialogCampaignName, setRefsDialogCampaignName] = useState('')
+    const [refsDialogManagers, setRefsDialogManagers] = useState<{ full_name: string; phone: string }[]>([])
 
     const qrBaseUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/scan`
@@ -73,26 +78,46 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         try {
             setLoading(true)
 
-            const [campaignRes, qrRes] = await Promise.all([
+            const [campaignRes, qrRes, managerRes] = await Promise.all([
                 (supabase as any).from('roadtour_campaigns').select('id, name, status').eq('org_id', companyId).order('name'),
                 (supabase as any).from('roadtour_qr_codes')
                     .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone)')
                     .eq('roadtour_campaigns.org_id', companyId)
                     .order('created_at', { ascending: false })
                     .limit(200),
+                (supabase as any).from('roadtour_campaign_managers')
+                    .select('campaign_id, users:user_id(full_name, phone), roadtour_campaigns!inner(org_id)')
+                    .eq('is_active', true)
+                    .eq('roadtour_campaigns.org_id', companyId),
             ])
 
             if (campaignRes.error) throw campaignRes.error
             if (qrRes.error) throw qrRes.error
+            if (managerRes.error) throw managerRes.error
+
+            const campaignManagers = new Map<string, { full_name: string; phone: string }[]>()
+            for (const row of managerRes.data || []) {
+                const list = campaignManagers.get(row.campaign_id) || []
+                list.push({
+                    full_name: row.users?.full_name || '—',
+                    phone: row.users?.phone || '',
+                })
+                campaignManagers.set(row.campaign_id, list)
+            }
 
             setCampaigns(campaignRes.data || [])
             setQrCodes(
-                (qrRes.data || []).map((q: any) => ({
-                    ...q,
-                    campaign_name: q.roadtour_campaigns?.name || '—',
-                    user_name: q.users?.full_name || '—',
-                    user_phone: q.users?.phone || '',
-                }))
+                (qrRes.data || []).map((q: any) => {
+                    const campaignReferences = campaignManagers.get(q.campaign_id) || []
+                    return {
+                        ...q,
+                        campaign_name: q.roadtour_campaigns?.name || '—',
+                        user_name: q.users?.full_name || '—',
+                        user_phone: q.users?.phone || '',
+                        campaign_reference_count: campaignReferences.length,
+                        campaign_references: campaignReferences,
+                    }
+                })
             )
         } catch (err: any) {
             toast({ title: 'Error', description: 'Failed to load QR codes.', variant: 'destructive' })
@@ -199,6 +224,12 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         const url = `${qrBaseUrl}?rt=${qr.token}`
         navigator.clipboard.writeText(url)
         toast({ title: 'Copied', description: 'QR link copied to clipboard.' })
+    }
+
+    const openRefsDialog = (qr: QrCode) => {
+        setRefsDialogCampaignName(qr.campaign_name || 'Campaign')
+        setRefsDialogManagers(qr.campaign_references || [])
+        setRefsDialogOpen(true)
     }
 
     const revokeQr = async (qrId: string) => {
@@ -322,8 +353,22 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                 <TableRow key={q.id}>
                                     <TableCell>
                                         <div>
-                                            <p className="font-medium">{q.user_name}</p>
-                                            {q.user_phone && <p className="text-xs text-muted-foreground">{q.user_phone}</p>}
+                                            {q.campaign_reference_count && q.campaign_reference_count > 1 ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openRefsDialog(q)}
+                                                    className="font-medium text-primary hover:underline"
+                                                >
+                                                    Show ({q.campaign_reference_count})
+                                                </button>
+                                            ) : (
+                                                <>
+                                                    <p className="font-medium">{q.campaign_references?.[0]?.full_name || q.user_name}</p>
+                                                    {(q.campaign_references?.[0]?.phone || q.user_phone) && (
+                                                        <p className="text-xs text-muted-foreground">{q.campaign_references?.[0]?.phone || q.user_phone}</p>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell>{q.campaign_name}</TableCell>
@@ -382,6 +427,23 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                         <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancel</Button>
                         <Button onClick={generateQr} disabled={generating}>{generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Generate</Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={refsDialogOpen} onOpenChange={setRefsDialogOpen}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>References — {refsDialogCampaignName}</DialogTitle>
+                        <DialogDescription>{refsDialogManagers.length} reference{refsDialogManagers.length !== 1 ? 's' : ''} assigned</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        {refsDialogManagers.map((manager, index) => (
+                            <div key={`${manager.full_name}-${index}`} className="rounded-lg border p-3">
+                                <p className="text-sm font-medium">{manager.full_name}</p>
+                                {manager.phone && <p className="text-xs text-muted-foreground">{manager.phone}</p>}
+                            </div>
+                        ))}
+                    </div>
                 </DialogContent>
             </Dialog>
 
