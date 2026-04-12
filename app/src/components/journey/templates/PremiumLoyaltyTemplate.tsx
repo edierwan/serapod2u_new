@@ -2858,7 +2858,7 @@ export default function PremiumLoyaltyTemplate({
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
         setPendingProfileCollectEmail(email || userEmail)
-        setPointsError(message || 'Sudah dituntut oleh pelanggan. Staf kedai sahaja boleh tuntut sekarang.')
+        setPointsError(message || 'This QR already claimed by a customer. Only shop staff can claim it now.')
         setPointsErrorAction('shop-profile-link')
         setCollectPointsStep('complete-profile')
         setShowPointsLoginModal(true)
@@ -6517,13 +6517,13 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                                     {pointsErrorAction === 'shop-profile-link' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            Sudah dituntut oleh pelanggan. Staf kedai sahaja boleh tuntut sekarang.{' '}
+                                            This QR already claimed by a customer. Only shop staff can claim it now.{' '}
                                             <button
                                                 type="button"
                                                 onClick={openProfileForPendingCollectFlow}
                                                 className="font-semibold underline underline-offset-2"
                                             >
-                                                Anda staff Kedai?
+                                                Are you shop staff?
                                             </button>
                                         </p>
                                     ) : (
@@ -6552,7 +6552,7 @@ export default function PremiumLoyaltyTemplate({
                                         className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
-                                        {pointsErrorAction === 'shop-profile-link' ? 'Kemaskini Profil Kedai' : 'Go to Profile'}
+                                        {pointsErrorAction === 'shop-profile-link' ? 'Update Your Profile' : 'Go to Profile'}
                                     </button>
                                 </div>
                             </>
