@@ -3207,7 +3207,7 @@ export default function PremiumLoyaltyTemplate({
             }
             // Success
             const earned = data.points_awarded || roadtourContext.default_points || 0
-            const balance = data.balance_after || earned
+            const balance = data.total_balance ?? data.balance_after ?? earned
             setPreviousBalance(balance - earned)
             setPointsEarned(earned)
             setLastEarnedPoints(earned)
@@ -3269,7 +3269,7 @@ export default function PremiumLoyaltyTemplate({
                 throw new Error(data.message || 'Failed to claim reward')
             }
             const earned = data.points_awarded || roadtourContext.default_points || 0
-            const balance = data.balance_after || earned
+            const balance = data.total_balance ?? data.balance_after ?? earned
             setPreviousBalance(balance - earned)
             setPointsEarned(earned)
             setLastEarnedPoints(earned)

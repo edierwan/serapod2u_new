@@ -360,7 +360,7 @@ export default function RoadtourScanPage() {
             }
 
             setRewardPoints(result.points_awarded || qr.default_points || 0)
-            setTotalBalance(result.balance_after || result.points_awarded || 0)
+            setTotalBalance(result.total_balance ?? result.balance_after ?? result.points_awarded ?? 0)
             setShowSuccessAnimation(true)
             setStep('done')
         } catch (err: any) {

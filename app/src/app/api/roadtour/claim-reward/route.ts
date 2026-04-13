@@ -66,6 +66,41 @@ function buildRewardErrorPayload(error: any) {
     }
 }
 
+async function calculateRoadtourUserBalance(supabase: any, userId: string | null) {
+    if (!userId) return 0
+
+    const { data: consumerBalance, error: consumerBalanceError } = await supabase
+        .from('v_consumer_points_balance')
+        .select('current_balance')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+    if (!consumerBalanceError && consumerBalance?.current_balance !== undefined && consumerBalance?.current_balance !== null) {
+        return Number(consumerBalance.current_balance || 0)
+    }
+
+    const { data: ledgerRows, error: ledgerError } = await supabase
+        .from('shop_points_ledger')
+        .select('points_change')
+        .eq('consumer_id', userId)
+
+    if (!ledgerError && ledgerRows && ledgerRows.length > 0) {
+        return ledgerRows.reduce((sum: number, row: any) => sum + Number(row.points_change || 0), 0)
+    }
+
+    const { data: scanRows, error: scanError } = await supabase
+        .from('consumer_qr_scans')
+        .select('points_amount')
+        .eq('consumer_id', userId)
+        .eq('collected_points', true)
+
+    if (!scanError && scanRows && scanRows.length > 0) {
+        return scanRows.reduce((sum: number, row: any) => sum + Number(row.points_amount || 0), 0)
+    }
+
+    return 0
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
@@ -137,7 +172,7 @@ export async function POST(request: NextRequest) {
         if (userId) {
             const { data: profile, error: profileError } = await (supabase as any)
                 .from('users')
-                .select('phone, full_name, shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code)')
+                .select('phone, full_name, shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code, org_name)')
                 .eq('id', userId)
                 .single()
 
@@ -147,6 +182,7 @@ export async function POST(request: NextRequest) {
         }
 
         const orgType = userProfile?.organizations?.org_type_code || null
+        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
         const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
         const isShopUser = orgType === 'SHOP'
         const isConsumerLaneUser = !orgType || orgType === 'INDEP'
@@ -311,7 +347,7 @@ export async function POST(request: NextRequest) {
             // Check for duplicate
             if (rewardError.message?.includes('duplicate') || rewardError.code === '23505') {
                 await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
-                return NextResponse.json({ message: 'You have already claimed this reward.', code: 'DUPLICATE' }, { status: 409 })
+                return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
             }
             return NextResponse.json(buildRewardErrorPayload(rewardError), { status: 500 })
         }
@@ -319,13 +355,16 @@ export async function POST(request: NextRequest) {
         // Check if rewardResult indicates duplicate
         if (rewardResult && rewardResult.success === false && rewardResult.error === 'duplicate') {
             await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
-            return NextResponse.json({ message: rewardResult.message || 'You have already claimed this reward.', code: 'DUPLICATE' }, { status: 409 })
+            return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
         }
+
+        const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
 
         return NextResponse.json({
             message: 'Reward claimed successfully.',
             points_awarded: default_points,
-            balance_after: rewardResult?.balance_after || default_points,
+            balance_after: totalBalance,
+            total_balance: totalBalance,
             scan_event_id: scanEvent.id,
             survey_response_id: surveyResponseId,
         })
