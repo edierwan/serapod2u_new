@@ -60,11 +60,11 @@ const compressImage = (file: File): Promise<File> => {
         const canvas = document.createElement('canvas')
         let width = img.width
         let height = img.height
-        
+
         // Aggressive compression for mobile optimization (< 5KB target)
         const MAX_WIDTH = 800 // Increased from 150 to 800 for better quality
         const MAX_HEIGHT = 800 // Increased from 150 to 800 for better quality
-        
+
         // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
           if (width > MAX_WIDTH) {
@@ -77,18 +77,18 @@ const compressImage = (file: File): Promise<File> => {
             height = MAX_HEIGHT
           }
         }
-        
+
         canvas.width = width
         canvas.height = height
-        
+
         const ctx = canvas.getContext('2d')
         // Fill white background for JPEGs (transparency becomes black otherwise)
         if (ctx) {
-            ctx.fillStyle = '#FFFFFF'
-            ctx.fillRect(0, 0, width, height)
-            ctx.drawImage(img, 0, 0, width, height)
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, 0, width, height)
+          ctx.drawImage(img, 0, 0, width, height)
         }
-        
+
         // Convert to JPEG with aggressive compression (quality 0.5 = 50%)
         canvas.toBlob(
           (blob) => {
@@ -237,7 +237,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     const loadReward = async () => {
       try {
         setLoading(true)
-        
+
         const { data, error } = await supabase
           .from("redeem_items")
           .select("*")
@@ -282,35 +282,35 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
         setCategory(rewardCategory)
         setRequiresVerification(Boolean(data.max_redemptions_per_consumer && data.max_redemptions_per_consumer <= 1))
         setCodeManuallyEdited(true)
-        
+
         // Set animation preview if exists
         if ((data as any).animation_url) {
           setAnimationPreview((data as any).animation_url)
         }
-        
+
         // Initialize images state
         const loadedImages: ImageItem[] = []
         const additionalImages = (data as any).additional_images as string[] || []
-        
+
         // If we have additional_images, use them. Otherwise fallback to item_image_url
         if (additionalImages.length > 0) {
-            additionalImages.forEach((url, index) => {
-                loadedImages.push({
-                    id: `loaded-${index}`,
-                    url,
-                    isDefault: url === data.item_image_url
-                })
-            })
-            // Ensure one is default if none matched (e.g. url changed)
-            if (!loadedImages.some(img => img.isDefault) && loadedImages.length > 0) {
-                loadedImages[0].isDefault = true
-            }
-        } else if (data.item_image_url) {
+          additionalImages.forEach((url, index) => {
             loadedImages.push({
-                id: 'loaded-default',
-                url: data.item_image_url,
-                isDefault: true
+              id: `loaded-${index}`,
+              url,
+              isDefault: url === data.item_image_url
             })
+          })
+          // Ensure one is default if none matched (e.g. url changed)
+          if (!loadedImages.some(img => img.isDefault) && loadedImages.length > 0) {
+            loadedImages[0].isDefault = true
+          }
+        } else if (data.item_image_url) {
+          loadedImages.push({
+            id: 'loaded-default',
+            url: data.item_image_url,
+            isDefault: true
+          })
         }
         setImages(loadedImages)
 
@@ -347,90 +347,90 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     if (!files || files.length === 0) return
 
     if (images.length + files.length > 5) {
-        toast({
-            title: "Too many images",
-            description: "You can only upload a maximum of 5 images.",
-            variant: "destructive"
-        })
-        return
+      toast({
+        title: "Too many images",
+        description: "You can only upload a maximum of 5 images.",
+        variant: "destructive"
+      })
+      return
     }
 
     const newImages: ImageItem[] = []
 
     for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            toast({
-                title: "Invalid file type",
-                description: "Please select an image file (JPG, PNG, GIF, or WebP).",
-                variant: "destructive"
-            })
-            continue
-        }
+      const file = files[i]
 
-        // Validate file size (5MB max before compression)
-        if (file.size > 5 * 1024 * 1024) {
-            toast({
-                title: "File too large",
-                description: "Image must be less than 5MB.",
-                variant: "destructive"
-            })
-            continue
-        }
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an image file (JPG, PNG, GIF, or WebP).",
+          variant: "destructive"
+        })
+        continue
+      }
 
-        try {
-            // Compress the image
-            const compressedFile = await compressImage(file)
-            
-            // Create preview
-            const previewUrl = await new Promise<string>((resolve) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result as string)
-                reader.readAsDataURL(compressedFile)
-            })
+      // Validate file size (5MB max before compression)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Image must be less than 5MB.",
+          variant: "destructive"
+        })
+        continue
+      }
 
-            newImages.push({
-                id: `new-${Date.now()}-${i}`,
-                url: previewUrl,
-                file: compressedFile,
-                isDefault: images.length === 0 && i === 0 // First image is default if no images exist
-            })
+      try {
+        // Compress the image
+        const compressedFile = await compressImage(file)
 
-        } catch (error) {
-            console.error('Image compression failed:', error)
-            toast({
-                title: "Compression failed",
-                description: "Could not process image. Please try a different file.",
-                variant: "destructive"
-            })
-        }
+        // Create preview
+        const previewUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(reader.result as string)
+          reader.readAsDataURL(compressedFile)
+        })
+
+        newImages.push({
+          id: `new-${Date.now()}-${i}`,
+          url: previewUrl,
+          file: compressedFile,
+          isDefault: images.length === 0 && i === 0 // First image is default if no images exist
+        })
+
+      } catch (error) {
+        console.error('Image compression failed:', error)
+        toast({
+          title: "Compression failed",
+          description: "Could not process image. Please try a different file.",
+          variant: "destructive"
+        })
+      }
     }
 
     setImages(prev => [...prev, ...newImages])
-    
+
     // Reset input
     if (imageInputRef.current) {
-        imageInputRef.current.value = ''
+      imageInputRef.current.value = ''
     }
   }
 
   const handleRemoveImage = (id: string) => {
     setImages(prev => {
-        const newImages = prev.filter(img => img.id !== id)
-        // If we removed the default image, make the first one default
-        if (prev.find(img => img.id === id)?.isDefault && newImages.length > 0) {
-            newImages[0].isDefault = true
-        }
-        return newImages
+      const newImages = prev.filter(img => img.id !== id)
+      // If we removed the default image, make the first one default
+      if (prev.find(img => img.id === id)?.isDefault && newImages.length > 0) {
+        newImages[0].isDefault = true
+      }
+      return newImages
     })
   }
 
   const handleSetDefault = (id: string) => {
     setImages(prev => prev.map(img => ({
-        ...img,
-        isDefault: img.id === id
+      ...img,
+      isDefault: img.id === id
     })))
   }
 
@@ -548,47 +548,47 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
     let defaultImageUrl: string | null = null
 
     try {
-        for (const img of images) {
-            let url = img.url
-            if (img.file) {
-                const uploadedUrl = await uploadImageToStorage(img.file)
-                if (uploadedUrl) {
-                    url = uploadedUrl
-                } else {
-                    throw new Error("Failed to upload image")
-                }
-            }
-            finalImages.push(url)
-            if (img.isDefault) {
-                defaultImageUrl = url
-            }
+      for (const img of images) {
+        let url = img.url
+        if (img.file) {
+          const uploadedUrl = await uploadImageToStorage(img.file)
+          if (uploadedUrl) {
+            url = uploadedUrl
+          } else {
+            throw new Error("Failed to upload image")
+          }
         }
-        
-        // If no default set but we have images, use the first one
-        if (!defaultImageUrl && finalImages.length > 0) {
-            defaultImageUrl = finalImages[0]
+        finalImages.push(url)
+        if (img.isDefault) {
+          defaultImageUrl = url
         }
+      }
+
+      // If no default set but we have images, use the first one
+      if (!defaultImageUrl && finalImages.length > 0) {
+        defaultImageUrl = finalImages[0]
+      }
 
     } catch (error) {
-        setSaving(false)
-        setUploadingImage(false)
-        toast({
-            title: "Upload failed",
-            description: "Failed to upload one or more images.",
-            variant: "destructive"
-        })
-        return
+      setSaving(false)
+      setUploadingImage(false)
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload one or more images.",
+        variant: "destructive"
+      })
+      return
     }
-    
+
     setUploadingImage(false)
 
     const normalizedCode = form.itemCode.trim().toUpperCase()
-    
+
     // For Point category, use pointRewardAmount instead of points, and set points_required to 0
-    const parsedPointRewardAmount = isPointCategory && form.pointRewardAmount.trim() !== "" 
-      ? Number(form.pointRewardAmount) 
+    const parsedPointRewardAmount = isPointCategory && form.pointRewardAmount.trim() !== ""
+      ? Number(form.pointRewardAmount)
       : null
-    
+
     const payload = {
       item_name: form.itemName.trim(),
       item_code: normalizedCode,
@@ -695,7 +695,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" className="gap-2" onClick={() => router.push("/engagement/catalog/admin")}
-            >
+          >
             <ArrowLeft className="h-4 w-4" /> Back to catalog
           </Button>
           {mode === "edit" && (
@@ -828,7 +828,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       )}
                     </div>
                   )}
-                  
+
                   {/* Point Category - Hide Point Offer, show Message instead */}
                   {category === "point" ? (
                     <div className="sm:col-span-2">
@@ -861,7 +861,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       )}
                     </div>
                   )}
-                  
+
                   {/* Point Category - Hide Stock, show Collection Options instead */}
                   {category === "point" ? (
                     <div className="sm:col-span-2 space-y-4 p-4 border rounded-lg bg-muted/30">
@@ -882,7 +882,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                         <p className="text-xs text-muted-foreground ml-7">
                           If enabled, each user can only collect this reward based on the collection mode below
                         </p>
-                        
+
                         <div className="flex items-center space-x-3">
                           <input
                             type="checkbox"
@@ -904,7 +904,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                         <p className="text-xs text-muted-foreground ml-7">
                           If enabled, users can collect once per day. Otherwise, collection is one-time only.
                         </p>
-                        
+
                         <div className="mt-3 p-3 bg-blue-50 rounded-md">
                           <p className="text-xs text-blue-700 font-medium">How it works:</p>
                           <ul className="text-xs text-blue-600 mt-1 space-y-1">
@@ -929,7 +929,7 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                       />
                     </div>
                   )}
-                  
+
                   <div>
                     <Label htmlFor="validFrom">Valid from</Label>
                     <Input
@@ -954,65 +954,65 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                   <Label>Reward Images (Max 5)</Label>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        {images.map((img, index) => (
-                            <div key={img.id} className="relative group aspect-square rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden">
-                                <NextImage 
-                                    src={img.url} 
-                                    alt={`Reward image ${index + 1}`} 
-                                    fill 
-                                    className="object-contain"
-                                    unoptimized={img.url.startsWith('data:')}
-                                />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="secondary"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => handleSetDefault(img.id)}
-                                        title="Set as default"
-                                    >
-                                        <Star className={`h-4 w-4 ${img.isDefault ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`} />
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => handleRemoveImage(img.id)}
-                                        title="Remove image"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                {img.isDefault && (
-                                    <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
-                                        Default
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                        {images.length < 5 && (
-                            <div 
-                                className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/50 transition-colors flex flex-col items-center justify-center cursor-pointer"
-                                onClick={() => imageInputRef.current?.click()}
+                      {images.map((img, index) => (
+                        <div key={img.id} className="relative group aspect-square rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden">
+                          <NextImage
+                            src={img.url}
+                            alt={`Reward image ${index + 1}`}
+                            fill
+                            className="object-contain"
+                            unoptimized={img.url.startsWith('data:')}
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleSetDefault(img.id)}
+                              title="Set as default"
                             >
-                                <UploadCloud className="h-8 w-8 text-muted-foreground/50 mb-2" />
-                                <span className="text-xs text-muted-foreground font-medium">Add Image</span>
+                              <Star className={`h-4 w-4 ${img.isDefault ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`} />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleRemoveImage(img.id)}
+                              title="Remove image"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {img.isDefault && (
+                            <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-900 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                              Default
                             </div>
-                        )}
+                          )}
+                        </div>
+                      ))}
+                      {images.length < 5 && (
+                        <div
+                          className="aspect-square rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/50 transition-colors flex flex-col items-center justify-center cursor-pointer"
+                          onClick={() => imageInputRef.current?.click()}
+                        >
+                          <UploadCloud className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                          <span className="text-xs text-muted-foreground font-medium">Add Image</span>
+                        </div>
+                      )}
                     </div>
 
                     <input
-                        ref={imageInputRef}
-                        type="file"
-                        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                        multiple
-                        onChange={handleImageFileChange}
-                        className="hidden"
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                      multiple
+                      onChange={handleImageFileChange}
+                      className="hidden"
                     />
                     <p className="text-xs text-muted-foreground">
-                        Recommended: 1:1 ratio, max 5MB per image. First image or marked default will be shown in lists.
+                      Recommended: 1:1 ratio, max 5MB per image. First image or marked default will be shown in lists.
                     </p>
                   </div>
                 </div>
@@ -1024,9 +1024,9 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                     <div className="flex items-start gap-4">
                       <div className="w-32 h-32 rounded-lg border border-muted-foreground/20 bg-muted overflow-hidden flex items-center justify-center">
                         {animationPreview || form.animationUrl ? (
-                          <video 
+                          <video
                             key={animationPreview || form.animationUrl}
-                            src={animationPreview || form.animationUrl} 
+                            src={animationPreview || form.animationUrl}
                             className="w-full h-full object-cover"
                             muted
                             loop
@@ -1035,12 +1035,12 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                             controls={false}
                             onLoadedData={(e) => {
                               const video = e.currentTarget;
-                              video.play().catch(() => {});
+                              video.play().catch(() => { });
                             }}
                           />
                         ) : (
                           <div className="text-muted-foreground/50">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
                           </div>
                         )}
                       </div>
@@ -1093,25 +1093,25 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
                           }
                           setAnimationFile(file)
                           setAnimationPreview(URL.createObjectURL(file))
-                          
+
                           // Upload immediately
                           try {
                             const fileName = `animation_${Date.now()}_${file.name}`
                             const filePath = `rewards/${userProfile.organizations.id}/${fileName}`
-                            
+
                             const { error: uploadError } = await supabase.storage
                               .from('avatars')
-                              .upload(filePath, file, { 
+                              .upload(filePath, file, {
                                 upsert: true,
                                 contentType: file.type
                               })
-                            
+
                             if (uploadError) throw uploadError
-                            
+
                             const { data: urlData } = supabase.storage
                               .from('avatars')
                               .getPublicUrl(filePath)
-                            
+
                             updateForm('animationUrl', urlData.publicUrl)
                             toast({ title: "Animation uploaded" })
                           } catch (err: any) {
@@ -1197,11 +1197,11 @@ export function AdminRewardEditor({ userProfile, rewardId, mode = "create" }: Ad
               <div className="overflow-hidden rounded-xl border border-muted-foreground/20">
                 <div className="relative h-40 sm:h-48 w-full bg-muted">
                   {previewReward.item_image_url ? (
-                    <NextImage 
-                      src={previewReward.item_image_url} 
-                      alt={previewReward.item_name} 
-                      fill 
-                      className="object-contain" 
+                    <NextImage
+                      src={previewReward.item_image_url}
+                      alt={previewReward.item_name}
+                      fill
+                      className="object-contain"
                       style={{ objectPosition: 'center' }}
                       unoptimized={previewReward.item_image_url.startsWith('data:')}
                     />

@@ -780,9 +780,9 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
                     <tr key={c.id} className="border-b border-muted/50 hover:bg-muted/30 transition-colors">
                       <td className="py-3 pr-4">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${c.rank === 1 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                            c.rank === 2 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
-                              c.rank === 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                                'bg-muted text-muted-foreground'
+                          c.rank === 2 ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' :
+                            c.rank === 3 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                              'bg-muted text-muted-foreground'
                           }`}>
                           {c.rank <= 3 ? ['🥇', '🥈', '🥉'][c.rank - 1] : c.rank}
                         </div>

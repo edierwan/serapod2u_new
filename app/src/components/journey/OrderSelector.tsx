@@ -5,11 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { 
-  Package, 
-  Gift, 
-  Trophy, 
-  Check, 
+import {
+  Package,
+  Gift,
+  Trophy,
+  Check,
   AlertCircle,
   RefreshCw,
   ChevronDown
@@ -52,10 +52,10 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
     try {
       setLoading(true)
       setError(null)
-      
+
       const response = await fetch('/api/journey/orders')
       const data = await response.json()
-      
+
       if (data.success) {
         setOrders(data.orders || [])
       } else {
@@ -101,9 +101,9 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
         <AlertCircle className="h-4 w-4 text-red-600" />
         <AlertDescription className="flex items-center justify-between">
           <span className="text-red-800">{error}</span>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={fetchEligibleOrders}
           >
             <RefreshCw className="w-3 h-3 mr-2" />
@@ -171,9 +171,8 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
                   <button
                     key={order.id}
                     onClick={() => handleSelectOrder(order)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 border-b last:border-b-0 transition-colors ${
-                      selectedOrderId === order.id ? 'bg-blue-50' : ''
-                    }`}
+                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 border-b last:border-b-0 transition-colors ${selectedOrderId === order.id ? 'bg-blue-50' : ''
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -185,12 +184,12 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
                             <Check className="w-4 h-4 text-blue-600" />
                           )}
                         </div>
-                        
+
                         <div className="flex flex-wrap gap-1 mb-2">
                           <Badge variant="outline" className="text-xs">
                             {order.order_type}
                           </Badge>
-                          <Badge 
+                          <Badge
                             variant={order.status === 'approved' ? 'default' : 'secondary'}
                             className={`text-xs ${order.status === 'approved' ? 'bg-green-100 text-green-800' : ''}`}
                           >
@@ -260,7 +259,7 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
               </div>
               <div>
                 <span className="text-gray-600">Status:</span>
-                <Badge 
+                <Badge
                   variant={selectedOrder.status === 'approved' ? 'default' : 'secondary'}
                   className={`ml-2 ${selectedOrder.status === 'approved' ? 'bg-green-100 text-green-800' : ''}`}
                 >
@@ -272,7 +271,7 @@ export default function OrderSelector({ selectedOrderId, onOrderSelect }: OrderS
             {/* Engagement Features */}
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-700">Engagement Features:</p>
-              
+
               {selectedOrder.has_redeem ? (
                 <div className="flex items-center gap-2 text-sm bg-green-100 px-3 py-2 rounded-lg">
                   <Gift className="w-4 h-4 text-green-600" />

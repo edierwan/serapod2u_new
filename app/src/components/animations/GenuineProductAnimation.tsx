@@ -19,9 +19,9 @@ interface GenuineProductAnimationProps {
     subtitle?: string
 }
 
-export function GenuineProductAnimation({ 
-    isVisible, 
-    productInfo, 
+export function GenuineProductAnimation({
+    isVisible,
+    productInfo,
     onClose,
     title,
     subtitle,
@@ -32,7 +32,7 @@ export function GenuineProductAnimation({
         if (isVisible) {
             // Trigger green confetti burst
             const colors = ['#22c55e', '#16a34a', '#4ade80', '#86efac', '#dcfce7']
-            
+
             confetti({
                 particleCount: 80,
                 spread: 70,
@@ -64,10 +64,10 @@ export function GenuineProductAnimation({
                         initial={{ scale: 0.5, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.5, opacity: 0 }}
-                        transition={{ 
-                            type: 'spring', 
-                            stiffness: 300, 
-                            damping: 25 
+                        transition={{
+                            type: 'spring',
+                            stiffness: 300,
+                            damping: 25
                         }}
                         className="relative bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl p-8 mx-6 shadow-2xl max-w-sm w-full"
                         onClick={(e) => e.stopPropagation()}
@@ -95,7 +95,7 @@ export function GenuineProductAnimation({
                             <motion.div
                                 initial={{ scale: 0, rotate: -180 }}
                                 animate={{ scale: 1, rotate: 0 }}
-                                transition={{ 
+                                transition={{
                                     type: 'spring',
                                     stiffness: 200,
                                     damping: 15,

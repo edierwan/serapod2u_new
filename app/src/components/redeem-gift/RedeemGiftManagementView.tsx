@@ -97,7 +97,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     const [giftDescription, setGiftDescription] = useState('');
     const [giftImageUrl, setGiftImageUrl] = useState('');
     const [quantityAvailable, setQuantityAvailable] = useState<number | undefined>(undefined);
-    
+
     // Point Pool Form State
     const [pointsPerCollection, setPointsPerCollection] = useState<number>(0);
     const [totalPointsAllocated, setTotalPointsAllocated] = useState<number>(0);
@@ -178,20 +178,20 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
 
     const fetchOrgSettings = useCallback(async () => {
         try {
-          if (!userProfile?.organization_id) return;
-          
-          const { data: orgData } = await supabase
-            .from('organizations')
-            .select('settings')
-            .eq('id', userProfile.organization_id)
-            .single();
-    
-          if (orgData?.settings && typeof orgData.settings === 'object') {
-            const settings = orgData.settings as any;
-            if (settings.point_value_rm) {
-              setPointValueRM(settings.point_value_rm);
+            if (!userProfile?.organization_id) return;
+
+            const { data: orgData } = await supabase
+                .from('organizations')
+                .select('settings')
+                .eq('id', userProfile.organization_id)
+                .single();
+
+            if (orgData?.settings && typeof orgData.settings === 'object') {
+                const settings = orgData.settings as any;
+                if (settings.point_value_rm) {
+                    setPointValueRM(settings.point_value_rm);
+                }
             }
-          }
         } catch (error) {
             console.error("Error fetching settings", error);
         }
@@ -458,7 +458,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                 }
                 payload.claimed_quantity = 0;
                 payload.is_active = true;
-                
+
                 if (redeemCategory === 'point_pool') {
                     payload.remaining_points = totalPointsAllocated;
                 }
@@ -488,10 +488,10 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
         setGiftName(gift.gift_name);
         setGiftDescription(gift.gift_description || '');
         setGiftImageUrl(gift.gift_image_url || '');
-        
+
         // Restore category and type
         setRedeemCategory(gift.category || 'gift');
-        setRedeemType(gift.redeem_type || 'order'); 
+        setRedeemType(gift.redeem_type || 'order');
 
         if (gift.category === 'point_pool') {
             setPointsPerCollection(gift.points_per_collection || 0);
@@ -512,7 +512,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
 
         try {
             setLoading(true);
-            
+
             // Try soft delete first (update is_active to false)
             // If the schema supports deleted_at, ideally we'd use that, but is_active=false is safer for constraints
             const { error: updateError } = await supabase
@@ -527,7 +527,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                     .from('redeem_gifts')
                     .delete()
                     .eq('id', giftId);
-                    
+
                 if (deleteError) throw deleteError;
             }
 
@@ -543,19 +543,19 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             console.error('Error deleting gift:', error);
             // Check for foreign key violation
             if (error.code === '23503') {
-                 showAlert('error', 'Cannot delete gift because it has already been redeemed. We have archived it instead.');
-                 // Try to archive it if hard delete failed due to FK
-                 await supabase
+                showAlert('error', 'Cannot delete gift because it has already been redeemed. We have archived it instead.');
+                // Try to archive it if hard delete failed due to FK
+                await supabase
                     .from('redeem_gifts')
                     .update({ is_active: false })
                     .eq('id', giftId);
-                 
-                 // Refresh
-                 if (redeemScope === 'master') {
-                     await fetchGifts();
-                 } else if (selectedOrder) {
-                     await fetchGifts(selectedOrder.id);
-                 }
+
+                // Refresh
+                if (redeemScope === 'master') {
+                    await fetchGifts();
+                } else if (selectedOrder) {
+                    await fetchGifts(selectedOrder.id);
+                }
             } else {
                 showAlert('error', 'Failed to delete gift: ' + (error.message || 'Unknown error'));
             }
@@ -588,7 +588,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold">Redeem Gift Management</h1>
-                    <p className="text-gray-600 mt-1">Manage free gifts that consumers can claim when scanning QR codes at shops</p>
+                    <p className="text-gray-600 mt-1">Manage free gifts that customers can claim when scanning QR codes at shops</p>
                 </div>
             </div>
 
@@ -596,7 +596,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center gap-4">
                 <span className="font-medium text-sm text-gray-700">Redeem Scope:</span>
                 <div className="flex gap-2">
-                    <Button 
+                    <Button
                         variant={redeemScope === 'order' ? 'default' : 'outline'}
                         onClick={() => setRedeemScope('order')}
                         size="sm"
@@ -605,7 +605,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                         <Package className="h-4 w-4" />
                         By Order
                     </Button>
-                    <Button 
+                    <Button
                         variant={redeemScope === 'master' ? 'default' : 'outline'}
                         onClick={() => setRedeemScope('master')}
                         size="sm"
@@ -627,494 +627,494 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             )}
 
             <div className="space-y-6">
-                    {/* Statistics Dashboard */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <Card>
-                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm text-gray-600">Total Gifts Defined</p>
-                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold">{totalGifts}</p>
-                            </div>
-                            <Gift className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-blue-500" />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm text-gray-600">Total Redemptions</p>
-                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{totalRedemptions}</p>
-                            </div>
-                            <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-green-500" />
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">All time</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs sm:text-sm text-gray-600">This Month</p>
-                                <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{redemptionsThisMonth}</p>
-                            </div>
-                            <Calendar className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-purple-500" />
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">Redemptions</p>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                        <div className="flex items-center justify-between">
-                            <div className="min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm text-gray-600">Most Popular</p>
-                                <p className="text-base sm:text-lg font-bold text-yellow-600 truncate">{mostPopularGift}</p>
-                            </div>
-                            <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-yellow-500 flex-shrink-0" />
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2 hidden sm:block">Gift item</p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Order Selection Panel */}
-                {redeemScope === 'order' && (
-                <Card className="lg:col-span-1">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5" />
-                            Select Order
-                        </CardTitle>
-                        <CardDescription>Choose an order with redemption enabled</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {/* Search */}
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                                placeholder="Search order number..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-9"
-                            />
-                        </div>
-
-                        {/* Order List */}
-                        <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                            {loading && !selectedOrder && (
-                                <div className="text-center py-8 text-gray-500">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                                    <p className="mt-2">Loading orders...</p>
+                {/* Statistics Dashboard */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <Card>
+                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs sm:text-sm text-gray-600">Total Gifts Defined</p>
+                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold">{totalGifts}</p>
                                 </div>
-                            )}
+                                <Gift className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-blue-500" />
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                            {!loading && filteredOrders.length === 0 && (
-                                <div className="text-center py-8 text-gray-500">
-                                    <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                                    <p>No orders with redemption found</p>
+                    <Card>
+                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs sm:text-sm text-gray-600">Total Redemptions</p>
+                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{totalRedemptions}</p>
                                 </div>
-                            )}
+                                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-green-500" />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">All time</p>
+                        </CardContent>
+                    </Card>
 
-                            {filteredOrders.map((order) => (
-                                <Card
-                                    key={order.id}
-                                    className={`cursor-pointer transition-all hover:shadow-md ${selectedOrder?.id === order.id ? 'border-blue-500 bg-blue-50' : ''
-                                        }`}
-                                    onClick={() => setSelectedOrder(order)}
-                                >
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start justify-between">
-                                            <div>
-                                                <p className="font-semibold">{order.order_no}</p>
-                                                {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
-                                                    <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
-                                                )}
-                                                <p className="text-sm text-gray-600">{order.order_type}</p>
-                                                <Badge variant="outline" className="mt-1">
-                                                    {order.status}
-                                                </Badge>
-                                            </div>
-                                            {selectedOrder?.id === order.id && (
-                                                <Check className="h-5 w-5 text-blue-600" />
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-                )}
+                    <Card>
+                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs sm:text-sm text-gray-600">This Month</p>
+                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{redemptionsThisMonth}</p>
+                                </div>
+                                <Calendar className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-purple-500" />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">Redemptions</p>
+                        </CardContent>
+                    </Card>
 
-                {/* Gifts Management Panel */}
-                <Card className={redeemScope === 'order' ? "lg:col-span-2" : "lg:col-span-3"}>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
+                    <Card>
+                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
+                            <div className="flex items-center justify-between">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs sm:text-sm text-gray-600">Most Popular</p>
+                                    <p className="text-base sm:text-lg font-bold text-yellow-600 truncate">{mostPopularGift}</p>
+                                </div>
+                                <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-yellow-500 flex-shrink-0" />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">Gift item</p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Order Selection Panel */}
+                    {redeemScope === 'order' && (
+                        <Card className="lg:col-span-1">
+                            <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
-                                    <Gift className="h-5 w-5" />
-                                    {redeemScope === 'master' ? 'Master Redeem Gifts' : 'Redemption Gifts'}
-                                    {selectedOrder && (
-                                        <Badge variant="outline" className="ml-2">
-                                            {selectedOrder.order_no}
-                                        </Badge>
-                                    )}
+                                    <Package className="h-5 w-5" />
+                                    Select Order
                                 </CardTitle>
-                                <CardDescription>
-                                    {redeemScope === 'master' 
-                                        ? 'Manage global redemption gifts available to all users' 
-                                        : (selectedOrder
-                                            ? 'Define what free gifts consumers will receive'
-                                            : 'Select an order to manage its gifts')}
-                                </CardDescription>
-                            </div>
-                            {(redeemScope === 'master' || selectedOrder) && !showForm && (
-                                <Button onClick={() => setShowForm(true)}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    {redeemScope === 'master' ? 'Add Master Gift' : 'Add Gift'}
-                                </Button>
-                            )}
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {(!selectedOrder && redeemScope === 'order') ? (
-                            <div className="text-center py-12 text-gray-500">
-                                <Gift className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                                <p className="text-lg">Select an order to view and manage gifts</p>
-                            </div>
-                        ) : showForm ? (
-                            /* Gift Form */
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-semibold">
-                                        {editingGift ? 'Edit Gift' : 'Add New Gift'}
-                                    </h3>
-                                    <Button variant="ghost" size="sm" onClick={handleCancelForm}>
-                                        <X className="h-4 w-4" />
-                                    </Button>
+                                <CardDescription>Choose an order with redemption enabled</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {/* Search */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <Input
+                                        placeholder="Search order number..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-9"
+                                    />
                                 </div>
 
-                                <div className="space-y-4">
-                                    {/* Category Selector */}
-                                    <div>
-                                        <Label className="mb-2 block">Category</Label>
-                                        <Select 
-                                            value={redeemCategory} 
-                                            onValueChange={(val: 'gift' | 'point_pool') => setRedeemCategory(val)}
-                                            disabled={!!editingGift}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select Category" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="gift">Standard Gift</SelectItem>
-                                                <SelectItem value="point_pool">Point Redeem Pool</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div>
-                                        <Label htmlFor="giftName">
-                                            {redeemCategory === 'point_pool' ? 'Reward Name *' : 'Gift Name *'}
-                                        </Label>
-                                        <Input
-                                            id="giftName"
-                                            placeholder="e.g., Premium Coffee Mug or 100 Points Reward"
-                                            value={giftName}
-                                            onChange={(e) => setGiftName(e.target.value)}
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <Label htmlFor="giftDescription">Description</Label>
-                                        <Textarea
-                                            id="giftDescription"
-                                            placeholder="Describe the gift..."
-                                            value={giftDescription}
-                                            onChange={(e) => setGiftDescription(e.target.value)}
-                                            rows={3}
-                                        />
-                                    </div>
-
-                                    {redeemCategory === 'point_pool' ? (
-                                        <>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <Label htmlFor="pointsPerCollection">Points per Collection *</Label>
-                                                    <Input
-                                                        id="pointsPerCollection"
-                                                        type="number"
-                                                        placeholder="e.g. 100"
-                                                        value={pointsPerCollection || ''}
-                                                        onChange={(e) => setPointsPerCollection(parseInt(e.target.value) || 0)}
-                                                    />
-                                                    {pointValueRM > 0 && pointsPerCollection > 0 && (
-                                                        <p className="text-xs text-muted-foreground mt-1 text-gray-500">
-                                                            Estimated Cost: RM {(pointsPerCollection * pointValueRM).toFixed(2)}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <Label htmlFor="totalPointsAllocated">Total Points Allocated *</Label>
-                                                    <Input
-                                                        id="totalPointsAllocated"
-                                                        type="number"
-                                                        placeholder="e.g. 1000"
-                                                        value={totalPointsAllocated || ''}
-                                                        onChange={(e) => setTotalPointsAllocated(parseInt(e.target.value) || 0)}
-                                                        disabled={!!editingGift} 
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label htmlFor="startDate">Start Date (Optional)</Label>
-                                                    <Input
-                                                        id="startDate"
-                                                        type="date"
-                                                        value={startDate}
-                                                        onChange={(e) => setStartDate(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label htmlFor="endDate">End Date (Optional)</Label>
-                                                    <Input
-                                                        id="endDate"
-                                                        type="date"
-                                                        value={endDate}
-                                                        onChange={(e) => setEndDate(e.target.value)}
-                                                    />
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="space-y-3 pt-2 bg-gray-50 p-4 rounded-md border">
-                                                <Label className="font-semibold">Collection Options</Label>
-                                                <div className="flex flex-col gap-3">
-                                                    <div className="flex items-start space-x-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            id="opt1"
-                                                            checked={collectionOption1}
-                                                            onChange={(e) => setCollectionOption1(e.target.checked)}
-                                                            className="mt-1 rounded border-gray-300"
-                                                        />
-                                                        <div>
-                                                            <Label htmlFor="opt1" className="cursor-pointer font-medium">Option 1 - Per user only (based on user ID)</Label>
-                                                            <p className="text-xs text-gray-500">If enabled, each user can only collect this reward based on the collection mode below.</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-start space-x-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            id="opt2"
-                                                            checked={collectionOption2}
-                                                            onChange={(e) => setCollectionOption2(e.target.checked)}
-                                                            className="mt-1 rounded border-gray-300"
-                                                        />
-                                                        <div>
-                                                            <Label htmlFor="opt2" className="cursor-pointer font-medium">Option 2 - Everyday (daily collection)</Label>
-                                                            <p className="text-xs text-gray-500">If enabled, users can collect once per day. Otherwise, collection is one-time only.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div>
-                                            <Label htmlFor="quantityAvailable">Quantity Available (Optional)</Label>
-                                            <Input
-                                                id="quantityAvailable"
-                                                type="number"
-                                                placeholder="Leave empty for unlimited"
-                                                value={quantityAvailable || ''}
-                                                onChange={(e) => setQuantityAvailable(e.target.value ? parseInt(e.target.value) : undefined)}
-                                            />
+                                {/* Order List */}
+                                <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                                    {loading && !selectedOrder && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                            <p className="mt-2">Loading orders...</p>
                                         </div>
                                     )}
 
-                                    <div>
-                                        <Label>Gift Image</Label>
-                                        <div className="mt-2 space-y-3">
-                                            {giftImageUrl ? (
-                                                <div className="relative w-full border rounded-lg overflow-hidden bg-gray-50">
-                                                    <div className="relative w-full h-64">
-                                                        <Image
-                                                            src={getStorageUrl(giftImageUrl) || giftImageUrl}
-                                                            alt="Gift preview"
-                                                            layout="fill"
-                                                            objectFit="contain"
-                                                        />
-                                                    </div>
-                                                    <Button
-                                                        variant="destructive"
-                                                        size="sm"
-                                                        className="absolute top-2 right-2"
-                                                        onClick={() => setGiftImageUrl('')}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                    <p className="text-xs text-gray-500 text-center py-2 border-t bg-white">
-                                                        Preview: Full image will be shown on mobile
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                                                    <ImageIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                                                    <p className="text-sm text-gray-600 mb-2">Upload gift image</p>
-                                                    <Input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={handleImageUpload}
-                                                        disabled={uploadingImage}
-                                                        className="max-w-xs mx-auto"
-                                                    />
-                                                    {uploadingImage && (
-                                                        <p className="text-sm text-blue-600 mt-2">Uploading and optimizing...</p>
-                                                    )}
-                                                </div>
-                                            )}
+                                    {!loading && filteredOrders.length === 0 && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                                            <p>No orders with redemption found</p>
                                         </div>
-                                    </div>
-                                </div>
+                                    )}
 
-                                <div className="flex gap-2 pt-4">
-                                    <Button onClick={handleSaveGift} disabled={loading || uploadingImage}>
-                                        {loading ? 'Saving...' : editingGift ? 'Update Gift' : 'Create Gift'}
-                                    </Button>
-                                    <Button variant="outline" onClick={handleCancelForm}>
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </div>
-                        ) : (
-                            /* Gifts List */
-                            <div className="space-y-3">
-                                {loading && (
-                                    <div className="text-center py-8 text-gray-500">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                                        <p className="mt-2">Loading gifts...</p>
-                                    </div>
-                                )}
-
-                                {!loading && gifts.length === 0 && (
-                                    <div className="text-center py-12 text-gray-500">
-                                        <Gift className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                                        <p className="text-lg mb-2">No gifts defined yet</p>
-                                        <p className="text-sm">Click &quot;Add Gift&quot; to create your first gift</p>
-                                    </div>
-                                )}
-
-                                {!loading && gifts.map((gift) => {
-                                    const isPool = gift.category === 'point_pool';
-                                    const totalQty = (gift as any).total_quantity || 0;
-                                    const claimedQty = (gift as any).claimed_quantity || 0;
-                                    const remaining = totalQty - claimedQty;
-                                    
-                                    // Pool specific
-                                    const totalPoints = gift.total_points_allocated || 0;
-                                    const remainingPoints = gift.remaining_points !== undefined ? gift.remaining_points : totalPoints;
-                                    const pointsPer = gift.points_per_collection || 0;
-                                    const isDaily = gift.collection_option_2;
-                                    const isOnce = gift.collection_option_1 && !isDaily;
-
-                                    return (
-                                        <Card key={gift.id} className="hover:shadow-md transition-shadow">
+                                    {filteredOrders.map((order) => (
+                                        <Card
+                                            key={order.id}
+                                            className={`cursor-pointer transition-all hover:shadow-md ${selectedOrder?.id === order.id ? 'border-blue-500 bg-blue-50' : ''
+                                                }`}
+                                            onClick={() => setSelectedOrder(order)}
+                                        >
                                             <CardContent className="p-4">
-                                                <div className="flex gap-4">
-                                                    {/* Gift Image */}
-                                                    {gift.gift_image_url ? (
-                                                        <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
-                                                            <Image
-                                                                src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
-                                                                alt={gift.gift_name}
-                                                                width={96}
-                                                                height={96}
-                                                                className="object-contain w-full h-full"
-                                                            />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                            <ImageIcon className="h-8 w-8 text-gray-400" />
-                                                        </div>
-                                                    )}
-
-                                                    {/* Gift Details */}
-                                                    <div className="flex-1">
-                                                        <div className="flex items-start justify-between">
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
-                                                                    {isPool && (
-                                                                        <>
-                                                                            <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 text-[10px]">Point Pool</Badge>
-                                                                            {isDaily && <Badge variant="outline" className="text-[10px]">Daily</Badge>}
-                                                                            {isOnce && <Badge variant="outline" className="text-[10px]">One-time</Badge>}
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                                
-                                                                {gift.gift_description && (
-                                                                    <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
-                                                                )}
-                                                                
-                                                                {isPool ? (
-                                                                     <div className="mt-2 space-y-1">
-                                                                         <div className="text-sm">
-                                                                             <span className="font-bold text-green-600">+{pointsPer} Points</span> / claim
-                                                                         </div>
-                                                                         <div className="flex gap-2 text-xs text-gray-500">
-                                                                              <span>Pool: {remainingPoints} / {totalPoints} pts</span>
-                                                                         </div>
-                                                                     </div>
-                                                                ) : (
-                                                                    totalQty > 0 ? (
-                                                                    <div className="mt-2 space-x-2">
-                                                                        <Badge variant="outline">
-                                                                            {remaining} available
-                                                                        </Badge>
-                                                                        <Badge variant="secondary">
-                                                                            {claimedQty} claimed
-                                                                        </Badge>
-                                                                    </div>
-                                                                    ) : (
-                                                                    <Badge variant="outline" className="mt-2">
-                                                                        Unlimited
-                                                                    </Badge>
-                                                                    )
-                                                                )}
-                                                            </div>
-                                                            <div className="flex gap-2">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={() => handleEditGift(gift)}
-                                                                >
-                                                                    <Edit className="h-4 w-4" />
-                                                                </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={() => handleDeleteGift(gift.id)}
-                                                                >
-                                                                    <Trash2 className="h-4 w-4 text-red-600" />
-                                                                </Button>
-                                                            </div>
-                                                        </div>
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <p className="font-semibold">{order.order_no}</p>
+                                                        {order.legacy_order_no && order.legacy_order_no !== order.order_no && (
+                                                            <p className="text-[10px] text-gray-400">Legacy: {order.legacy_order_no}</p>
+                                                        )}
+                                                        <p className="text-sm text-gray-600">{order.order_type}</p>
+                                                        <Badge variant="outline" className="mt-1">
+                                                            {order.status}
+                                                        </Badge>
                                                     </div>
+                                                    {selectedOrder?.id === order.id && (
+                                                        <Check className="h-5 w-5 text-blue-600" />
+                                                    )}
                                                 </div>
                                             </CardContent>
                                         </Card>
-                                    );
-                                })}
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Gifts Management Panel */}
+                    <Card className={redeemScope === 'order' ? "lg:col-span-2" : "lg:col-span-3"}>
+                        <CardHeader>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Gift className="h-5 w-5" />
+                                        {redeemScope === 'master' ? 'Master Redeem Gifts' : 'Redemption Gifts'}
+                                        {selectedOrder && (
+                                            <Badge variant="outline" className="ml-2">
+                                                {selectedOrder.order_no}
+                                            </Badge>
+                                        )}
+                                    </CardTitle>
+                                    <CardDescription>
+                                        {redeemScope === 'master'
+                                            ? 'Manage global redemption gifts available to all users'
+                                            : (selectedOrder
+                                                ? 'Define what free gifts customers will receive'
+                                                : 'Select an order to manage its gifts')}
+                                    </CardDescription>
+                                </div>
+                                {(redeemScope === 'master' || selectedOrder) && !showForm && (
+                                    <Button onClick={() => setShowForm(true)}>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        {redeemScope === 'master' ? 'Add Master Gift' : 'Add Gift'}
+                                    </Button>
+                                )}
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardHeader>
+                        <CardContent>
+                            {(!selectedOrder && redeemScope === 'order') ? (
+                                <div className="text-center py-12 text-gray-500">
+                                    <Gift className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                                    <p className="text-lg">Select an order to view and manage gifts</p>
+                                </div>
+                            ) : showForm ? (
+                                /* Gift Form */
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-semibold">
+                                            {editingGift ? 'Edit Gift' : 'Add New Gift'}
+                                        </h3>
+                                        <Button variant="ghost" size="sm" onClick={handleCancelForm}>
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {/* Category Selector */}
+                                        <div>
+                                            <Label className="mb-2 block">Category</Label>
+                                            <Select
+                                                value={redeemCategory}
+                                                onValueChange={(val: 'gift' | 'point_pool') => setRedeemCategory(val)}
+                                                disabled={!!editingGift}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select Category" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="gift">Standard Gift</SelectItem>
+                                                    <SelectItem value="point_pool">Point Redeem Pool</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="giftName">
+                                                {redeemCategory === 'point_pool' ? 'Reward Name *' : 'Gift Name *'}
+                                            </Label>
+                                            <Input
+                                                id="giftName"
+                                                placeholder="e.g., Premium Coffee Mug or 100 Points Reward"
+                                                value={giftName}
+                                                onChange={(e) => setGiftName(e.target.value)}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="giftDescription">Description</Label>
+                                            <Textarea
+                                                id="giftDescription"
+                                                placeholder="Describe the gift..."
+                                                value={giftDescription}
+                                                onChange={(e) => setGiftDescription(e.target.value)}
+                                                rows={3}
+                                            />
+                                        </div>
+
+                                        {redeemCategory === 'point_pool' ? (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <Label htmlFor="pointsPerCollection">Points per Collection *</Label>
+                                                        <Input
+                                                            id="pointsPerCollection"
+                                                            type="number"
+                                                            placeholder="e.g. 100"
+                                                            value={pointsPerCollection || ''}
+                                                            onChange={(e) => setPointsPerCollection(parseInt(e.target.value) || 0)}
+                                                        />
+                                                        {pointValueRM > 0 && pointsPerCollection > 0 && (
+                                                            <p className="text-xs text-muted-foreground mt-1 text-gray-500">
+                                                                Estimated Cost: RM {(pointsPerCollection * pointValueRM).toFixed(2)}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="totalPointsAllocated">Total Points Allocated *</Label>
+                                                        <Input
+                                                            id="totalPointsAllocated"
+                                                            type="number"
+                                                            placeholder="e.g. 1000"
+                                                            value={totalPointsAllocated || ''}
+                                                            onChange={(e) => setTotalPointsAllocated(parseInt(e.target.value) || 0)}
+                                                            disabled={!!editingGift}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="startDate">Start Date (Optional)</Label>
+                                                        <Input
+                                                            id="startDate"
+                                                            type="date"
+                                                            value={startDate}
+                                                            onChange={(e) => setStartDate(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="endDate">End Date (Optional)</Label>
+                                                        <Input
+                                                            id="endDate"
+                                                            type="date"
+                                                            value={endDate}
+                                                            onChange={(e) => setEndDate(e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3 pt-2 bg-gray-50 p-4 rounded-md border">
+                                                    <Label className="font-semibold">Collection Options</Label>
+                                                    <div className="flex flex-col gap-3">
+                                                        <div className="flex items-start space-x-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id="opt1"
+                                                                checked={collectionOption1}
+                                                                onChange={(e) => setCollectionOption1(e.target.checked)}
+                                                                className="mt-1 rounded border-gray-300"
+                                                            />
+                                                            <div>
+                                                                <Label htmlFor="opt1" className="cursor-pointer font-medium">Option 1 - Per user only (based on user ID)</Label>
+                                                                <p className="text-xs text-gray-500">If enabled, each user can only collect this reward based on the collection mode below.</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-start space-x-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                id="opt2"
+                                                                checked={collectionOption2}
+                                                                onChange={(e) => setCollectionOption2(e.target.checked)}
+                                                                className="mt-1 rounded border-gray-300"
+                                                            />
+                                                            <div>
+                                                                <Label htmlFor="opt2" className="cursor-pointer font-medium">Option 2 - Everyday (daily collection)</Label>
+                                                                <p className="text-xs text-gray-500">If enabled, users can collect once per day. Otherwise, collection is one-time only.</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div>
+                                                <Label htmlFor="quantityAvailable">Quantity Available (Optional)</Label>
+                                                <Input
+                                                    id="quantityAvailable"
+                                                    type="number"
+                                                    placeholder="Leave empty for unlimited"
+                                                    value={quantityAvailable || ''}
+                                                    onChange={(e) => setQuantityAvailable(e.target.value ? parseInt(e.target.value) : undefined)}
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <Label>Gift Image</Label>
+                                            <div className="mt-2 space-y-3">
+                                                {giftImageUrl ? (
+                                                    <div className="relative w-full border rounded-lg overflow-hidden bg-gray-50">
+                                                        <div className="relative w-full h-64">
+                                                            <Image
+                                                                src={getStorageUrl(giftImageUrl) || giftImageUrl}
+                                                                alt="Gift preview"
+                                                                layout="fill"
+                                                                objectFit="contain"
+                                                            />
+                                                        </div>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            className="absolute top-2 right-2"
+                                                            onClick={() => setGiftImageUrl('')}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                        <p className="text-xs text-gray-500 text-center py-2 border-t bg-white">
+                                                            Preview: Full image will be shown on mobile
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                                                        <ImageIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                                                        <p className="text-sm text-gray-600 mb-2">Upload gift image</p>
+                                                        <Input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={handleImageUpload}
+                                                            disabled={uploadingImage}
+                                                            className="max-w-xs mx-auto"
+                                                        />
+                                                        {uploadingImage && (
+                                                            <p className="text-sm text-blue-600 mt-2">Uploading and optimizing...</p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-4">
+                                        <Button onClick={handleSaveGift} disabled={loading || uploadingImage}>
+                                            {loading ? 'Saving...' : editingGift ? 'Update Gift' : 'Create Gift'}
+                                        </Button>
+                                        <Button variant="outline" onClick={handleCancelForm}>
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Gifts List */
+                                <div className="space-y-3">
+                                    {loading && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                            <p className="mt-2">Loading gifts...</p>
+                                        </div>
+                                    )}
+
+                                    {!loading && gifts.length === 0 && (
+                                        <div className="text-center py-12 text-gray-500">
+                                            <Gift className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                                            <p className="text-lg mb-2">No gifts defined yet</p>
+                                            <p className="text-sm">Click &quot;Add Gift&quot; to create your first gift</p>
+                                        </div>
+                                    )}
+
+                                    {!loading && gifts.map((gift) => {
+                                        const isPool = gift.category === 'point_pool';
+                                        const totalQty = (gift as any).total_quantity || 0;
+                                        const claimedQty = (gift as any).claimed_quantity || 0;
+                                        const remaining = totalQty - claimedQty;
+
+                                        // Pool specific
+                                        const totalPoints = gift.total_points_allocated || 0;
+                                        const remainingPoints = gift.remaining_points !== undefined ? gift.remaining_points : totalPoints;
+                                        const pointsPer = gift.points_per_collection || 0;
+                                        const isDaily = gift.collection_option_2;
+                                        const isOnce = gift.collection_option_1 && !isDaily;
+
+                                        return (
+                                            <Card key={gift.id} className="hover:shadow-md transition-shadow">
+                                                <CardContent className="p-4">
+                                                    <div className="flex gap-4">
+                                                        {/* Gift Image */}
+                                                        {gift.gift_image_url ? (
+                                                            <div className="w-24 h-24 bg-gray-50 rounded-lg overflow-hidden flex-shrink-0">
+                                                                <Image
+                                                                    src={getStorageUrl(gift.gift_image_url) || gift.gift_image_url}
+                                                                    alt={gift.gift_name}
+                                                                    width={96}
+                                                                    height={96}
+                                                                    className="object-contain w-full h-full"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                                <ImageIcon className="h-8 w-8 text-gray-400" />
+                                                            </div>
+                                                        )}
+
+                                                        {/* Gift Details */}
+                                                        <div className="flex-1">
+                                                            <div className="flex items-start justify-between">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="font-semibold text-lg">{gift.gift_name}</h4>
+                                                                        {isPool && (
+                                                                            <>
+                                                                                <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100 text-[10px]">Point Pool</Badge>
+                                                                                {isDaily && <Badge variant="outline" className="text-[10px]">Daily</Badge>}
+                                                                                {isOnce && <Badge variant="outline" className="text-[10px]">One-time</Badge>}
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {gift.gift_description && (
+                                                                        <p className="text-sm text-gray-600 mt-1">{gift.gift_description}</p>
+                                                                    )}
+
+                                                                    {isPool ? (
+                                                                        <div className="mt-2 space-y-1">
+                                                                            <div className="text-sm">
+                                                                                <span className="font-bold text-green-600">+{pointsPer} Points</span> / claim
+                                                                            </div>
+                                                                            <div className="flex gap-2 text-xs text-gray-500">
+                                                                                <span>Pool: {remainingPoints} / {totalPoints} pts</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        totalQty > 0 ? (
+                                                                            <div className="mt-2 space-x-2">
+                                                                                <Badge variant="outline">
+                                                                                    {remaining} available
+                                                                                </Badge>
+                                                                                <Badge variant="secondary">
+                                                                                    {claimedQty} claimed
+                                                                                </Badge>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <Badge variant="outline" className="mt-2">
+                                                                                Unlimited
+                                                                            </Badge>
+                                                                        )
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleEditGift(gift)}
+                                                                    >
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleDeleteGift(gift.id)}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4 text-red-600" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
-            </div>
-            </div>
+        </div>
     );
 }

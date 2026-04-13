@@ -199,10 +199,10 @@ export default function JourneyCardWithStats({
                     <div className="flex-1">
                         {/* Use display order_no (new format) in title when available */}
                         <CardTitle className="text-lg">
-                            {journey.order_info?.order_no 
+                            {journey.order_info?.order_no
                                 ? (
                                     <span>
-                                        Journey for <Link 
+                                        Journey for <Link
                                             href={`/dashboard?view=view-order&order_id=${journey.order_info.order_id}`}
                                             className="hover:underline text-primary hover:text-primary/80"
                                         >

@@ -110,23 +110,23 @@ export async function GET(request: NextRequest) {
       .select('id, consumer_name, consumer_phone, consumer_email, entry_number, entry_date')
       .eq('qr_code_id', qrData.id)
       .maybeSingle()
-    
+
     if (entry) {
       console.log('✅ Found lucky draw entry in entries table:', entry.entry_number)
       isLuckyDrawEntered = true
       entryDetails = entry
-      
+
       // SYNC FIX: If flag is false but entry exists, fix the flag
       if (!qrData.is_lucky_draw_entered) {
         console.log('⚠️ Flag mismatch detected! Fixing is_lucky_draw_entered flag...')
         const { error: fixError } = await supabase
           .from('qr_codes')
-          .update({ 
+          .update({
             is_lucky_draw_entered: true,
             lucky_draw_entered_at: entry.entry_date || new Date().toISOString()
           })
           .eq('id', qrData.id)
-        
+
         if (fixError) {
           console.error('Failed to fix flag:', fixError)
         } else {
@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
       .select('id')
       .eq('qr_code_id', qrData.id)
       .maybeSingle()
-    
+
     if (giftClaim) {
       isGiftRedeemed = true
     }
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
       .select('id, scratch_card_rewards(name)')
       .eq('qr_code_id', qrData.id)
       .maybeSingle()
-    
+
     if (scratchPlay) {
       isScratchCardPlayed = true
       scratchCardReward = (scratchPlay as any).scratch_card_rewards?.name || null

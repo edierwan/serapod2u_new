@@ -68,79 +68,79 @@ const WINBACK_TEMPLATE_PRESETS: Array<{
     description: string;
     message: string;
 }> = [
-    {
-        id: 'winback-shop-inactive-en',
-        language: 'EN',
-        category: 'shop_performance',
-        status: 'inactive',
-        title: 'Re-activate inactive shops',
-        description: 'Invite dormant shop partners back into the program with a direct action CTA.',
-        message: 'Hi {name}, we noticed your shop has been quiet lately on Serapod2u. Scan your next QR and get back into the reward flow. Reply if you need support from our team.',
-    },
-    {
-        id: 'winback-shop-active-en',
-        language: 'EN',
-        category: 'shop_performance',
-        status: 'active',
-        title: 'Keep active shops engaged',
-        description: 'Nudge active shop partners to keep scanning consistently.',
-        message: 'Hi {name}, your shop is actively collecting on Serapod2u. Keep the momentum going and continue scanning your QR codes to maximise your rewards this month.',
-    },
-    {
-        id: 'winback-staff-inactive-en',
-        language: 'EN',
-        category: 'shop_staff_performance',
-        status: 'inactive',
-        title: 'Bring staff back to scanning',
-        description: 'Prompt inactive staff users to resume collection.',
-        message: 'Hi {name}, your point collection activity has slowed down. Open your Serapod2u journey link and start scanning again to continue earning rewards for your shop.',
-    },
-    {
-        id: 'winback-consumer-inactive-en',
-        language: 'EN',
-        category: 'consumer_performance',
-        status: 'inactive',
-        title: 'Reconnect inactive consumers',
-        description: 'Bring consumer-lane users back with a simple reminder.',
-        message: 'Hi {name}, it has been a while since your last Serapod2u scan. Your account is still ready. Scan your next QR to continue collecting points and rewards.',
-    },
-    {
-        id: 'winback-shop-inactive-bm',
-        language: 'BM',
-        category: 'shop_performance',
-        status: 'inactive',
-        title: 'Aktifkan semula kedai tidak aktif',
-        description: 'Ajak semula rakan kedai yang lama tidak membuat imbasan.',
-        message: 'Hi {name}, kami perasan kedai anda sudah lama tidak aktif di Serapod2u. Buat imbasan QR seterusnya untuk terus kumpul ganjaran. Balas mesej ini jika perlukan bantuan daripada pasukan kami.',
-    },
-    {
-        id: 'winback-shop-active-bm',
-        language: 'BM',
-        category: 'shop_performance',
-        status: 'active',
-        title: 'Kekalkan kedai aktif',
-        description: 'Galakkan kedai aktif untuk terus konsisten membuat imbasan.',
-        message: 'Hi {name}, kedai anda sedang aktif mengumpul ganjaran di Serapod2u. Teruskan momentum ini dengan mengimbas kod QR anda secara konsisten untuk maksimakan ganjaran bulan ini.',
-    },
-    {
-        id: 'winback-staff-inactive-bm',
-        language: 'BM',
-        category: 'shop_staff_performance',
-        status: 'inactive',
-        title: 'Aktifkan semula staf kedai',
-        description: 'Ingatkan staf kedai yang tidak aktif untuk mula imbas semula.',
-        message: 'Hi {name}, aktiviti kutipan mata anda semakin perlahan. Buka semula pautan journey Serapod2u anda dan mula imbas semula untuk terus kumpul ganjaran bagi kedai anda.',
-    },
-    {
-        id: 'winback-consumer-inactive-bm',
-        language: 'BM',
-        category: 'consumer_performance',
-        status: 'inactive',
-        title: 'Hubungi semula pengguna tidak aktif',
-        description: 'Bawa semula pengguna consumer lane dengan peringatan ringkas.',
-        message: 'Hi {name}, sudah lama anda tidak membuat imbasan Serapod2u. Akaun anda masih aktif. Buat imbasan QR seterusnya untuk terus kumpul mata dan ganjaran.',
-    },
-];
+        {
+            id: 'winback-shop-inactive-en',
+            language: 'EN',
+            category: 'shop_performance',
+            status: 'inactive',
+            title: 'Re-activate inactive shops',
+            description: 'Invite dormant shop partners back into the program with a direct action CTA.',
+            message: 'Hi {name}, we noticed your shop has been quiet lately on Serapod2u. Scan your next QR and get back into the reward flow. Reply if you need support from our team.',
+        },
+        {
+            id: 'winback-shop-active-en',
+            language: 'EN',
+            category: 'shop_performance',
+            status: 'active',
+            title: 'Keep active shops engaged',
+            description: 'Nudge active shop partners to keep scanning consistently.',
+            message: 'Hi {name}, your shop is actively collecting on Serapod2u. Keep the momentum going and continue scanning your QR codes to maximise your rewards this month.',
+        },
+        {
+            id: 'winback-staff-inactive-en',
+            language: 'EN',
+            category: 'shop_staff_performance',
+            status: 'inactive',
+            title: 'Bring staff back to scanning',
+            description: 'Prompt inactive staff users to resume collection.',
+            message: 'Hi {name}, your point collection activity has slowed down. Open your Serapod2u journey link and start scanning again to continue earning rewards for your shop.',
+        },
+        {
+            id: 'winback-consumer-inactive-en',
+            language: 'EN',
+            category: 'consumer_performance',
+            status: 'inactive',
+            title: 'Reconnect inactive consumers',
+            description: 'Bring consumer-lane users back with a simple reminder.',
+            message: 'Hi {name}, it has been a while since your last Serapod2u scan. Your account is still ready. Scan your next QR to continue collecting points and rewards.',
+        },
+        {
+            id: 'winback-shop-inactive-bm',
+            language: 'BM',
+            category: 'shop_performance',
+            status: 'inactive',
+            title: 'Aktifkan semula kedai tidak aktif',
+            description: 'Ajak semula rakan kedai yang lama tidak membuat imbasan.',
+            message: 'Hi {name}, kami perasan kedai anda sudah lama tidak aktif di Serapod2u. Buat imbasan QR seterusnya untuk terus kumpul ganjaran. Balas mesej ini jika perlukan bantuan daripada pasukan kami.',
+        },
+        {
+            id: 'winback-shop-active-bm',
+            language: 'BM',
+            category: 'shop_performance',
+            status: 'active',
+            title: 'Kekalkan kedai aktif',
+            description: 'Galakkan kedai aktif untuk terus konsisten membuat imbasan.',
+            message: 'Hi {name}, kedai anda sedang aktif mengumpul ganjaran di Serapod2u. Teruskan momentum ini dengan mengimbas kod QR anda secara konsisten untuk maksimakan ganjaran bulan ini.',
+        },
+        {
+            id: 'winback-staff-inactive-bm',
+            language: 'BM',
+            category: 'shop_staff_performance',
+            status: 'inactive',
+            title: 'Aktifkan semula staf kedai',
+            description: 'Ingatkan staf kedai yang tidak aktif untuk mula imbas semula.',
+            message: 'Hi {name}, aktiviti kutipan mata anda semakin perlahan. Buka semula pautan journey Serapod2u anda dan mula imbas semula untuk terus kumpul ganjaran bagi kedai anda.',
+        },
+        {
+            id: 'winback-consumer-inactive-bm',
+            language: 'BM',
+            category: 'consumer_performance',
+            status: 'inactive',
+            title: 'Hubungi semula pengguna tidak aktif',
+            description: 'Bawa semula pengguna consumer lane dengan peringatan ringkas.',
+            message: 'Hi {name}, sudah lama anda tidak membuat imbasan Serapod2u. Akaun anda masih aktif. Buat imbasan QR seterusnya untuk terus kumpul mata dan ganjaran.',
+        },
+    ];
 
 export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, selectedLanguage: propLanguage, onLanguageChange }: WizardProps) {
     const { toast } = useToast();
@@ -385,12 +385,12 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     }) => {
         setShowPrelaunchModal(false);
         setSubmitting(true);
-        
+
         try {
             // Determine schedule based on config
             const isScheduled = config.mode === 'schedule' || config.scheduledAt;
             const scheduledAt = config.scheduledAt || (formData.scheduleType === 'schedule' ? formData.scheduledDate : null);
-            
+
             // First, create/update the campaign with preset snapshot
             const res = await fetch('/api/wa/marketing/campaigns', {
                 method: 'POST',
@@ -456,10 +456,10 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         });
                     }
                 } else {
-                    toast({ 
-                        title: "Success", 
-                        description: config.mode === 'schedule' 
-                            ? "Campaign scheduled successfully!" 
+                    toast({
+                        title: "Success",
+                        description: config.mode === 'schedule'
+                            ? "Campaign scheduled successfully!"
                             : "Campaign created successfully!"
                     });
                 }

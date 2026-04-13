@@ -99,16 +99,16 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [selectedSort, setSelectedSort] = useState<string>("points-asc")
   const [onlyAvailable, setOnlyAvailable] = useState(false)
   const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null)
-  const [productSummary, setProductSummary] = useState<{product: string, variant: string, count: number, points: number, imageUrl?: string | null}[]>([])
+  const [productSummary, setProductSummary] = useState<{ product: string, variant: string, count: number, points: number, imageUrl?: string | null }[]>([])
   const [redeeming, setRedeeming] = useState(false)
-  
+
   // Product Summary Table State
   const [productSearchTerm, setProductSearchTerm] = useState("")
   const [productSortColumn, setProductSortColumn] = useState<'product' | 'variant' | 'count' | 'points'>('points')
   const [productSortDirection, setProductSortDirection] = useState<'asc' | 'desc'>('desc')
   const [productCurrentPage, setProductCurrentPage] = useState(1)
   const [productItemsPerPage] = useState(10)
-  
+
   // Pagination states
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(12)
   const [visibleProductCount, setVisibleProductCount] = useState(5)
@@ -124,7 +124,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       setError(null)
 
       const now = new Date().toISOString()
-      
+
       // First, get the shop's parent company ID
       const { data: shopOrg, error: shopOrgError } = await supabaseClient
         .from('organizations')
@@ -141,7 +141,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
       // Use parent_org_id as company_id, or fall back to shop's own id if no parent
       const companyId = shopOrg.parent_org_id || shopOrg.id
-      
+
       // Load rewards - try multiple strategies to find matching rewards
       // Strategy 1: Query with the calculated company_id
       let rewardRes = await supabaseClient
@@ -157,7 +157,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           .select("*")
           .eq("company_id", shopOrg.id)
           .order("points_required", { ascending: true })
-        
+
         if (fallbackRes.data && fallbackRes.data.length > 0) {
           rewardRes = fallbackRes
         }
@@ -168,19 +168,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         const allRewardsRes = await supabaseClient
           .from("redeem_items")
           .select("*")
-        
+
         if (allRewardsRes.data && allRewardsRes.data.length > 0) {
           rewardRes = allRewardsRes
         }
       }
-      
+
       // Shop balance from view (using any to bypass type checking for views)
       const balanceRes = await (supabaseClient as any)
         .from("v_shop_points_balance")
         .select("*")
         .eq("shop_id", shopOrgId)
         .maybeSingle()
-      
+
       // Ledger transactions from view (using any to bypass type checking)
       const ledgerRes = await (supabaseClient as any)
         .from("shop_points_ledger")
@@ -188,7 +188,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
         .eq("shop_id", shopOrgId)
         .order("occurred_at", { ascending: false })
         .limit(500)
-      
+
       // Active points rule
       const ruleRes = await supabaseClient
         .from("points_rules")
@@ -218,12 +218,12 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       if (ledgerRes.error) {
         console.error("Failed to load ledger", ledgerRes.error)
       } else {
-        
+
         if (ledgerRes.data && ledgerRes.data.length > 0) {
           // Enrich ledger data with images
           const enrichedLedger = await Promise.all(ledgerRes.data.map(async (entry: any) => {
             let imageUrl = null
-            
+
             // Fetch variant image for QR scans
             if (entry.variant_id) {
               const { data: variantData } = await supabaseClient
@@ -233,7 +233,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 .single()
               imageUrl = variantData?.image_url
             }
-            
+
             // Fetch reward image for redemptions
             if (entry.redeem_item_id) {
               const { data: rewardData } = await supabaseClient
@@ -243,24 +243,24 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 .single()
               imageUrl = rewardData?.item_image_url
             }
-            
+
             return { ...entry, imageUrl }
           }))
-          
+
           setLedgerTransactions(enrichedLedger as any)
-          
+
           // Log first transaction for debugging
           console.log('📊 First ledger entry:', enrichedLedger[0])
-          
+
           // Calculate product summary from scan transactions
-          const productMap = new Map<string, {product: string, variant: string, count: number, points: number, imageUrl?: string | null}>()
-          
+          const productMap = new Map<string, { product: string, variant: string, count: number, points: number, imageUrl?: string | null }>()
+
           enrichedLedger.forEach((entry: any) => {
             if ((entry.point_category === 'scan' || entry.transaction_type === 'scan') && entry.product_name) {
               const productName = entry.product_name || 'Unknown Product'
               const variantName = entry.variant_name || 'Unknown Variant'
               const key = `${productName}|${variantName}`
-              
+
               const existing = productMap.get(key)
               if (existing) {
                 existing.count += 1
@@ -276,7 +276,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
               }
             }
           })
-          
+
           const summary = Array.from(productMap.values()).sort((a, b) => b.count - a.count)
           console.log('📊 Product summary:', summary)
           setProductSummary(summary)
@@ -323,7 +323,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
     try {
       const supabase = createClient()
-      
+
       // Get shop organization details to find company_id and contact info
       const { data: shopOrg } = await supabase
         .from('organizations')
@@ -334,7 +334,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
       // company_id should be the shop's ID, NOT the parent company ID
       // The ledger view uses company_id as shop_id
       const companyId = shopOrgId
-      
+
       // Use shop org contact info or user profile info
       const consumerPhone = shopOrg?.contact_phone || userProfile.phone || 'SHOP-' + shopOrgId.slice(0, 8)
       const consumerEmail = shopOrg?.contact_email || userProfile.email || null
@@ -526,8 +526,8 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     // Filter
     if (productSearchTerm) {
       const lowerTerm = productSearchTerm.toLowerCase()
-      result = result.filter(item => 
-        item.product.toLowerCase().includes(lowerTerm) || 
+      result = result.filter(item =>
+        item.product.toLowerCase().includes(lowerTerm) ||
         item.variant.toLowerCase().includes(lowerTerm)
       )
     }
@@ -536,7 +536,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
     result.sort((a, b) => {
       let valA = a[productSortColumn]
       let valB = b[productSortColumn]
-      
+
       // Handle string comparison
       if (typeof valA === 'string' && typeof valB === 'string') {
         valA = valA.toLowerCase()
@@ -589,9 +589,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <Button variant="outline" className="gap-2" onClick={() => setOnlyAvailable(true)}>
             <Sparkles className="h-4 w-4" /> Highlight Available
           </Button>
-          <Button 
-            variant="outline" 
-            className="gap-2" 
+          <Button
+            variant="outline"
+            className="gap-2"
             onClick={() => {
               setSelectedRewardId(null)
               setSearchTerm("")
@@ -647,7 +647,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <CardContent>
             <p className="text-3xl font-semibold text-purple-700">{formatNumber(totalScans)}</p>
             <p className="mt-2 text-xs text-purple-800/70">
-              {activeRule?.points_per_scan 
+              {activeRule?.points_per_scan
                 ? `${formatNumber(activeRule.points_per_scan)} points per scan`
                 : "Keep scanning to earn more points"}
             </p>
@@ -669,18 +669,18 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <CardContent>
             {/* Controls */}
             <div className="flex flex-col sm:flex-row gap-4 mb-4 justify-between items-center">
-                <div className="relative w-full sm:w-72">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search products..."
-                        value={productSearchTerm}
-                        onChange={(e) => {
-                            setProductSearchTerm(e.target.value)
-                            setProductCurrentPage(1) // Reset to first page on search
-                        }}
-                        className="pl-8"
-                    />
-                </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search products..."
+                  value={productSearchTerm}
+                  onChange={(e) => {
+                    setProductSearchTerm(e.target.value)
+                    setProductCurrentPage(1) // Reset to first page on search
+                  }}
+                  className="pl-8"
+                />
+              </div>
             </div>
 
             <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -721,41 +721,41 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
               <table className="hidden md:table w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th 
-                        className="px-4 py-3 cursor-pointer hover:bg-slate-100"
-                        onClick={() => handleProductSort('product')}
+                    <th
+                      className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                      onClick={() => handleProductSort('product')}
                     >
-                        <div className="flex items-center gap-1">
-                            Product
-                            {productSortColumn === 'product' && <ArrowUpDown className="h-3 w-3" />}
-                        </div>
+                      <div className="flex items-center gap-1">
+                        Product
+                        {productSortColumn === 'product' && <ArrowUpDown className="h-3 w-3" />}
+                      </div>
                     </th>
-                    <th 
-                        className="px-4 py-3 cursor-pointer hover:bg-slate-100"
-                        onClick={() => handleProductSort('variant')}
+                    <th
+                      className="px-4 py-3 cursor-pointer hover:bg-slate-100"
+                      onClick={() => handleProductSort('variant')}
                     >
-                        <div className="flex items-center gap-1">
-                            Variant
-                            {productSortColumn === 'variant' && <ArrowUpDown className="h-3 w-3" />}
-                        </div>
+                      <div className="flex items-center gap-1">
+                        Variant
+                        {productSortColumn === 'variant' && <ArrowUpDown className="h-3 w-3" />}
+                      </div>
                     </th>
-                    <th 
-                        className="px-4 py-3 text-center cursor-pointer hover:bg-slate-100"
-                        onClick={() => handleProductSort('count')}
+                    <th
+                      className="px-4 py-3 text-center cursor-pointer hover:bg-slate-100"
+                      onClick={() => handleProductSort('count')}
                     >
-                        <div className="flex items-center justify-center gap-1">
-                            Scans
-                            {productSortColumn === 'count' && <ArrowUpDown className="h-3 w-3" />}
-                        </div>
+                      <div className="flex items-center justify-center gap-1">
+                        Scans
+                        {productSortColumn === 'count' && <ArrowUpDown className="h-3 w-3" />}
+                      </div>
                     </th>
-                    <th 
-                        className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
-                        onClick={() => handleProductSort('points')}
+                    <th
+                      className="px-4 py-3 text-right cursor-pointer hover:bg-slate-100"
+                      onClick={() => handleProductSort('points')}
                     >
-                        <div className="flex items-center justify-end gap-1">
-                            Points Earned
-                            {productSortColumn === 'points' && <ArrowUpDown className="h-3 w-3" />}
-                        </div>
+                      <div className="flex items-center justify-end gap-1">
+                        Points Earned
+                        {productSortColumn === 'points' && <ArrowUpDown className="h-3 w-3" />}
+                      </div>
                     </th>
                   </tr>
                 </thead>
@@ -799,31 +799,31 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
             {/* Pagination Controls */}
             {totalProductPages > 1 && (
-                <div className="flex items-center justify-between mt-4">
-                    <div className="text-sm text-muted-foreground">
-                        Showing {(productCurrentPage - 1) * productItemsPerPage + 1} to {Math.min(productCurrentPage * productItemsPerPage, filteredAndSortedProducts.length)} of {filteredAndSortedProducts.length} results
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setProductCurrentPage(prev => Math.max(1, prev - 1))}
-                            disabled={productCurrentPage === 1}
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setProductCurrentPage(prev => Math.min(totalProductPages, prev + 1))}
-                            disabled={productCurrentPage === totalProductPages}
-                        >
-                            Next
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {(productCurrentPage - 1) * productItemsPerPage + 1} to {Math.min(productCurrentPage * productItemsPerPage, filteredAndSortedProducts.length)} of {filteredAndSortedProducts.length} results
                 </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setProductCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={productCurrentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setProductCurrentPage(prev => Math.min(totalProductPages, prev + 1))}
+                    disabled={productCurrentPage === totalProductPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -857,7 +857,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </div>
-              
+
               <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
                 <Button
                   size="sm"
@@ -870,19 +870,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 {(Object.keys(CATEGORY_LABELS) as RewardCategory[])
                   .filter(category => (categoriesWithCounts.get(category) ?? 0) > 0)
                   .map((category) => (
-                  <Button
-                    key={category}
-                    size="sm"
-                    variant={selectedCategory === category ? "default" : "outline"}
-                    className="whitespace-nowrap rounded-full"
-                    onClick={() => setSelectedCategory(category)}
-                  >
-                    {CATEGORY_LABELS[category]}
-                    <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      {categoriesWithCounts.get(category) ?? 0}
-                    </span>
-                  </Button>
-                ))}
+                    <Button
+                      key={category}
+                      size="sm"
+                      variant={selectedCategory === category ? "default" : "outline"}
+                      className="whitespace-nowrap rounded-full"
+                      onClick={() => setSelectedCategory(category)}
+                    >
+                      {CATEGORY_LABELS[category]}
+                      <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {categoriesWithCounts.get(category) ?? 0}
+                      </span>
+                    </Button>
+                  ))}
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -900,10 +900,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                 </Select>
 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground bg-white px-3 py-2 rounded-md border shadow-sm">
-                  <Switch 
+                  <Switch
                     id="available-mode"
-                    checked={onlyAvailable} 
-                    onCheckedChange={setOnlyAvailable} 
+                    checked={onlyAvailable}
+                    onCheckedChange={setOnlyAvailable}
                     className="scale-75 data-[state=checked]:bg-green-600"
                   />
                   <label htmlFor="available-mode" className="whitespace-nowrap">Available only</label>
@@ -1057,14 +1057,14 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <Card className="border-none shadow-none bg-transparent">
             <div className="flex items-center justify-between mb-4 px-1">
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Clock className="h-5 w-5 text-muted-foreground" /> 
+                <Clock className="h-5 w-5 text-muted-foreground" />
                 History
               </h3>
               <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
                 Showing {Math.min(visibleHistoryCount, ledgerTransactions.length)} of {ledgerTransactions.length}
               </span>
             </div>
-            
+
             <CardContent className="p-0">
               {ledgerTransactions.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground bg-white rounded-lg border border-slate-200">
@@ -1077,9 +1077,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     const runningBalance = currentBalance - ledgerTransactions
                       .slice(0, index)
                       .reduce((sum, t) => sum + t.points_change, 0)
-                    
+
                     const isPositive = txn.points_change > 0;
-                    
+
                     return (
                       <div key={txn.id} className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm flex gap-4 items-start">
                         {/* Icon/Image Section */}
@@ -1111,7 +1111,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                               {isPositive ? '+' : ''}{formatNumber(txn.points_change)}
                             </span>
                           </div>
-                          
+
                           <div className="flex justify-between items-center text-xs text-muted-foreground">
                             <div className="flex flex-col gap-0.5">
                               <span>{txn.variant_name || (txn.point_category === 'redemption' || txn.transaction_type === 'redeem' ? 'Redemption' : 'Standard')}</span>
@@ -1126,12 +1126,12 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                       </div>
                     );
                   })}
-                  
+
                   {ledgerTransactions.length > visibleHistoryCount && (
                     <div className="pt-2 text-center">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="w-full"
                         onClick={() => setVisibleHistoryCount(prev => prev + 10)}
                       >
@@ -1150,14 +1150,14 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <Card className="border-none shadow-none bg-transparent">
             <div className="flex items-center justify-between mb-4 px-1">
               <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Gift className="h-5 w-5 text-muted-foreground" /> 
+                <Gift className="h-5 w-5 text-muted-foreground" />
                 Redemptions
               </h3>
               <span className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded-full">
                 {ledgerTransactions.filter(t => t.point_category === 'redemption' || t.transaction_type === 'redeem').length} items
               </span>
             </div>
-            
+
             <CardContent className="p-0">
               {ledgerTransactions.filter(t => t.point_category === 'redemption' || t.transaction_type === 'redeem').length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground bg-white rounded-lg border border-slate-200">
@@ -1196,7 +1196,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                               {formatNumber(Math.abs(txn.points_change))}
                             </span>
                           </div>
-                          
+
                           <div className="flex justify-between items-center text-xs text-muted-foreground">
                             <div className="flex flex-col gap-0.5">
                               <span>Reward redemption</span>
@@ -1305,8 +1305,8 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                   <Button variant="outline" onClick={() => setSelectedRewardId(null)} disabled={redeeming}>
                     Close
                   </Button>
-                  <Button 
-                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required || redeeming} 
+                  <Button
+                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required || redeeming}
                     className="gap-2"
                     onClick={() => handleRedeemReward(selectedReward)}
                   >
@@ -1318,10 +1318,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     ) : (
                       <>
                         <Gift className="h-4 w-4" />
-                        {!selectedReward.isAvailable 
-                          ? "Not available" 
-                          : currentBalance >= selectedReward.points_required 
-                            ? "Redeem now" 
+                        {!selectedReward.isAvailable
+                          ? "Not available"
+                          : currentBalance >= selectedReward.points_required
+                            ? "Redeem now"
                             : "Need more points"}
                       </>
                     )}

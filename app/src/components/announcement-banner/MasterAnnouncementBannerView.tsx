@@ -569,7 +569,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                         Master Announcement Banner
                     </h1>
                     <p className="text-gray-600 mt-1">
-                        Configure default banners for all consumer journeys
+                        Configure default banners for all customer journeys
                     </p>
                 </div>
                 <Button onClick={handleSave} disabled={saving} size="lg">
@@ -610,7 +610,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                 <h3 className="font-semibold text-lg">Master Banner System</h3>
                                 <p className="text-sm text-gray-600">
                                     {masterConfig.banner_config.enabled
-                                        ? 'Banners will display on consumer journeys without custom banners'
+                                        ? 'Banners will display on customer journeys without custom banners'
                                         : 'No banners will be displayed by default'}
                                 </p>
                             </div>

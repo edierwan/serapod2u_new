@@ -7,15 +7,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
-    MessageSquare, 
-    Search, 
-    Filter, 
-    RefreshCw, 
-    Send, 
-    Image as ImageIcon, 
-    CheckCircle2, 
-    Clock, 
+import {
+    MessageSquare,
+    Search,
+    Filter,
+    RefreshCw,
+    Send,
+    Image as ImageIcon,
+    CheckCircle2,
+    Clock,
     AlertCircle,
     MoreHorizontal,
     Megaphone,
@@ -65,12 +65,12 @@ export function AdminSupportInbox() {
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchQuery, setSearchQuery] = useState('')
     const [showBlastModal, setShowBlastModal] = useState(false)
-    
+
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1)
     const [rowsPerPage, setRowsPerPage] = useState(20)
     const [totalCount, setTotalCount] = useState(0)
-    
+
     const totalPages = Math.ceil(totalCount / rowsPerPage)
 
     useEffect(() => {
@@ -85,7 +85,7 @@ export function AdminSupportInbox() {
             if (searchQuery) params.append('q', searchQuery)
             params.append('page', currentPage.toString())
             params.append('limit', rowsPerPage.toString())
-            
+
             const res = await fetch(`/api/admin/support/threads?${params.toString()}`)
             const data = await res.json()
             if (data.threads) {
@@ -104,7 +104,7 @@ export function AdminSupportInbox() {
         setActiveThread(thread)
         setView('detail')
     }
-    
+
     const handleSearch = () => {
         setCurrentPage(1) // Reset to first page when searching
         fetchThreads()
@@ -119,8 +119,8 @@ export function AdminSupportInbox() {
                         <div className="flex items-center gap-2 flex-1">
                             <div className="relative flex-1 max-w-sm">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                                <Input 
-                                    placeholder="Search subjects, user name, or phone..." 
+                                <Input
+                                    placeholder="Search subjects, user name, or phone..."
                                     className="pl-9 bg-white"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -147,7 +147,7 @@ export function AdminSupportInbox() {
                                 <div className="p-8 text-center text-gray-500">No threads found.</div>
                             ) : (
                                 threads.map((thread, index) => (
-                                    <div 
+                                    <div
                                         key={thread.id}
                                         onClick={() => handleThreadClick(thread)}
                                         role="button"
@@ -163,7 +163,7 @@ export function AdminSupportInbox() {
                                             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600">
                                                 {(currentPage - 1) * rowsPerPage + index + 1}
                                             </div>
-                                            
+
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between mb-1">
                                                     <div className="flex items-center gap-2">
@@ -207,7 +207,7 @@ export function AdminSupportInbox() {
                             )}
                         </div>
                     </ScrollArea>
-                    
+
                     {/* Pagination Controls */}
                     {!loading && threads.length > 0 && (
                         <div className="p-3 border-t bg-gray-50/50 flex items-center justify-between gap-4">
@@ -228,18 +228,18 @@ export function AdminSupportInbox() {
                                 <span>{(currentPage - 1) * rowsPerPage + 1}-{Math.min(currentPage * rowsPerPage, totalCount)} of {totalCount}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => setCurrentPage(1)}
                                     disabled={currentPage === 1}
                                     className="h-8 px-2"
                                 >
                                     First
                                 </Button>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
                                     className="h-8 px-2"
@@ -249,18 +249,18 @@ export function AdminSupportInbox() {
                                 <span className="px-3 text-sm text-gray-600">
                                     Page {currentPage} of {totalPages || 1}
                                 </span>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                     disabled={currentPage >= totalPages}
                                     className="h-8 px-2"
                                 >
                                     Next
                                 </Button>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => setCurrentPage(totalPages)}
                                     disabled={currentPage >= totalPages}
                                     className="h-8 px-2"
@@ -272,8 +272,8 @@ export function AdminSupportInbox() {
                     )}
                 </div>
             ) : (
-                <AdminChatThreadView 
-                    thread={activeThread!} 
+                <AdminChatThreadView
+                    thread={activeThread!}
                     onBack={() => {
                         setView('list')
                         fetchThreads()
@@ -320,7 +320,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault()
         e.stopPropagation()
-        
+
         const messageToSend = newMessage.trim()
         if (!messageToSend) {
             console.log('No message to send')
@@ -330,27 +330,27 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
         console.log('Sending admin reply:', { threadId: thread.id, message: messageToSend })
         setError(null)
         setSending(true)
-        
+
         try {
             const res = await fetch(`/api/admin/support/threads/${thread.id}/reply`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: messageToSend })
             })
-            
+
             console.log('Response status:', res.status)
             const data = await res.json()
             console.log('Response data:', data)
-            
+
             if (!res.ok) {
-                const errorMsg = data.details 
+                const errorMsg = data.details
                     ? `${data.error}: ${data.details} (${data.code || res.status})`
                     : data.error || `Failed to send reply (${res.status})`
                 setError(errorMsg)
                 console.error('Failed to send reply:', data)
                 return
             }
-            
+
             if (data.message) {
                 setMessages(prev => [...prev, data.message])
                 setNewMessage('')
@@ -420,7 +420,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
                     {messages.map((msg) => {
                         const isAdmin = msg.sender_type === 'admin'
                         const isSystem = msg.sender_type === 'system'
-                        
+
                         if (isSystem) {
                             return (
                                 <div key={msg.id} className="flex justify-center my-4">
@@ -453,7 +453,7 @@ function AdminChatThreadView({ thread, onBack }: { thread: Thread, onBack: () =>
             {/* Composer */}
             <div className="p-4 bg-white border-t">
                 <form onSubmit={handleSend} className="flex items-end gap-2">
-                    <Textarea 
+                    <Textarea
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         placeholder="Type a reply..."
@@ -484,7 +484,7 @@ function BlastModal({ open, onOpenChange }: any) {
     const [loadingStates, setLoadingStates] = useState(false)
     const [previewCount, setPreviewCount] = useState<number | null>(null)
     const [loadingPreview, setLoadingPreview] = useState(false)
-    
+
     // Progress tracking state
     const [progress, setProgress] = useState<{
         status: 'idle' | 'sending' | 'complete' | 'error'
@@ -553,7 +553,7 @@ function BlastModal({ open, onOpenChange }: any) {
             if (targetType === 'role' && selectedRoles.length > 0) {
                 params.append('roles', selectedRoles.join(','))
             }
-            
+
             const res = await fetch(`/api/admin/support/blast/preview?${params.toString()}`)
             const data = await res.json()
             setPreviewCount(data.count || 0)
@@ -567,13 +567,13 @@ function BlastModal({ open, onOpenChange }: any) {
 
     const handleSend = async () => {
         if (!message.trim()) return
-        
-        const targetDescription = targetType === 'all' 
-            ? 'ALL users' 
-            : targetType === 'state' 
-                ? `users in ${selectedStates.length} state(s)` 
+
+        const targetDescription = targetType === 'all'
+            ? 'ALL users'
+            : targetType === 'state'
+                ? `users in ${selectedStates.length} state(s)`
                 : `users with ${selectedRoles.length} role(s)`
-        
+
         if (!confirm(`Are you sure you want to send this announcement to ${targetDescription}?`)) return
 
         setSending(true)
@@ -585,39 +585,39 @@ function BlastModal({ open, onOpenChange }: any) {
             percent: 0,
             message: 'Starting...'
         })
-        
+
         try {
             const res = await fetch('/api/admin/support/blast/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message, 
+                body: JSON.stringify({
+                    message,
                     subject: 'Announcement',
                     targetType,
                     states: targetType === 'state' ? selectedStates : [],
                     roles: targetType === 'role' ? selectedRoles : []
                 })
             })
-            
+
             if (!res.body) {
                 throw new Error('No response body')
             }
-            
+
             const reader = res.body.getReader()
             const decoder = new TextDecoder()
-            
+
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
-                
+
                 const chunk = decoder.decode(value)
                 const lines = chunk.split('\n')
-                
+
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.slice(6))
-                            
+
                             if (data.type === 'start') {
                                 setProgress(prev => ({
                                     ...prev,
@@ -666,7 +666,7 @@ function BlastModal({ open, onOpenChange }: any) {
             setSending(false)
         }
     }
-    
+
     const handleClose = () => {
         if (!sending) {
             onOpenChange(false)
@@ -686,17 +686,17 @@ function BlastModal({ open, onOpenChange }: any) {
     }
 
     const toggleState = (stateCode: string) => {
-        setSelectedStates(prev => 
-            prev.includes(stateCode) 
-                ? prev.filter(s => s !== stateCode) 
+        setSelectedStates(prev =>
+            prev.includes(stateCode)
+                ? prev.filter(s => s !== stateCode)
                 : [...prev, stateCode]
         )
     }
 
     const toggleRole = (role: string) => {
-        setSelectedRoles(prev => 
-            prev.includes(role) 
-                ? prev.filter(r => r !== role) 
+        setSelectedRoles(prev =>
+            prev.includes(role)
+                ? prev.filter(r => r !== role)
                 : [...prev, role]
         )
     }
@@ -734,12 +734,12 @@ function BlastModal({ open, onOpenChange }: any) {
                             ) : (
                                 <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto p-2 bg-gray-50 rounded-lg">
                                     {states.map(state => (
-                                        <label 
-                                            key={state.state_code} 
+                                        <label
+                                            key={state.state_code}
                                             className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-1 rounded"
                                         >
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={selectedStates.includes(state.state_code)}
                                                 onChange={() => toggleState(state.state_code)}
                                                 className="rounded border-gray-300"
@@ -760,12 +760,12 @@ function BlastModal({ open, onOpenChange }: any) {
                             </label>
                             <div className="grid grid-cols-2 gap-2 p-2 bg-gray-50 rounded-lg">
                                 {roleOptions.map(role => (
-                                    <label 
-                                        key={role.value} 
+                                    <label
+                                        key={role.value}
                                         className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-2 rounded"
                                     >
-                                        <input 
-                                            type="checkbox" 
+                                        <input
+                                            type="checkbox"
                                             checked={selectedRoles.includes(role.value)}
                                             onChange={() => toggleRole(role.value)}
                                             className="rounded border-gray-300"
@@ -794,20 +794,20 @@ function BlastModal({ open, onOpenChange }: any) {
                     <div className="bg-yellow-50 p-3 rounded-md border border-yellow-200 text-sm text-yellow-800 flex items-start gap-2">
                         <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
                         <p>
-                            {targetType === 'all' 
+                            {targetType === 'all'
                                 ? 'This message will be sent to ALL active users as a new thread or update to their "Announcements" thread.'
                                 : 'This message will be sent to users matching the selected filters.'}
                         </p>
                     </div>
-                    
-                    <Textarea 
-                        placeholder="Type your announcement here..." 
+
+                    <Textarea
+                        placeholder="Type your announcement here..."
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         className="min-h-[150px]"
                         disabled={sending}
                     />
-                    
+
                     {/* Progress Display */}
                     {progress.status !== 'idle' && (
                         <div className={cn(
@@ -818,9 +818,9 @@ function BlastModal({ open, onOpenChange }: any) {
                         )}>
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-medium">
-                                    {progress.status === 'complete' ? '✅ Complete' : 
-                                     progress.status === 'error' ? '❌ Error' : 
-                                     '📤 Sending...'}
+                                    {progress.status === 'complete' ? '✅ Complete' :
+                                        progress.status === 'error' ? '❌ Error' :
+                                            '📤 Sending...'}
                                 </span>
                                 {progress.total > 0 && (
                                     <span className="text-sm text-gray-600">
@@ -829,19 +829,19 @@ function BlastModal({ open, onOpenChange }: any) {
                                     </span>
                                 )}
                             </div>
-                            
+
                             {/* Progress Bar */}
                             {progress.status === 'sending' && progress.total > 0 && (
                                 <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                                    <div 
+                                    <div
                                         className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                                         style={{ width: `${progress.percent}%` }}
                                     />
                                 </div>
                             )}
-                            
+
                             <p className="text-sm text-gray-700">{progress.message}</p>
-                            
+
                             {progress.errors && progress.errors.length > 0 && (
                                 <details className="mt-2">
                                     <summary className="text-xs text-red-600 cursor-pointer">View errors ({progress.errors.length})</summary>
@@ -858,9 +858,9 @@ function BlastModal({ open, onOpenChange }: any) {
                         {progress.status === 'complete' ? 'Close' : 'Cancel'}
                     </Button>
                     {progress.status !== 'complete' && (
-                        <Button 
-                            onClick={handleSend} 
-                            disabled={sending || !message.trim() || (targetType === 'state' && selectedStates.length === 0) || (targetType === 'role' && selectedRoles.length === 0)} 
+                        <Button
+                            onClick={handleSend}
+                            disabled={sending || !message.trim() || (targetType === 'state' && selectedStates.length === 0) || (targetType === 'role' && selectedRoles.length === 0)}
                             className="bg-purple-600 hover:bg-purple-700"
                         >
                             {sending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Megaphone className="w-4 h-4 mr-2" />}

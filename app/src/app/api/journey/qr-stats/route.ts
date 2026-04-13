@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     const batchIds = batches.map(b => b.id)
-    
+
     console.log(`🔍 Looking for QR codes in batches:`, batchIds)
 
     // Get ALL QR codes for this order by order_id (most reliable method)
@@ -91,10 +91,10 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`📦 Found ${allQrCodes?.length || 0} QR codes for order`)
-    
+
     const qrCodeIds = allQrCodes?.map(qr => qr.id) || []
     const totalValidLinks = allQrCodes?.length || 0
-    
+
     console.log(`✅ Total valid links: ${totalValidLinks}, QR code IDs count: ${qrCodeIds.length}`)
 
     // Use database function to efficiently get all stats
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
         .from('scratch_card_plays')
         .select('id, qr_codes!inner(order_id)', { count: 'exact', head: true })
         .eq('qr_codes.order_id', orderId)
-      
+
       if (!scratchError) {
         scratchCardPlaysCount = count || 0
       } else {

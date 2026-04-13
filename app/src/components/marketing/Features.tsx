@@ -67,9 +67,8 @@ export function Features() {
           {features.map((feature, index) => (
             <div
               key={feature.title}
-              className={`grid lg:grid-cols-2 gap-12 items-center ${
-                index % 2 === 1 ? 'lg:flex-row-reverse' : ''
-              }`}
+              className={`grid lg:grid-cols-2 gap-12 items-center ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''
+                }`}
             >
               {/* Content */}
               <div className={`space-y-6 ${index % 2 === 1 ? 'lg:order-2' : ''}`}>

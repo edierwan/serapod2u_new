@@ -123,14 +123,14 @@ function buildGatewayUrl(baseUrl: string, endpoint: string): string {
  * wa.getouch.co uses /api/* routes with different naming conventions.
  */
 const GETOUCH_ENDPOINT_MAP: Record<string, string> = {
-  '/status':          '/api/status',
-  '/session/qr':      '/api/qr-code',
-  '/messages/send':   '/api/send-text',
+  '/status': '/api/status',
+  '/session/qr': '/api/qr-code',
+  '/messages/send': '/api/send-text',
   '/messages/send-image': '/api/send-image',
-  '/session/start':   '/api/reset',
-  '/session/logout':  '/api/logout',
-  '/session/clear':   '/api/logout',
-  '/session/reset':   '/api/reset',
+  '/session/start': '/api/reset',
+  '/session/logout': '/api/logout',
+  '/session/clear': '/api/logout',
+  '/session/reset': '/api/reset',
 };
 
 /**

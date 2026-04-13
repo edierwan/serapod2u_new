@@ -14,26 +14,26 @@ import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Simple safe list component replacing Command for better CSP compliance
-function FilterList({ 
-    items, 
-    selectedItems, 
-    onToggle, 
-    placeholder 
-}: { 
-    items: string[], 
-    selectedItems: string[], 
+function FilterList({
+    items,
+    selectedItems,
+    onToggle,
+    placeholder
+}: {
+    items: string[],
+    selectedItems: string[],
     onToggle: (item: string) => void,
     placeholder: string
 }) {
     const [search, setSearch] = useState('');
     const filtered = items.filter(i => i.toLowerCase().includes(search.toLowerCase()));
-    
+
     return (
         <div className="flex flex-col gap-2 p-2">
-            <Input 
-                placeholder={placeholder} 
-                value={search} 
-                onChange={(e) => setSearch(e.target.value)} 
+            <Input
+                placeholder={placeholder}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 className="h-9"
             />
             <ScrollArea className="h-[200px] rounded-md border p-2">
@@ -42,7 +42,7 @@ function FilterList({
                 ) : (
                     <div className="space-y-1">
                         {filtered.map(item => (
-                            <div 
+                            <div
                                 key={item}
                                 onClick={() => onToggle(item)}
                                 className={cn(
@@ -52,8 +52,8 @@ function FilterList({
                             >
                                 <div className={cn(
                                     "flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                    selectedItems.includes(item) 
-                                        ? "bg-primary text-primary-foreground" 
+                                    selectedItems.includes(item)
+                                        ? "bg-primary text-primary-foreground"
                                         : "opacity-50"
                                 )}>
                                     {selectedItems.includes(item) && <Check className="h-3 w-3" />}
@@ -107,40 +107,40 @@ interface AudienceFilterBuilderProps {
 }
 
 // Helper component for min/max range inputs
-function RangeInput({ 
-    label, 
-    minValue, 
-    maxValue, 
-    onMinChange, 
+function RangeInput({
+    label,
+    minValue,
+    maxValue,
+    onMinChange,
     onMaxChange
-}: { 
-    label: string; 
-    minValue?: number | null; 
-    maxValue?: number | null; 
-    onMinChange: (v: number | null) => void; 
+}: {
+    label: string;
+    minValue?: number | null;
+    maxValue?: number | null;
+    onMinChange: (v: number | null) => void;
     onMaxChange: (v: number | null) => void;
 }) {
     // Ensure values are safe for render
     const safeMin = (typeof minValue === 'number' || typeof minValue === 'string') ? minValue : '';
     const safeMax = (typeof maxValue === 'number' || typeof maxValue === 'string') ? maxValue : '';
-    
+
     return (
         <div className="space-y-2">
             <Label className="text-sm font-medium">{label}</Label>
             <div className="flex items-center gap-2">
-                <Input 
-                    type="number" 
+                <Input
+                    type="number"
                     placeholder="Min"
                     value={safeMin}
-                    onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)} 
+                    onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)}
                     className="w-24"
                 />
                 <span className="text-muted-foreground">to</span>
-                <Input 
-                    type="number" 
+                <Input
+                    type="number"
                     placeholder="Max"
                     value={safeMax}
-                    onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)} 
+                    onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)}
                     className="w-24"
                 />
             </div>
@@ -167,20 +167,20 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
 
     // Default to object if null/undefined or array (since we expect object structure below)
     const safeFilters = (filters && !Array.isArray(filters)) ? filters : ({} as any);
-    
+
     // TEMP: Defensive checks
     if (!safeFilters) console.error("AudienceFilterBuilder: safeFilters is null/undefined");
-    
+
     // Get selected values (defensively)
     const getSafeArray = (arr: any) => Array.isArray(arr) ? arr.filter(i => typeof i === 'string') : [];
-    
+
     // Logic for combining legacy single-select and new multi-select
     const rawOrgTypes = safeFilters.organization_types;
     const legacyOrgType = safeFilters.organization_type;
-    
-    const selectedOrgTypes = rawOrgTypes 
+
+    const selectedOrgTypes = rawOrgTypes
         ? getSafeArray(rawOrgTypes)
-        : (legacyOrgType && legacyOrgType !== 'all' && legacyOrgType !== 'All') 
+        : (legacyOrgType && legacyOrgType !== 'all' && legacyOrgType !== 'All')
             ? [legacyOrgType]
             : [];
 
@@ -189,7 +189,7 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
 
     const selectedStates = rawStates
         ? getSafeArray(rawStates)
-        : (legacyState && legacyState !== 'any' && legacyState !== 'Any Location') 
+        : (legacyState && legacyState !== 'any' && legacyState !== 'Any Location')
             ? [legacyState]
             : [];
 
@@ -200,26 +200,26 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
             fetch('/api/wa/marketing/audience/states').then(r => r.json()).catch(() => ({ states: [] }))
         ]).then(([orgData, stateData]) => {
             if (!isMounted) return;
-            
+
             try {
                 const rawTypes = (orgData?.organization_types as string[]) || [];
-                const safeTypes = Array.isArray(rawTypes) 
+                const safeTypes = Array.isArray(rawTypes)
                     ? rawTypes.filter(t => typeof t === 'string' && t.length > 0)
                     : [];
-                
+
                 const types = new Set<string>(safeTypes);
                 types.add('End User');
                 setOrgTypes(Array.from(types).sort());
 
                 const rawStates = (stateData?.states as string[]) || [];
                 const safeStates = Array.isArray(rawStates)
-                     ? rawStates.filter(s => typeof s === 'string' && s.length > 0)
-                     : [];
+                    ? rawStates.filter(s => typeof s === 'string' && s.length > 0)
+                    : [];
                 setStates(safeStates.sort());
             } catch (e) {
                 console.error("Error processing filter options", e);
             }
-            
+
             setLoading(false);
         }).catch(err => {
             console.error("Error loading filters:", err);
@@ -242,8 +242,8 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
             current.push(type);
         }
         // Update both old and new format for compatibility
-        onChange({ 
-            ...filters, 
+        onChange({
+            ...filters,
             organization_types: current,
             organization_type: current.length === 1 ? current[0] : (current.length === 0 ? 'all' : 'multiple')
         });
@@ -258,8 +258,8 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
             current.push(state);
         }
         // Update both old and new format for compatibility
-        onChange({ 
-            ...filters, 
+        onChange({
+            ...filters,
             states: current,
             state: current.length === 1 ? current[0] : (current.length === 0 ? 'any' : 'multiple')
         });
@@ -272,13 +272,13 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
         filters.migration_points_min != null || filters.migration_points_max != null ||
         filters.total_redeemed_min != null || filters.total_redeemed_max != null ||
         filters.transactions_count_min != null || filters.transactions_count_max != null;
-    
+
     // Check if any activity filters are active
     const hasActivityFilters = filters.last_activity_after != null || filters.last_activity_before != null ||
         filters.inactive_days != null || filters.never_scanned === true || filters.never_login === true;
-    
+
     if (loading) return <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading options...</div>;
-    
+
     return (
         <div className="space-y-6">
             {/* Basic Filters */}
@@ -294,8 +294,8 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                                 aria-expanded={orgTypeOpen}
                                 className="w-full justify-between font-normal"
                             >
-                                {selectedOrgTypes.length === 0 
-                                    ? "All Organization Types" 
+                                {selectedOrgTypes.length === 0
+                                    ? "All Organization Types"
                                     : selectedOrgTypes.length === 1
                                         ? selectedOrgTypes[0]
                                         : `${selectedOrgTypes.length} types selected`}
@@ -339,8 +339,8 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                                 aria-expanded={locationOpen}
                                 className="w-full justify-between font-normal"
                             >
-                                {selectedStates.length === 0 
-                                    ? "Any Location" 
+                                {selectedStates.length === 0
+                                    ? "Any Location"
                                     : selectedStates.length === 1
                                         ? selectedStates[0]
                                         : `${selectedStates.length} locations selected`}
@@ -454,15 +454,15 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Last Activity Date Range</Label>
                                 <div className="flex items-center gap-2">
-                                    <Input 
-                                        type="date" 
+                                    <Input
+                                        type="date"
                                         value={filters.last_activity_after ?? ''}
                                         onChange={(e) => handleChange('last_activity_after', e.target.value || null)}
                                         className="w-36"
                                     />
                                     <span className="text-muted-foreground">to</span>
-                                    <Input 
-                                        type="date" 
+                                    <Input
+                                        type="date"
                                         value={filters.last_activity_before ?? ''}
                                         onChange={(e) => handleChange('last_activity_before', e.target.value || null)}
                                         className="w-36"
@@ -473,8 +473,8 @@ export function AudienceFilterBuilder({ filters, onChange }: AudienceFilterBuild
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">Inactive for X Days</Label>
                                 <div className="flex items-center gap-2">
-                                    <Input 
-                                        type="number" 
+                                    <Input
+                                        type="number"
                                         placeholder="e.g. 30"
                                         value={filters.inactive_days ?? ''}
                                         onChange={(e) => handleChange('inactive_days', e.target.value ? Number(e.target.value) : null)}
