@@ -296,7 +296,12 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                         </div>
                                     </TableCell>
                                     <TableCell>{v.campaign_name}</TableCell>
-                                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{getVisitGeoSummary(v)}</TableCell>
+                                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+                                        <div>{getVisitGeoSummary(v)}</div>
+                                        {v.visit_geolocation?.lat != null && v.visit_geolocation?.lng != null && (
+                                            <div className="text-xs mt-0.5">({v.visit_geolocation.lat.toFixed(6)}, {v.visit_geolocation.lng.toFixed(6)})</div>
+                                        )}
+                                    </TableCell>
                                     <TableCell><Badge className={v.visit_status === 'official' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>{v.visit_status}</Badge></TableCell>
                                     <TableCell className="text-right">
                                         <Button size="sm" variant="ghost" onClick={() => openDetail(v)}><Eye className="h-4 w-4" /></Button>

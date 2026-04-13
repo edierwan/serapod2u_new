@@ -44,6 +44,8 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
   })
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [scanPage, setScanPage] = useState(0)
+  const scansPerPage = 20
 
   const loadAnalytics = useCallback(async () => {
     try {
@@ -60,13 +62,13 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           .select('id, roadtour_campaigns!inner(org_id)', { count: 'exact' })
           .eq('roadtour_campaigns.org_id', companyId),
         (supabase as any).from('roadtour_official_visits')
-          .select('id, account_manager_user_id, shop_id, total_points_awarded, verified_scans, surveys_completed, roadtour_campaigns!inner(org_id, name), users:account_manager_user_id(full_name)')
+          .select('id, campaign_id, account_manager_user_id, shop_id, scan:official_scan_event_id(points_awarded), roadtour_campaigns!inner(org_id, name), users:account_manager_user_id(full_name)')
           .eq('roadtour_campaigns.org_id', companyId),
         (supabase as any).from('roadtour_scan_events')
           .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
           .eq('roadtour_qr_codes.roadtour_campaigns.org_id', companyId)
           .order('scan_time', { ascending: false })
-          .limit(20),
+          .limit(100),
         (supabase as any).from('roadtour_survey_responses')
           .select('id, roadtour_scan_events!inner(roadtour_qr_codes!inner(roadtour_campaigns!inner(org_id)))', { count: 'exact' })
           .eq('roadtour_scan_events.roadtour_qr_codes.roadtour_campaigns.org_id', companyId),
@@ -82,7 +84,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         const uid = v.account_manager_user_id
         if (!managerMap[uid]) managerMap[uid] = { full_name: v.users?.full_name || '—', visits: 0, points: 0 }
         managerMap[uid].visits++
-        managerMap[uid].points += v.total_points_awarded || 0
+        managerMap[uid].points += v.scan?.points_awarded || 0
       }
       const topManagers = Object.entries(managerMap)
         .map(([uid, m]) => ({ user_id: uid, full_name: m.full_name, visit_count: m.visits, points_total: m.points }))
@@ -95,7 +97,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         const cid = v.campaign_id
         if (!campaignMap[cid]) campaignMap[cid] = { name: v.roadtour_campaigns?.name || '—', visits: 0, scans: 0 }
         campaignMap[cid].visits++
-        campaignMap[cid].scans += v.verified_scans || 0
+        campaignMap[cid].scans += 1
       }
       const topCampaigns = Object.entries(campaignMap)
         .map(([cid, c]) => ({ campaign_id: cid, name: c.name, visit_count: c.visits, scan_count: c.scans }))
@@ -110,7 +112,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         totalScans: scansList.length,
         totalVisits: visitsList.length,
         totalSurveys: surveysRes.count || 0,
-        totalPointsAwarded: visitsList.reduce((s: number, v: any) => s + (v.total_points_awarded || 0), 0),
+        totalPointsAwarded: visitsList.reduce((s: number, v: any) => s + (v.scan?.points_awarded || 0), 0),
         uniqueShopsVisited: new Set(visitsList.map((v: any) => v.shop_id)).size,
         topManagers,
         topCampaigns,
@@ -266,17 +268,17 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
       {/* Recent Scans */}
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Scan className="h-4 w-4" />Recent Scans</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Scan className="h-4 w-4" />Recent Scans ({data.recentScans.length})</CardTitle></CardHeader>
         <CardContent>
           {data.recentScans.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No scans yet.</p>
           ) : (
             <div className="space-y-2">
-              {data.recentScans.map((s) => (
+              {data.recentScans.slice(scanPage * scansPerPage, (scanPage + 1) * scansPerPage).map((s) => (
                 <div key={s.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <p className="text-sm font-medium">{s.consumer_phone || 'Unknown consumer'}</p>
-                    <p className="text-xs text-muted-foreground">{s.shop_name || 'Unknown shop'} · {new Date(s.scanned_at).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">{s.shop_name || 'Unknown shop'} · {new Date(s.scanned_at).toLocaleDateString()} {new Date(s.scanned_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     {s.points > 0 && <span className="text-sm font-medium text-emerald-600">+{s.points} pts</span>}
@@ -284,6 +286,15 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
                   </div>
                 </div>
               ))}
+              {data.recentScans.length > scansPerPage && (
+                <div className="flex items-center justify-between pt-2">
+                  <p className="text-xs text-muted-foreground">Page {scanPage + 1} of {Math.ceil(data.recentScans.length / scansPerPage)}</p>
+                  <div className="flex gap-2">
+                    <button disabled={scanPage === 0} onClick={() => setScanPage(p => p - 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Previous</button>
+                    <button disabled={(scanPage + 1) * scansPerPage >= data.recentScans.length} onClick={() => setScanPage(p => p + 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Next</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
