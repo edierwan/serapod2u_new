@@ -1,6 +1,11 @@
 -- RoadTour location reliability and internal geolocation telemetry
 
 ALTER TABLE public.roadtour_scan_events
+  ADD COLUMN IF NOT EXISTS geo_label text,
+  ADD COLUMN IF NOT EXISTS geo_city text,
+  ADD COLUMN IF NOT EXISTS geo_state text,
+  ADD COLUMN IF NOT EXISTS geo_country text,
+  ADD COLUMN IF NOT EXISTS geo_full_address text,
   ADD COLUMN IF NOT EXISTS latitude double precision,
   ADD COLUMN IF NOT EXISTS longitude double precision,
   ADD COLUMN IF NOT EXISTS accuracy_m double precision,
@@ -11,6 +16,11 @@ ALTER TABLE public.roadtour_scan_events
   ADD COLUMN IF NOT EXISTS location_captured_at timestamptz,
   ADD COLUMN IF NOT EXISTS geo_resolved_at timestamptz;
 
+COMMENT ON COLUMN public.roadtour_scan_events.geo_label IS 'Primary readable GeoLoc label shown in visit tracking and WhatsApp alerts.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_city IS 'Reverse-geocoded city or locality for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_state IS 'Reverse-geocoded state or region for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_country IS 'Reverse-geocoded country for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_full_address IS 'Best-effort reverse-geocoded full address for internal RoadTour scan reference.';
 COMMENT ON COLUMN public.roadtour_scan_events.latitude IS 'Raw latitude captured for internal RoadTour diagnostics.';
 COMMENT ON COLUMN public.roadtour_scan_events.longitude IS 'Raw longitude captured for internal RoadTour diagnostics.';
 COMMENT ON COLUMN public.roadtour_scan_events.accuracy_m IS 'Reported browser/device accuracy in meters for the RoadTour scan location.';
@@ -37,6 +47,13 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_roadtour_scan_events_location_status
   ON public.roadtour_scan_events (location_status, scan_time DESC);
+
+UPDATE public.roadtour_scan_events
+SET geo_label = CASE
+      WHEN geolocation IS NULL THEN 'Location unavailable'
+      ELSE 'Location captured'
+    END
+WHERE geo_label IS NULL;
 
 UPDATE public.roadtour_scan_events
 SET latitude = COALESCE(latitude, NULLIF(geolocation ->> 'lat', '')::double precision),
