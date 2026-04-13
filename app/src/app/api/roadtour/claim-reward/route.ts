@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
         const orgType = userProfile?.organizations?.org_type_code || null
         const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
         const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
-        const roadtourShopOnlyMessage = `Hi ${consumerDisplayName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.`
+        const roadtourShopOnlyMessage = `Hi ${consumerDisplayName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
         const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
         const isShopUser = orgType === 'SHOP'
         const isConsumerLaneUser = !orgType || orgType === 'INDEP'
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json(
                     {
                         requiresProfileUpdate: true,
-                        message: `Please update your ${missing.join(' and ')} in Profile before collecting points.`,
+                        message: roadtourShopOnlyMessage,
                         code: 'PROFILE_INCOMPLETE',
                         missing,
                     },

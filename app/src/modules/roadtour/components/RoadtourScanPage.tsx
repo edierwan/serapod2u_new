@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { captureRoadtourGeolocation } from '@/lib/roadtour/location-client'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationPayload } from '@/lib/roadtour/location-shared'
-import { getRoadtourShopSurveyPrefillValues } from '@/lib/roadtour/survey'
+import { getRoadtourShopSurveyField, getRoadtourShopSurveyPrefillValues } from '@/lib/roadtour/survey'
 import { normalizePhone } from '@/lib/utils'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import {
@@ -678,7 +678,7 @@ export default function RoadtourScanPage() {
                         </div>
 
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-                            <p className="text-sm text-amber-700">Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.</p>
+                            <p className="text-sm text-amber-700">Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.</p>
                         </div>
 
                         {profileError && (
@@ -756,6 +756,9 @@ export default function RoadtourScanPage() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     {f.label} {f.is_required && <span className="text-red-500">*</span>}
                                 </label>
+                                {getRoadtourShopSurveyField(f.field_key) && (
+                                    <p className="mb-2 text-xs text-gray-500">Prefilled from the linked shop master data. You can update it before submitting.</p>
+                                )}
                                 {f.field_type === 'text' && (
                                     <input type="text" value={surveyAnswers[f.field_key] || ''}
                                         onChange={(e) => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: e.target.value })}

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
-import { ROADTOUR_SHOP_SURVEY_FIELDS } from '@/lib/roadtour/survey'
+import { getRoadtourShopSurveyField, ROADTOUR_SHOP_SURVEY_FIELDS } from '@/lib/roadtour/survey'
 import {
     ArrowDown, ArrowUp, ClipboardList, Edit, GripVertical, Loader2, Plus, Save, Trash2
 } from 'lucide-react'
@@ -115,6 +115,8 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
     const [fType, setFType] = useState('text')
     const [fRequired, setFRequired] = useState(true)
     const [fOptions, setFOptions] = useState('')
+    const [shopFieldDialogOpen, setShopFieldDialogOpen] = useState(false)
+    const [selectedShopFieldKeys, setSelectedShopFieldKeys] = useState<string[]>([])
 
     const loadTemplates = useCallback(async () => {
         try {
@@ -240,6 +242,16 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         setFieldDialogOpen(true)
     }
 
+    const openAddShopFields = () => {
+        const existingKeys = new Set(fields.map((field) => field.field_key))
+        const availableKeys = ROADTOUR_SHOP_SURVEY_FIELDS
+            .filter((field) => !existingKeys.has(field.field_key))
+            .map((field) => field.field_key)
+
+        setSelectedShopFieldKeys(availableKeys)
+        setShopFieldDialogOpen(true)
+    }
+
     const openEditField = (f: SurveyField) => {
         setFKey(f.field_key)
         setFLabel(f.label)
@@ -328,10 +340,12 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         if (!editingTemplate) return
 
         const existingKeys = new Set(fields.map((field) => field.field_key))
-        const missingFields = ROADTOUR_SHOP_SURVEY_FIELDS.filter((field) => !existingKeys.has(field.field_key))
+        const missingFields = ROADTOUR_SHOP_SURVEY_FIELDS.filter(
+            (field) => selectedShopFieldKeys.includes(field.field_key) && !existingKeys.has(field.field_key)
+        )
 
         if (missingFields.length === 0) {
-            toast({ title: 'No changes', description: 'All shop info fields are already included.' })
+            toast({ title: 'No changes', description: 'Select at least one linked shop field that is not already included.' })
             return
         }
 
@@ -351,7 +365,8 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
             const { error } = await (supabase as any).from('roadtour_survey_template_fields').insert(payload)
             if (error) throw error
 
-            toast({ title: 'Fields Added', description: `${missingFields.length} shop info fields added to this survey.` })
+            toast({ title: 'Fields Added', description: `${missingFields.length} linked shop fields added to this survey.` })
+            setShopFieldDialogOpen(false)
             await loadFields(editingTemplate.id)
         } catch (err: any) {
             toast({ title: 'Error', description: err.message || 'Failed to add shop info fields.', variant: 'destructive' })
@@ -431,9 +446,9 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                         <CardHeader>
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                 <CardTitle className="text-sm">Survey Fields ({fields.length})</CardTitle>
-                                <Button variant="outline" size="sm" onClick={addShopInfoFields} disabled={saving}>
+                                <Button variant="outline" size="sm" onClick={openAddShopFields} disabled={saving}>
                                     <Plus className="mr-1 h-4 w-4" />
-                                    Add Shop Info Fields
+                                    Add Linked Shop Fields
                                 </Button>
                             </div>
                         </CardHeader>
@@ -454,8 +469,12 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                                                 <div className="flex items-center gap-2">
                                                     <p className="font-medium text-sm">{f.label}</p>
                                                     {f.is_required && <Badge variant="outline" className="text-xs">Required</Badge>}
+                                                    {getRoadtourShopSurveyField(f.field_key) && <Badge variant="secondary" className="text-xs">Linked Shop Field</Badge>}
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">{f.field_key} · {FIELD_TYPES.find((t) => t.value === f.field_type)?.label || f.field_type}</p>
+                                                {getRoadtourShopSurveyField(f.field_key) && (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">{getRoadtourShopSurveyField(f.field_key)?.description}</p>
+                                                )}
                                                 {f.options && f.options.length > 0 && (
                                                     <p className="text-xs text-muted-foreground mt-0.5">Options: {f.options.join(', ')}</p>
                                                 )}
@@ -491,6 +510,9 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                                                     {field.label}
                                                     {field.is_required && <span className="ml-1 text-red-500">*</span>}
                                                 </div>
+                                                {getRoadtourShopSurveyField(field.field_key) && (
+                                                    <p className="text-xs text-muted-foreground">Prefilled from linked shop master data.</p>
+                                                )}
                                                 {renderPreviewField(field)}
                                             </div>
                                         ))}
@@ -525,6 +547,52 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setFieldDialogOpen(false)}>Cancel</Button>
                             <Button onClick={handleSaveField} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{fieldDialogMode === 'create' ? 'Add' : 'Update'}</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={shopFieldDialogOpen} onOpenChange={setShopFieldDialogOpen}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Add Linked Shop Fields</DialogTitle>
+                            <DialogDescription>Select the shop master data fields that should appear in this survey. These fields are prefilled from the linked shop record and remain editable by the user.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                            {ROADTOUR_SHOP_SURVEY_FIELDS.map((field) => {
+                                const alreadyAdded = fields.some((existingField) => existingField.field_key === field.field_key)
+                                const selected = selectedShopFieldKeys.includes(field.field_key)
+
+                                return (
+                                    <label key={field.field_key} className={`flex items-start gap-3 rounded-lg border p-3 ${alreadyAdded ? 'bg-muted/40 opacity-70' : 'cursor-pointer hover:border-primary/50'}`}>
+                                        <input
+                                            type="checkbox"
+                                            className="mt-1 h-4 w-4"
+                                            checked={alreadyAdded || selected}
+                                            disabled={alreadyAdded}
+                                            onChange={(event) => {
+                                                if (event.target.checked) {
+                                                    setSelectedShopFieldKeys((current) => [...current, field.field_key])
+                                                    return
+                                                }
+
+                                                setSelectedShopFieldKeys((current) => current.filter((key) => key !== field.field_key))
+                                            }}
+                                        />
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-medium">{field.label}</p>
+                                                <Badge variant="secondary" className="text-xs">{FIELD_TYPES.find((type) => type.value === field.field_type)?.label || field.field_type}</Badge>
+                                                {alreadyAdded && <Badge variant="outline" className="text-xs">Already Added</Badge>}
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1">{field.description}</p>
+                                        </div>
+                                    </label>
+                                )
+                            })}
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShopFieldDialogOpen(false)}>Cancel</Button>
+                            <Button onClick={addShopInfoFields} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Add Selected Fields</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

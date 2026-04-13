@@ -707,7 +707,7 @@ export default function PremiumLoyaltyTemplate({
 
     const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
         const resolvedName = (name || userName || 'there').trim()
-        return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.`
+        return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
     }
 
     const resolveRoadtourGeolocation = async (forcePrompt = false) => {
