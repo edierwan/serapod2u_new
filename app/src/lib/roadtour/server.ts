@@ -15,9 +15,11 @@ export interface ResolvedRoadtourQrRecord {
     default_points: number
 }
 
-async function fetchRoadtourQr(query: any) {
-    const { data, error } = await query
-        .select(`
+async function fetchRoadtourQr(supabase: any, applyFilters: (query: any) => any) {
+    const { data, error } = await applyFilters(
+        supabase
+            .from('roadtour_qr_codes')
+            .select(`
             id,
             token,
             canonical_path,
@@ -28,7 +30,7 @@ async function fetchRoadtourQr(query: any) {
             roadtour_campaigns!inner(name, org_id, default_points),
             users:account_manager_user_id(full_name)
         `)
-        .maybeSingle()
+    ).maybeSingle()
 
     if (error || !data) return null
 
@@ -77,11 +79,7 @@ export async function resolveRoadTourByFriendlyPath(params: {
     if (!shortCode) return null
 
     const supabase = createAdminClient()
-    const qr = await fetchRoadtourQr(
-        (supabase as any)
-            .from('roadtour_qr_codes')
-            .eq('short_code', shortCode)
-    )
+    const qr = await fetchRoadtourQr(supabase, (query) => query.eq('short_code', shortCode))
 
     if (!qr) return null
 
@@ -98,11 +96,7 @@ export async function resolveRoadTourByFriendlyPath(params: {
 
 export async function resolveRoadtourByToken(token: string) {
     const supabase = createAdminClient()
-    return fetchRoadtourQr(
-        (supabase as any)
-            .from('roadtour_qr_codes')
-            .eq('token', token)
-    )
+    return fetchRoadtourQr(supabase, (query) => query.eq('token', token))
 }
 
 export function buildRoadtourContextFromValidation(token: string, data: any) {

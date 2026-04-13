@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -64,7 +64,8 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const [generateOpen, setGenerateOpen] = useState(false)
     const [genCampaignId, setGenCampaignId] = useState('')
     const [genManagerId, setGenManagerId] = useState('')
-    const [assignedManagers, setAssignedManagers] = useState<{ user_id: string; full_name: string }[]>([])
+    const [assignedManagers, setAssignedManagers] = useState<{ user_id: string; full_name: string; phone?: string }[]>([])
+    const [eligibleManagers, setEligibleManagers] = useState<{ user_id: string; full_name: string; phone?: string }[]>([])
     const [generating, setGenerating] = useState(false)
 
     // Preview dialog
@@ -72,10 +73,6 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const [previewQr, setPreviewQr] = useState<QrCode | null>(null)
     const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null)
     const [previewLoading, setPreviewLoading] = useState(false)
-    const [refsDialogOpen, setRefsDialogOpen] = useState(false)
-    const [refsDialogCampaignName, setRefsDialogCampaignName] = useState('')
-    const [refsDialogManagers, setRefsDialogManagers] = useState<{ full_name: string; phone: string }[]>([])
-
     const qrOrigin = typeof window !== 'undefined' ? window.location.origin : ''
 
     const getQrUrl = useCallback((qr: QrCode) => {
@@ -138,28 +135,57 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
 
     // When campaign selected in generate dialog, load its managers
     useEffect(() => {
-        if (!genCampaignId) { setAssignedManagers([]); return }
+        if (!genCampaignId) {
+            setAssignedManagers([])
+            setEligibleManagers([])
+            setGenManagerId('')
+            return
+        }
         ; (async () => {
             const { data } = await (supabase as any)
                 .from('roadtour_campaign_managers')
-                .select('user_id, users:user_id(full_name)')
+                .select('user_id, users:user_id(full_name, phone)')
                 .eq('campaign_id', genCampaignId)
                 .eq('is_active', true)
-            setAssignedManagers((data || []).map((d: any) => ({ user_id: d.user_id, full_name: d.users?.full_name || '—' })))
+
+            const assigned = (data || []).map((row: any) => ({
+                user_id: row.user_id,
+                full_name: row.users?.full_name || '—',
+                phone: row.users?.phone || '',
+            }))
+
+            setAssignedManagers(assigned)
+            setGenManagerId('')
+
+            if (assigned.length > 0) {
+                setEligibleManagers([])
+                return
+            }
+
+            const { data: eligible } = await (supabase as any)
+                .from('users')
+                .select('id, full_name, phone')
+                .eq('can_be_reference', true)
+                .eq('is_active', true)
+                .order('full_name')
+
+            setEligibleManagers((eligible || []).map((row: any) => ({
+                user_id: row.id,
+                full_name: row.full_name || '—',
+                phone: row.phone || '',
+            })))
         })()
     }, [genCampaignId, supabase])
 
     const generateQr = async () => {
-        if (!genCampaignId || !genManagerId) {
-            toast({ title: 'Validation', description: 'Select a campaign and a reference.', variant: 'destructive' })
+        if (!genCampaignId) {
+            toast({ title: 'Validation', description: 'Select a campaign first.', variant: 'destructive' })
             return
         }
         try {
             setGenerating(true)
-            const token = crypto.randomUUID()
 
             // Determine expiry from campaign's qr_mode
-            const campaign = campaigns.find((c) => c.id === genCampaignId)
             let expiresAt: string | null = null
 
             // Check settings for QR mode specifics
@@ -170,23 +196,81 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                 expiresAt = exp.toISOString()
             }
 
-            const { error } = await (supabase as any).from('roadtour_qr_codes').insert({
-                campaign_id: genCampaignId,
-                account_manager_user_id: genManagerId,
-                token,
-                status: 'active',
-                expires_at: expiresAt,
-            })
+            const selectedManagerIds = assignedManagers.length > 0
+                ? assignedManagers.map((manager) => manager.user_id)
+                : (genManagerId ? [genManagerId] : [])
+
+            if (selectedManagerIds.length === 0) {
+                toast({
+                    title: 'Validation',
+                    description: assignedManagers.length > 0
+                        ? 'This campaign has no references ready for QR generation.'
+                        : 'Select a reference to assign and generate a QR code.',
+                    variant: 'destructive'
+                })
+                return
+            }
+
+            if (assignedManagers.length === 0 && genManagerId) {
+                const { error: assignError } = await (supabase as any)
+                    .from('roadtour_campaign_managers')
+                    .upsert({
+                        campaign_id: genCampaignId,
+                        user_id: genManagerId,
+                        assigned_by: userProfile.id,
+                        assigned_at: new Date().toISOString(),
+                        is_active: true,
+                    }, { onConflict: 'campaign_id,user_id' })
+
+                if (assignError) throw assignError
+            }
+
+            const { data: existingRows, error: existingError } = await (supabase as any)
+                .from('roadtour_qr_codes')
+                .select('account_manager_user_id')
+                .eq('campaign_id', genCampaignId)
+                .eq('status', 'active')
+                .is('shop_id', null)
+                .in('account_manager_user_id', selectedManagerIds)
+
+            if (existingError) throw existingError
+
+            const existingManagerIds = new Set((existingRows || []).map((row: any) => row.account_manager_user_id))
+            const missingManagerIds = selectedManagerIds.filter((managerId) => !existingManagerIds.has(managerId))
+
+            if (missingManagerIds.length === 0) {
+                toast({ title: 'No Action Needed', description: 'All selected references already have active QR codes for this campaign.' })
+                setGenerateOpen(false)
+                setGenCampaignId('')
+                setGenManagerId('')
+                loadData()
+                return
+            }
+
+            const { error } = await (supabase as any).from('roadtour_qr_codes').insert(
+                missingManagerIds.map((managerId) => ({
+                    campaign_id: genCampaignId,
+                    account_manager_user_id: managerId,
+                    token: crypto.randomUUID(),
+                    status: 'active',
+                    expires_at: expiresAt,
+                }))
+            )
 
             if (error) {
                 if (error.code === '23505') {
-                    toast({ title: 'Duplicate', description: 'This reference already has an active QR for this campaign.', variant: 'destructive' })
+                    toast({ title: 'Duplicate', description: 'One or more selected references already have an active QR for this campaign.', variant: 'destructive' })
                     return
                 }
                 throw error
             }
 
-            toast({ title: 'QR Generated', description: 'New QR code created successfully.' })
+            toast({
+                title: 'QR Generated',
+                description: missingManagerIds.length === 1
+                    ? '1 QR code created successfully.'
+                    : `${missingManagerIds.length} QR codes created successfully.`
+            })
             setGenerateOpen(false)
             setGenCampaignId('')
             setGenManagerId('')
@@ -232,12 +316,6 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         const url = getQrUrl(qr)
         navigator.clipboard.writeText(url)
         toast({ title: 'Copied', description: 'QR link copied to clipboard.' })
-    }
-
-    const openRefsDialog = (qr: QrCode) => {
-        setRefsDialogCampaignName(qr.campaign_name || 'Campaign')
-        setRefsDialogManagers(qr.campaign_references || [])
-        setRefsDialogOpen(true)
     }
 
     const revokeQr = async (qrId: string) => {
@@ -361,23 +439,9 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                 <TableRow key={q.id}>
                                     <TableCell>
                                         <div>
-                                            {q.campaign_reference_count && q.campaign_reference_count > 1 ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openRefsDialog(q)}
-                                                    className="font-medium text-primary hover:underline"
-                                                >
-                                                    Show ({q.campaign_reference_count})
-                                                </button>
-                                            ) : (
-                                                <>
-                                                    <p className="font-medium">{q.campaign_references?.[0]?.full_name || q.user_name}</p>
-                                                    {(q.campaign_references?.[0]?.phone || q.user_phone) && (
-                                                        <p className="text-xs text-muted-foreground">{q.campaign_references?.[0]?.phone || q.user_phone}</p>
-                                                    )}
-                                                    {q.canonical_path && <p className="text-xs text-emerald-700">Friendly URL active</p>}
-                                                </>
-                                            )}
+                                            <p className="font-medium">{q.user_name}</p>
+                                            {q.user_phone && <p className="text-xs text-muted-foreground">{q.user_phone}</p>}
+                                            {q.canonical_path && <p className="text-xs text-emerald-700">Friendly URL active</p>}
                                         </div>
                                     </TableCell>
                                     <TableCell>{q.campaign_name}</TableCell>
@@ -406,8 +470,8 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
             <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Generate QR Code</DialogTitle>
-                        <DialogDescription>Create a QR code for an account manager in a specific campaign.</DialogDescription>
+                        <DialogTitle>Generate QR Codes</DialogTitle>
+                        <DialogDescription>Create one QR record per reference for the selected campaign.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
                         <div className="space-y-2">
@@ -419,40 +483,39 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Reference *</Label>
-                            <Select value={genManagerId} onValueChange={setGenManagerId}>
-                                <SelectTrigger><SelectValue placeholder={assignedManagers.length === 0 ? 'Select campaign first' : 'Select reference'} /></SelectTrigger>
-                                <SelectContent>
-                                    {assignedManagers.map((m) => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                            {genCampaignId && assignedManagers.length === 0 && (
-                                <p className="text-xs text-amber-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />No references assigned to this campaign yet.</p>
-                            )}
-                        </div>
+                        {genCampaignId && assignedManagers.length > 0 ? (
+                            <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                                <Label>Assigned References</Label>
+                                <p className="text-sm">
+                                    {assignedManagers.length === 1
+                                        ? `${assignedManagers[0].full_name} is already assigned to this campaign.`
+                                        : `${assignedManagers.length} references are assigned to this campaign.`}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    Generate will create separate QR codes only for assigned references that do not already have an active QR.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <Label>Reference *</Label>
+                                <Select value={genManagerId} onValueChange={setGenManagerId}>
+                                    <SelectTrigger><SelectValue placeholder={genCampaignId ? 'Select reference' : 'Select campaign first'} /></SelectTrigger>
+                                    <SelectContent>
+                                        {eligibleManagers.map((manager) => (
+                                            <SelectItem key={manager.user_id} value={manager.user_id}>{manager.full_name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {genCampaignId && (
+                                    <p className="text-xs text-amber-600 flex items-center gap-1"><AlertCircle className="h-3 w-3" />No references are assigned yet. Select one here and the system will assign it before generating its QR code.</p>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setGenerateOpen(false)}>Cancel</Button>
-                        <Button onClick={generateQr} disabled={generating}>{generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}Generate</Button>
+                        <Button onClick={generateQr} disabled={generating}>{generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{assignedManagers.length > 0 ? 'Generate All' : 'Generate'}</Button>
                     </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={refsDialogOpen} onOpenChange={setRefsDialogOpen}>
-                <DialogContent className="sm:max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>References — {refsDialogCampaignName}</DialogTitle>
-                        <DialogDescription>{refsDialogManagers.length} reference{refsDialogManagers.length !== 1 ? 's' : ''} assigned</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2">
-                        {refsDialogManagers.map((manager, index) => (
-                            <div key={`${manager.full_name}-${index}`} className="rounded-lg border p-3">
-                                <p className="text-sm font-medium">{manager.full_name}</p>
-                                {manager.phone && <p className="text-xs text-muted-foreground">{manager.phone}</p>}
-                            </div>
-                        ))}
-                    </div>
                 </DialogContent>
             </Dialog>
 
