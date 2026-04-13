@@ -8,6 +8,7 @@ interface RoadtourContext {
     account_manager_name: string
     default_points: number
     org_id: string
+    require_geolocation?: boolean
 }
 
 interface Props {

@@ -106,5 +106,6 @@ export function buildRoadtourContextFromValidation(token: string, data: any) {
         account_manager_name: data.account_manager_name || '',
         default_points: data.default_points || 0,
         org_id: data.org_id || '',
+        require_geolocation: data.require_geolocation === true,
     }
 }

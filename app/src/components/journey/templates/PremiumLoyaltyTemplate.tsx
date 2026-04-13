@@ -240,6 +240,7 @@ interface PremiumLoyaltyTemplateProps {
         account_manager_name: string
         default_points: number
         org_id: string
+        require_geolocation?: boolean
     }
 }
 
@@ -535,6 +536,7 @@ export default function PremiumLoyaltyTemplate({
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
     const [qrConsumerLaneCollected, setQrConsumerLaneCollected] = useState(false)
+    const [roadtourGeolocation, setRoadtourGeolocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -698,6 +700,43 @@ export default function PremiumLoyaltyTemplate({
     const [passwordError, setPasswordError] = useState('')
     const [passwordSuccess, setPasswordSuccess] = useState(false)
     const [showProfileInfo, setShowProfileInfo] = useState(false)
+
+    const shouldRequestRoadtourGeolocation = Boolean(roadtourContext?.require_geolocation)
+
+    const resolveRoadtourGeolocation = async (forcePrompt = false) => {
+        if (!roadtourContext || !shouldRequestRoadtourGeolocation) return null
+        if (roadtourGeolocation && !forcePrompt) return roadtourGeolocation
+        if (typeof window === 'undefined' || !('geolocation' in navigator)) return null
+
+        try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(
+                    resolve,
+                    reject,
+                    {
+                        enableHighAccuracy: true,
+                        timeout: forcePrompt ? 12000 : 8000,
+                        maximumAge: forcePrompt ? 0 : 60000,
+                    }
+                )
+            })
+
+            const nextLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+            }
+            setRoadtourGeolocation(nextLocation)
+            return nextLocation
+        } catch (error) {
+            console.warn('RoadTour geolocation unavailable:', error)
+            return roadtourGeolocation
+        }
+    }
+
+    useEffect(() => {
+        setRoadtourGeolocation(null)
+    }, [roadtourContext?.token])
 
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
@@ -3176,11 +3215,12 @@ export default function PremiumLoyaltyTemplate({
         setCollectingPoints(true)
         setPointsError('')
         try {
+            const geolocation = await resolveRoadtourGeolocation(true)
             const response = await fetch('/api/roadtour/claim-reward', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ token: roadtourContext.token }),
+                body: JSON.stringify({ token: roadtourContext.token, geolocation }),
             })
             const data = await response.json()
 
@@ -3229,6 +3269,7 @@ export default function PremiumLoyaltyTemplate({
         setCollectingPoints(true)
         setPointsError('')
         try {
+            const geolocation = await resolveRoadtourGeolocation(true)
             // Resolve phone to email using same RPC as product flow
             const isPhone = /^[0-9+]/.test(shopId.trim())
             let email = shopId.trim()
@@ -3253,7 +3294,7 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ token: roadtourContext.token, login_email: email, login_password: shopPassword }),
+                body: JSON.stringify({ token: roadtourContext.token, login_email: email, login_password: shopPassword, geolocation }),
             })
             const data = await response.json()
             if (data.code === 'SHOP_REQUIRED') {
