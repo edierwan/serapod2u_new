@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
-    AlertCircle, Calendar, CheckCircle2, Edit, Loader2, Map, MapPin, Plus,
+    AlertCircle, Calendar, CheckCircle2, Edit, Loader2, Map as MapIcon, MapPin, Plus,
     Search, Store, Trash2, Users, Eye, Play, Pause, Archive
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
@@ -625,7 +625,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         <div className="space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><Map className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><MapIcon className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
                     <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign references to road tour campaigns.</p>
                 </div>
                 <Button onClick={openCreate} className="gap-2 w-full sm:w-auto"><Plus className="h-4 w-4" />Create Campaign</Button>
