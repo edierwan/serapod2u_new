@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { captureRoadtourGeolocation } from '@/lib/roadtour/location-client'
+import { getRoadtourLocationStatusLabel, type RoadtourLocationPayload } from '@/lib/roadtour/location-shared'
 import { getRoadtourShopSurveyPrefillValues } from '@/lib/roadtour/survey'
 import { normalizePhone } from '@/lib/utils'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
@@ -38,6 +40,36 @@ interface SurveyField {
     options: string[] | null
     is_required: boolean
     sort_order: number
+}
+
+function normalizeSurveyOptions(value: unknown) {
+    if (!Array.isArray(value)) return null
+
+    const normalized = value
+        .map((option) => {
+            if (typeof option === 'string') return option.trim()
+            if (option && typeof option === 'object') {
+                const label = typeof (option as any).label === 'string' ? (option as any).label.trim() : ''
+                const rawValue = typeof (option as any).value === 'string' ? (option as any).value.trim() : ''
+                return label || rawValue
+            }
+            return ''
+        })
+        .filter(Boolean)
+
+    return normalized.length > 0 ? normalized : null
+}
+
+function mapSurveyFieldRow(row: any): SurveyField {
+    return {
+        id: row.id,
+        field_key: row.field_key,
+        label: row.field_label ?? row.label ?? '',
+        field_type: row.field_type,
+        options: normalizeSurveyOptions(row.field_options ?? row.options),
+        is_required: Boolean(row.is_required),
+        sort_order: Number(row.sort_order || 0),
+    }
 }
 
 interface ShopSurveySource {
@@ -103,27 +135,21 @@ export default function RoadtourScanPage() {
     const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
 
     // Geolocation
-    const [geolocation, setGeolocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
+    const [geolocation, setGeolocation] = useState<RoadtourLocationPayload | null>(null)
     const geoRequested = useRef(false)
 
     // Capture geolocation
-    const requestGeolocation = useCallback(() => {
+    const requestGeolocation = useCallback(async (forcePrompt = false) => {
         if (geoRequested.current) return
         geoRequested.current = true
-        if ('geolocation' in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    setGeolocation({
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude,
-                        accuracy: pos.coords.accuracy,
-                    })
-                },
-                () => { /* user denied or unavailable — continue without geo */ },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-            )
-        }
-    }, [])
+        const location = await captureRoadtourGeolocation({ forcePrompt, previousLocation: geolocation })
+        setGeolocation(location)
+    }, [geolocation])
+
+    useEffect(() => {
+        geoRequested.current = false
+        setGeolocation(null)
+    }, [token])
 
     // 1. Validate token on mount
     useEffect(() => {
@@ -218,10 +244,10 @@ export default function RoadtourScanPage() {
     const loadSurvey = async (templateId: string) => {
         const { data } = await (supabase as any)
             .from('roadtour_survey_template_fields')
-            .select('*')
+            .select('id, field_key, field_label, field_type, field_options, is_required, sort_order')
             .eq('template_id', templateId)
             .order('sort_order')
-        setSurveyFields(data || [])
+        setSurveyFields((data || []).map(mapSurveyFieldRow))
     }
 
     useEffect(() => {
@@ -387,6 +413,14 @@ export default function RoadtourScanPage() {
         setErrorMsg('')
 
         try {
+            const nextLocation = qr.require_geolocation
+                ? await captureRoadtourGeolocation({ forcePrompt: true, previousLocation: geolocation })
+                : geolocation
+
+            if (nextLocation) {
+                setGeolocation(nextLocation)
+            }
+
             // Validate survey if applicable
             if (qr.reward_mode === 'survey_submit' && surveyFields.length > 0) {
                 const missing = surveyFields.filter(f => f.is_required && !surveyAnswers[f.field_key]?.trim())
@@ -407,7 +441,7 @@ export default function RoadtourScanPage() {
                     consumer_phone: null,
                     consumer_name: null,
                     survey_answers: Object.keys(surveyAnswers).length > 0 ? surveyAnswers : null,
-                    geolocation: geolocation || null,
+                    geolocation: nextLocation || null,
                 }),
             })
 
@@ -644,7 +678,7 @@ export default function RoadtourScanPage() {
                         </div>
 
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-                            <p className="text-sm text-amber-700">Please update your Shop Name and Reference in Profile before collecting points.</p>
+                            <p className="text-sm text-amber-700">Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.</p>
                         </div>
 
                         {profileError && (
@@ -826,7 +860,9 @@ export default function RoadtourScanPage() {
                 {qr?.require_geolocation && step === 'ready' && (
                     <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
                         <MapPin className="h-3 w-3" />
-                        {geolocation ? 'Location captured' : 'Acquiring location...'}
+                        {geolocation
+                            ? getRoadtourLocationStatusLabel(geolocation.status, Boolean(geolocation.lat != null && geolocation.lng != null))
+                            : 'Acquiring location...'}
                     </div>
                 )}
             </div>

@@ -42,6 +42,37 @@ interface SurveyField {
     sort_order: number
 }
 
+function normalizeSurveyOptions(value: unknown) {
+    if (!Array.isArray(value)) return null
+
+    const normalized = value
+        .map((option) => {
+            if (typeof option === 'string') return option.trim()
+            if (option && typeof option === 'object') {
+                const label = typeof (option as any).label === 'string' ? (option as any).label.trim() : ''
+                const rawValue = typeof (option as any).value === 'string' ? (option as any).value.trim() : ''
+                return label || rawValue
+            }
+            return ''
+        })
+        .filter(Boolean)
+
+    return normalized.length > 0 ? normalized : null
+}
+
+function mapSurveyFieldRow(row: any): SurveyField {
+    return {
+        id: row.id,
+        template_id: row.template_id,
+        field_key: row.field_key,
+        label: row.field_label ?? row.label ?? '',
+        field_type: row.field_type,
+        options: normalizeSurveyOptions(row.field_options ?? row.options),
+        is_required: Boolean(row.is_required),
+        sort_order: Number(row.sort_order || 0),
+    }
+}
+
 const FIELD_TYPES = [
     { value: 'text', label: 'Text Input' },
     { value: 'textarea', label: 'Text Area' },
@@ -109,11 +140,11 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
             setFieldsLoading(true)
             const { data, error } = await (supabase as any)
                 .from('roadtour_survey_template_fields')
-                .select('*')
+                .select('id, template_id, field_key, field_label, field_type, field_options, is_required, sort_order')
                 .eq('template_id', templateId)
                 .order('sort_order')
             if (error) throw error
-            setFields(data || [])
+            setFields((data || []).map(mapSurveyFieldRow))
         } catch {
             toast({ title: 'Error', description: 'Failed to load fields.', variant: 'destructive' })
         } finally {
@@ -235,10 +266,10 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                 const { error } = await (supabase as any).from('roadtour_survey_template_fields').insert({
                     template_id: editingTemplate.id,
                     field_key: fKey.trim(),
-                    label: fLabel.trim(),
+                    field_label: fLabel.trim(),
                     field_type: fType,
                     is_required: fRequired,
-                    options: optionsArr,
+                    field_options: optionsArr,
                     sort_order: sortOrder,
                 })
                 if (error) throw error
@@ -246,10 +277,10 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
             } else if (editFieldId) {
                 const { error } = await (supabase as any).from('roadtour_survey_template_fields').update({
                     field_key: fKey.trim(),
-                    label: fLabel.trim(),
+                    field_label: fLabel.trim(),
                     field_type: fType,
                     is_required: fRequired,
-                    options: optionsArr,
+                    field_options: optionsArr,
                 }).eq('id', editFieldId)
                 if (error) throw error
                 toast({ title: 'Field Updated' })
@@ -310,10 +341,10 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
             const payload = missingFields.map((field, index) => ({
                 template_id: editingTemplate.id,
                 field_key: field.field_key,
-                label: field.label,
+                field_label: field.label,
                 field_type: field.field_type,
                 is_required: field.is_required,
-                options: field.options,
+                field_options: field.options,
                 sort_order: startOrder + index + 1,
             }))
 

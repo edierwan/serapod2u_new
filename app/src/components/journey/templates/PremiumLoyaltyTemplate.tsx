@@ -7,6 +7,8 @@ import { formatNumber } from '@/lib/utils/formatters'
 import { createClient } from '@/lib/supabase/client'
 import { logoutConsumer } from '@/app/actions/consumer'
 import { registerConsumer } from '@/lib/actions'
+import { captureRoadtourGeolocation } from '@/lib/roadtour/location-client'
+import type { RoadtourLocationPayload } from '@/lib/roadtour/location-shared'
 import { SupportChatWidgetV2 } from '@/components/support/SupportChatWidgetV2'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -536,7 +538,7 @@ export default function PremiumLoyaltyTemplate({
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
     const [qrConsumerLaneCollected, setQrConsumerLaneCollected] = useState(false)
-    const [roadtourGeolocation, setRoadtourGeolocation] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
+    const [roadtourGeolocation, setRoadtourGeolocation] = useState<RoadtourLocationPayload | null>(null)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -703,40 +705,38 @@ export default function PremiumLoyaltyTemplate({
 
     const shouldRequestRoadtourGeolocation = Boolean(roadtourContext?.require_geolocation)
 
+    const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
+        const resolvedName = (name || userName || 'there').trim()
+        return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.`
+    }
+
     const resolveRoadtourGeolocation = async (forcePrompt = false) => {
         if (!roadtourContext || !shouldRequestRoadtourGeolocation) return null
         if (roadtourGeolocation && !forcePrompt) return roadtourGeolocation
-        if (typeof window === 'undefined' || !('geolocation' in navigator)) return null
 
-        try {
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(
-                    resolve,
-                    reject,
-                    {
-                        enableHighAccuracy: true,
-                        timeout: forcePrompt ? 12000 : 8000,
-                        maximumAge: forcePrompt ? 0 : 60000,
-                    }
-                )
-            })
-
-            const nextLocation = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-            }
-            setRoadtourGeolocation(nextLocation)
-            return nextLocation
-        } catch (error) {
-            console.warn('RoadTour geolocation unavailable:', error)
-            return roadtourGeolocation
-        }
+        const nextLocation = await captureRoadtourGeolocation({
+            forcePrompt,
+            previousLocation: roadtourGeolocation,
+        })
+        setRoadtourGeolocation(nextLocation)
+        return nextLocation
     }
 
     useEffect(() => {
         setRoadtourGeolocation(null)
     }, [roadtourContext?.token])
+
+    useEffect(() => {
+        if (!roadtourContext || !shouldRequestRoadtourGeolocation) return
+
+        void (async () => {
+            const nextLocation = await captureRoadtourGeolocation({
+                forcePrompt: false,
+                previousLocation: roadtourGeolocation,
+            })
+            setRoadtourGeolocation(nextLocation)
+        })()
+    }, [roadtourContext, roadtourContext?.token, shouldRequestRoadtourGeolocation])
 
     // Genuine product verified animation state
     const [showGenuineVerified, setShowGenuineVerified] = useState(false)
@@ -2906,7 +2906,7 @@ export default function PremiumLoyaltyTemplate({
     const openRoadtourShopOnlyPrompt = (message?: string) => {
         setCollectingPoints(false)
         setPendingProfileCollectLane(null)
-        setPointsError(message || 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus')
+        setPointsError(message || getRoadtourProfileIncompleteMessage(userName))
         setPointsErrorAction('roadtour-shop-only')
         setCollectPointsStep('complete-profile')
         setShowPointsLoginModal(true)
@@ -3235,7 +3235,7 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
             if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
-                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
+                openCollectPointsProfilePrompt(data.message || data.error || getRoadtourProfileIncompleteMessage(userName))
                 return
             }
             if (!response.ok) {
@@ -3302,7 +3302,7 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
             if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
-                openCollectPointsProfilePrompt(data.message || data.error || 'Please update your Shop Name and Reference in Profile before collecting points.')
+                openCollectPointsProfilePrompt(data.message || data.error || getRoadtourProfileIncompleteMessage(userName))
                 return
             }
             if (!response.ok) {
@@ -6593,7 +6593,7 @@ export default function PremiumLoyaltyTemplate({
                                         </p>
                                     ) : pointsErrorAction === 'roadtour-shop-only' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            {pointsError || 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus'}
+                                            {pointsError || getRoadtourProfileIncompleteMessage(userName)}
                                         </p>
                                     ) : (
                                         <p className="text-sm text-amber-700 text-center">
@@ -6833,8 +6833,8 @@ export default function PremiumLoyaltyTemplate({
             <GenuineProductAnimation
                 isVisible={showGenuineVerified}
                 productInfo={productInfo}
-                title={roadtourContext ? '🎉 Bonus Points Await!' : undefined}
-                subtitle={roadtourContext ? 'You are entitled for bonus points' : undefined}
+                title={roadtourContext ? `Thanks ${userShopName || newShopName || shopName || 'Shop'} for Joining RoadTour!` : undefined}
+                subtitle={roadtourContext ? 'We appreciate your participation and support.' : undefined}
                 onClose={() => {
                     setShowGenuineVerified(false)
                     setShowPointsAnimation(true)

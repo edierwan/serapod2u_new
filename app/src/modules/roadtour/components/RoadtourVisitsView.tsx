@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
 import {
     Calendar, CheckCircle2, Clock, Eye, Loader2, MapPin, Search, Users, XCircle
 } from 'lucide-react'
@@ -37,6 +38,8 @@ interface OfficialVisit {
     official_scan_event_id?: string | null
     visit_geo_label?: string | null
     visit_geolocation?: { lat?: number; lng?: number; accuracy?: number } | null
+    visit_location_status?: RoadtourLocationStatus | null
+    visit_location_error?: string | null
 }
 
 interface ScanEvent {
@@ -55,6 +58,11 @@ interface ScanEvent {
     geo_state?: string | null
     geo_country?: string | null
     geo_full_address?: string | null
+    latitude?: number | null
+    longitude?: number | null
+    accuracy_m?: number | null
+    location_status?: RoadtourLocationStatus | null
+    location_error?: string | null
     whatsapp_status?: 'sent' | 'delivered' | 'failed' | 'pending' | null
     whatsapp_error?: string | null
 }
@@ -82,7 +90,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, contact_phone), official_scan:official_scan_event_id(geo_label, geolocation)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, contact_phone), official_scan:official_scan_event_id(geo_label, geolocation, location_status, location_error)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .limit(200)
@@ -104,6 +112,8 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     shop_contact_phone: v.organizations?.contact_phone || '',
                     visit_geo_label: v.official_scan?.geo_label || null,
                     visit_geolocation: v.official_scan?.geolocation || null,
+                    visit_location_status: v.official_scan?.location_status || null,
+                    visit_location_error: v.official_scan?.location_error || null,
                 }))
             )
 
@@ -198,18 +208,18 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
         pending: { icon: Clock, className: 'text-amber-600', label: 'WhatsApp pending' },
     }
 
-    const getGeoScanSummary = (scan: ScanEvent, visit: OfficialVisit | null) => {
+    const hasScanCoordinates = (scan: ScanEvent) => scan.latitude != null && scan.longitude != null
+
+    const getGeoScanSummary = (scan: ScanEvent) => {
         const label = scan.geo_label?.trim()
-        if (label) return `GeoLoc: ${label}`
-        if (scan.geolocation) return 'GeoLoc: Location detected'
-        return 'GeoLoc: Unknown location'
+        if (label && scan.location_status === 'resolved') return `GeoLoc: ${label}`
+        return `GeoLoc: ${getRoadtourLocationStatusLabel(scan.location_status, hasScanCoordinates(scan))}`
     }
 
     const getVisitGeoSummary = (visit: OfficialVisit) => {
         const label = visit.visit_geo_label?.trim()
-        if (label) return label
-        if (visit.visit_geolocation) return 'Location detected'
-        return 'Unknown location'
+        if (label && visit.visit_location_status === 'resolved') return label
+        return getRoadtourLocationStatusLabel(visit.visit_location_status, Boolean(visit.visit_geolocation?.lat != null && visit.visit_geolocation?.lng != null))
     }
 
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -323,7 +333,15 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                                 <div>
                                                     <p className="text-sm font-medium">{s.consumer_name || 'Unknown'}</p>
                                                     <p className="text-xs text-muted-foreground">{new Date(s.scan_time).toLocaleString()}</p>
-                                                    <p className="text-xs text-muted-foreground mt-1">{getGeoScanSummary(s, detailVisit)}</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">{getGeoScanSummary(s)}</p>
+                                                    {s.geo_full_address && <p className="text-xs text-muted-foreground mt-1">{s.geo_full_address}</p>}
+                                                    <div className="mt-2 grid gap-1 text-[11px] text-muted-foreground">
+                                                        <p>Status: {getRoadtourLocationStatusLabel(s.location_status, hasScanCoordinates(s))}</p>
+                                                        {(s.latitude != null && s.longitude != null) && (
+                                                            <p>Coordinates: {s.latitude.toFixed(6)}, {s.longitude.toFixed(6)}{typeof s.accuracy_m === 'number' ? ` (${Math.round(s.accuracy_m)} m)` : ''}</p>
+                                                        )}
+                                                        {s.location_error && <p>Location error: {s.location_error}</p>}
+                                                    </div>
                                                     {s.whatsapp_error && <p className="text-xs text-red-600 mt-1">{s.whatsapp_error}</p>}
                                                 </div>
                                                 <div className="flex items-center gap-2">

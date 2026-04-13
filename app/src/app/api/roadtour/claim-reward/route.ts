@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { getRoadtourGeoLabel, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
+import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 
@@ -26,7 +26,7 @@ function isMissingGeoLocColumnError(error: any) {
         .join(' ')
         .toLowerCase()
 
-    return ['geo_label', 'geo_city', 'geo_state', 'geo_country', 'geo_full_address']
+    return ['geo_label', 'geo_city', 'geo_state', 'geo_country', 'geo_full_address', 'latitude', 'longitude', 'accuracy_m', 'geo_source', 'geo_payload', 'location_status', 'location_error', 'location_captured_at', 'geo_resolved_at']
         .some((column) => combined.includes(column) && (
             combined.includes('column') ||
             combined.includes('schema cache') ||
@@ -123,7 +123,6 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
         const { token, shop_id, consumer_phone, consumer_name, survey_answers, geolocation, login_email, login_password } = body
-        const roadtourShopOnlyMessage = 'This Road Tour Bonus is for Shop ID, Please update your profile to claim the bonus'
 
         if (!token) {
             return NextResponse.json({ message: 'Missing QR token.' }, { status: 400 })
@@ -174,8 +173,17 @@ export async function POST(request: NextRequest) {
         const qrRecord = await resolveRoadtourByToken(token)
         const campaignName = (validation as any).campaign_name || qrRecord?.campaign_name || 'RoadTour'
         const referenceName = (validation as any).account_manager_name || qrRecord?.account_manager_name || 'Reference'
-        const resolvedGeoLocation = await reverseGeocodeRoadtourLocation(geolocation)
-        const resolvedGeoLabel = getRoadtourGeoLabel(resolvedGeoLocation, Boolean(geolocation))
+        const normalizedGeolocation = normalizeRoadtourGeolocationInput(geolocation)
+        const resolvedGeoLocation = await reverseGeocodeRoadtourLocation(normalizedGeolocation)
+        const locationStatus = getRoadtourLocationStatus(normalizedGeolocation, resolvedGeoLocation)
+        const resolvedGeoLabel = getRoadtourGeoLabel(resolvedGeoLocation, normalizedGeolocation)
+        const locationError = getRoadtourLocationError(normalizedGeolocation, locationStatus)
+        const latitude = normalizedGeolocation?.lat ?? null
+        const longitude = normalizedGeolocation?.lng ?? null
+        const accuracyM = normalizedGeolocation?.accuracy ?? null
+        const geoSource = normalizedGeolocation?.source || (latitude !== null && longitude !== null ? 'browser' : null)
+        const locationCapturedAt = normalizedGeolocation?.captured_at || normalizedGeolocation?.attempted_at || null
+        const geoResolvedAt = resolvedGeoLocation.geo_resolved ? new Date().toISOString() : null
 
         // 2. Resolve authenticated user
         let userId: string | null = null
@@ -234,6 +242,7 @@ export async function POST(request: NextRequest) {
         const orgType = userProfile?.organizations?.org_type_code || null
         const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
         const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
+        const roadtourShopOnlyMessage = `Hi ${consumerDisplayName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This RoadTour bonus is for shop staff only.`
         const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
         const isShopUser = orgType === 'SHOP'
         const isConsumerLaneUser = !orgType || orgType === 'INDEP'
@@ -296,7 +305,17 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Record scan event with geolocation
-        console.log('[RT] inserting scan event:', { campaign_id, qr_code_id, account_manager_user_id, userId, resolvedScanShopId })
+        console.log('[RT] inserting scan event:', {
+            campaign_id,
+            qr_code_id,
+            account_manager_user_id,
+            userId,
+            resolvedScanShopId,
+            location_status: locationStatus,
+            has_coordinates: latitude !== null && longitude !== null,
+            geo_label: resolvedGeoLabel,
+            location_error: locationError,
+        })
 
         const scanInsertPayload = {
             campaign_id,
@@ -306,12 +325,21 @@ export async function POST(request: NextRequest) {
             consumer_phone: userPhone || null,
             shop_id: resolvedScanShopId,
             scan_status: 'opened',
-            geolocation: geolocation || null,
+            geolocation: normalizedGeolocation || null,
             geo_label: resolvedGeoLabel,
             geo_city: resolvedGeoLocation.geo_city,
             geo_state: resolvedGeoLocation.geo_state,
             geo_country: resolvedGeoLocation.geo_country,
             geo_full_address: resolvedGeoLocation.geo_full_address,
+            latitude,
+            longitude,
+            accuracy_m: accuracyM,
+            geo_source: geoSource,
+            geo_payload: normalizedGeolocation || null,
+            location_status: locationStatus,
+            location_error: locationError,
+            location_captured_at: locationCapturedAt,
+            geo_resolved_at: geoResolvedAt,
         }
 
         let { data: scanEvent, error: scanError } = await (supabase as any)
@@ -330,6 +358,15 @@ export async function POST(request: NextRequest) {
                 geo_state: _geoState,
                 geo_country: _geoCountry,
                 geo_full_address: _geoFullAddress,
+                latitude: _latitude,
+                longitude: _longitude,
+                accuracy_m: _accuracyM,
+                geo_source: _geoSource,
+                geo_payload: _geoPayload,
+                location_status: _locationStatus,
+                location_error: _locationError,
+                location_captured_at: _locationCapturedAt,
+                geo_resolved_at: _geoResolvedAt,
                 ...fallbackScanInsertPayload
             } = scanInsertPayload
 
