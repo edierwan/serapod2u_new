@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, referral_phone, address, shop_name, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, referral_phone, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -247,6 +247,32 @@ export async function POST(request: NextRequest) {
     // Handle shop_name update
     if (shop_name !== undefined) {
       updateData.shop_name = shop_name?.trim() || null
+    }
+
+    if (organization_id !== undefined) {
+      if (organization_id) {
+        const { data: orgData, error: orgError } = await adminClient
+          .from('organizations')
+          .select('id, org_type_code, is_active')
+          .eq('id', organization_id)
+          .single()
+
+        if (orgError || !orgData) {
+          return NextResponse.json(
+            { success: false, error: 'Selected shop could not be found' },
+            { status: 400 }
+          )
+        }
+
+        if (!orgData.is_active || orgData.org_type_code !== 'SHOP') {
+          return NextResponse.json(
+            { success: false, error: 'Selected organization must be an active shop' },
+            { status: 400 }
+          )
+        }
+      }
+
+      updateData.organization_id = organization_id || null
     }
 
     // Handle referral_phone update

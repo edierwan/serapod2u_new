@@ -689,6 +689,8 @@ export default function PremiumLoyaltyTemplate({
     const [userShopName, setUserShopName] = useState('')
     const [editingShopName, setEditingShopName] = useState(false)
     const [newShopName, setNewShopName] = useState('')
+    const [userLinkedOrganizationId, setUserLinkedOrganizationId] = useState<string | null>(null)
+    const [newLinkedOrganizationId, setNewLinkedOrganizationId] = useState<string | null>(null)
 
     // Password change states
     const [showChangePassword, setShowChangePassword] = useState(false)
@@ -1067,6 +1069,8 @@ export default function PremiumLoyaltyTemplate({
                         // Only update avatar if we have a new one or explicitly null (prevents flicker)
                         if (avatarUrl !== undefined) setUserAvatarUrl(avatarUrl)
                         setShopName(orgName)
+                        setUserLinkedOrganizationId(organizationId || null)
+                        setNewLinkedOrganizationId(organizationId || null)
                         setUserPhone(phone)
                         setUserReferralPhone(referralPhone || '')
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
@@ -1159,6 +1163,8 @@ export default function PremiumLoyaltyTemplate({
                             setUserName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setUserAvatarUrl(avatarUrl)
                             setShopName(orgName)
+                            setUserLinkedOrganizationId(organizationId || null)
+                            setNewLinkedOrganizationId(organizationId || null)
                             setUserPhone(phone)
                             setUserReferralPhone(referralPhone || '')
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
@@ -2478,9 +2484,13 @@ export default function PremiumLoyaltyTemplate({
                 updateData.address = newAddress.trim() || null
             }
 
-            // Add shop name if changed (only for independent users)
-            if (!shopName && newShopName !== userShopName) {
+            // Add shop name if changed (only for users not linked as SHOP users yet)
+            if (!isShopUser && newShopName !== userShopName) {
                 updateData.shop_name = newShopName.trim() || null
+            }
+
+            if (!isShopUser && newLinkedOrganizationId !== userLinkedOrganizationId) {
+                updateData.organization_id = newLinkedOrganizationId
             }
 
             // Add referral phone if changed — use RPC for approval flow
@@ -2615,6 +2625,21 @@ export default function PremiumLoyaltyTemplate({
             }
             if (updateData.shop_name !== undefined) {
                 setUserShopName(updateData.shop_name || '')
+            }
+            if (updateData.organization_id !== undefined) {
+                setUserLinkedOrganizationId(updateData.organization_id || null)
+            }
+
+            const refreshedProfile = await checkUserOrganization(userId, true) as any
+            if (refreshedProfile?.success) {
+                setIsShopUser(Boolean(refreshedProfile.isShop))
+                setShopName(refreshedProfile.orgName || '')
+                setUserShopName(refreshedProfile.shop_name || '')
+                setNewShopName(refreshedProfile.shop_name || '')
+                setUserLinkedOrganizationId(refreshedProfile.organizationId || null)
+                setNewLinkedOrganizationId(refreshedProfile.organizationId || null)
+                setUserReferralPhone(refreshedProfile.referralPhone || '')
+                setNewReferralPhone(refreshedProfile.referralPhone || '')
             }
 
             setProfileSaveSuccess(true)
@@ -2878,6 +2903,7 @@ export default function PremiumLoyaltyTemplate({
 
     const openCollectPointsProfilePrompt = (message: string) => {
         setCollectingPoints(false)
+        setPendingProfileCollectLane('shop')
         setPointsError(message)
         setPointsErrorAction(null)
         setCollectPointsStep('complete-profile')
@@ -6162,11 +6188,12 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-gray-700">Shop</label>
                                     {!editingShopName && (
-                                        !shopName && (
+                                        !isShopUser && (
                                             <button
                                                 onClick={() => {
                                                     setEditingShopName(true)
                                                     setNewShopName(userShopName)
+                                                    setNewLinkedOrganizationId(userLinkedOrganizationId)
                                                 }}
                                                 className="text-sm font-medium"
                                                 style={{ color: config.primary_color }}
@@ -6176,14 +6203,15 @@ export default function PremiumLoyaltyTemplate({
                                         )
                                     )}
                                 </div>
-                                {!shopName && editingShopName ? (
+                                {!isShopUser && editingShopName ? (
                                     <div className="space-y-2">
                                         <div className="flex gap-2 items-start">
                                             <div className="flex-1">
                                                 <ShopPicker
-                                                    value={userShopName}
-                                                    onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                    value={newShopName}
+                                                    onSelect={(shop: ShopResult | null, displayName: string) => {
                                                         setNewShopName(displayName)
+                                                        setNewLinkedOrganizationId(shop?.org_id || null)
                                                     }}
                                                     placeholder="Search shop by name..."
                                                     maxLength={50}
@@ -6195,6 +6223,7 @@ export default function PremiumLoyaltyTemplate({
                                                 onClick={() => {
                                                     setEditingShopName(false)
                                                     setNewShopName(userShopName)
+                                                    setNewLinkedOrganizationId(userLinkedOrganizationId)
                                                 }}
                                             >
                                                 <X className="w-4 h-4" />
@@ -6207,13 +6236,13 @@ export default function PremiumLoyaltyTemplate({
                                         <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
                                     </div>
                                 )}
-                                {!((!shopName && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
+                                {!((!isShopUser && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                 )}
                             </div>
 
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!shopName && newShopName !== userShopName) || newReferralPhone !== userReferralPhone) && (
+                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}

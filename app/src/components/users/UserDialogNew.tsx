@@ -1160,13 +1160,16 @@ export default function UserDialogNew({
                   <Label htmlFor="shop_name" className="text-xs font-medium text-gray-700">Shop Name</Label>
                   <ShopPicker
                     value={(formData as any).shop_name || ''}
-                    onSelect={(_shop: ShopResult | null, displayName: string) => {
+                    onSelect={(shop: ShopResult | null, displayName: string) => {
                       handleInputChange('shop_name', displayName)
+                      if (shop?.org_id) {
+                        handleInputChange('organization_id', shop.org_id)
+                      }
                     }}
                     disabled={isSaving}
                     placeholder="Search shop or type name..."
                   />
-                  <p className="text-[11px] text-gray-400">Business-facing shop name. This can be typed or selected and is used as display and matching info.</p>
+                  <p className="text-[11px] text-gray-400">Selecting a shop from the list also links its masterdata organization. Typed text alone is only a profile label.</p>
                 </div>
 
                 <div className="space-y-1.5">

@@ -110,6 +110,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     address: '',
     location: '',
     shop_name: '',
+    organization_id: '',
     bank_id: '',
     bank_account_number: '',
     bank_account_holder_name: '',
@@ -272,6 +273,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           address: transformedProfile.address || '',
           location: transformedProfile.location || '',
           shop_name: transformedProfile.shop_name || '',
+          organization_id: transformedProfile.organization_id || '',
           bank_id: transformedProfile.bank_id || '',
           bank_account_number: transformedProfile.bank_account_number || '',
           bank_account_holder_name: transformedProfile.bank_account_holder_name || '',
@@ -613,6 +615,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         address: formData.address?.trim() || null,
         location: formData.location || null,
         shop_name: formData.shop_name?.trim() || null,
+        organization_id: formData.organization_id || null,
         updated_at: new Date().toISOString()
       }
 
@@ -742,6 +745,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       full_name: userProfile.full_name || '',
       phone: userProfile.phone || '',
       address: userProfile.address || '',
+      location: userProfile.location || '',
+      shop_name: userProfile.shop_name || '',
+      organization_id: userProfile.organization_id || '',
       bank_id: userProfile.bank_id || '',
       bank_account_number: userProfile.bank_account_number || '',
       bank_account_holder_name: userProfile.bank_account_holder_name || '',
@@ -1104,13 +1110,18 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       <Label htmlFor="shop_name" className="text-sm font-medium">Shop Name</Label>
                       <ShopPicker
                         value={formData.shop_name}
-                        onSelect={(_shop: ShopResult | null, displayName: string) => {
-                          setFormData({ ...formData, shop_name: displayName })
+                        onSelect={(shop: ShopResult | null, displayName: string) => {
+                          setFormData({
+                            ...formData,
+                            shop_name: displayName,
+                            organization_id: shop?.org_id || formData.organization_id,
+                          })
                         }}
                         disabled={isSaving}
                         placeholder="Search shop or type name..."
                         maxLength={50}
                       />
+                      <p className="mt-1 text-xs text-gray-500">Selecting a shop from the list links your profile to that shop for RoadTour and staff rewards.</p>
                     </div>
                   )}
 

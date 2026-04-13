@@ -38,6 +38,7 @@ export function ShopPicker({
     const [isSearching, setIsSearching] = useState(false)
     const [isOpen, setIsOpen] = useState(false)
     const [selectedShop, setSelectedShop] = useState<ShopResult | null>(null)
+    const [showSelectionHint, setShowSelectionHint] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
@@ -46,8 +47,45 @@ export function ShopPicker({
     useEffect(() => {
         if (!selectedShop && value !== searchTerm) {
             setSearchTerm(value || '')
+            setShowSelectionHint(false)
         }
-    }, [value])
+    }, [searchTerm, selectedShop, value])
+
+    useEffect(() => {
+        let cancelled = false
+
+        const resolveExistingShop = async () => {
+            const normalizedValue = (value || '').trim()
+            if (!normalizedValue || selectedShop) return
+
+            try {
+                const res = await fetch(`/api/shops/search?q=${encodeURIComponent(normalizedValue)}&limit=10`)
+                const data = await res.json()
+                if (!data.success || cancelled) return
+
+                const exactMatch = (data.results || []).find((shop: ShopResult) => {
+                    const display = shop.display_label.trim().toLowerCase()
+                    const orgName = shop.org_name.trim().toLowerCase()
+                    return display === normalizedValue.toLowerCase() || orgName === normalizedValue.toLowerCase()
+                })
+
+                if (!exactMatch || cancelled) return
+
+                setSelectedShop(exactMatch)
+                setSearchTerm(exactMatch.display_label)
+                setShowSelectionHint(false)
+                onSelect(exactMatch, exactMatch.display_label)
+            } catch (err) {
+                console.error('Shop resolve error:', err)
+            }
+        }
+
+        void resolveExistingShop()
+
+        return () => {
+            cancelled = true
+        }
+    }, [onSelect, selectedShop, value])
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -86,11 +124,12 @@ export function ShopPicker({
     const handleInputChange = (val: string) => {
         if (val.length > maxLength) return
         setSearchTerm(val)
+        setShowSelectionHint(Boolean(val.trim()))
         if (selectedShop) {
             setSelectedShop(null)
-            // Clear selection when user starts typing again
-            onSelect(null, '')
         }
+
+        onSelect(null, val)
 
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
         searchTimeoutRef.current = setTimeout(() => doSearch(val), 300)
@@ -101,6 +140,7 @@ export function ShopPicker({
         setSearchTerm(shop.display_label)
         setIsOpen(false)
         setResults([])
+        setShowSelectionHint(false)
         onSelect(shop, shop.display_label)
     }
 
@@ -109,6 +149,7 @@ export function ShopPicker({
         setSearchTerm('')
         setResults([])
         setIsOpen(false)
+        setShowSelectionHint(false)
         onSelect(null, '')
         inputRef.current?.focus()
     }
@@ -156,7 +197,7 @@ export function ShopPicker({
                     {selectedShop.state_name && ` · ${selectedShop.state_name}`}
                 </p>
             )}
-            {!selectedShop && searchTerm && (
+            {!selectedShop && showSelectionHint && searchTerm && (
                 <p className="text-xs text-amber-600 mt-1">Please select a shop from the list below</p>
             )}
 
