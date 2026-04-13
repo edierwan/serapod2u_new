@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
+import { ROADTOUR_SHOP_SURVEY_FIELDS } from '@/lib/roadtour/survey'
 import {
     ArrowDown, ArrowUp, ClipboardList, Edit, GripVertical, Loader2, Plus, Save, Trash2
 } from 'lucide-react'
@@ -292,6 +293,87 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         }
     }
 
+    const addShopInfoFields = async () => {
+        if (!editingTemplate) return
+
+        const existingKeys = new Set(fields.map((field) => field.field_key))
+        const missingFields = ROADTOUR_SHOP_SURVEY_FIELDS.filter((field) => !existingKeys.has(field.field_key))
+
+        if (missingFields.length === 0) {
+            toast({ title: 'No changes', description: 'All shop info fields are already included.' })
+            return
+        }
+
+        try {
+            setSaving(true)
+            const startOrder = fields.length
+            const payload = missingFields.map((field, index) => ({
+                template_id: editingTemplate.id,
+                field_key: field.field_key,
+                label: field.label,
+                field_type: field.field_type,
+                is_required: field.is_required,
+                options: field.options,
+                sort_order: startOrder + index + 1,
+            }))
+
+            const { error } = await (supabase as any).from('roadtour_survey_template_fields').insert(payload)
+            if (error) throw error
+
+            toast({ title: 'Fields Added', description: `${missingFields.length} shop info fields added to this survey.` })
+            await loadFields(editingTemplate.id)
+        } catch (err: any) {
+            toast({ title: 'Error', description: err.message || 'Failed to add shop info fields.', variant: 'destructive' })
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const renderPreviewField = (field: SurveyField) => {
+        if (field.field_type === 'textarea') {
+            return <textarea disabled rows={3} placeholder="Preview answer" className="w-full rounded-xl border bg-muted/30 px-3 py-2 text-sm" />
+        }
+
+        if (field.field_type === 'yes_no') {
+            return (
+                <div className="flex gap-2">
+                    <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">Yes</div>
+                    <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">No</div>
+                </div>
+            )
+        }
+
+        if ((field.field_type === 'single_select' || field.field_type === 'radio') && field.options?.length) {
+            return (
+                <select disabled className="w-full rounded-xl border bg-muted/30 px-3 py-2 text-sm">
+                    <option>Select...</option>
+                    {field.options.map((option) => <option key={option}>{option}</option>)}
+                </select>
+            )
+        }
+
+        if (field.field_type === 'multi_select' && field.options?.length) {
+            return (
+                <div className="flex flex-wrap gap-2">
+                    {field.options.map((option) => (
+                        <div key={option} className="rounded-full border bg-muted/20 px-3 py-1 text-xs">{option}</div>
+                    ))}
+                </div>
+            )
+        }
+
+        if (field.field_type === 'checkbox') {
+            return (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input type="checkbox" disabled className="h-4 w-4" />
+                    Preview toggle
+                </label>
+            )
+        }
+
+        return <input disabled type={field.field_type === 'number' ? 'number' : field.field_type === 'phone' ? 'tel' : 'text'} placeholder="Preview answer" className="w-full rounded-xl border bg-muted/30 px-3 py-2 text-sm" />
+    }
+
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     // Field builder view
@@ -313,41 +395,80 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
                     </div>
                 </div>
 
-                <Card>
-                    <CardHeader><CardTitle className="text-sm">Survey Fields ({fields.length})</CardTitle></CardHeader>
-                    <CardContent>
-                        {fieldsLoading ? (
-                            <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin" /></div>
-                        ) : fields.length === 0 ? (
-                            <p className="text-center text-muted-foreground py-6">No fields yet. Click &quot;Add Field&quot; to create survey questions.</p>
-                        ) : (
-                            <div className="space-y-2">
-                                {fields.map((f, i) => (
-                                    <div key={f.id} className="flex items-center gap-3 rounded-lg border p-3">
-                                        <div className="flex flex-col gap-0.5">
-                                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveField(f.id, 'up')} disabled={i === 0}><ArrowUp className="h-3 w-3" /></Button>
-                                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveField(f.id, 'down')} disabled={i === fields.length - 1}><ArrowDown className="h-3 w-3" /></Button>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <p className="font-medium text-sm">{f.label}</p>
-                                                {f.is_required && <Badge variant="outline" className="text-xs">Required</Badge>}
-                                            </div>
-                                            <p className="text-xs text-muted-foreground">{f.field_key} · {FIELD_TYPES.find((t) => t.value === f.field_type)?.label || f.field_type}</p>
-                                            {f.options && f.options.length > 0 && (
-                                                <p className="text-xs text-muted-foreground mt-0.5">Options: {f.options.join(', ')}</p>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-1">
-                                            <Button size="sm" variant="ghost" onClick={() => openEditField(f)}><Edit className="h-4 w-4" /></Button>
-                                            <Button size="sm" variant="ghost" onClick={() => deleteField(f.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                                        </div>
-                                    </div>
-                                ))}
+                <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                <CardTitle className="text-sm">Survey Fields ({fields.length})</CardTitle>
+                                <Button variant="outline" size="sm" onClick={addShopInfoFields} disabled={saving}>
+                                    <Plus className="mr-1 h-4 w-4" />
+                                    Add Shop Info Fields
+                                </Button>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardHeader>
+                        <CardContent>
+                            {fieldsLoading ? (
+                                <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                            ) : fields.length === 0 ? (
+                                <p className="text-center text-muted-foreground py-6">No fields yet. Click &quot;Add Field&quot; to create survey questions.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {fields.map((f, i) => (
+                                        <div key={f.id} className="flex items-center gap-3 rounded-lg border p-3">
+                                            <div className="flex flex-col gap-0.5">
+                                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveField(f.id, 'up')} disabled={i === 0}><ArrowUp className="h-3 w-3" /></Button>
+                                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveField(f.id, 'down')} disabled={i === fields.length - 1}><ArrowDown className="h-3 w-3" /></Button>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium text-sm">{f.label}</p>
+                                                    {f.is_required && <Badge variant="outline" className="text-xs">Required</Badge>}
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">{f.field_key} · {FIELD_TYPES.find((t) => t.value === f.field_type)?.label || f.field_type}</p>
+                                                {f.options && f.options.length > 0 && (
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Options: {f.options.join(', ')}</p>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <Button size="sm" variant="ghost" onClick={() => openEditField(f)}><Edit className="h-4 w-4" /></Button>
+                                                <Button size="sm" variant="ghost" onClick={() => deleteField(f.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-sm">Phone Preview</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="mx-auto max-w-sm rounded-[28px] border bg-background p-4 shadow-sm">
+                                <div className="mb-4 rounded-2xl bg-orange-50 p-4 text-center">
+                                    <p className="text-sm font-semibold text-orange-700">Quick Survey</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">Preview of the shopper web view.</p>
+                                </div>
+                                {fields.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">Add fields to preview the survey form.</p>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {fields.map((field) => (
+                                            <div key={field.id} className="space-y-1.5">
+                                                <div className="text-sm font-medium text-foreground">
+                                                    {field.label}
+                                                    {field.is_required && <span className="ml-1 text-red-500">*</span>}
+                                                </div>
+                                                {renderPreviewField(field)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
                 {/* Field Dialog */}
                 <Dialog open={fieldDialogOpen} onOpenChange={setFieldDialogOpen}>

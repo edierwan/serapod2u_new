@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getRoadtourShopSurveyPrefillValues } from '@/lib/roadtour/survey'
 import { normalizePhone } from '@/lib/utils'
 import { PointEarnedAnimation } from '@/components/animations/PointEarnedAnimation'
 import {
@@ -37,6 +38,16 @@ interface SurveyField {
     options: string[] | null
     is_required: boolean
     sort_order: number
+}
+
+interface ShopSurveySource {
+    id: string
+    name: string
+    branch: string | null
+    hot_flavour_brands: string | null
+    sells_serapod_flavour: boolean | null
+    sells_sbox: boolean | null
+    sells_sbox_special_edition: boolean | null
 }
 
 export default function RoadtourScanPage() {
@@ -76,9 +87,10 @@ export default function RoadtourScanPage() {
     const [forgotSent, setForgotSent] = useState(false)
 
     // Shop selection
-    const [shops, setShops] = useState<{ id: string; name: string }[]>([])
+    const [shops, setShops] = useState<ShopSurveySource[]>([])
     const [selectedShopId, setSelectedShopId] = useState('')
     const [shopSearch, setShopSearch] = useState('')
+    const [prefillShop, setPrefillShop] = useState<ShopSurveySource | null>(null)
 
     // Survey
     const [surveyFields, setSurveyFields] = useState<SurveyField[]>([])
@@ -161,13 +173,46 @@ export default function RoadtourScanPage() {
     const loadShops = async () => {
         const { data } = await supabase
             .from('organizations')
-            .select('id, name:org_name')
+            .select('id, org_name, branch, hot_flavour_brands, sells_serapod_flavour, sells_sbox, sells_sbox_special_edition')
             .eq('org_type_code', 'SHOP')
             .eq('is_active', true)
             .order('org_name')
             .limit(500)
-        setShops((data || []).map((s: any) => ({ id: s.id, name: s.name })))
+        setShops((data || []).map((s: any) => ({
+            id: s.id,
+            name: s.org_name,
+            branch: s.branch ?? null,
+            hot_flavour_brands: s.hot_flavour_brands ?? null,
+            sells_serapod_flavour: s.sells_serapod_flavour ?? null,
+            sells_sbox: s.sells_sbox ?? null,
+            sells_sbox_special_edition: s.sells_sbox_special_edition ?? null,
+        })))
     }
+
+    const loadShopById = useCallback(async (shopId: string) => {
+        if (!shopId) return null
+
+        const existingShop = shops.find((shop) => shop.id === shopId)
+        if (existingShop) return existingShop
+
+        const { data } = await supabase
+            .from('organizations')
+            .select('id, org_name, branch, hot_flavour_brands, sells_serapod_flavour, sells_sbox, sells_sbox_special_edition')
+            .eq('id', shopId)
+            .maybeSingle()
+
+        if (!data) return null
+
+        return {
+            id: data.id,
+            name: data.org_name,
+            branch: data.branch ?? null,
+            hot_flavour_brands: data.hot_flavour_brands ?? null,
+            sells_serapod_flavour: data.sells_serapod_flavour ?? null,
+            sells_sbox: data.sells_sbox ?? null,
+            sells_sbox_special_edition: data.sells_sbox_special_edition ?? null,
+        } satisfies ShopSurveySource
+    }, [shops, supabase])
 
     // Load survey fields
     const loadSurvey = async (templateId: string) => {
@@ -178,6 +223,47 @@ export default function RoadtourScanPage() {
             .order('sort_order')
         setSurveyFields(data || [])
     }
+
+    useEffect(() => {
+        let cancelled = false
+
+        const syncPrefillShop = async () => {
+            const shopId = selectedShopId || qr?.shop_id || ''
+            if (!shopId) {
+                if (!cancelled) setPrefillShop(null)
+                return
+            }
+
+            const shop = await loadShopById(shopId)
+            if (!cancelled) setPrefillShop(shop)
+        }
+
+        syncPrefillShop()
+
+        return () => {
+            cancelled = true
+        }
+    }, [loadShopById, qr?.shop_id, selectedShopId])
+
+    useEffect(() => {
+        if (surveyFields.length === 0 || !prefillShop) return
+
+        const prefillValues = getRoadtourShopSurveyPrefillValues(prefillShop)
+        setSurveyAnswers((current) => {
+            let changed = false
+            const next = { ...current }
+
+            for (const field of surveyFields) {
+                const prefill = prefillValues[field.field_key]
+                if (!prefill) continue
+                if (next[field.field_key]?.trim()) continue
+                next[field.field_key] = prefill
+                changed = true
+            }
+
+            return changed ? next : current
+        })
+    }, [prefillShop, surveyFields])
 
     // Handle "RoadTour Rewards" button click
     const handleRewardsClick = async () => {
@@ -530,6 +616,7 @@ export default function RoadtourScanPage() {
                                 <button key={s.id} onClick={() => setSelectedShopId(s.id)}
                                     className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${selectedShopId === s.id ? 'bg-orange-50 text-orange-800 font-medium border border-orange-300' : 'hover:bg-gray-50 border border-transparent'}`}>
                                     {s.name}
+                                    {s.branch ? <span className="block text-xs text-gray-500">{s.branch}</span> : null}
                                 </button>
                             ))}
                             {filteredShops.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No shops found.</p>}
@@ -623,6 +710,11 @@ export default function RoadtourScanPage() {
                             <h2 className="text-lg font-semibold">Quick Survey</h2>
                         </div>
                         <p className="text-sm text-gray-500 mb-4">Please complete this short survey to claim your reward.</p>
+                        {prefillShop && (
+                            <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+                                Survey prefilled from shop: <span className="font-semibold">{prefillShop.name}</span>{prefillShop.branch ? ` (${prefillShop.branch})` : ''}
+                            </div>
+                        )}
                         {errorMsg && <p className="text-sm text-red-600 mb-3">{errorMsg}</p>}
 
                         {surveyFields.map((f) => (

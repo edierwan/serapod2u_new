@@ -34,6 +34,9 @@ interface OfficialVisit {
     visit_status: string
     notes: string | null
     created_at: string
+    official_scan_event_id?: string | null
+    visit_geo_label?: string | null
+    visit_geolocation?: { lat?: number; lng?: number; accuracy?: number } | null
 }
 
 interface ScanEvent {
@@ -79,7 +82,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, contact_phone)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, contact_phone), official_scan:official_scan_event_id(geo_label, geolocation)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .limit(200)
@@ -99,6 +102,8 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     user_phone: v.users?.phone || '',
                     shop_name: v.organizations?.org_name || '—',
                     shop_contact_phone: v.organizations?.contact_phone || '',
+                    visit_geo_label: v.official_scan?.geo_label || null,
+                    visit_geolocation: v.official_scan?.geolocation || null,
                 }))
             )
 
@@ -200,6 +205,13 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
         return 'GeoLoc: Unknown location'
     }
 
+    const getVisitGeoSummary = (visit: OfficialVisit) => {
+        const label = visit.visit_geo_label?.trim()
+        if (label) return label
+        if (visit.visit_geolocation) return 'Location detected'
+        return 'Unknown location'
+    }
+
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
@@ -244,13 +256,14 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                 <TableHead>Reference</TableHead>
                                 <TableHead>Shop</TableHead>
                                 <TableHead>Campaign</TableHead>
+                                <TableHead className="hidden lg:table-cell">GeoLoc</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
                             )}
                             {filtered.map((v) => (
                                 <TableRow key={v.id}>
@@ -268,6 +281,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                         </div>
                                     </TableCell>
                                     <TableCell>{v.campaign_name}</TableCell>
+                                    <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">{getVisitGeoSummary(v)}</TableCell>
                                     <TableCell><Badge className={v.visit_status === 'official' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>{v.visit_status}</Badge></TableCell>
                                     <TableCell className="text-right">
                                         <Button size="sm" variant="ghost" onClick={() => openDetail(v)}><Eye className="h-4 w-4" /></Button>

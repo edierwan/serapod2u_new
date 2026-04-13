@@ -174,6 +174,67 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         }
     }
 
+    const syncCampaignQrs = useCallback(async (campaignId: string, managerIds?: string[]) => {
+        const targetManagerIds = managerIds && managerIds.length > 0
+            ? managerIds
+            : (() => { return [] })()
+
+        let resolvedManagerIds = targetManagerIds
+        if (resolvedManagerIds.length === 0) {
+            const { data: assignedManagers, error: managerError } = await (supabase as any)
+                .from('roadtour_campaign_managers')
+                .select('user_id')
+                .eq('campaign_id', campaignId)
+                .eq('is_active', true)
+
+            if (managerError) throw managerError
+            resolvedManagerIds = (assignedManagers || []).map((row: any) => row.user_id)
+        }
+
+        if (resolvedManagerIds.length === 0) return 0
+
+        let expiresAt: string | null = null
+        const { data: settings } = await (supabase as any)
+            .from('roadtour_settings')
+            .select('qr_expiry_hours, qr_mode')
+            .eq('org_id', companyId)
+            .maybeSingle()
+
+        if (settings?.qr_mode === 'time_limited' && settings?.qr_expiry_hours) {
+            const expiry = new Date()
+            expiry.setHours(expiry.getHours() + settings.qr_expiry_hours)
+            expiresAt = expiry.toISOString()
+        }
+
+        const { data: existingRows, error: existingError } = await (supabase as any)
+            .from('roadtour_qr_codes')
+            .select('account_manager_user_id')
+            .eq('campaign_id', campaignId)
+            .eq('status', 'active')
+            .is('shop_id', null)
+            .in('account_manager_user_id', resolvedManagerIds)
+
+        if (existingError) throw existingError
+
+        const existingManagerIds = new Set((existingRows || []).map((row: any) => row.account_manager_user_id))
+        const missingManagerIds = resolvedManagerIds.filter((managerId) => !existingManagerIds.has(managerId))
+
+        if (missingManagerIds.length === 0) return 0
+
+        const { error: insertError } = await (supabase as any)
+            .from('roadtour_qr_codes')
+            .insert(missingManagerIds.map((managerId) => ({
+                campaign_id: campaignId,
+                account_manager_user_id: managerId,
+                token: crypto.randomUUID(),
+                status: 'active',
+                expires_at: expiresAt,
+            })))
+
+        if (insertError) throw insertError
+        return missingManagerIds.length
+    }, [companyId, supabase])
+
     const loadCampaigns = useCallback(async () => {
         try {
             setLoading(true)
@@ -295,7 +356,17 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         try {
             const { error } = await (supabase as any).from('roadtour_campaigns').update({ status: newStatus, updated_by: userProfile.id }).eq('id', campaignId)
             if (error) throw error
-            toast({ title: 'Status Updated', description: `Campaign status changed to "${newStatus}".` })
+            let createdQrCount = 0
+            if (newStatus === 'active') {
+                createdQrCount = await syncCampaignQrs(campaignId)
+            }
+
+            toast({
+                title: 'Status Updated',
+                description: createdQrCount > 0
+                    ? `Campaign activated and ${createdQrCount} QR code${createdQrCount === 1 ? '' : 's'} created automatically.`
+                    : `Campaign status changed to "${newStatus}".`
+            })
             loadCampaigns()
         } catch (err: any) {
             toast({ title: 'Error', description: err.message, variant: 'destructive' })
@@ -355,7 +426,18 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 assigned_at: new Date().toISOString(),
             }, { onConflict: 'campaign_id,user_id' })
             if (error) throw error
-            toast({ title: 'Assigned', description: 'Reference assigned to campaign.' })
+            const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId)
+            let createdQrCount = 0
+            if (selectedCampaign?.status === 'active') {
+                createdQrCount = await syncCampaignQrs(selectedCampaignId, [userId])
+            }
+
+            toast({
+                title: 'Assigned',
+                description: createdQrCount > 0
+                    ? 'Reference assigned and QR code created automatically.'
+                    : 'Reference assigned to campaign.'
+            })
             openManagers(selectedCampaignId, selectedCampaignName)
         } catch (err: any) {
             toast({ title: 'Error', description: err.message, variant: 'destructive' })
@@ -364,8 +446,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
     const removeManager = async (assignmentId: string) => {
         try {
+            const removedManager = managers.find((manager) => manager.id === assignmentId)
             const { error } = await (supabase as any).from('roadtour_campaign_managers').update({ is_active: false }).eq('id', assignmentId)
             if (error) throw error
+
+            if (selectedCampaignId && removedManager?.user_id) {
+                await (supabase as any)
+                    .from('roadtour_qr_codes')
+                    .update({ status: 'revoked' })
+                    .eq('campaign_id', selectedCampaignId)
+                    .eq('account_manager_user_id', removedManager.user_id)
+                    .eq('status', 'active')
+                    .is('shop_id', null)
+            }
+
             toast({ title: 'Removed', description: 'Reference removed from campaign.' })
             if (selectedCampaignId) openManagers(selectedCampaignId, selectedCampaignName)
         } catch (err: any) {
@@ -447,7 +541,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         <TableCell className="hidden md:table-cell text-sm">
                                             <div>
                                                 <p className="font-medium">{workDays}</p>
-                                                <p className="text-xs text-muted-foreground">{(() => { const today = new Date(); today.setHours(0,0,0,0); const end = new Date(c.end_date); end.setHours(0,0,0,0); const diff = Math.ceil((end.getTime() - today.getTime()) / (1000*60*60*24)); return diff > 0 ? `${diff} days left` : diff === 0 ? 'Last day' : 'Ended' })()}</p>
+                                                <p className="text-xs text-muted-foreground">{(() => { const today = new Date(); today.setHours(0, 0, 0, 0); const end = new Date(c.end_date); end.setHours(0, 0, 0, 0); const diff = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)); return diff > 0 ? `${diff} days left` : diff === 0 ? 'Last day' : 'Ended' })()}</p>
                                             </div>
                                         </TableCell>
                                         <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
