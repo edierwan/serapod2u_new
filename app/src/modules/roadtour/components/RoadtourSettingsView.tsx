@@ -68,8 +68,8 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
     const [claimWhatsappEnabled, setClaimWhatsappEnabled] = useState(false)
     const [claimWhatsappRecipientMode, setClaimWhatsappRecipientMode] = useState<'manual' | 'hq_org'>('manual')
     const [claimWhatsappManualNumbers, setClaimWhatsappManualNumbers] = useState('')
-    const [claimWhatsappSuccessTemplate, setClaimWhatsappSuccessTemplate] = useState('RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}')
-    const [claimWhatsappFailureTemplate, setClaimWhatsappFailureTemplate] = useState('RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nReason: {message}')
+    const [claimWhatsappSuccessTemplate, setClaimWhatsappSuccessTemplate] = useState('RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}')
+    const [claimWhatsappFailureTemplate, setClaimWhatsappFailureTemplate] = useState('RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nReason: {message}')
     const [testSending, setTestSending] = useState<'success' | 'failed' | null>(null)
 
     const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string }[]>([])
@@ -321,7 +321,7 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                             <Switch checked={requireShopContext} onCheckedChange={setRequireShopContext} />
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div><Label className="font-medium">Capture Geolocation</Label><p className="text-xs text-muted-foreground mt-1">Record GPS coordinates during scan (optional).</p></div>
+                            <div><Label className="font-medium">Capture Geolocation</Label><p className="text-xs text-muted-foreground mt-1">Record GPS internally and store a readable GeoLoc label for visits and alerts.</p></div>
                             <Switch checked={requireGeolocation} onCheckedChange={setRequireGeolocation} />
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-4">
@@ -395,7 +395,7 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                             <Textarea value={claimWhatsappFailureTemplate} onChange={(event) => setClaimWhatsappFailureTemplate(event.target.value)} rows={8} />
                         </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">Available variables: {'{campaign_name}'}, {'{shop_name}'}, {'{reference_name}'}, {'{consumer_name}'}, {'{points_awarded}'}, {'{balance_after}'}, {'{status}'}, {'{message}'}, {'{short_link}'}.</p>
+                    <p className="text-xs text-muted-foreground">Available variables: {'{campaign_name}'}, {'{shop_name}'}, {'{reference_name}'}, {'{consumer_name}'}, {'{geo_label}'}, {'{points_awarded}'}, {'{balance_after}'}, {'{status}'}, {'{message}'}, {'{short_link}'}.</p>
                 </CardContent>
             </Card>
 

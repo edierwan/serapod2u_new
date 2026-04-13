@@ -14,6 +14,19 @@ ALTER TABLE public.roadtour_settings
   ADD COLUMN IF NOT EXISTS claim_whatsapp_success_template text,
   ADD COLUMN IF NOT EXISTS claim_whatsapp_failure_template text;
 
+ALTER TABLE public.roadtour_scan_events
+  ADD COLUMN IF NOT EXISTS geo_label text,
+  ADD COLUMN IF NOT EXISTS geo_city text,
+  ADD COLUMN IF NOT EXISTS geo_state text,
+  ADD COLUMN IF NOT EXISTS geo_country text,
+  ADD COLUMN IF NOT EXISTS geo_full_address text;
+
+COMMENT ON COLUMN public.roadtour_scan_events.geo_label IS 'Primary readable GeoLoc label shown in visit tracking and WhatsApp alerts.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_city IS 'Reverse-geocoded city or locality for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_state IS 'Reverse-geocoded state or region for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_country IS 'Reverse-geocoded country for RoadTour scans.';
+COMMENT ON COLUMN public.roadtour_scan_events.geo_full_address IS 'Best-effort reverse-geocoded full address for internal RoadTour scan reference.';
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -30,14 +43,21 @@ END $$;
 UPDATE public.roadtour_settings
 SET claim_whatsapp_success_template = COALESCE(
       claim_whatsapp_success_template,
-      'RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}'
+      'RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}'
     ),
     claim_whatsapp_failure_template = COALESCE(
       claim_whatsapp_failure_template,
-      'RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nReason: {message}'
+      'RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nReason: {message}'
     )
 WHERE claim_whatsapp_success_template IS NULL
    OR claim_whatsapp_failure_template IS NULL;
+
+UPDATE public.roadtour_scan_events
+SET geo_label = CASE
+      WHEN geolocation IS NULL THEN 'Unknown location'
+      ELSE 'Location detected'
+    END
+WHERE geo_label IS NULL;
 
 CREATE OR REPLACE FUNCTION public.slugify_roadtour_segment(p_value text)
 RETURNS text

@@ -56,6 +56,7 @@ export async function sendRoadtourClaimNotifications(params: {
     pointsAwarded?: number | null
     balanceAfter?: number | null
     canonicalPath?: string | null
+    geoLabel?: string | null
     forceSend?: boolean
     message: string
 }) {
@@ -81,8 +82,8 @@ export async function sendRoadtourClaimNotifications(params: {
     }
 
     const template = params.notificationType === 'success'
-        ? (settings?.claim_whatsapp_success_template || 'RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}')
-        : (settings?.claim_whatsapp_failure_template || 'RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nReason: {message}')
+        ? (settings?.claim_whatsapp_success_template || 'RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}')
+        : (settings?.claim_whatsapp_failure_template || 'RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nReason: {message}')
 
     const shortLink = buildRoadTourUrl(
         process.env.NEXT_PUBLIC_APP_URL || 'https://stg.serapod2u.com',
@@ -93,11 +94,14 @@ export async function sendRoadtourClaimNotifications(params: {
         const phone = normalizePhone(recipient.phone_number)
         if (!phone) continue
 
+        const geoLabel = params.geoLabel?.trim() || 'Unknown location'
+
         const renderedMessage = applyTemplate(template, {
             campaign_name: params.campaignName,
             reference_name: params.referenceName || 'Reference',
             shop_name: params.shopName || 'Unknown shop',
             consumer_name: params.consumerName || 'Unknown consumer',
+            geo_label: geoLabel,
             points_awarded: params.pointsAwarded ?? 0,
             balance_after: params.balanceAfter ?? 0,
             status: params.notificationType,
@@ -146,6 +150,7 @@ export async function sendRoadtourClaimNotifications(params: {
             metadata: {
                 shop_name: params.shopName || null,
                 consumer_name: params.consumerName || null,
+                geo_label: geoLabel,
             },
             sent_at: new Date().toISOString(),
         })

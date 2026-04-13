@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
             referenceName: profile.full_name || 'Reference',
             shopName: 'Demo Shop',
             consumerName: 'Demo Consumer',
+            geoLabel: 'Kuala Lumpur, Malaysia',
             pointsAwarded: requestedStatus === 'success' ? 20 : 0,
             balanceAfter: requestedStatus === 'success' ? 280 : 0,
             message: requestedStatus === 'success' ? 'Reward claimed successfully.' : 'Profile or reward validation failed.',

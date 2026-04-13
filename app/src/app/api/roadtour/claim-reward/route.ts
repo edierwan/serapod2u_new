@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { getRoadtourGeoLabel, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 
@@ -17,6 +18,21 @@ function isMissingConsumerPhoneColumnError(error: any) {
         error?.code === 'PGRST204' ||
         error?.code === '42703'
     )
+}
+
+function isMissingGeoLocColumnError(error: any) {
+    const combined = [error?.message, error?.details, error?.hint]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+    return ['geo_label', 'geo_city', 'geo_state', 'geo_country', 'geo_full_address']
+        .some((column) => combined.includes(column) && (
+            combined.includes('column') ||
+            combined.includes('schema cache') ||
+            error?.code === 'PGRST204' ||
+            error?.code === '42703'
+        ))
 }
 
 function buildScanInsertErrorPayload(error: any) {
@@ -128,6 +144,7 @@ export async function POST(request: NextRequest) {
             pointsAwarded?: number | null
             balanceAfter?: number | null
             canonicalPath?: string | null
+            geoLabel?: string | null
             message: string
         }) {
             try {
@@ -157,6 +174,8 @@ export async function POST(request: NextRequest) {
         const qrRecord = await resolveRoadtourByToken(token)
         const campaignName = (validation as any).campaign_name || qrRecord?.campaign_name || 'RoadTour'
         const referenceName = (validation as any).account_manager_name || qrRecord?.account_manager_name || 'Reference'
+        const resolvedGeoLocation = await reverseGeocodeRoadtourLocation(geolocation)
+        const resolvedGeoLabel = getRoadtourGeoLabel(resolvedGeoLocation, Boolean(geolocation))
 
         // 2. Resolve authenticated user
         let userId: string | null = null
@@ -288,6 +307,11 @@ export async function POST(request: NextRequest) {
             shop_id: resolvedScanShopId,
             scan_status: 'opened',
             geolocation: geolocation || null,
+            geo_label: resolvedGeoLabel,
+            geo_city: resolvedGeoLocation.geo_city,
+            geo_state: resolvedGeoLocation.geo_state,
+            geo_country: resolvedGeoLocation.geo_country,
+            geo_full_address: resolvedGeoLocation.geo_full_address,
         }
 
         let { data: scanEvent, error: scanError } = await (supabase as any)
@@ -296,10 +320,18 @@ export async function POST(request: NextRequest) {
             .select('id')
             .single()
 
-        if (scanError && isMissingConsumerPhoneColumnError(scanError)) {
-            console.warn('[RT] retrying scan event insert without consumer_phone due to schema drift')
+        if (scanError && (isMissingConsumerPhoneColumnError(scanError) || isMissingGeoLocColumnError(scanError))) {
+            console.warn('[RT] retrying scan event insert without optional schema-drift fields')
 
-            const { consumer_phone: _consumerPhone, ...fallbackScanInsertPayload } = scanInsertPayload
+            const {
+                consumer_phone: _consumerPhone,
+                geo_label: _geoLabel,
+                geo_city: _geoCity,
+                geo_state: _geoState,
+                geo_country: _geoCountry,
+                geo_full_address: _geoFullAddress,
+                ...fallbackScanInsertPayload
+            } = scanInsertPayload
 
             const fallbackResult = await (supabase as any)
                 .from('roadtour_scan_events')
@@ -390,6 +422,7 @@ export async function POST(request: NextRequest) {
                     shopName: duplicateShopName,
                     consumerName: consumerDisplayName,
                     canonicalPath: qrRecord?.canonical_path || null,
+                    geoLabel: resolvedGeoLabel,
                     message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
                 })
                 return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
@@ -405,6 +438,7 @@ export async function POST(request: NextRequest) {
                 shopName: duplicateShopName,
                 consumerName: consumerDisplayName,
                 canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel,
                 message: rewardError.message || 'Reward processing failed.',
             })
             return NextResponse.json(buildRewardErrorPayload(rewardError), { status: 500 })
@@ -424,6 +458,7 @@ export async function POST(request: NextRequest) {
                 shopName: duplicateShopName,
                 consumerName: consumerDisplayName,
                 canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel,
                 message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
             })
             return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
@@ -444,6 +479,7 @@ export async function POST(request: NextRequest) {
             pointsAwarded: default_points,
             balanceAfter: totalBalance,
             canonicalPath: qrRecord?.canonical_path || null,
+            geoLabel: resolvedGeoLabel,
             message: 'Reward claimed successfully.',
         })
 

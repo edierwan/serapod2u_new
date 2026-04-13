@@ -47,6 +47,11 @@ interface ScanEvent {
     points_awarded: number
     scan_time: string
     geolocation?: { lat?: number; lng?: number; accuracy?: number } | null
+    geo_label?: string | null
+    geo_city?: string | null
+    geo_state?: string | null
+    geo_country?: string | null
+    geo_full_address?: string | null
     whatsapp_status?: 'sent' | 'delivered' | 'failed' | 'pending' | null
     whatsapp_error?: string | null
 }
@@ -189,13 +194,10 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
     }
 
     const getGeoScanSummary = (scan: ScanEvent, visit: OfficialVisit | null) => {
-        if (!scan.geolocation) return 'GeoScan: not captured'
-
-        const lat = typeof scan.geolocation.lat === 'number' ? scan.geolocation.lat.toFixed(4) : null
-        const lng = typeof scan.geolocation.lng === 'number' ? scan.geolocation.lng.toFixed(4) : null
-        const accuracy = typeof scan.geolocation.accuracy === 'number' ? `${Math.round(scan.geolocation.accuracy)}m accuracy` : null
-        const place = visit?.shop_name ? `near ${visit.shop_name}` : 'near scan location'
-        return `GeoScan ${place}${lat && lng ? ` (${lat}, ${lng})` : ''}${accuracy ? ` • ${accuracy}` : ''}`
+        const label = scan.geo_label?.trim()
+        if (label) return `GeoLoc: ${label}`
+        if (scan.geolocation) return 'GeoLoc: Location detected'
+        return 'GeoLoc: Unknown location'
     }
 
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
