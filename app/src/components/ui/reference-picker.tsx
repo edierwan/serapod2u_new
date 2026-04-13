@@ -156,7 +156,6 @@ export function ReferencePicker({
                         </div>
                         <div className="text-xs text-green-600 truncate">
                             {selectedRef?.phone || value}
-                            {selectedRef?.email && ` · ${selectedRef.email}`}
                         </div>
                     </div>
                     {!disabled && (

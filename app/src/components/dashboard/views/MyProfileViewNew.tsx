@@ -119,6 +119,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
   const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
   const [referralName, setReferralName] = useState('')
+  const [referralDisplayName, setReferralDisplayName] = useState<string | null>(null)
   const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const referralCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [banks, setBanks] = useState<MsiaBank[]>([])
@@ -279,6 +280,22 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           bank_account_holder_name: transformedProfile.bank_account_holder_name || '',
           referral_phone: transformedProfile.referral_phone || ''
         })
+
+        // Resolve reference user name for read-only display
+        if (transformedProfile.referral_phone) {
+          try {
+            const res = await fetch(`/api/reference/search?q=${encodeURIComponent(transformedProfile.referral_phone)}&limit=5`)
+            const data = await res.json()
+            if (data.success && data.results?.length > 0) {
+              const match = data.results.find((r: any) =>
+                r.phone === transformedProfile.referral_phone || r.phone?.replace(/\D/g, '') === transformedProfile.referral_phone?.replace(/\D/g, '')
+              )
+              if (match) setReferralDisplayName(match.full_name)
+            }
+          } catch { /* silently fail */ }
+        } else {
+          setReferralDisplayName(null)
+        }
       }
     } catch (error: any) {
       console.error('Error loading profile:', error?.message || error?.code || JSON.stringify(error))
@@ -1206,11 +1223,20 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           [Edit]
                         </button>
                       </div>
-                      <p className="text-base font-medium text-gray-900 mt-1">
-                        {userProfile.referral_phone || (
+                      {userProfile.referral_phone ? (
+                        <div className="mt-1">
+                          {referralDisplayName && (
+                            <p className="text-base font-medium text-gray-900">{referralDisplayName}</p>
+                          )}
+                          <p className={`text-sm ${referralDisplayName ? 'text-gray-500' : 'text-base font-medium text-gray-900'}`}>
+                            {userProfile.referral_phone}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-base font-medium text-gray-900 mt-1">
                           <span className="text-gray-400 italic">Not set</span>
-                        )}
-                      </p>
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-start gap-3 text-gray-700">

@@ -250,13 +250,15 @@ export async function POST(request: NextRequest) {
         const qrShopId = (validation as any).shop_id || null
         const explicitShopId = shop_id || null
         const resolvedScanShopId = explicitShopId || qrShopId
-        // Use authenticated SHOP organization only for reward context and duplicate rules.
-        const resolvedRewardShopId = resolvedScanShopId || (isShopUser ? userProfile?.organization_id || null : null)
+        // Use authenticated SHOP organization for reward context and duplicate rules.
+        // Also accept org_id for legacy users with shop_name text who have an org linked.
+        const resolvedRewardShopId = resolvedScanShopId || ((isShopUser || hasShopProfile) ? userProfile?.organization_id || null : null)
 
         // 2b. Profile completion gate — same check as product collect-points flow
-        // Independent/no-org consumers must have shop_name + referral_phone filled
+        // Users must either be linked to a SHOP org OR have shop_name + referral_phone filled
+        // (legacy users may have shop_name set via text without org linkage)
         if (userId && userProfile) {
-            if (isConsumerLaneUser && !hasShopProfile) {
+            if (!isShopUser && !hasShopProfile) {
                 const missing: string[] = []
                 if (!userProfile.shop_name?.trim()) missing.push('Shop Name')
                 if (!userProfile.referral_phone?.trim()) missing.push('Reference')
@@ -266,17 +268,6 @@ export async function POST(request: NextRequest) {
                         message: roadtourShopOnlyMessage,
                         code: 'PROFILE_INCOMPLETE',
                         missing,
-                    },
-                    { status: 400 }
-                )
-            }
-
-            if (!isShopUser) {
-                return NextResponse.json(
-                    {
-                        requiresProfileUpdate: true,
-                        message: roadtourShopOnlyMessage,
-                        code: 'SHOP_REQUIRED',
                     },
                     { status: 400 }
                 )

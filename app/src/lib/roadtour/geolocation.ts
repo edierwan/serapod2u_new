@@ -1,6 +1,6 @@
 import { getRoadtourLocationStatusLabel, type RoadtourLocationPayload, type RoadtourLocationStatus } from './location-shared'
 
-export interface RoadtourGeolocationInput extends RoadtourLocationPayload {}
+export interface RoadtourGeolocationInput extends RoadtourLocationPayload { }
 
 export interface ReverseGeocodedRoadtourLocation {
     geo_label: string | null
@@ -172,7 +172,7 @@ export async function reverseGeocodeRoadtourLocation(geolocation?: RoadtourGeolo
         url.searchParams.set('format', 'jsonv2')
         url.searchParams.set('lat', String(lat))
         url.searchParams.set('lon', String(lng))
-        url.searchParams.set('zoom', '14')
+        url.searchParams.set('zoom', '18')
         url.searchParams.set('addressdetails', '1')
 
         try {
@@ -205,21 +205,22 @@ export async function reverseGeocodeRoadtourLocation(geolocation?: RoadtourGeolo
             const geoCountry = pickFirstText(address.country)
             const geoFullAddress = pickFirstText(payload?.display_name)
             const geoPrimaryArea = pickFirstText(
-                address.municipality,
-                address.city_district,
-                address.county,
-                address.state_district,
-                geoCity,
-                address.suburb,
-                address.neighbourhood,
-            )
-
-            const geoLabelParts = uniqueParts([geoPrimaryArea, geoState, geoCountry])
-            const geoLabel = geoLabelParts.join(', ') || pickFirstText(
-                payload?.name,
                 address.suburb,
                 address.neighbourhood,
                 address.road,
+                address.city_district,
+                address.municipality,
+                address.county,
+                address.state_district,
+                geoCity,
+            )
+
+            const geoLabelParts = uniqueParts([geoPrimaryArea, geoCity, geoState, geoCountry])
+            const geoLabel = geoLabelParts.join(', ') || pickFirstText(
+                payload?.name,
+                address.road,
+                address.suburb,
+                address.neighbourhood,
                 geoState,
                 geoCountry,
             ) || getRoadtourLocationStatusLabel('captured', true)

@@ -60,10 +60,10 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           .select('id, roadtour_campaigns!inner(org_id)', { count: 'exact' })
           .eq('roadtour_campaigns.org_id', companyId),
         (supabase as any).from('roadtour_official_visits')
-          .select('id, user_id, shop_id, total_points_awarded, verified_scans, surveys_completed, roadtour_campaigns!inner(org_id, name), users:user_id(full_name)')
+          .select('id, account_manager_user_id, shop_id, total_points_awarded, verified_scans, surveys_completed, roadtour_campaigns!inner(org_id, name), users:account_manager_user_id(full_name)')
           .eq('roadtour_campaigns.org_id', companyId),
         (supabase as any).from('roadtour_scan_events')
-          .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
+          .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
           .eq('roadtour_qr_codes.roadtour_campaigns.org_id', companyId)
           .order('scan_time', { ascending: false })
           .limit(20),
@@ -79,7 +79,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       // Compute top managers
       const managerMap: Record<string, { full_name: string; visits: number; points: number }> = {}
       for (const v of visitsList) {
-        const uid = v.user_id
+        const uid = v.account_manager_user_id
         if (!managerMap[uid]) managerMap[uid] = { full_name: v.users?.full_name || '—', visits: 0, points: 0 }
         managerMap[uid].visits++
         managerMap[uid].points += v.total_points_awarded || 0
@@ -118,7 +118,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           id: s.id,
           scanned_at: s.scan_time,
           consumer_phone: s.consumer_phone,
-          shop_name: s.organizations?.name || null,
+          shop_name: s.organizations?.org_name || null,
           points: s.points_awarded,
           status: s.scan_status,
         })),

@@ -147,10 +147,10 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
 
             if (error) throw error
             const mappedScans = (data || []).map((s: any) => ({
-                    ...s,
-                    consumer_name: s.users?.full_name || null,
-                    shop_name: s.organizations?.org_name || null,
-                }))
+                ...s,
+                consumer_name: s.users?.full_name || null,
+                shop_name: s.organizations?.org_name || null,
+            }))
 
             const scanIds = mappedScans.map((scan: any) => scan.id)
             let latestLogs = new Map<string, { send_status: 'sent' | 'delivered' | 'failed' | 'pending'; error_message: string | null }>()
@@ -277,7 +277,12 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                             )}
                             {filtered.map((v) => (
                                 <TableRow key={v.id}>
-                                    <TableCell className="text-sm">{v.visit_date}</TableCell>
+                                    <TableCell className="text-sm">
+                                        <div>{v.visit_date}</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {new Date(v.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>
                                         <div>
                                             <p className="font-medium">{v.user_name}</p>
