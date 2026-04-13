@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,13 @@ interface AccountManager {
     is_active: boolean
 }
 
+interface ReferenceOption {
+    id: string
+    full_name: string
+    email: string
+    phone: string
+}
+
 const MALAYSIAN_STATES = [
     'Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan', 'Pahang',
     'Penang', 'Perak', 'Perlis', 'Sabah', 'Sarawak', 'Selangor',
@@ -89,6 +96,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [formQrMode, setFormQrMode] = useState('persistent')
     const [formRegions, setFormRegions] = useState<string[]>([])
     const [formNotes, setFormNotes] = useState('')
+    const [formReferenceIds, setFormReferenceIds] = useState<string[]>([])
+    const [formReferenceSearch, setFormReferenceSearch] = useState('')
 
     // Point value from org settings
     const [pointValueRm, setPointValueRm] = useState(0.10)
@@ -115,6 +124,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [availableManagers, setAvailableManagers] = useState<{ id: string; full_name: string; email: string; phone: string }[]>([])
     const [managersLoading, setManagersLoading] = useState(false)
     const [managerSearch, setManagerSearch] = useState('')
+    const [eligibleReferencesLoading, setEligibleReferencesLoading] = useState(false)
 
     // Calculate working days (exclude weekends)
     const calcWorkingDays = (start: string, end: string): number => {
@@ -277,6 +287,98 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         }
     }, [companyId, supabase])
 
+    const loadEligibleReferences = useCallback(async () => {
+        try {
+            setEligibleReferencesLoading(true)
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, full_name, email, phone')
+                .eq('can_be_reference', true)
+                .eq('is_active', true)
+                .order('full_name')
+
+            if (error) throw error
+            setAvailableManagers((data || []).map((row: any) => ({
+                id: row.id,
+                full_name: row.full_name || '',
+                email: row.email || '',
+                phone: row.phone || '',
+            })))
+        } catch {
+            toast({ title: 'Error', description: 'Failed to load eligible references.', variant: 'destructive' })
+        } finally {
+            setEligibleReferencesLoading(false)
+        }
+    }, [supabase])
+
+    const loadCampaignReferenceIds = useCallback(async (campaignId: string) => {
+        const { data, error } = await (supabase as any)
+            .from('roadtour_campaign_managers')
+            .select('user_id')
+            .eq('campaign_id', campaignId)
+            .eq('is_active', true)
+
+        if (error) throw error
+        return (data || []).map((row: any) => row.user_id)
+    }, [supabase])
+
+    const ensureCampaignHasReferences = useCallback(async (campaignId: string) => {
+        const referenceIds = await loadCampaignReferenceIds(campaignId)
+        if (referenceIds.length > 0) return referenceIds
+
+        toast({
+            title: 'Reference required',
+            description: 'Please select at least one reference before activating this campaign.',
+            variant: 'destructive',
+        })
+        return null
+    }, [loadCampaignReferenceIds])
+
+    const syncCampaignManagers = useCallback(async (campaignId: string, managerIds: string[]) => {
+        const uniqueManagerIds = Array.from(new Set(managerIds))
+        const { data: existingRows, error: existingError } = await (supabase as any)
+            .from('roadtour_campaign_managers')
+            .select('id, user_id, is_active')
+            .eq('campaign_id', campaignId)
+
+        if (existingError) throw existingError
+
+        const existingByUserId = new Map((existingRows || []).map((row: any) => [row.user_id, row]))
+        const rowsToUpsert = uniqueManagerIds.map((userId) => ({
+            campaign_id: campaignId,
+            user_id: userId,
+            assigned_by: userProfile.id,
+            is_active: true,
+            assigned_at: new Date().toISOString(),
+        }))
+
+        if (rowsToUpsert.length > 0) {
+            const { error: upsertError } = await (supabase as any)
+                .from('roadtour_campaign_managers')
+                .upsert(rowsToUpsert, { onConflict: 'campaign_id,user_id' })
+            if (upsertError) throw upsertError
+        }
+
+        const removedUserIds = (existingRows || [])
+            .filter((row: any) => row.is_active && !uniqueManagerIds.includes(row.user_id))
+            .map((row: any) => row.user_id)
+
+        if (removedUserIds.length > 0) {
+            const { error: deactivateError } = await (supabase as any)
+                .from('roadtour_campaign_managers')
+                .update({ is_active: false })
+                .eq('campaign_id', campaignId)
+                .in('user_id', removedUserIds)
+
+            if (deactivateError) throw deactivateError
+        }
+
+        return {
+            addedCount: uniqueManagerIds.filter((userId) => !existingByUserId.get(userId)?.is_active).length,
+            removedUserIds,
+        }
+    }, [supabase, userProfile.id])
+
     useEffect(() => { loadCampaigns() }, [loadCampaigns])
 
     const resetForm = () => {
@@ -289,16 +391,19 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormQrMode('persistent')
         setFormRegions([])
         setFormNotes('')
+        setFormReferenceIds([])
+        setFormReferenceSearch('')
         setEditId(null)
     }
 
-    const openCreate = () => {
+    const openCreate = async () => {
         resetForm()
+        await loadEligibleReferences()
         setDialogMode('create')
         setDialogOpen(true)
     }
 
-    const openEdit = (c: Campaign) => {
+    const openEdit = async (c: Campaign) => {
         setFormName(c.name)
         setFormDesc(c.description || '')
         setFormStart(c.start_date)
@@ -308,7 +413,14 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormQrMode(c.qr_mode)
         setFormRegions(c.region_scope || [])
         setFormNotes(c.notes || '')
+        setFormReferenceSearch('')
         setEditId(c.id)
+        await loadEligibleReferences()
+        try {
+            setFormReferenceIds(await loadCampaignReferenceIds(c.id))
+        } catch {
+            setFormReferenceIds([])
+        }
         setDialogMode('edit')
         setDialogOpen(true)
     }
@@ -336,10 +448,27 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             if (editId) {
                 const { error } = await (supabase as any).from('roadtour_campaigns').update(payload).eq('id', editId)
                 if (error) throw error
+                const { removedUserIds } = await syncCampaignManagers(editId, formReferenceIds)
+                if (removedUserIds.length > 0) {
+                    await (supabase as any)
+                        .from('roadtour_qr_codes')
+                        .update({ status: 'revoked' })
+                        .eq('campaign_id', editId)
+                        .in('account_manager_user_id', removedUserIds)
+                        .eq('status', 'active')
+                        .is('shop_id', null)
+                }
                 toast({ title: 'Campaign Updated', description: `"${formName}" has been updated.` })
             } else {
-                const { error } = await (supabase as any).from('roadtour_campaigns').insert({ ...payload, created_by: userProfile.id })
+                const { data: createdCampaign, error } = await (supabase as any)
+                    .from('roadtour_campaigns')
+                    .insert({ ...payload, created_by: userProfile.id })
+                    .select('id')
+                    .single()
                 if (error) throw error
+                if (createdCampaign?.id && formReferenceIds.length > 0) {
+                    await syncCampaignManagers(createdCampaign.id, formReferenceIds)
+                }
                 toast({ title: 'Campaign Created', description: `"${formName}" has been created.` })
             }
 
@@ -354,6 +483,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
     const updateStatus = async (campaignId: string, newStatus: string) => {
         try {
+            if (newStatus === 'active') {
+                const referenceIds = await ensureCampaignHasReferences(campaignId)
+                if (!referenceIds) return
+            }
+
             const { error } = await (supabase as any).from('roadtour_campaigns').update({ status: newStatus, updated_by: userProfile.id }).eq('id', campaignId)
             if (error) throw error
             let createdQrCount = 0
@@ -399,20 +533,32 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             })))
 
             // Load eligible account managers (can_be_reference = true)
-            const { data: eligible, error: eErr } = await supabase
-                .from('users')
-                .select('id, full_name, email, phone')
-                .eq('can_be_reference', true)
-                .eq('is_active', true)
-                .order('full_name')
-
-            if (eErr) throw eErr
-            setAvailableManagers((eligible || []).map((e: any) => ({ id: e.id, full_name: e.full_name || '', email: e.email, phone: e.phone || '' })))
+            await loadEligibleReferences()
         } catch (err: any) {
             toast({ title: 'Error', description: 'Failed to load account managers.', variant: 'destructive' })
         } finally {
             setManagersLoading(false)
         }
+    }
+
+    const selectedFormReferences = useMemo(() => {
+        const selectedIds = new Set(formReferenceIds)
+        return availableManagers.filter((reference) => selectedIds.has(reference.id))
+    }, [availableManagers, formReferenceIds])
+
+    const filteredFormReferences = useMemo(() => {
+        const query = formReferenceSearch.trim().toLowerCase()
+        return availableManagers.filter((reference) => {
+            if (formReferenceIds.includes(reference.id)) return false
+            if (!query) return true
+            return [reference.full_name, reference.email, reference.phone].some((value) => value?.toLowerCase().includes(query))
+        })
+    }, [availableManagers, formReferenceIds, formReferenceSearch])
+
+    const toggleFormReference = (userId: string) => {
+        setFormReferenceIds((current) => current.includes(userId)
+            ? current.filter((id) => id !== userId)
+            : [...current, userId])
     }
 
     const assignManager = async (userId: string) => {
@@ -648,6 +794,58 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     }}>{formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops</button> in selected regions
                                 </p>
                             )}
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <Label>References</Label>
+                                    <p className="text-xs text-muted-foreground mt-1">Attach at least one reference here so the campaign can be activated immediately after save.</p>
+                                </div>
+                                <Badge variant="outline">{formReferenceIds.length} selected</Badge>
+                            </div>
+                            <Input
+                                placeholder="Search reference by name, email, or phone"
+                                value={formReferenceSearch}
+                                onChange={(e) => setFormReferenceSearch(e.target.value)}
+                            />
+                            <div className="rounded-lg border">
+                                {eligibleReferencesLoading ? (
+                                    <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
+                                ) : filteredFormReferences.length === 0 && selectedFormReferences.length === 0 ? (
+                                    <p className="px-3 py-6 text-sm text-center text-muted-foreground">No eligible references found.</p>
+                                ) : (
+                                    <div className="max-h-48 overflow-y-auto divide-y">
+                                        {selectedFormReferences.map((reference) => (
+                                            <button
+                                                key={reference.id}
+                                                type="button"
+                                                onClick={() => toggleFormReference(reference.id)}
+                                                className="flex w-full items-center justify-between px-3 py-3 text-left bg-emerald-50 hover:bg-emerald-100/70"
+                                            >
+                                                <div>
+                                                    <p className="text-sm font-medium">{reference.full_name}</p>
+                                                    <p className="text-xs text-muted-foreground">{reference.email} · {reference.phone}</p>
+                                                </div>
+                                                <Badge className="bg-emerald-100 text-emerald-700">Selected</Badge>
+                                            </button>
+                                        ))}
+                                        {filteredFormReferences.slice(0, 25).map((reference) => (
+                                            <button
+                                                key={reference.id}
+                                                type="button"
+                                                onClick={() => toggleFormReference(reference.id)}
+                                                className="flex w-full items-center justify-between px-3 py-3 text-left hover:bg-muted/50"
+                                            >
+                                                <div>
+                                                    <p className="text-sm font-medium">{reference.full_name}</p>
+                                                    <p className="text-xs text-muted-foreground">{reference.email} · {reference.phone}</p>
+                                                </div>
+                                                <Plus className="h-4 w-4 text-primary" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div className="space-y-2"><Label>Notes</Label><Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={2} /></div>
                     </div>
