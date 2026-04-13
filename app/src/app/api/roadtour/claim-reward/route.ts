@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
+import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 
 function isMissingConsumerPhoneColumnError(error: any) {
     const combined = [error?.message, error?.details, error?.hint]
@@ -113,6 +115,32 @@ export async function POST(request: NextRequest) {
 
         const supabase = createAdminClient()
 
+        async function notifyClaim(params: {
+            scanEventId?: string | null
+            campaignId: string
+            qrCodeId?: string | null
+            accountManagerUserId?: string | null
+            notificationType: 'success' | 'failed' | 'duplicate'
+            campaignName: string
+            referenceName?: string | null
+            shopName?: string | null
+            consumerName?: string | null
+            pointsAwarded?: number | null
+            balanceAfter?: number | null
+            canonicalPath?: string | null
+            message: string
+        }) {
+            try {
+                await sendRoadtourClaimNotifications({
+                    supabase,
+                    orgId: org_id,
+                    ...params,
+                })
+            } catch (notificationError) {
+                console.error('[RT] claim notification failed:', notificationError)
+            }
+        }
+
         // 1. Validate QR token (function created by migration, cast to bypass type generation lag)
         const { data: validation, error: valError } = await (supabase as any).rpc('validate_roadtour_qr_token', { p_token: token })
         if (valError || !validation || validation.valid === false) {
@@ -126,6 +154,9 @@ export async function POST(request: NextRequest) {
             default_points, reward_mode, survey_template_id, org_id,
             duplicate_rule_reward
         } = validation as any
+        const qrRecord = await resolveRoadtourByToken(token)
+        const campaignName = (validation as any).campaign_name || qrRecord?.campaign_name || 'RoadTour'
+        const referenceName = (validation as any).account_manager_name || qrRecord?.account_manager_name || 'Reference'
 
         // 2. Resolve authenticated user
         let userId: string | null = null
@@ -183,6 +214,7 @@ export async function POST(request: NextRequest) {
 
         const orgType = userProfile?.organizations?.org_type_code || null
         const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
+        const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
         const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
         const isShopUser = orgType === 'SHOP'
         const isConsumerLaneUser = !orgType || orgType === 'INDEP'
@@ -347,18 +379,73 @@ export async function POST(request: NextRequest) {
             // Check for duplicate
             if (rewardError.message?.includes('duplicate') || rewardError.code === '23505') {
                 await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
+                await notifyClaim({
+                    scanEventId: scanEvent.id,
+                    campaignId: campaign_id,
+                    qrCodeId: qr_code_id,
+                    accountManagerUserId: account_manager_user_id,
+                    notificationType: 'duplicate',
+                    campaignName,
+                    referenceName,
+                    shopName: duplicateShopName,
+                    consumerName: consumerDisplayName,
+                    canonicalPath: qrRecord?.canonical_path || null,
+                    message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+                })
                 return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
             }
+            await notifyClaim({
+                scanEventId: scanEvent.id,
+                campaignId: campaign_id,
+                qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id,
+                notificationType: 'failed',
+                campaignName,
+                referenceName,
+                shopName: duplicateShopName,
+                consumerName: consumerDisplayName,
+                canonicalPath: qrRecord?.canonical_path || null,
+                message: rewardError.message || 'Reward processing failed.',
+            })
             return NextResponse.json(buildRewardErrorPayload(rewardError), { status: 500 })
         }
 
         // Check if rewardResult indicates duplicate
         if (rewardResult && rewardResult.success === false && rewardResult.error === 'duplicate') {
             await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
+            await notifyClaim({
+                scanEventId: scanEvent.id,
+                campaignId: campaign_id,
+                qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id,
+                notificationType: 'duplicate',
+                campaignName,
+                referenceName,
+                shopName: duplicateShopName,
+                consumerName: consumerDisplayName,
+                canonicalPath: qrRecord?.canonical_path || null,
+                message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+            })
             return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
         }
 
         const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
+
+        await notifyClaim({
+            scanEventId: scanEvent.id,
+            campaignId: campaign_id,
+            qrCodeId: qr_code_id,
+            accountManagerUserId: account_manager_user_id,
+            notificationType: 'success',
+            campaignName,
+            referenceName,
+            shopName: duplicateShopName,
+            consumerName: consumerDisplayName,
+            pointsAwarded: default_points,
+            balanceAfter: totalBalance,
+            canonicalPath: qrRecord?.canonical_path || null,
+            message: 'Reward claimed successfully.',
+        })
 
         return NextResponse.json({
             message: 'Reward claimed successfully.',

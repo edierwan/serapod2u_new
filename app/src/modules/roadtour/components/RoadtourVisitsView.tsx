@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
-    Calendar, CheckCircle2, Eye, Loader2, MapPin, Search, Users
+    Calendar, CheckCircle2, Clock, Eye, Loader2, MapPin, Search, Users, XCircle
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 
@@ -29,6 +29,7 @@ interface OfficialVisit {
     user_phone?: string
     shop_id: string
     shop_name?: string
+    shop_contact_phone?: string
     visit_date: string
     visit_status: string
     notes: string | null
@@ -45,6 +46,9 @@ interface ScanEvent {
     scan_status: string
     points_awarded: number
     scan_time: string
+    geolocation?: { lat?: number; lng?: number; accuracy?: number } | null
+    whatsapp_status?: 'sent' | 'delivered' | 'failed' | 'pending' | null
+    whatsapp_error?: string | null
 }
 
 export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisitsViewProps) {
@@ -70,7 +74,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
             setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, contact_phone)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .limit(200)
@@ -89,6 +93,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                     user_name: v.users?.full_name || '—',
                     user_phone: v.users?.phone || '',
                     shop_name: v.organizations?.org_name || '—',
+                    shop_contact_phone: v.organizations?.contact_phone || '',
                 }))
             )
 
@@ -121,13 +126,37 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                 .order('scan_time', { ascending: false })
 
             if (error) throw error
-            setScans(
-                (data || []).map((s: any) => ({
+            const mappedScans = (data || []).map((s: any) => ({
                     ...s,
                     consumer_name: s.users?.full_name || null,
                     shop_name: s.organizations?.org_name || null,
                 }))
-            )
+
+            const scanIds = mappedScans.map((scan: any) => scan.id)
+            let latestLogs = new Map<string, { send_status: 'sent' | 'delivered' | 'failed' | 'pending'; error_message: string | null }>()
+
+            if (scanIds.length > 0) {
+                const { data: logRows } = await (supabase as any)
+                    .from('roadtour_claim_notification_logs')
+                    .select('scan_event_id, send_status, error_message, created_at')
+                    .in('scan_event_id', scanIds)
+                    .order('created_at', { ascending: false })
+
+                for (const row of logRows || []) {
+                    if (!latestLogs.has(row.scan_event_id)) {
+                        latestLogs.set(row.scan_event_id, {
+                            send_status: row.send_status,
+                            error_message: row.error_message || null,
+                        })
+                    }
+                }
+            }
+
+            setScans(mappedScans.map((scan: any) => ({
+                ...scan,
+                whatsapp_status: latestLogs.get(scan.id)?.send_status || null,
+                whatsapp_error: latestLogs.get(scan.id)?.error_message || null,
+            })))
         } catch {
             toast({ title: 'Error', description: 'Failed to load scan details.', variant: 'destructive' })
         } finally {
@@ -150,6 +179,23 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
         rejected: 'bg-red-100 text-red-700',
         invalid: 'bg-red-100 text-red-700',
         expired: 'bg-gray-100 text-gray-700',
+    }
+
+    const whatsappStatusConfig: Record<string, { icon: any; className: string; label: string }> = {
+        sent: { icon: CheckCircle2, className: 'text-blue-600', label: 'WhatsApp sent' },
+        delivered: { icon: CheckCircle2, className: 'text-emerald-600', label: 'WhatsApp delivered' },
+        failed: { icon: XCircle, className: 'text-red-600', label: 'WhatsApp failed' },
+        pending: { icon: Clock, className: 'text-amber-600', label: 'WhatsApp pending' },
+    }
+
+    const getGeoScanSummary = (scan: ScanEvent, visit: OfficialVisit | null) => {
+        if (!scan.geolocation) return 'GeoScan: not captured'
+
+        const lat = typeof scan.geolocation.lat === 'number' ? scan.geolocation.lat.toFixed(4) : null
+        const lng = typeof scan.geolocation.lng === 'number' ? scan.geolocation.lng.toFixed(4) : null
+        const accuracy = typeof scan.geolocation.accuracy === 'number' ? `${Math.round(scan.geolocation.accuracy)}m accuracy` : null
+        const place = visit?.shop_name ? `near ${visit.shop_name}` : 'near scan location'
+        return `GeoScan ${place}${lat && lng ? ` (${lat}, ${lng})` : ''}${accuracy ? ` • ${accuracy}` : ''}`
     }
 
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
@@ -213,7 +259,12 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                             {v.user_phone && <p className="text-xs text-muted-foreground">{v.user_phone}</p>}
                                         </div>
                                     </TableCell>
-                                    <TableCell>{v.shop_name}</TableCell>
+                                    <TableCell>
+                                        <div>
+                                            <p className="font-medium">{v.shop_name}</p>
+                                            {v.shop_contact_phone && <p className="text-xs text-muted-foreground">{v.shop_contact_phone}</p>}
+                                        </div>
+                                    </TableCell>
                                     <TableCell>{v.campaign_name}</TableCell>
                                     <TableCell><Badge className={v.visit_status === 'official' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>{v.visit_status}</Badge></TableCell>
                                     <TableCell className="text-right">
@@ -238,7 +289,7 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                 <div><Label className="text-muted-foreground">Date</Label><p className="font-medium">{detailVisit.visit_date}</p></div>
                                 <div><Label className="text-muted-foreground">Campaign</Label><p className="font-medium">{detailVisit.campaign_name}</p></div>
                                 <div><Label className="text-muted-foreground">Reference</Label><p className="font-medium">{detailVisit.user_name}</p>{detailVisit.user_phone && <p className="text-xs text-muted-foreground">{detailVisit.user_phone}</p>}</div>
-                                <div><Label className="text-muted-foreground">Shop</Label><p className="font-medium">{detailVisit.shop_name}</p></div>
+                                <div><Label className="text-muted-foreground">Shop</Label><p className="font-medium">{detailVisit.shop_name}</p>{detailVisit.shop_contact_phone && <p className="text-xs text-muted-foreground">{detailVisit.shop_contact_phone}</p>}</div>
                                 <div><Label className="text-muted-foreground">Status</Label><p className="font-medium">{detailVisit.visit_status}</p></div>
                                 <div><Label className="text-muted-foreground">Date Created</Label><p className="font-medium">{new Date(detailVisit.created_at).toLocaleString()}</p></div>
                             </div>
@@ -256,9 +307,17 @@ export function RoadtourVisitsView({ userProfile, onViewChange }: RoadtourVisits
                                                 <div>
                                                     <p className="text-sm font-medium">{s.consumer_name || 'Unknown'}</p>
                                                     <p className="text-xs text-muted-foreground">{new Date(s.scan_time).toLocaleString()}</p>
+                                                    <p className="text-xs text-muted-foreground mt-1">{getGeoScanSummary(s, detailVisit)}</p>
+                                                    {s.whatsapp_error && <p className="text-xs text-red-600 mt-1">{s.whatsapp_error}</p>}
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {s.points_awarded > 0 && <span className="text-sm font-medium text-emerald-600">+{s.points_awarded} pts</span>}
+                                                    {s.whatsapp_status && (() => {
+                                                        const statusConfig = whatsappStatusConfig[s.whatsapp_status]
+                                                        if (!statusConfig) return null
+                                                        const StatusIcon = statusConfig.icon
+                                                        return <StatusIcon className={`h-4 w-4 ${statusConfig.className}`} title={statusConfig.label} />
+                                                    })()}
                                                     <Badge className={rewardStatusColor[s.scan_status] || ''}>{s.scan_status}</Badge>
                                                 </div>
                                             </div>

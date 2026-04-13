@@ -7,6 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import QRCode from 'qrcode'
+import { buildRoadTourUrl } from '@/lib/roadtour/url'
+import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +25,8 @@ export async function GET(
     }
 
     const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://stg.serapod2u.com'
-    const scanUrl = `${appBaseUrl}/scan?rt=${token}`
+    const qrRecord = await resolveRoadtourByToken(token)
+    const scanUrl = buildRoadTourUrl(appBaseUrl, qrRecord?.canonical_path || null) || `${appBaseUrl}/scan?rt=${token}`
 
     const qrBuffer = await QRCode.toBuffer(scanUrl, {
         type: 'png',

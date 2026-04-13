@@ -15,6 +15,7 @@ import {
     Search, Send, ShieldOff, XCircle
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
+import { buildRoadTourUrl } from '@/lib/roadtour/url'
 
 interface RoadtourQrManagementViewProps {
     userProfile: any
@@ -39,6 +40,11 @@ interface QrCode {
     expires_at: string | null
     usage_count: number
     created_at: string
+    route_year?: number | null
+    campaign_slug?: string | null
+    reference_slug?: string | null
+    short_code?: string | null
+    canonical_path?: string | null
     campaign_reference_count?: number
     campaign_references?: { full_name: string; phone: string }[]
 }
@@ -70,9 +76,11 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const [refsDialogCampaignName, setRefsDialogCampaignName] = useState('')
     const [refsDialogManagers, setRefsDialogManagers] = useState<{ full_name: string; phone: string }[]>([])
 
-    const qrBaseUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/scan`
-        : ''
+    const qrOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+
+    const getQrUrl = useCallback((qr: QrCode) => {
+        return buildRoadTourUrl(qrOrigin, qr.canonical_path || null) || `${qrOrigin}/scan?rt=${qr.token}`
+    }, [qrOrigin])
 
     const loadData = useCallback(async () => {
         try {
@@ -196,7 +204,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         setPreviewLoading(true)
         try {
             const QRCode = (await import('qrcode')).default
-            const url = `${qrBaseUrl}?rt=${qr.token}`
+            const url = getQrUrl(qr)
             const dataUrl = await QRCode.toDataURL(url, { width: 360, margin: 2, color: { dark: '#000000', light: '#FFFFFF' } })
             setPreviewDataUrl(dataUrl)
         } catch {
@@ -209,7 +217,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const downloadQr = async (qr: QrCode) => {
         try {
             const QRCode = (await import('qrcode')).default
-            const url = `${qrBaseUrl}?rt=${qr.token}`
+            const url = getQrUrl(qr)
             const dataUrl = await QRCode.toDataURL(url, { width: 600, margin: 2 })
             const link = document.createElement('a')
             link.download = `roadtour-qr-${qr.token.substring(0, 8)}.png`
@@ -221,7 +229,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     }
 
     const copyLink = (qr: QrCode) => {
-        const url = `${qrBaseUrl}?rt=${qr.token}`
+        const url = getQrUrl(qr)
         navigator.clipboard.writeText(url)
         toast({ title: 'Copied', description: 'QR link copied to clipboard.' })
     }
@@ -367,6 +375,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                                     {(q.campaign_references?.[0]?.phone || q.user_phone) && (
                                                         <p className="text-xs text-muted-foreground">{q.campaign_references?.[0]?.phone || q.user_phone}</p>
                                                     )}
+                                                    {q.canonical_path && <p className="text-xs text-emerald-700">Friendly URL active</p>}
                                                 </>
                                             )}
                                         </div>
@@ -462,10 +471,13 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                         )}
                     </div>
                     {previewQr && (
-                        <div className="flex gap-2 justify-center">
+                        <div className="space-y-3">
+                            <p className="text-xs text-muted-foreground break-all">{getQrUrl(previewQr)}</p>
+                            <div className="flex gap-2 justify-center">
                             <Button size="sm" variant="outline" onClick={() => downloadQr(previewQr)} className="gap-1"><Download className="h-4 w-4" />Download</Button>
                             <Button size="sm" variant="outline" onClick={() => copyLink(previewQr)} className="gap-1"><Copy className="h-4 w-4" />Copy Link</Button>
                             <Button size="sm" variant="outline" onClick={() => sendWhatsApp(previewQr)} className="gap-1"><Send className="h-4 w-4" />WhatsApp</Button>
+                            </div>
                         </div>
                     )}
                 </DialogContent>
