@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, ComposedChart, Line, Cell, PieChart, Pie,
@@ -13,7 +14,7 @@ import {
 import {
   RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight,
   Users, Scan, Target, BarChart3, Activity, Zap, Crown, Eye,
-  UserPlus, UserCheck, Clock, Calendar, Flame, Star, Package,
+  UserPlus, UserCheck, Clock, Calendar, Flame, Star, Package, Info,
 } from 'lucide-react'
 import {
   format, subDays, subMonths, startOfMonth, endOfMonth,
@@ -39,6 +40,22 @@ interface ScanRow {
   points_amount: number | null
   consumer_name: string | null
   consumer_phone: string | null
+  consumer_user?: {
+    id: string
+    full_name: string | null
+    phone: string | null
+    email: string | null
+  } | null
+}
+
+interface ResolvedConsumer {
+  key: string
+  consumerId: string | null
+  name: string
+  phone: string
+  email: string | null
+  scans: number
+  lastScan: string
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -107,6 +124,26 @@ function formatNum(val: number): string {
   return val.toLocaleString()
 }
 
+function normalizeText(value: string | null | undefined) {
+  const text = value?.trim()
+  return text ? text : null
+}
+
+function getConsumerIdentity(scan: ScanRow) {
+  const name = normalizeText(scan.consumer_user?.full_name) || normalizeText(scan.consumer_name)
+  const phone = normalizeText(scan.consumer_user?.phone) || normalizeText(scan.consumer_phone)
+  const email = normalizeText(scan.consumer_user?.email)
+  const key = scan.consumer_id || phone || email
+
+  return {
+    key,
+    consumerId: scan.consumer_id,
+    name: name || (phone ? `User: ${phone}` : email ? `User: ${email}` : 'Anonymous'),
+    phone: phone || '-',
+    email,
+  }
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, chartTickColor, isDark }: ConsumerAnalyticsTabProps) {
   const supabase = useMemo(() => createClient(), [])
@@ -117,6 +154,8 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
   const [scans, setScans] = useState<ScanRow[]>([])
   const [allScans, setAllScans] = useState<ScanRow[]>([]) // 12mo for monthly trends
   const [qrProductMap, setQrProductMap] = useState<Map<string, string>>(new Map()) // qr_code_id -> product name
+  const [showUniqueConsumersDialog, setShowUniqueConsumersDialog] = useState(false)
+  const [showRetentionDialog, setShowRetentionDialog] = useState(false)
 
   // ── Data Fetching ────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -125,16 +164,38 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
       const { data, error } = await supabase
         .from('consumer_qr_scans')
-        .select('id, consumer_id, scanned_at, qr_code_id, collected_points, entered_lucky_draw, redeemed_gift, points_amount, consumer_name, consumer_phone')
+        .select(`
+          id,
+          consumer_id,
+          scanned_at,
+          qr_code_id,
+          collected_points,
+          entered_lucky_draw,
+          redeemed_gift,
+          points_amount,
+          consumer_user:users!consumer_qr_scans_consumer_id_fkey (
+            id,
+            full_name,
+            phone,
+            email
+          )
+        `)
         .eq('is_manual_adjustment', false)
         .gte('scanned_at', last12Start)
         .order('scanned_at', { ascending: false })
 
       if (!error && data) {
-        setAllScans(data as unknown as ScanRow[])
+        const normalizedScans = (data as any[]).map((row) => ({
+          ...row,
+          consumer_name: row.consumer_user?.full_name || null,
+          consumer_phone: row.consumer_user?.phone || null,
+        })) as ScanRow[]
+
+        setAllScans(normalizedScans)
+        setScans(normalizedScans)
 
         // Build QR code → product name lookup
-        const qrIds = [...new Set((data as any[]).map(s => s.qr_code_id).filter(Boolean))]
+        const qrIds = [...new Set(normalizedScans.map(s => s.qr_code_id).filter(Boolean))]
         if (qrIds.length > 0) {
           const nameMap = new Map<string, string>()
           const batchSize = 200
@@ -189,21 +250,23 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
     const prevStart = subDays(now, days * 2).toISOString()
     const prevEnd = subDays(now, days).toISOString()
     const prevScans = allScans.filter(s => s.scanned_at && s.scanned_at >= prevStart && s.scanned_at < prevEnd)
+    const todayKey = format(now, 'yyyy-MM-dd')
+    const yesterdayKey = format(subDays(now, 1), 'yyyy-MM-dd')
 
     const totalScans = periodScans.length
     const prevTotal = prevScans.length
     const scanGrowth = prevTotal > 0 ? ((totalScans - prevTotal) / prevTotal) * 100 : 0
 
-    const uniqueConsumers = new Set(periodScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size
-    const prevUnique = new Set(prevScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size
+    const uniqueConsumers = new Set(periodScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
+    const prevUnique = new Set(prevScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
     const uniqueGrowth = prevUnique > 0 ? ((uniqueConsumers - prevUnique) / prevUnique) * 100 : 0
 
     const avgPerConsumer = uniqueConsumers > 0 ? totalScans / uniqueConsumers : 0
     const avgPerDay = totalScans / Math.max(days, 1)
 
     // Retention: consumers who scanned in both periods
-    const currIds = new Set(periodScans.filter(s => s.consumer_id).map(s => s.consumer_id))
-    const prevIds = new Set(prevScans.filter(s => s.consumer_id).map(s => s.consumer_id))
+    const currIds = new Set(periodScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean))
+    const prevIds = new Set(prevScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean))
     const returnees = [...currIds].filter(id => prevIds.has(id)).length
     const retentionRate = prevIds.size > 0 ? (returnees / prevIds.size) * 100 : 0
 
@@ -220,13 +283,51 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
     const pointsCollected = periodScans.filter(s => s.collected_points).length
     const redemptions = periodScans.filter(s => s.redeemed_gift).length
+    const todayScans = allScans.filter(s => s.scanned_at?.startsWith(todayKey)).length
+    const yesterdayScans = allScans.filter(s => s.scanned_at?.startsWith(yesterdayKey)).length
 
     return {
       totalScans, scanGrowth, uniqueConsumers, uniqueGrowth,
       avgPerConsumer, avgPerDay, retentionRate, peakDay, peakCount,
-      pointsCollected, redemptions, days,
+      pointsCollected, redemptions, days, todayScans, yesterdayScans,
+      returnees, retainedBase: prevIds.size,
     }
   }, [periodScans, allScans, period])
+
+  const uniqueConsumersList = useMemo<ResolvedConsumer[]>(() => {
+    const map = new Map<string, ResolvedConsumer>()
+
+    periodScans.forEach((scan) => {
+      const identity = getConsumerIdentity(scan)
+      if (!identity.key) return
+
+      const existing = map.get(identity.key) || {
+        key: identity.key,
+        consumerId: identity.consumerId,
+        name: identity.name,
+        phone: identity.phone,
+        email: identity.email,
+        scans: 0,
+        lastScan: '',
+      }
+
+      existing.scans += 1
+      if (scan.scanned_at && scan.scanned_at > existing.lastScan) {
+        existing.lastScan = scan.scanned_at
+        existing.consumerId = identity.consumerId || existing.consumerId
+        existing.name = identity.name
+        existing.phone = identity.phone
+        existing.email = identity.email || existing.email
+      }
+
+      map.set(identity.key, existing)
+    })
+
+    return [...map.values()].sort((a, b) => {
+      if (b.scans !== a.scans) return b.scans - a.scans
+      return (b.lastScan || '').localeCompare(a.lastScan || '')
+    })
+  }, [periodScans])
 
   // ── Daily Scan Trend ─────────────────────────────────────────────────────
   const dailyTrend = useMemo(() => {
@@ -240,7 +341,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       data.push({
         date: format(d, days > 90 ? 'MMM' : 'dd MMM'),
         scans: dayScans.length,
-        consumers: new Set(dayScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size,
+        consumers: new Set(dayScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size,
       })
     }
     // Aggregate by month for 12months
@@ -252,7 +353,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
         return {
           date: format(m, 'MMM yyyy'),
           scans: mScans.length,
-          consumers: new Set(mScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size,
+          consumers: new Set(mScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size,
         }
       })
     }
@@ -279,7 +380,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
     return months.map(m => {
       const key = format(m, 'yyyy-MM')
       const mScans = allScans.filter(s => s.scanned_at?.startsWith(key))
-      const uniq = new Set(mScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size
+      const uniq = new Set(mScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
       return {
         month: format(m, 'MMM yyyy'),
         monthShort: format(m, 'MMM'),
@@ -297,8 +398,8 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
     const lastMonthKey = format(subMonths(now, 1), 'yyyy-MM')
     const thisScans = allScans.filter(s => s.scanned_at?.startsWith(thisMonthKey))
     const lastScans = allScans.filter(s => s.scanned_at?.startsWith(lastMonthKey))
-    const thisUniq = new Set(thisScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size
-    const lastUniq = new Set(lastScans.filter(s => s.consumer_id).map(s => s.consumer_id)).size
+    const thisUniq = new Set(thisScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
+    const lastUniq = new Set(lastScans.map((scan) => getConsumerIdentity(scan).key).filter(Boolean)).size
 
     const scanGrowth = lastScans.length > 0 ? ((thisScans.length - lastScans.length) / lastScans.length) * 100 : 0
     const consumerGrowth = lastUniq > 0 ? ((thisUniq - lastUniq) / lastUniq) * 100 : 0
@@ -319,7 +420,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
     return months.map(m => {
       const key = format(m, 'yyyy-MM')
       const mScans = allScans
-        .filter(s => s.scanned_at?.startsWith(key) && s.consumer_id)
+        .filter(s => s.scanned_at?.startsWith(key) && getConsumerIdentity(s).key)
         .sort((a, b) => (a.scanned_at || '') < (b.scanned_at || '') ? -1 : 1)
 
       const monthIds = new Set<string>()
@@ -327,7 +428,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       let returningCount = 0
 
       mScans.forEach(s => {
-        const cid = s.consumer_id!
+        const cid = getConsumerIdentity(s).key!
         if (!monthIds.has(cid)) {
           monthIds.add(cid)
           if (seenBefore.has(cid)) {
@@ -375,32 +476,18 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
   // ── Top Consumers ────────────────────────────────────────────────────────
   const topConsumers = useMemo(() => {
-    const map = new Map<string, { scans: number; lastScan: string; name: string; phone: string }>()
-    periodScans.forEach(s => {
-      const cid = s.consumer_id || 'anonymous'
-      const existing = map.get(cid) || { scans: 0, lastScan: '', name: s.consumer_name || 'Anonymous', phone: s.consumer_phone || '-' }
-      existing.scans++
-      if (s.scanned_at && s.scanned_at > existing.lastScan) {
-        existing.lastScan = s.scanned_at
-        if (s.consumer_name) existing.name = s.consumer_name
-        if (s.consumer_phone) existing.phone = s.consumer_phone
-      }
-      map.set(cid, existing)
-    })
-    return [...map.entries()]
-      .filter(([k]) => k !== 'anonymous')
-      .sort((a, b) => b[1].scans - a[1].scans)
+    return uniqueConsumersList
       .slice(0, 15)
-      .map(([id, data], i) => ({
+      .map((consumer, i) => ({
         rank: i + 1,
-        id,
-        name: data.name,
-        phone: data.phone,
-        scans: data.scans,
-        lastScan: data.lastScan,
-        frequency: data.scans > 10 ? 'High' : data.scans > 3 ? 'Medium' : 'Low',
+        id: consumer.key,
+        name: consumer.name,
+        phone: consumer.phone,
+        scans: consumer.scans,
+        lastScan: consumer.lastScan,
+        frequency: consumer.scans > 10 ? 'High' : consumer.scans > 3 ? 'Medium' : 'Low',
       }))
-  }, [periodScans])
+  }, [uniqueConsumersList])
 
   // ── Activity Heatmap ─────────────────────────────────────────────────────
   const heatmapData = useMemo(() => {
@@ -431,12 +518,14 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       const key = format(m, 'yyyy-MM')
       const nextKey = format(months[i + 1], 'yyyy-MM')
 
-      const thisIds = new Set(
-        allScans.filter(s => s.scanned_at?.startsWith(key) && s.consumer_id).map(s => s.consumer_id!)
-      )
-      const nextIds = new Set(
-        allScans.filter(s => s.scanned_at?.startsWith(nextKey) && s.consumer_id).map(s => s.consumer_id!)
-      )
+      const thisIds = new Set<string>()
+      const nextIds = new Set<string>()
+      allScans.forEach((scan) => {
+        const identityKey = getConsumerIdentity(scan).key
+        if (!identityKey || !scan.scanned_at) return
+        if (scan.scanned_at.startsWith(key)) thisIds.add(identityKey)
+        if (scan.scanned_at.startsWith(nextKey)) nextIds.add(identityKey)
+      })
       const retained = [...thisIds].filter(id => nextIds.has(id)).length
 
       return {
@@ -460,6 +549,39 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       </div>
     )
   }
+
+  const kpiCards = [
+    {
+      title: 'TOTAL SCANS', value: kpis.totalScans, icon: Scan, color: COLORS.primary,
+      sub: `avg ${Math.round(kpis.avgPerDay)}/day`, growth: kpis.scanGrowth,
+    },
+    {
+      title: 'UNIQUE CONSUMERS', value: kpis.uniqueConsumers, icon: Users, color: COLORS.success,
+      sub: `${kpis.avgPerConsumer.toFixed(0)} scans/user`, growth: kpis.uniqueGrowth, clickable: true,
+      onClick: () => setShowUniqueConsumersDialog(true),
+      titleHint: 'Click the number to view the unique consumer list.',
+    },
+    ...(period === '7' ? [
+      {
+        title: 'TODAY SCANS', value: kpis.todayScans, icon: Calendar, color: COLORS.cyan,
+        sub: format(new Date(), 'dd MMM yyyy'), growth: null,
+      },
+      {
+        title: 'YESTERDAY SCANS', value: kpis.yesterdayScans, icon: Clock, color: COLORS.indigo,
+        sub: format(subDays(new Date(), 1), 'dd MMM yyyy'), growth: null,
+      },
+    ] : []),
+    {
+      title: 'PEAK DAY', value: kpis.peakCount, icon: Flame, color: COLORS.warning,
+      sub: kpis.peakDay !== '-' ? format(new Date(kpis.peakDay), 'dd MMM (EEEE)') : '-', growth: null,
+    },
+    {
+      title: 'RETENTION RATE', value: kpis.retentionRate, icon: Target, color: COLORS.purple,
+      sub: 'returning consumers', growth: null, suffix: '%', decimals: 1, clickable: true,
+      onClick: () => setShowRetentionDialog(true),
+      titleHint: 'Click the percentage to see the retention formula.',
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -493,36 +615,37 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {([
-          {
-            title: 'TOTAL SCANS', value: kpis.totalScans, icon: Scan, color: COLORS.primary,
-            sub: `avg ${Math.round(kpis.avgPerDay)}/day`, growth: kpis.scanGrowth,
-          },
-          {
-            title: 'UNIQUE CONSUMERS', value: kpis.uniqueConsumers, icon: Users, color: COLORS.success,
-            sub: `${kpis.avgPerConsumer.toFixed(0)} scans/user`, growth: kpis.uniqueGrowth,
-          },
-          {
-            title: 'PEAK DAY', value: kpis.peakCount, icon: Flame, color: COLORS.warning,
-            sub: kpis.peakDay !== '-' ? format(new Date(kpis.peakDay), 'dd MMM') : '-', growth: null,
-          },
-          {
-            title: 'RETENTION RATE', value: kpis.retentionRate, icon: Target, color: COLORS.purple,
-            sub: 'returning consumers', growth: null, suffix: '%', decimals: 1,
-          },
-        ]).map((card, i) => (
+      <div className={`grid grid-cols-2 gap-4 ${period === '7' ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-4'}`}>
+        {kpiCards.map((card, i) => (
           <Card key={i} className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden group hover:shadow-xl transition-all">
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between mb-2">
-                <span className="text-xs font-semibold text-muted-foreground tracking-wider">{card.title}</span>
+                <div>
+                  <span className="text-xs font-semibold text-muted-foreground tracking-wider">{card.title}</span>
+                  {card.titleHint && (
+                    <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <Info className="h-3 w-3" />
+                      <span>{card.titleHint}</span>
+                    </div>
+                  )}
+                </div>
                 <div className="p-2 rounded-xl shadow-sm" style={{ backgroundColor: `${card.color}15` }}>
                   <card.icon className="h-4 w-4" style={{ color: card.color }} />
                 </div>
               </div>
-              <div className="text-2xl font-bold text-foreground">
-                <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
-              </div>
+              {card.clickable ? (
+                <button
+                  type="button"
+                  onClick={card.onClick}
+                  className="text-2xl font-bold text-foreground underline decoration-dotted underline-offset-4 hover:text-blue-600 transition-colors"
+                >
+                  <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
+                </button>
+              ) : (
+                <div className="text-2xl font-bold text-foreground">
+                  <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
+                </div>
+              )}
               <div className="flex items-center gap-2 mt-1">
                 {card.growth !== null && (
                   <Badge variant="secondary" className={`text-xs ${card.growth >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
@@ -758,7 +881,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
             <Crown className="h-5 w-5 text-yellow-600" />
             Top Consumers
           </CardTitle>
-          <CardDescription>Monthly ranking by engagement</CardDescription>
+          <CardDescription>Ranking by engagement for the selected period</CardDescription>
         </CardHeader>
         <CardContent>
           {topConsumers.length === 0 ? (
@@ -840,6 +963,89 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showUniqueConsumersDialog} onOpenChange={setShowUniqueConsumersDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Unique Consumers ({uniqueConsumersList.length})</DialogTitle>
+            <DialogDescription>
+              Consumers identified in the selected reporting window. The list is grouped by registered user, then phone, then email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 -mx-6 px-6">
+            {uniqueConsumersList.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">No identified consumers found for this period.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 border-b bg-background">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Consumer</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Phone</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">Scans</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Last Scan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-muted/50">
+                  {uniqueConsumersList.map((consumer, index) => (
+                    <tr key={consumer.key} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{index + 1}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-foreground">{consumer.name}</div>
+                        {consumer.email && <div className="text-xs text-muted-foreground">{consumer.email}</div>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{consumer.phone}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{consumer.scans.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {consumer.lastScan ? format(new Date(consumer.lastScan), 'dd MMM yyyy, hh:mm a') : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showRetentionDialog} onOpenChange={setShowRetentionDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Retention Rate Formula</DialogTitle>
+            <DialogDescription>
+              This shows how many consumers from the previous matching period came back and scanned again in the current period.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 text-sm text-muted-foreground">
+            <div className="rounded-xl bg-muted/50 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Formula</div>
+              <div className="mt-2 text-lg font-semibold text-foreground">
+                Retention Rate = Returning Consumers / Previous Period Consumers × 100
+              </div>
+            </div>
+            <div className="rounded-xl border p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Returning consumers</span>
+                <span className="font-semibold text-foreground">{kpis.returnees.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Consumers in previous period</span>
+                <span className="font-semibold text-foreground">{kpis.retainedBase.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between border-t pt-2">
+                <span>Computed rate</span>
+                <span className="font-semibold text-foreground">{kpis.retentionRate.toFixed(1)}%</span>
+              </div>
+            </div>
+            <p>
+              For the selected {period === '12months' ? '12-month' : `${period}-day`} window, the system first builds the consumer list for the current period and for the immediately preceding period of the same length. It then counts the overlap between those two lists.
+            </p>
+            <p>
+              In this case: {kpis.returnees.toLocaleString()} returning consumers divided by {kpis.retainedBase.toLocaleString()} consumers in the previous period gives {kpis.retentionRate.toFixed(1)}%.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
