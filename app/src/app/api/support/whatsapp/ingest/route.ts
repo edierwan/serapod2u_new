@@ -12,6 +12,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhoneE164, jidToPhone } from '@/utils/phone'
+import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import {
+  buildDailyReportingDetailMessage,
+  getRequestedDetailPage,
+  type DailyReportingData,
+  type DailyReportingCustomerDetail,
+} from '@/lib/reporting/dailyReporting'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,6 +47,113 @@ interface IngestPayload {
   text: string           // Message content
   timestamp?: number     // Unix timestamp
   metadata?: Record<string, any>
+}
+
+async function handleDailyReportingReply(
+  supabase: ReturnType<typeof getServiceClient>,
+  senderPhoneE164: string,
+  text: string,
+) {
+  const requestedPage = getRequestedDetailPage(text, 0)
+  if (!requestedPage) {
+    return { handled: false }
+  }
+
+  const { data: session } = await (supabase as any)
+    .from('marketing_report_sessions')
+    .select('*')
+    .eq('recipient_phone', senderPhoneE164)
+    .eq('reply_enabled', true)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (!session) {
+    return { handled: false }
+  }
+
+  const pageToSend = getRequestedDetailPage(text, session.last_detail_page_sent || 0)
+  if (!pageToSend) {
+    return { handled: false }
+  }
+
+  const reportData: DailyReportingData = {
+    reportDateIso: session.report_date,
+    reportDateLabel: session.report_date,
+    reportType: session.report_type,
+    periodStartIso: session.period_start,
+    periodEndIso: session.period_end,
+    todayScans: 0,
+    yesterdayScans: 0,
+    thisWeekScans: 0,
+    uniqueCustomers: Number(session.unique_customer_count || 0),
+    uniqueCustomerDetails: ((session.unique_customer_details || []) as DailyReportingCustomerDetail[]),
+  }
+
+  const detailMessage = buildDailyReportingDetailMessage(reportData, pageToSend)
+  const responseText = detailMessage.text
+  const config = await getWhatsAppConfig(supabase as any, session.org_id)
+
+  if (!config || !config.baseUrl) {
+    await (supabase as any).from('marketing_reply_logs').insert({
+      session_id: session.id,
+      campaign_id: session.campaign_id,
+      org_id: session.org_id,
+      recipient_phone: senderPhoneE164,
+      reply_received: text,
+      reply_action: `daily_reporting_page_${pageToSend}`,
+      requested_page: pageToSend,
+      response_snapshot: responseText,
+      status: 'failed',
+      error_message: 'WhatsApp configuration not found',
+      created_at: new Date().toISOString(),
+    })
+
+    return { handled: true, success: false }
+  }
+
+  const phone = senderPhoneE164.replace(/[^\d]/g, '')
+  const sendResult = await callGateway(
+    config.baseUrl,
+    config.apiKey,
+    'POST',
+    '/messages/send',
+    {
+      to: phone,
+      text: responseText,
+    },
+    config.tenantId,
+  )
+
+  const sendSucceeded = sendResult?.ok !== false && !sendResult?.error
+
+  await (supabase as any).from('marketing_reply_logs').insert({
+    session_id: session.id,
+    campaign_id: session.campaign_id,
+    org_id: session.org_id,
+    recipient_phone: senderPhoneE164,
+    reply_received: text,
+    reply_action: `daily_reporting_page_${pageToSend}`,
+    requested_page: pageToSend,
+    response_snapshot: responseText,
+    status: sendSucceeded ? 'success' : 'failed',
+    error_message: sendSucceeded ? null : (sendResult?.error || 'Failed to send reply'),
+    created_at: new Date().toISOString(),
+  })
+
+  await (supabase as any)
+    .from('marketing_report_sessions')
+    .update({
+      last_detail_page_sent: sendSucceeded ? pageToSend : session.last_detail_page_sent,
+      last_reply_received: text,
+      last_reply_action_triggered: `daily_reporting_page_${pageToSend}`,
+      last_reply_received_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', session.id)
+
+  return { handled: true, success: sendSucceeded }
 }
 
 /**
@@ -331,6 +445,14 @@ export async function POST(request: NextRequest) {
         is_admin: isAdmin
       }
     })
+
+    if (direction === 'inbound') {
+      try {
+        await handleDailyReportingReply(supabase, senderPhoneE164, text)
+      } catch (replyError) {
+        console.error('[WhatsApp Ingest] Daily reporting reply error:', replyError)
+      }
+    }
     
     console.log(`[WhatsApp Ingest] Success: convId=${conversationId}, msgId=${newMessage.id}`)
     

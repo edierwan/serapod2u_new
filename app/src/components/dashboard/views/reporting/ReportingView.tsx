@@ -89,6 +89,20 @@ const CHART_COLORS = [
     COLORS.cyan
 ]
 
+const numberFormatterCache = new Map<string, Intl.NumberFormat>()
+
+function formatAnimatedValue(value: number, decimals: number) {
+    const key = `en-MY:${decimals}`
+    if (!numberFormatterCache.has(key)) {
+        numberFormatterCache.set(key, new Intl.NumberFormat('en-MY', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        }))
+    }
+
+    return numberFormatterCache.get(key)!.format(value)
+}
+
 // Animated counter component
 const AnimatedCounter = ({ value, duration = 1000, prefix = '', suffix = '', decimals = 0 }: {
     value: number
@@ -120,9 +134,13 @@ const AnimatedCounter = ({ value, duration = 1000, prefix = '', suffix = '', dec
         return () => cancelAnimationFrame(animationFrame)
     }, [value, duration])
 
+    const formattedValue = formatAnimatedValue(displayValue, decimals)
+
     return (
-        <span>
-            {prefix}{displayValue.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}{suffix}
+        <span className="inline-flex min-w-0 items-baseline whitespace-nowrap tabular-nums leading-none">
+            {prefix ? <span className="mr-1 shrink-0 text-[0.72em] leading-none">{prefix}</span> : null}
+            <span className="shrink-0">{formattedValue}</span>
+            {suffix ? <span className="ml-1 shrink-0 text-[0.72em] leading-none">{suffix}</span> : null}
         </span>
     )
 }
@@ -151,14 +169,18 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                         {loading ? (
                             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                         ) : (
-                            <div className="text-3xl font-bold text-foreground tracking-tight">
-                                {typeof value === 'number' ? (
-                                    <AnimatedCounter
-                                        value={value}
-                                        prefix={title.includes('Revenue') ? 'RM ' : ''}
-                                        decimals={title.includes('Revenue') ? 2 : 0}
-                                    />
-                                ) : value}
+                            <div className="flex min-h-[3.5rem] items-end overflow-hidden">
+                                <div className="max-w-full whitespace-nowrap text-[clamp(2rem,2.6vw,3rem)] font-bold tracking-tight text-foreground tabular-nums leading-none">
+                                    {typeof value === 'number' ? (
+                                        <AnimatedCounter
+                                            value={value}
+                                            prefix={title.includes('Revenue') ? 'RM' : ''}
+                                            decimals={title.includes('Revenue') ? 2 : 0}
+                                        />
+                                    ) : (
+                                        <span className="inline-flex items-baseline whitespace-nowrap leading-none">{value}</span>
+                                    )}
+                                </div>
                             </div>
                         )}
                         <div className="flex items-center gap-2">
