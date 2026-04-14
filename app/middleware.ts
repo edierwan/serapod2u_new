@@ -150,7 +150,7 @@ export async function middleware(request: NextRequest) {
     /^\/rt\/\d{4}\//.test(pathname)
 
   // Public paths that don't require authentication
-  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/reference/search', '/api/shops/search', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image']
+  const PUBLIC_PATHS = ['/', '/auth', '/verify', '/track', '/api/verify', '/api/consumer', '/api/scratch-card', '/app', '/api/journey/default', '/api/master-banner', '/store', '/cart', '/checkout', '/orders/success', '/orders/failed', '/api/storefront', '/signup', '/api/export/ellbow', '/api/orders/from-ellbow', '/api/cron', '/api/auth/password-reset', '/api/auth/register', '/api/reference/search', '/api/shops/search', '/api/health', '/scan', '/api/roadtour/claim-reward', '/api/roadtour/qr-image']
 
   // Check if current path is public
   const isPublicPath = isPublicRoadtourScanPath || PUBLIC_PATHS.some((path) =>
