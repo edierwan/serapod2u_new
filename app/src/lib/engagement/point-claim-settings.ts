@@ -1,3 +1,5 @@
+import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
+
 export type PointClaimMode = 'single_shop' | 'dual'
 export type PointClaimLane = 'shop' | 'consumer'
 
@@ -9,6 +11,8 @@ export interface PointClaimSettings {
 }
 
 interface ShopLinkProfile {
+    organization_id?: string | null
+    organizationTypeCode?: string | null
     shop_name?: string | null
     referral_phone?: string | null
 }
@@ -49,7 +53,12 @@ export function resolvePointClaimLane(orgTypeCode?: string | null): PointClaimLa
 }
 
 export function hasLinkedShopProfile(profile: ShopLinkProfile): boolean {
-    return Boolean(profile.shop_name?.trim() && profile.referral_phone?.trim())
+    return hasValidLinkedShop({
+        organizationId: profile.organization_id,
+        organizationTypeCode: profile.organizationTypeCode,
+    }) && hasValidReferenceLink({
+        referralPhone: profile.referral_phone,
+    })
 }
 
 export function requiresConsumerClaimConfirmation(input: ConsumerClaimConfirmationInput): boolean {
