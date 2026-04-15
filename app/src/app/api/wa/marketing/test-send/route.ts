@@ -177,8 +177,6 @@ export async function POST(request: Request) {
       .replace(/{points_balance}/g, resolvedPoints)
       .replace(/{short_link}/g, appUrl);
 
-    const phone = targetNumber.replace(/[^\d]/g, '');
-
     // Use the same gateway call as the working test in Settings
     const result = await callGateway(
       config.baseUrl,
@@ -186,7 +184,7 @@ export async function POST(request: Request) {
       'POST',
       '/messages/send',
       {
-        to: phone,
+        to: targetNumber,
         text: processedMessage,
       },
       config.tenantId
@@ -198,13 +196,15 @@ export async function POST(request: Request) {
       userId: user.id,
       orgId: userProfile.organization_id,
       metadata: {
-        recipient: phone,
+        recipient: targetNumber,
         result,
         tenantId: config.tenantId,
       },
     });
 
-    if (!result.ok) {
+    const isSuccess = result?.success ?? result?.ok ?? false;
+
+    if (!isSuccess) {
       return NextResponse.json({
         error: result.error || 'Failed to send WhatsApp message via gateway'
       }, { status: 500 });
