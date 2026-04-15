@@ -3067,9 +3067,12 @@ export default function PremiumLoyaltyTemplate({
             } else if (data.claim_lane === 'consumer') {
                 setQrConsumerLaneCollected(true)
             }
-            if (normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
+            if (roadtourContext && normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
                 setShowShopLinkCelebration(true)
+                setPendingProfileCollectLane(null)
+                setPendingProfileCollectEmail('')
+            } else if (normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setPendingProfileCollectLane(null)
                 setPendingProfileCollectEmail('')
             }
@@ -3219,9 +3222,12 @@ export default function PremiumLoyaltyTemplate({
             } else if (data.claim_lane === 'consumer') {
                 setQrConsumerLaneCollected(true)
             }
-            if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
+            if (roadtourContext && preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
                 setShowShopLinkCelebration(true)
+                setPendingProfileCollectLane(null)
+                setPendingProfileCollectEmail('')
+            } else if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setPendingProfileCollectLane(null)
                 setPendingProfileCollectEmail('')
             }
