@@ -8,6 +8,7 @@ import {
   requiresConsumerClaimConfirmation,
   resolvePointClaimLane,
 } from '@/lib/engagement/point-claim-settings'
+import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 
 /**
  * POST /api/consumer/collect-points-auth
@@ -105,25 +106,36 @@ export async function POST(request: NextRequest) {
     const claimLane = requestedClaimLane === 'shop' && (organizationClaimLane === 'shop' || canUseProfileBasedShopLane)
       ? 'shop'
       : organizationClaimLane
-    const requiresShopReference = (claimLane === 'shop' || requestedClaimLane === 'shop') && !shopUser.referral_phone?.trim()
-    const requiresShopName = (claimLane === 'shop' || requestedClaimLane === 'shop') && (!organization || organization.org_type_code === 'INDEP') && !shopUser.shop_name?.trim()
+    const profileCompletion = resolveCollectProfileCompletion({
+      name: shopUser.full_name,
+      claimLane,
+      requestedClaimLane,
+      organizationId: shopUser.organization_id,
+      organizationTypeCode: organization?.org_type_code,
+      referralPhone: shopUser.referral_phone,
+    })
 
-    if (requiresShopReference || requiresShopName) {
-      const missing: string[] = []
-      if (requiresShopName) missing.push('Shop Name')
-      if (requiresShopReference) missing.push('Reference')
+    if (profileCompletion.shouldBlockCollect) {
       return NextResponse.json(
         {
           success: false,
+          code: 'PROFILE_INCOMPLETE',
           requiresProfileUpdate: true,
-          missingFields: missing,
-          error: `Please update your ${missing.join(' and ')} in Profile before collecting points.`
+          missingFields: profileCompletion.missingFields,
+          missingShop: profileCompletion.missingShop,
+          missingReference: profileCompletion.missingReference,
+          shouldBlockCollect: profileCompletion.shouldBlockCollect,
+          modalTitle: profileCompletion.modalTitle,
+          modalMessage: profileCompletion.modalMessage,
+          error: profileCompletion.modalMessage,
         },
         { status: 400 }
       )
     }
 
     if (requiresConsumerClaimConfirmation({
+      organization_id: shopUser.organization_id,
+      organizationTypeCode: organization?.org_type_code,
       claimLane,
       shop_name: shopUser.shop_name,
       referral_phone: shopUser.referral_phone,

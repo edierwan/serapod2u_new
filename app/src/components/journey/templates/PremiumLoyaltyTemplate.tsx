@@ -84,6 +84,7 @@ import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
+import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
 
 // Types
 interface JourneyConfig {
@@ -529,6 +530,7 @@ export default function PremiumLoyaltyTemplate({
     const [collectingPoints, setCollectingPoints] = useState(false)
     const [pointsError, setPointsError] = useState('')
     const [pointsErrorAction, setPointsErrorAction] = useState<'shop-profile-link' | 'roadtour-shop-only' | null>(null)
+    const [pointsErrorTitle, setPointsErrorTitle] = useState('Complete Your Profile')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm'>('login')
@@ -2901,9 +2903,17 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
-    const openCollectPointsProfilePrompt = (message: string) => {
+    const openCollectPointsProfilePrompt = (payload?: string | { modalTitle?: string; modalMessage?: string; error?: string; message?: string }) => {
+        const title = typeof payload === 'string'
+            ? 'Complete Your Profile'
+            : payload?.modalTitle || 'Complete Your Profile'
+        const message = typeof payload === 'string'
+            ? payload
+            : payload?.modalMessage || payload?.message || payload?.error || 'Please update your profile before collecting points.'
+
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
+        setPointsErrorTitle(title)
         setPointsError(message)
         setPointsErrorAction(null)
         setCollectPointsStep('complete-profile')
@@ -2923,6 +2933,7 @@ export default function PremiumLoyaltyTemplate({
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
         setPendingProfileCollectEmail(email || userEmail)
+        setPointsErrorTitle('Complete Your Profile')
         setPointsError(message || 'This QR already claimed by a customer. Only shop staff can claim it now.')
         setPointsErrorAction('shop-profile-link')
         setCollectPointsStep('complete-profile')
@@ -2932,6 +2943,7 @@ export default function PremiumLoyaltyTemplate({
     const openRoadtourShopOnlyPrompt = (message?: string) => {
         setCollectingPoints(false)
         setPendingProfileCollectLane(null)
+        setPointsErrorTitle('Complete Your Profile')
         setPointsError(message || getRoadtourProfileIncompleteMessage(userName))
         setPointsErrorAction('roadtour-shop-only')
         setCollectPointsStep('complete-profile')
@@ -2939,9 +2951,9 @@ export default function PremiumLoyaltyTemplate({
     }
 
     const canAutoRetryShopLane = () => {
-        const effectiveShopName = (newShopName || userShopName || shopName || '').trim()
-        const effectiveReferralPhone = (newReferralPhone || userReferralPhone || '').trim()
-        return !isShopUser && Boolean(effectiveShopName && effectiveReferralPhone)
+        return !isShopUser
+            && hasValidLinkedShop({ organizationId: newLinkedOrganizationId || userLinkedOrganizationId })
+            && hasValidReferenceLink({ referralPhone: newReferralPhone || userReferralPhone })
     }
 
     // Handle points collection
@@ -3003,7 +3015,7 @@ export default function PremiumLoyaltyTemplate({
                         console.warn('⚠️ Could not establish session for profile:', e)
                     }
                 }
-                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                openCollectPointsProfilePrompt(data)
                 return
             }
 
@@ -3156,7 +3168,7 @@ export default function PremiumLoyaltyTemplate({
             }
 
             if (data.requiresProfileUpdate) {
-                openCollectPointsProfilePrompt(data.error || 'Please update your Shop Name in Profile before collecting points.')
+                openCollectPointsProfilePrompt(data)
                 return
             }
 
@@ -6592,7 +6604,7 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                             <h3 className="text-xl font-bold text-gray-900">
                                 {collectPointsStep === 'complete-profile'
-                                    ? 'Complete Your Profile'
+                                    ? pointsErrorTitle || 'Complete Your Profile'
                                     : collectPointsStep === 'consumer-confirm'
                                         ? 'Confirm Consumer Lane'
                                         : 'Collect Points'}
