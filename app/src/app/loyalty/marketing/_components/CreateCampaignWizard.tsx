@@ -33,6 +33,14 @@ import {
 import { NumberHealth } from '@/lib/wa-safety';
 import { getDailyReportingTemplate } from '@/lib/reporting/dailyReporting';
 
+const DAILY_REPORTING_TEMPLATE_VARIABLES = [
+    'report_date',
+    'today_scans',
+    'yesterday_scans',
+    'this_week_scans',
+    'unique_customers'
+];
+
 
 type WizardProps = {
     onCancel: () => void;
@@ -297,8 +305,15 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
 
     // Validate message safety when it changes
     useEffect(() => {
-        if (formData.message) {
-            const result = validateTemplate(formData.message);
+        const messageToValidate = isDailyReportingObjective
+            ? (dailyReportingPreview?.message || formData.message)
+            : formData.message;
+
+        if (messageToValidate) {
+            const result = validateTemplate(messageToValidate, isDailyReportingObjective ? {
+                requiresPersonalization: false,
+                additionalSupportedVariables: DAILY_REPORTING_TEMPLATE_VARIABLES,
+            } : undefined);
             setMessageSafety(result);
             // Reset acknowledgement if risk changes
             if (result.riskScore >= 80 || result.riskScore < 50) {
@@ -307,7 +322,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         } else {
             setMessageSafety(null);
         }
-    }, [formData.message]);
+    }, [dailyReportingPreview?.message, formData.message, isDailyReportingObjective]);
 
     const isDailyReportingObjective = formData.objective === 'Daily Reporting';
 
@@ -406,7 +421,15 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: resolvedTestMessage,
-                    test_user_id: formData.selectedUserIds?.[0]
+                    test_user_id: formData.selectedUserIds?.[0],
+                    objective: formData.objective,
+                    reporting: isDailyReportingObjective ? {
+                        report_type: formData.reportingType,
+                        enable_reply_action: formData.enableReplyAction,
+                        referenceDate: formData.scheduleType === 'schedule' && formData.scheduledDate
+                            ? formData.scheduledDate.toISOString()
+                            : new Date().toISOString(),
+                    } : undefined,
                 })
             });
             const data = await res.json();

@@ -60,6 +60,7 @@ export interface TemplateSafetyConfig {
     allowedDomains: string[];
     strictMode: boolean;
     promoWordThreshold: number;
+    additionalSupportedVariables: string[];
 }
 
 // ============================================
@@ -94,7 +95,8 @@ export const DEFAULT_SAFETY_CONFIG: TemplateSafetyConfig = {
     allowShorteners: false,
     allowedDomains: [],
     strictMode: false,
-    promoWordThreshold: 3
+    promoWordThreshold: 3,
+    additionalSupportedVariables: []
 };
 
 // ============================================
@@ -253,17 +255,18 @@ export function validateTemplate(
     const repeatedPhrases = detectRepeatedPhrases(body);
 
     // 1. Variable validation
-    const unsupportedVars = extractedVariables.filter(v => !SUPPORTED_VARIABLES.includes(v));
+    const supportedVariables = [...SUPPORTED_VARIABLES, ...cfg.additionalSupportedVariables];
+    const unsupportedVars = extractedVariables.filter(v => !supportedVariables.includes(v));
     if (unsupportedVars.length > 0) {
         errors.push({
             code: 'UNSUPPORTED_VARIABLE',
-            message: `Unsupported variable(s): {${unsupportedVars.join('}, {')}}. Supported: {${SUPPORTED_VARIABLES.join('}, {')}}`
+            message: `Unsupported variable(s): {${unsupportedVars.join('}, {')}}. Supported: {${supportedVariables.join('}, {')}}`
         });
         riskFlags.push({
             code: 'UNSUPPORTED_VARIABLE',
             severity: 'error',
             message: `Unknown variables detected`,
-            suggestion: `Use only supported variables: ${SUPPORTED_VARIABLES.join(', ')}`
+            suggestion: `Use only supported variables: ${supportedVariables.join(', ')}`
         });
         riskScore += 30;
     }
