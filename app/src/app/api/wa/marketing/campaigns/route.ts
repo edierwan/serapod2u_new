@@ -1,6 +1,46 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+function normalizeUuid(value: unknown) {
+  if (typeof value !== 'string') {
+    return value ?? null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.length >= 20 ? trimmed : null;
+}
+
+function normalizeIdArray(values: unknown) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function normalizeAudienceFilters(audienceFilters: any) {
+  if (!audienceFilters || typeof audienceFilters !== 'object') {
+    return {};
+  }
+
+  return {
+    ...audienceFilters,
+    segment_id: normalizeUuid(audienceFilters.segment_id),
+    user_ids: normalizeIdArray(audienceFilters.user_ids),
+    overrides: {
+      include_ids: normalizeIdArray(audienceFilters.overrides?.include_ids),
+      exclude_ids: normalizeIdArray(audienceFilters.overrides?.exclude_ids),
+    },
+  };
+}
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
@@ -75,18 +115,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Ensure template_id is a valid UUID or NULL
-    let safeTemplateId = template_id;
-    if (safeTemplateId && typeof safeTemplateId === 'string') {
-      // Basic UUID validation (or just check length/format)
-      // If it looks like "2" or short string, set to null to avoid DB crash
-      if (safeTemplateId.length < 20) { // UUIDs are 36 chars
-        safeTemplateId = null;
-      }
-    }
+    const normalizedAudienceFilters = normalizeAudienceFilters(audience_filters);
+    const safeTemplateId = normalizeUuid(template_id);
 
     // Extract estimated_count from audience_filters
-    const estimatedCount = audience_filters?.estimated_count || 0;
+    const estimatedCount = normalizedAudienceFilters.estimated_count || 0;
 
     const status = scheduled_at ? 'scheduled' : 'draft';
 
@@ -97,7 +130,7 @@ export async function POST(request: Request) {
         name,
         objective,
         status,
-        audience_filters: audience_filters || {},
+        audience_filters: normalizedAudienceFilters,
         estimated_count: estimatedCount,
         message_body,
         template_id: safeTemplateId,

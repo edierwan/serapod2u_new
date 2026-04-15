@@ -513,8 +513,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     audience_filters: {
                         mode: effectiveAudienceMode,
                         filters: formData.filters,
-                        segment_id: isWinbackObjective ? '' : formData.selectedSegmentId,
-                        user_ids: isWinbackObjective ? [] : formData.selectedUserIds,
+                        segment_id: isWinbackObjective ? null : (formData.selectedSegmentId || null),
+                        user_ids: isWinbackObjective ? [] : formData.selectedUserIds.filter(Boolean),
                         reporting: isDailyReportingObjective ? {
                             report_type: formData.reportingType,
                             enable_reply_action: formData.enableReplyAction,
@@ -526,7 +526,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         }
                     },
                     message_body: formData.message,
-                    template_id: formData.templateId,
+                    template_id: formData.templateId || null,
                     scheduled_at: scheduledAt,
                     quiet_hours_enabled: formData.quietHours,
                     // Include preset configuration for audit
@@ -993,140 +993,140 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                     </>
                                 ) : (
                                     <>
-                                {isWinbackObjective && winbackTemplateSuggestions.length > 0 && (
-                                    <div className="space-y-2">
-                                        <Label>Suggested Winback Starters</Label>
-                                        <div className="grid gap-2">
-                                            {winbackTemplateSuggestions.slice(0, 3).map((preset) => (
-                                                <button
-                                                    key={preset.id}
-                                                    type="button"
-                                                    className="rounded-lg border bg-muted/30 p-3 text-left transition-colors hover:bg-muted"
-                                                    onClick={() => setFormData(prev => ({
-                                                        ...prev,
-                                                        templateId: '',
-                                                        message: preset.message,
-                                                    }))}
-                                                >
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <span className="font-medium text-sm">{preset.title}</span>
-                                                        <Badge variant="outline">{preset.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-                                                    </div>
-                                                    <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
-                                                </button>
-                                            ))}
+                                        {isWinbackObjective && winbackTemplateSuggestions.length > 0 && (
+                                            <div className="space-y-2">
+                                                <Label>Suggested Winback Starters</Label>
+                                                <div className="grid gap-2">
+                                                    {winbackTemplateSuggestions.slice(0, 3).map((preset) => (
+                                                        <button
+                                                            key={preset.id}
+                                                            type="button"
+                                                            className="rounded-lg border bg-muted/30 p-3 text-left transition-colors hover:bg-muted"
+                                                            onClick={() => setFormData(prev => ({
+                                                                ...prev,
+                                                                templateId: '',
+                                                                message: preset.message,
+                                                            }))}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <span className="font-medium text-sm">{preset.title}</span>
+                                                                <Badge variant="outline">{preset.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+                                                            </div>
+                                                            <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-2">
+                                            <Label>Template Language</Label>
+                                            <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
+                                                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Language" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="EN">EN</SelectItem>
+                                                    <SelectItem value="BM">BM</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
-                                    </div>
-                                )}
-
-                                <div className="space-y-2">
-                                    <Label>Template Language</Label>
-                                    <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
-                                        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Language" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="EN">EN</SelectItem>
-                                            <SelectItem value="BM">BM</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Template Category</Label>
-                                    <div className="flex flex-wrap gap-2 pb-2">
-                                        {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
-                                            const count = cat === 'All Categories'
-                                                ? templatesByLanguage.length
-                                                : templatesByLanguage.filter(t => (t.category || 'General') === cat).length;
-                                            return (
-                                                <Badge
-                                                    key={cat}
-                                                    variant={selectedCategory === cat ? "default" : "outline"}
-                                                    className={`cursor-pointer px-3 py-1 font-normal transition-colors ${selectedCategory === cat ? '' : 'hover:bg-muted'
-                                                        } ${getCategoryBadgeColor(cat)}`}
-                                                    onClick={() => {
-                                                        setSelectedCategory(cat);
-                                                    }}
-                                                >
-                                                    {cat}
-                                                    {cat !== 'All Categories' && (
-                                                        <span className="ml-1 text-[10px] opacity-70">
-                                                            ({count})
-                                                        </span>
-                                                    )}
-                                                </Badge>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label>Template</Label>
-                                    <Select
-                                        value={formData.templateId}
-                                        onValueChange={(val) => {
-                                            if (val === 'scratch') {
-                                                setFormData({
-                                                    ...formData,
-                                                    templateId: '',
-                                                    message: ''
-                                                });
-                                            } else {
-                                                const tmpl = templates.find(t => t.id === val);
-                                                setFormData({
-                                                    ...formData,
-                                                    templateId: val,
-                                                    message: tmpl?.body || formData.message
-                                                });
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
-                                        <SelectContent className="max-h-[300px]">
-                                            <SelectItem value="scratch">
-                                                <span className="flex items-center gap-2">
-                                                    <span className="text-muted-foreground">✏️</span>
-                                                    Start from Scratch
-                                                </span>
-                                            </SelectItem>
-                                            {selectedCategory === 'All Categories' ? (
-                                                // Group templates by category when showing all
-                                                Object.entries(
-                                                    templatesByLanguage.reduce((acc, t) => {
-                                                        const cat = t.category || 'General';
-                                                        if (!acc[cat]) acc[cat] = [];
-                                                        acc[cat].push(t);
-                                                        return acc;
-                                                    }, {} as Record<string, typeof templatesByLanguage>)
-                                                ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
-                                                    <div key={category}>
-                                                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
-                                                            {category} ({categoryTemplates.length})
-                                                        </div>
-                                                        {categoryTemplates.map(t => (
-                                                            <SelectItem key={t.id} value={t.id}>
-                                                                <span className="flex items-center gap-2">
-                                                                    {t.name}
-                                                                    {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                        <div className="space-y-2">
+                                            <Label>Template Category</Label>
+                                            <div className="flex flex-wrap gap-2 pb-2">
+                                                {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
+                                                    const count = cat === 'All Categories'
+                                                        ? templatesByLanguage.length
+                                                        : templatesByLanguage.filter(t => (t.category || 'General') === cat).length;
+                                                    return (
+                                                        <Badge
+                                                            key={cat}
+                                                            variant={selectedCategory === cat ? "default" : "outline"}
+                                                            className={`cursor-pointer px-3 py-1 font-normal transition-colors ${selectedCategory === cat ? '' : 'hover:bg-muted'
+                                                                } ${getCategoryBadgeColor(cat)}`}
+                                                            onClick={() => {
+                                                                setSelectedCategory(cat);
+                                                            }}
+                                                        >
+                                                            {cat}
+                                                            {cat !== 'All Categories' && (
+                                                                <span className="ml-1 text-[10px] opacity-70">
+                                                                    ({count})
                                                                 </span>
-                                                            </SelectItem>
-                                                        ))}
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                // Show templates for selected category
-                                                templatesByLanguage
-                                                    .filter(t => (t.category || 'General') === selectedCategory)
-                                                    .map(t => (
-                                                        <SelectItem key={t.id} value={t.id}>
-                                                            <span className="flex items-center gap-2">
-                                                                {t.name}
-                                                                {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
-                                                            </span>
-                                                        </SelectItem>
-                                                    ))
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                                            )}
+                                                        </Badge>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label>Template</Label>
+                                            <Select
+                                                value={formData.templateId}
+                                                onValueChange={(val) => {
+                                                    if (val === 'scratch') {
+                                                        setFormData({
+                                                            ...formData,
+                                                            templateId: '',
+                                                            message: ''
+                                                        });
+                                                    } else {
+                                                        const tmpl = templates.find(t => t.id === val);
+                                                        setFormData({
+                                                            ...formData,
+                                                            templateId: val,
+                                                            message: tmpl?.body || formData.message
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
+                                                <SelectContent className="max-h-[300px]">
+                                                    <SelectItem value="scratch">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-muted-foreground">✏️</span>
+                                                            Start from Scratch
+                                                        </span>
+                                                    </SelectItem>
+                                                    {selectedCategory === 'All Categories' ? (
+                                                        // Group templates by category when showing all
+                                                        Object.entries(
+                                                            templatesByLanguage.reduce((acc, t) => {
+                                                                const cat = t.category || 'General';
+                                                                if (!acc[cat]) acc[cat] = [];
+                                                                acc[cat].push(t);
+                                                                return acc;
+                                                            }, {} as Record<string, typeof templatesByLanguage>)
+                                                        ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
+                                                            <div key={category}>
+                                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
+                                                                    {category} ({categoryTemplates.length})
+                                                                </div>
+                                                                {categoryTemplates.map(t => (
+                                                                    <SelectItem key={t.id} value={t.id}>
+                                                                        <span className="flex items-center gap-2">
+                                                                            {t.name}
+                                                                            {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                                        </span>
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        // Show templates for selected category
+                                                        templatesByLanguage
+                                                            .filter(t => (t.category || 'General') === selectedCategory)
+                                                            .map(t => (
+                                                                <SelectItem key={t.id} value={t.id}>
+                                                                    <span className="flex items-center gap-2">
+                                                                        {t.name}
+                                                                        {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                                    </span>
+                                                                </SelectItem>
+                                                            ))
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
                                     </>
                                 )}

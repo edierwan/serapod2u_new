@@ -9,6 +9,30 @@ import {
     renderDailyReportingMessage,
 } from '@/lib/reporting/dailyReporting';
 
+function normalizeUuid(value: unknown) {
+    if (typeof value !== 'string') {
+        return value ?? null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    return trimmed.length >= 20 ? trimmed : null;
+}
+
+function normalizeIdArray(values: unknown) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+}
+
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -75,8 +99,8 @@ export async function POST(
             body: JSON.stringify({
                 mode: audienceFilters.mode || 'filters',
                 filters: audienceFilters.filters,
-                segment_id: audienceFilters.segment_id,
-                user_ids: audienceFilters.user_ids,
+                segment_id: normalizeUuid(audienceFilters.segment_id),
+                user_ids: normalizeIdArray(audienceFilters.user_ids),
                 overrides: audienceFilters.overrides,
                 include_all: true
             })
