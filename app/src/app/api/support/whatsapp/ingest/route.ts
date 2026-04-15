@@ -27,6 +27,7 @@ const AGENT_KEYS = [
   process.env.WHATSAPP_AGENT_KEY,
   process.env.AGENT_API_KEY,
   process.env.MOLTBOT_WEBHOOK_SECRET,
+  process.env.BAILEYS_API_KEY,
 ].filter(Boolean) as string[]
 
 const REPORT_SESSION_WINDOW_HOURS = Number(process.env.WHATSAPP_REPORT_SESSION_WINDOW_HOURS || 24)
@@ -83,6 +84,40 @@ function getServiceClient() {
       },
     },
   )
+}
+
+async function getConfiguredWhatsAppApiKeys(
+  supabase: ReturnType<typeof getServiceClient>,
+) {
+  const { data, error } = await supabase
+    .from('notification_provider_configs')
+    .select('config_encrypted')
+    .eq('channel', 'whatsapp')
+
+  if (error || !data) {
+    return [] as string[]
+  }
+
+  const keys = new Set<string>()
+
+  for (const row of data as Array<{ config_encrypted?: unknown }>) {
+    if (!row?.config_encrypted) continue
+
+    try {
+      const config = typeof row.config_encrypted === 'string'
+        ? JSON.parse(row.config_encrypted)
+        : row.config_encrypted
+
+      if (config && typeof config === 'object' && typeof (config as any).api_key === 'string') {
+        const apiKey = (config as any).api_key.trim()
+        if (apiKey) keys.add(apiKey)
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return Array.from(keys)
 }
 
 function isGatewayWebhookPayload(value: any): value is GatewayWebhookPayload {
@@ -493,25 +528,28 @@ async function handleDailyReportingReply(
 
 export async function POST(request: NextRequest) {
   try {
+    const rawBody = await request.json()
     const agentKey = request.headers.get('x-agent-key') || request.headers.get('x-api-key') || request.headers.get('x-moltbot-secret')
+    const supabase = getServiceClient()
+    const configuredApiKeys = await getConfiguredWhatsAppApiKeys(supabase)
+    const acceptedKeys = new Set([...AGENT_KEYS, ...configuredApiKeys])
 
-    if (AGENT_KEYS.length === 0) {
+    if (acceptedKeys.size === 0) {
       console.error('[WhatsApp Ingest] webhook auth secret not configured')
       return NextResponse.json({ ok: false, error: 'Server misconfigured' }, { status: 500 })
     }
 
-    if (!agentKey || !AGENT_KEYS.includes(agentKey)) {
+    if (!agentKey || !acceptedKeys.has(agentKey)) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const parsedBody = parseIncomingPayload(await request.json())
+    const parsedBody = parseIncomingPayload(rawBody)
     const { from, messageId, chatId, text, metadata, tenantId } = parsedBody
 
     if (!from || !messageId || !text) {
       return NextResponse.json({ ok: false, error: 'Missing required fields: from, messageId, text' }, { status: 400 })
     }
 
-    const supabase = getServiceClient()
     const senderPhoneE164 = normalizePhoneE164(from)
     const chatJid = chatId || `${senderPhoneE164.replace(/\D/g, '')}@s.whatsapp.net`
 
