@@ -367,7 +367,7 @@ app.post(
       // Return legacy format
       res.json({
         ok: result.ok,
-        message_id: result.jid?.split('@')[0] || 'sent',
+        message_id: result.message_id || result.jid?.split('@')[0] || 'sent',
         error: result.error,
       });
     } catch (error: any) {
@@ -428,7 +428,7 @@ app.post(
       const result = await tenantSocketManager.sendMessage(tenantId, to, messageText);
       res.json({
         ok: result.ok,
-        message_id: result.jid?.split('@')[0] || 'sent',
+        message_id: result.message_id || result.jid?.split('@')[0] || 'sent',
         error: result.error,
       });
     } catch (error: any) {

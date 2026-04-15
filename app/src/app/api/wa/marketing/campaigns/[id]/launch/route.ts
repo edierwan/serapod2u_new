@@ -163,9 +163,13 @@ export async function POST(
                 unique_customer_count: dailyReportingData.uniqueCustomers,
                 unique_customer_details: dailyReportingData.uniqueCustomerDetails,
                 message_snapshot: resolvedMessageBody,
+                provider_context: {
+                    report_type: dailyReportingData.reportType,
+                },
                 reply_enabled: true,
                 last_detail_page_sent: 0,
                 status: 'active',
+                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             }));
@@ -292,16 +296,34 @@ async function sendMessagesAsync(
                 waConfig.tenantId
             );
 
+            const providerMessageId = result?.message_id || result?.provider_message_id || null;
+
             if (result.ok !== false && !result.error) {
                 // Update log with success
                 await supabase
                     .from('marketing_send_logs')
                     .update({
                         status: 'delivered',
+                        provider_message_id: providerMessageId,
+                        provider_response: result,
                         delivered_at: new Date().toISOString()
                     })
                     .eq('campaign_id', campaignId)
                     .eq('recipient_phone', recipient.phone);
+
+                if (skipPersonalization) {
+                    await supabase
+                        .from('marketing_report_sessions')
+                        .update({
+                            provider_message_id: providerMessageId,
+                            provider_chat_id: normalizePhoneE164(recipient.phone),
+                            last_outbound_message_id: providerMessageId,
+                            last_outbound_sent_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('campaign_id', campaignId)
+                        .eq('recipient_phone', normalizePhoneE164(recipient.phone));
+                }
 
                 deliveredCount++;
                 sentCount++;
@@ -311,6 +333,8 @@ async function sendMessagesAsync(
                     .from('marketing_send_logs')
                     .update({
                         status: 'failed',
+                        provider_message_id: providerMessageId,
+                        provider_response: result,
                         error_message: result.error || 'Failed to send'
                     })
                     .eq('campaign_id', campaignId)

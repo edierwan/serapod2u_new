@@ -826,7 +826,7 @@ class TenantSocketManager {
     /**
      * Send a message for a tenant
      */
-    async sendMessage(tenantId: string, to: string, text: string): Promise<{ ok: boolean; jid?: string; error?: string }> {
+    async sendMessage(tenantId: string, to: string, text: string): Promise<{ ok: boolean; jid?: string; message_id?: string; error?: string }> {
         const state = await this.ensureSocket(tenantId);
 
         if (state.pairingState !== 'connected' || !state.socket) {
@@ -856,6 +856,7 @@ class TenantSocketManager {
             return {
                 ok: true,
                 jid,
+                message_id: result?.key?.id || undefined,
             };
         } catch (error: any) {
             logger.error({ tenantId, error: error.message }, 'Failed to send message');

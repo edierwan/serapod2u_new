@@ -20,6 +20,10 @@ interface WebhookPayload {
         timestamp: number;
         pushName?: string;
         text: string;
+        gatewayPhone?: string;
+        quotedMessageId?: string;
+        quotedParticipant?: string;
+        quotedRemoteJid?: string;
     };
 }
 
@@ -65,7 +69,17 @@ class WebhookService {
         tenantId: string,
         message: {
             key: { remoteJid: string; id: string; fromMe: boolean };
-            message?: { conversation?: string; extendedTextMessage?: { text?: string } };
+            message?: {
+                conversation?: string;
+                extendedTextMessage?: {
+                    text?: string;
+                    contextInfo?: {
+                        stanzaId?: string;
+                        participant?: string;
+                        remoteJid?: string;
+                    };
+                };
+            };
             pushName?: string;
             messageTimestamp?: number;
         },
@@ -114,6 +128,10 @@ class WebhookService {
                     : Date.now(),
                 pushName: message.pushName,
                 text,
+                gatewayPhone: ownNumber,
+                quotedMessageId: message.message?.extendedTextMessage?.contextInfo?.stanzaId,
+                quotedParticipant: message.message?.extendedTextMessage?.contextInfo?.participant,
+                quotedRemoteJid: message.message?.extendedTextMessage?.contextInfo?.remoteJid,
             },
         };
 
@@ -127,7 +145,17 @@ class WebhookService {
         tenantId: string,
         message: {
             key: { remoteJid: string; id: string; fromMe: boolean };
-            message?: { conversation?: string; extendedTextMessage?: { text?: string } };
+            message?: {
+                conversation?: string;
+                extendedTextMessage?: {
+                    text?: string;
+                    contextInfo?: {
+                        stanzaId?: string;
+                        participant?: string;
+                        remoteJid?: string;
+                    };
+                };
+            };
             pushName?: string;
             messageTimestamp?: number;
         },
@@ -150,6 +178,7 @@ class WebhookService {
                     headers: {
                         'Content-Type': 'application/json',
                         'x-moltbot-secret': this.config.moltbotSecret,
+                        'x-agent-key': this.config.moltbotSecret,
                     },
                     body: JSON.stringify(payload),
                 });

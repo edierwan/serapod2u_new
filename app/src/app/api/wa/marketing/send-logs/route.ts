@@ -35,6 +35,10 @@ export async function GET(request: NextRequest) {
                 organization_type,
                 status,
                 error_message,
+                provider_message_id,
+                report_date,
+                report_type,
+                reply_enabled,
                 sent_at,
                 delivered_at,
                 read_at,
@@ -119,7 +123,28 @@ export async function GET(request: NextRequest) {
             active_campaigns: await getActiveCampaignsCount(supabase, orgId)
         };
 
-        return NextResponse.json({ logs: transformedLogs, stats });
+        const { data: replyLogs } = await (supabase as any)
+            .from('marketing_reply_logs')
+            .select(`
+                id,
+                session_id,
+                campaign_id,
+                recipient_phone,
+                reply_received,
+                reply_action,
+                requested_page,
+                inbound_message_id,
+                outbound_message_id,
+                matched_by,
+                status,
+                error_message,
+                created_at
+            `)
+            .eq('org_id', orgId)
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+        return NextResponse.json({ logs: transformedLogs, reply_logs: replyLogs || [], stats });
 
     } catch (error) {
         console.error('Error in send-logs API:', error);

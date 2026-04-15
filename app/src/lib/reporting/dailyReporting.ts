@@ -43,6 +43,12 @@ export type DailyReportingConfig = {
   enableReplyAction: boolean
 }
 
+export type DailyReportingReplyCommand =
+  | { type: 'page'; page: number }
+  | { type: 'menu' }
+  | { type: 'help' }
+  | { type: 'unsupported' }
+
 const DEFAULT_PAGE_SIZE = 10
 
 function normalizeText(value: string | null | undefined) {
@@ -115,9 +121,16 @@ export function buildDailyReportingDetailMessage(
 ) {
   if (data.uniqueCustomerDetails.length === 0) {
     return {
-      text: 'No unique customer detail found for this report.',
+      text: [
+        '👥 Unique Customer Details',
+        `Total: ${data.uniqueCustomers.toLocaleString('en-MY')}`,
+        '',
+        'No unique customer detail found for this report.',
+      ].join('\n'),
       pageNumber: 0,
       hasMore: false,
+      isEmpty: true,
+      isExhausted: false,
     }
   }
 
@@ -126,9 +139,11 @@ export function buildDailyReportingDetailMessage(
 
   if (pageItems.length === 0) {
     return {
-      text: 'No unique customer detail found for this report.',
+      text: 'No more unique customer records.',
       pageNumber: Math.max(pageNumber, 1),
       hasMore: false,
+      isEmpty: false,
+      isExhausted: true,
     }
   }
 
@@ -155,15 +170,55 @@ export function buildDailyReportingDetailMessage(
     text: lines.join('\n'),
     pageNumber,
     hasMore,
+    isEmpty: false,
+    isExhausted: false,
   }
 }
 
-export function getRequestedDetailPage(replyText: string, lastPageSent: number | null | undefined) {
-  const normalizedReply = replyText.trim()
+export function parseDailyReportingReplyCommand(
+  replyText: string,
+  lastPageSent: number | null | undefined,
+): DailyReportingReplyCommand {
+  const normalizedReply = replyText.trim().toLowerCase()
 
-  if (normalizedReply === '1') return 1
-  if (normalizedReply === '2') return Math.max((lastPageSent || 1) + 1, 2)
-  return null
+  if (normalizedReply === '1') {
+    return { type: 'page', page: 1 }
+  }
+
+  if (normalizedReply === '2') {
+    return { type: 'page', page: Math.max((lastPageSent || 1) + 1, 2) }
+  }
+
+  if (normalizedReply === 'menu') {
+    return { type: 'menu' }
+  }
+
+  if (normalizedReply === 'help') {
+    return { type: 'help' }
+  }
+
+  return { type: 'unsupported' }
+}
+
+export function getRequestedDetailPage(replyText: string, lastPageSent: number | null | undefined) {
+  const parsed = parseDailyReportingReplyCommand(replyText, lastPageSent)
+  return parsed.type === 'page' ? parsed.page : null
+}
+
+export function buildDailyReportingMenuMessage() {
+  return [
+    'Daily Reporting Commands',
+    'Reply 1 to view unique customer details.',
+    'Reply 2 for more records after the first page.',
+  ].join('\n')
+}
+
+export function buildDailyReportingNoContextMessage() {
+  return 'No active report context found. Please wait for the next report message.'
+}
+
+export function buildDailyReportingUnsupportedReplyMessage() {
+  return 'Unsupported reply. Reply 1 to view unique customer details.'
 }
 
 export async function buildDailyReportingData(
