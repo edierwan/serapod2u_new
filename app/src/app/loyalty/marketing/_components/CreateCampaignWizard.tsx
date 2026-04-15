@@ -303,6 +303,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         }
     }, [selectedLanguage, templates, formData.templateId]);
 
+    const isDailyReportingObjective = formData.objective === 'Daily Reporting';
+
     // Validate message safety when it changes
     useEffect(() => {
         const messageToValidate = isDailyReportingObjective
@@ -323,8 +325,6 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
             setMessageSafety(null);
         }
     }, [dailyReportingPreview?.message, formData.message, isDailyReportingObjective]);
-
-    const isDailyReportingObjective = formData.objective === 'Daily Reporting';
 
     useEffect(() => {
         if (!isDailyReportingObjective) {
