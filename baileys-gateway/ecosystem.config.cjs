@@ -35,6 +35,12 @@ module.exports = {
         // CORS allowed origins
         ALLOWED_ORIGINS: 'https://app.serapod2u.com,https://serapod2u.com',
         
+        // Serapod app ingest endpoint (Daily Reporting replies, support inbox)
+        // Set to the app's ingest URL so the gateway forwards inbound messages there too
+        SERAPOD_INGEST_URL: 'https://stg.serapod2u.com/api/support/whatsapp/ingest',
+        // Uses MOLTBOT_WEBHOOK_SECRET by default if not set
+        // SERAPOD_INGEST_SECRET: '',
+
         // Logging
         LOG_LEVEL: 'info',
       },

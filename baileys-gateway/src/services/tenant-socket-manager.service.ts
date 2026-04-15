@@ -356,6 +356,9 @@ class TenantSocketManager {
                             // Forward both fromMe=false (user) AND fromMe=true (admin)
                             webhookService.forwardToMoltbot(tenantId, message, state.phoneNumber || undefined)
                                 .catch(err => logger.error({ tenantId, error: err.message }, 'Webhook forward failed'));
+                            // Also forward to Serapod app ingest (Daily Reporting replies, support inbox)
+                            webhookService.forwardToSerapod(tenantId, message, state.phoneNumber || undefined)
+                                .catch(err => logger.error({ tenantId, error: err.message }, 'Serapod ingest forward failed'));
                         }
                     }
                 }

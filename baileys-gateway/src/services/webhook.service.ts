@@ -33,6 +33,9 @@ interface WebhookConfig {
     enabled: boolean;
     retryAttempts: number;
     retryDelay: number;
+    serapodIngestUrl: string;
+    serapodIngestSecret: string;
+    serapodIngestEnabled: boolean;
 }
 
 class WebhookService {
@@ -45,12 +48,17 @@ class WebhookService {
             enabled: process.env.MOLTBOT_WEBHOOK_ENABLED !== 'false',
             retryAttempts: parseInt(process.env.WEBHOOK_RETRY_ATTEMPTS || '3'),
             retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '1000'),
+            serapodIngestUrl: process.env.SERAPOD_INGEST_URL || '',
+            serapodIngestSecret: process.env.SERAPOD_INGEST_SECRET || process.env.MOLTBOT_WEBHOOK_SECRET || '',
+            serapodIngestEnabled: !!process.env.SERAPOD_INGEST_URL,
         };
 
         logger.info({
             webhookEnabled: this.config.enabled,
             moltbotUrl: this.config.moltbotUrl,
             hasSecret: !!this.config.moltbotSecret,
+            serapodIngestEnabled: this.config.serapodIngestEnabled,
+            serapodIngestUrl: this.config.serapodIngestUrl || '(not set)',
         }, 'WebhookService initialized');
     }
 
@@ -139,7 +147,7 @@ class WebhookService {
     }
 
     /**
-     * Legacy method for backward compatibility
+     * Forward message to Serapod app ingest endpoint (Daily Reporting replies, support inbox)
      */
     async forwardToSerapod(
         tenantId: string,
@@ -161,8 +169,49 @@ class WebhookService {
         },
         ownNumber?: string
     ): Promise<boolean> {
-        // Forward to moltbot instead
-        return this.forwardToMoltbot(tenantId, message, ownNumber);
+        if (!this.config.serapodIngestEnabled || !this.config.serapodIngestUrl) {
+            logger.debug({ tenantId }, 'Serapod ingest disabled or not configured, skipping');
+            return false;
+        }
+
+        // Extract message text
+        const text = message.message?.conversation ||
+            message.message?.extendedTextMessage?.text || '';
+
+        if (!text) {
+            logger.debug({ tenantId, messageId: message.key.id }, 'No text content for ingest, skipping');
+            return false;
+        }
+
+        const remoteJid = message.key.remoteJid || '';
+        if (remoteJid.includes('@g.us')) {
+            return false;
+        }
+
+        const phoneDigits = remoteJid.split('@')[0];
+        const eventType: WebhookEventType = message.key.fromMe ? 'OUTBOUND_ADMIN' : 'INBOUND_USER';
+
+        const payload: WebhookPayload = {
+            event: eventType,
+            tenantId,
+            wa: {
+                phoneDigits,
+                remoteJid,
+                fromMe: message.key.fromMe,
+                messageId: message.key.id,
+                timestamp: typeof message.messageTimestamp === 'number'
+                    ? message.messageTimestamp * 1000
+                    : Date.now(),
+                pushName: message.pushName,
+                text,
+                gatewayPhone: ownNumber,
+                quotedMessageId: message.message?.extendedTextMessage?.contextInfo?.stanzaId,
+                quotedParticipant: message.message?.extendedTextMessage?.contextInfo?.participant,
+                quotedRemoteJid: message.message?.extendedTextMessage?.contextInfo?.remoteJid,
+            },
+        };
+
+        return this.sendToIngest(payload);
     }
 
     /**
@@ -229,6 +278,73 @@ class WebhookService {
             messageId: payload.wa.messageId,
             error: lastError?.message,
         }, 'Failed to forward message after all retries');
+
+        return false;
+    }
+
+    /**
+     * Send payload to Serapod app ingest with retry logic
+     */
+    private async sendToIngest(payload: WebhookPayload): Promise<boolean> {
+        let lastError: Error | null = null;
+
+        for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
+            try {
+                const response = await fetch(this.config.serapodIngestUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-agent-key': this.config.serapodIngestSecret,
+                        'x-api-key': this.config.serapodIngestSecret,
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json() as { ok?: boolean; error?: string };
+
+                if (response.ok && data.ok !== false) {
+                    logger.info({
+                        tenantId: payload.tenantId,
+                        event: payload.event,
+                        messageId: payload.wa.messageId,
+                        phone: payload.wa.phoneDigits,
+                    }, 'Message forwarded to Serapod ingest');
+                    return true;
+                }
+
+                lastError = new Error(data.error || `HTTP ${response.status}`);
+                logger.warn({
+                    tenantId: payload.tenantId,
+                    event: payload.event,
+                    messageId: payload.wa.messageId,
+                    attempt,
+                    error: lastError.message,
+                }, 'Serapod ingest request failed');
+
+            } catch (error: any) {
+                lastError = error;
+                logger.warn({
+                    tenantId: payload.tenantId,
+                    event: payload.event,
+                    messageId: payload.wa.messageId,
+                    attempt,
+                    error: error.message,
+                }, 'Serapod ingest request error');
+            }
+
+            if (attempt < this.config.retryAttempts) {
+                await new Promise(resolve =>
+                    setTimeout(resolve, this.config.retryDelay * attempt)
+                );
+            }
+        }
+
+        logger.error({
+            tenantId: payload.tenantId,
+            event: payload.event,
+            messageId: payload.wa.messageId,
+            error: lastError?.message,
+        }, 'Failed to forward to Serapod ingest after all retries');
 
         return false;
     }
