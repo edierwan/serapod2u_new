@@ -16,7 +16,8 @@
 ## Hardening implemented
 
 - Added shared phone helpers in `shared/phone/index.js`
-- Rewired app utilities to the shared module so `normalizePhone()` now returns canonical E.164
+- Localized the app phone core into `app/src/utils/phone-core.ts` so Coolify app-only build contexts do not depend on repo-root files
+- Rewired app utilities so `normalizePhone()` now returns canonical E.164 without cross-root imports
 - Moved provider conversion to explicit `toProviderPhone(...)` usage in app auth, notifications, support senders, Moltbot, and Baileys
 - Normalized referral and admin WhatsApp write paths to canonical E.164
 - Updated User Management Reference rendering to resolve the referred user by normalized phone and render name plus phone

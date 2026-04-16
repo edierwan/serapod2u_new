@@ -8,7 +8,7 @@ import {
   phoneToJid as phoneToJidShared,
   samePhone,
   toProviderPhone,
-} from '../../../shared/phone/index.js'
+} from './phone-core'
 
 export { isValidE164Phone, parsePhone, samePhone, toProviderPhone }
 
