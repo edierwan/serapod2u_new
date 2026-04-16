@@ -3,10 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { resolveQrCodeRecord, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
 import {
-  hasLinkedShopProfile,
   normalizePointClaimSettings,
-  requiresConsumerClaimConfirmation,
-  resolvePointClaimLane,
+  resolveClaimLaneExperience,
 } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 
@@ -100,74 +98,7 @@ export async function POST(request: NextRequest) {
 
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
-    const organizationClaimLane = resolvePointClaimLane(organization?.org_type_code)
     const requestedClaimLane = preferred_claim_lane === 'shop' ? 'shop' : null
-    const canUseProfileBasedShopLane = organizationClaimLane !== 'shop' && hasLinkedShopProfile(shopUser)
-    const claimLane = requestedClaimLane === 'shop' && (organizationClaimLane === 'shop' || canUseProfileBasedShopLane)
-      ? 'shop'
-      : organizationClaimLane
-    const profileCompletion = resolveCollectProfileCompletion({
-      name: shopUser.full_name,
-      claimLane,
-      requestedClaimLane,
-      organizationId: shopUser.organization_id,
-      organizationTypeCode: organization?.org_type_code,
-      referralPhone: shopUser.referral_phone,
-    })
-
-    if (profileCompletion.shouldBlockCollect) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'PROFILE_INCOMPLETE',
-          requiresProfileUpdate: true,
-          missingFields: profileCompletion.missingFields,
-          missingShop: profileCompletion.missingShop,
-          missingReference: profileCompletion.missingReference,
-          shouldBlockCollect: profileCompletion.shouldBlockCollect,
-          modalTitle: profileCompletion.modalTitle,
-          modalMessage: profileCompletion.modalMessage,
-          error: profileCompletion.modalMessage,
-        },
-        { status: 400 }
-      )
-    }
-
-    if (requiresConsumerClaimConfirmation({
-      organization_id: shopUser.organization_id,
-      organizationTypeCode: organization?.org_type_code,
-      claimLane,
-      shop_name: shopUser.shop_name,
-      referral_phone: shopUser.referral_phone,
-      consumerClaimConfirmedAt: shopUser.consumer_claim_confirmed_at,
-    })) {
-      if (!consumer_confirmation) {
-        return NextResponse.json(
-          {
-            success: false,
-            requiresConsumerConfirmation: true,
-            error: 'You\'re not linked to any shop yet. Continue collecting points as a consumer?'
-          },
-          { status: 409 }
-        )
-      }
-
-      const confirmedAt = new Date().toISOString()
-      const { error: confirmationError } = await supabaseAdmin
-        .from('users')
-        .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
-        .eq('id', shopUser.id)
-
-      if (confirmationError) {
-        console.error('Failed to persist consumer claim confirmation:', confirmationError)
-        return NextResponse.json(
-          { success: false, error: 'Unable to save consumer confirmation right now. Please try again.' },
-          { status: 500 }
-        )
-      }
-
-      shopUser.consumer_claim_confirmed_at = confirmedAt
-    }
 
     // Allow if:
     // 1. User has no organization (legacy Independent Consumer)
@@ -186,7 +117,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Type:', organization?.org_type_code || 'none', '| Claim lane:', claimLane, '| Requested lane:', requestedClaimLane)
+    console.log('✅ User verified:', shopUser.email, '| Organization:', organization?.org_name || 'Independent Consumer', '| Type:', organization?.org_type_code || 'none', '| Requested lane:', requestedClaimLane || 'auto')
 
     // Resolve QR code record (handles both new codes with hash and legacy codes)
     const qrCodeData = await resolveQrCodeRecord(supabaseAdmin, qr_code)
@@ -363,14 +294,75 @@ export async function POST(request: NextRequest) {
       pointClaimSettings = normalizePointClaimSettings(settingsOrg?.settings, pointRule?.points_per_scan || 100)
     }
 
-    if (claimLane === 'consumer' && pointClaimSettings.claimMode !== 'dual') {
+    const laneExperience = resolveClaimLaneExperience({
+      claimMode: pointClaimSettings.claimMode,
+      organization_id: shopUser.organization_id,
+      organizationTypeCode: organization?.org_type_code,
+      referral_phone: shopUser.referral_phone,
+      consumerClaimConfirmedAt: shopUser.consumer_claim_confirmed_at,
+      consumerConfirmation: consumer_confirmation === true,
+      preferredClaimLane: requestedClaimLane,
+    })
+    const claimLane = laneExperience.claimLane
+    const profileCompletion = resolveCollectProfileCompletion({
+      name: shopUser.full_name,
+      claimLane,
+      requestedClaimLane,
+      organizationId: shopUser.organization_id,
+      organizationTypeCode: organization?.org_type_code,
+      referralPhone: shopUser.referral_phone,
+    })
+
+    if (laneExperience.shouldPromptConsumerChoice) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Consumer QR point claim is disabled for this organization. Current mode is Shop Staff Only.'
+          requiresConsumerConfirmation: true,
+          modalTitle: 'Choose Claim Type',
+          modalMessage: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
+          consumerOptionLabel: 'Consumer',
+          shopOptionLabel: 'Belong to Shop',
+          claim_mode: pointClaimSettings.claimMode,
+          error: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
         },
-        { status: 403 }
+        { status: 409 }
       )
+    }
+
+    if (profileCompletion.shouldBlockCollect) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PROFILE_INCOMPLETE',
+          requiresProfileUpdate: true,
+          missingFields: profileCompletion.missingFields,
+          missingShop: profileCompletion.missingShop,
+          missingReference: profileCompletion.missingReference,
+          shouldBlockCollect: profileCompletion.shouldBlockCollect,
+          modalTitle: profileCompletion.modalTitle,
+          modalMessage: profileCompletion.modalMessage,
+          error: profileCompletion.modalMessage,
+        },
+        { status: 400 }
+      )
+    }
+
+    if (claimLane === 'consumer' && consumer_confirmation && !shopUser.consumer_claim_confirmed_at) {
+      const confirmedAt = new Date().toISOString()
+      const { error: confirmationError } = await supabaseAdmin
+        .from('users')
+        .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+        .eq('id', shopUser.id)
+
+      if (confirmationError) {
+        console.error('Failed to persist consumer claim confirmation:', confirmationError)
+        return NextResponse.json(
+          { success: false, error: 'Unable to save consumer confirmation right now. Please try again.' },
+          { status: 500 }
+        )
+      }
+
+      shopUser.consumer_claim_confirmed_at = confirmedAt
     }
 
     const pointsToAward = claimLane === 'shop'

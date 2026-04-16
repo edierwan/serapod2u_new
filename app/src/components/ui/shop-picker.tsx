@@ -19,6 +19,7 @@ export interface ShopResult {
 interface ShopPickerProps {
     value?: string | null          // current shop_name value (free text, backward compat)
     onSelect: (shop: ShopResult | null, displayName: string) => void
+    onCreateRequest?: (shopName: string) => void
     disabled?: boolean
     placeholder?: string
     className?: string
@@ -28,6 +29,7 @@ interface ShopPickerProps {
 export function ShopPicker({
     value,
     onSelect,
+    onCreateRequest,
     disabled = false,
     placeholder = 'Search shop by name...',
     className,
@@ -250,6 +252,18 @@ export function ShopPicker({
                 <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg p-3 text-center">
                     <p className="text-sm text-muted-foreground">No shops found</p>
                     <p className="text-xs text-muted-foreground/70 mt-1">Try searching with a different name</p>
+                    {onCreateRequest && (
+                        <button
+                            type="button"
+                            className="mt-3 text-sm font-medium text-blue-600 hover:text-blue-700"
+                            onClick={() => {
+                                setIsOpen(false)
+                                onCreateRequest(searchTerm.trim())
+                            }}
+                        >
+                            My shop name is not found. Create new.
+                        </button>
+                    )}
                 </div>
             )}
         </div>
