@@ -97,6 +97,7 @@ interface User {
   email: string;
   full_name: string | null;
   phone: string | null;
+  referral_phone: string | null;
   is_active: boolean;
   is_verified: boolean;
   last_login_at: string | null;
@@ -120,6 +121,7 @@ type SortField =
   | "is_active"
   | "organization_id"
   | "created_at"
+  | "referral_phone"
   | "last_login_at";
 type SortDirection = "asc" | "desc";
 
@@ -1400,7 +1402,7 @@ export default function UserManagementNew({
           <div className="flex items-center gap-2">
             <Search className="w-5 h-5 text-gray-400" />
             <Input
-              placeholder="Search users by name or email..."
+              placeholder="Search users by name, email, or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1"
@@ -1546,11 +1548,11 @@ export default function UserManagementNew({
                       </TableHead>
                       <TableHead>
                         <button
-                          onClick={() => handleSort("created_at")}
+                          onClick={() => handleSort("referral_phone")}
                           className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                         >
-                          Join Date
-                          {sortField === "created_at" ? (
+                          Reference
+                          {sortField === "referral_phone" ? (
                             sortDirection === "asc" ? (
                               <ArrowUp className="w-4 h-4" />
                             ) : (
@@ -1634,15 +1636,11 @@ export default function UserManagementNew({
                               >
                                 {user.full_name || "No Name"}
                               </button>
-                              <div className="text-xs text-gray-500 truncate">
-                                {user.email}
-                                {user.phone && (
-                                  <span className="text-gray-400">
-                                    {" "}
-                                    | {user.phone}
-                                  </span>
-                                )}
-                              </div>
+                              {user.phone && (
+                                <div className="text-xs text-gray-500 truncate">
+                                  {user.phone}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -1674,14 +1672,7 @@ export default function UserManagementNew({
                         </TableCell>
                         <TableCell>
                           <span className="text-gray-900">
-                            {new Date(user.created_at).toLocaleDateString(
-                              "en-US",
-                              {
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )}
+                            {user.referral_phone || "-"}
                           </span>
                         </TableCell>
                         <TableCell>
