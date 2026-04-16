@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { samePhone } from '@/utils/phone'
 
 /**
  * GET /api/user/profile
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
         id,
         email,
         full_name,
+        call_name,
         avatar_url,
         phone,
         referral_phone,
@@ -104,6 +106,37 @@ export async function GET(request: NextRequest) {
     let bankName = null
     let bankAccountNumber = null
     let bankAccountHolderName = null
+    let referenceDisplayName = null
+
+    if (userProfile.referral_phone) {
+      const { data: referenceMatches, error: referenceSearchError } = await supabaseAdmin.rpc('search_eligible_references' as any, {
+        p_search_term: userProfile.referral_phone.trim(),
+        p_limit: 10
+      })
+
+      if (referenceSearchError) {
+        console.error('Reference lookup failed:', referenceSearchError)
+      } else {
+        const matchedReference = (referenceMatches || []).find((candidate: any) =>
+          samePhone(candidate.phone, userProfile.referral_phone)
+        )
+
+        if (matchedReference?.user_id) {
+          const { data: referenceProfile } = await supabaseAdmin
+            .from('users')
+            .select('call_name, full_name')
+            .eq('id', matchedReference.user_id)
+            .maybeSingle()
+
+          referenceDisplayName = referenceProfile?.call_name?.trim()
+            || referenceProfile?.full_name?.trim()
+            || matchedReference.full_name
+            || null
+        } else if (matchedReference?.full_name) {
+          referenceDisplayName = matchedReference.full_name
+        }
+      }
+    }
 
     if (userProfile.organization_id) {
       const { data: orgData, error: orgError } = await supabaseAdmin
@@ -201,9 +234,11 @@ export async function GET(request: NextRequest) {
         id: userProfile.id,
         email: userProfile.email || user.email,
         fullName: userProfile.full_name || '',
+        callName: userProfile.call_name || '',
         avatarUrl: avatarUrlWithCache,
         phone: userProfile.phone || '',
         referralPhone: userProfile.referral_phone || '',
+        referenceDisplayName,
         address: userProfile.address || '',
         shop_name: userProfile.shop_name,
         consumerClaimConfirmedAt: userProfile.consumer_claim_confirmed_at || null,

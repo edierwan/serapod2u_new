@@ -671,6 +671,7 @@ export default function PremiumLoyaltyTemplate({
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
     const [newReferralPhone, setNewReferralPhone] = useState('')
+    const [userReferenceDisplayName, setUserReferenceDisplayName] = useState('')
     const [referralName, setReferralName] = useState('')
     const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
     const [savingProfile, setSavingProfile] = useState(false)
@@ -715,6 +716,31 @@ export default function PremiumLoyaltyTemplate({
     const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
         const resolvedName = (name || userName || 'there').trim()
         return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
+    }
+
+    const withUserGreeting = (message?: string | null, name?: string | null) => {
+        const resolvedName = (name || userName || 'there').trim()
+        const baseMessage = (message || "You're not linked to any shop yet. Continue collecting points as a consumer?").trim()
+
+        if (!baseMessage) {
+            return `Hi ${resolvedName}, please review your claim type before continuing.`
+        }
+
+        if (/^hi\s/i.test(baseMessage)) {
+            return baseMessage
+        }
+
+        return `Hi ${resolvedName}, ${baseMessage.charAt(0).toLowerCase()}${baseMessage.slice(1)}`
+    }
+
+    const closeCollectPointsModal = () => {
+        setShowPointsLoginModal(false)
+        setPointsError('')
+        setPointsErrorTitle('')
+        setPointsErrorAction(null)
+        setPendingProfileCollectLane(null)
+        setPendingProfileCollectEmail('')
+        setCollectPointsStep('login')
     }
 
     const resolveRoadtourGeolocation = async (forcePrompt = false) => {
@@ -955,6 +981,7 @@ export default function PremiumLoyaltyTemplate({
                 phone: profile.phone || '',
                 address: profile.address || '',
                 shop_name: profile.shop_name || '',
+                referenceDisplayName: profile.referenceDisplayName || '',
                 pointsBalance: profile.pointsBalance || 0,
                 bankId: profile.bankId || '',
                 bankName: profile.bankName || '',
@@ -1048,7 +1075,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -1078,6 +1105,7 @@ export default function PremiumLoyaltyTemplate({
                         setNewLinkedOrganizationId(organizationId || null)
                         setUserPhone(phone)
                         setUserReferralPhone(referralPhone || '')
+                        setUserReferenceDisplayName(referenceDisplayName || '')
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                         setNewPhone(phone)
                         setNewReferralPhone(referralPhone || '')
@@ -1093,8 +1121,8 @@ export default function PremiumLoyaltyTemplate({
                         // Set address
                         setUserAddress(address || '')
                         setNewAddress(address || '')
-                        setUserShopName(shop_name || '')
-                        setNewShopName(shop_name || '')
+                        setUserShopName(organizationId ? (orgName || '') : '')
+                        setNewShopName(organizationId ? (orgName || '') : '')
                     } else {
                         console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -1160,7 +1188,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, referenceDisplayName, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -1172,6 +1200,7 @@ export default function PremiumLoyaltyTemplate({
                             setNewLinkedOrganizationId(organizationId || null)
                             setUserPhone(phone)
                             setUserReferralPhone(referralPhone || '')
+                            setUserReferenceDisplayName(referenceDisplayName || '')
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             setNewReferralPhone(referralPhone || '')
@@ -1185,8 +1214,8 @@ export default function PremiumLoyaltyTemplate({
                             // Set address
                             setUserAddress(address || '')
                             setNewAddress(address || '')
-                            setUserShopName(shop_name || '')
-                            setNewShopName(shop_name || '')
+                            setUserShopName(organizationId ? (orgName || '') : '')
+                            setNewShopName(organizationId ? (orgName || '') : '')
                         }
                     } catch (error) {
                         console.error('🔐 Profile fetch error on auth change:', error)
@@ -2600,6 +2629,7 @@ export default function PremiumLoyaltyTemplate({
                             body: JSON.stringify({ userId, referral_phone: newReferralPhone?.trim() || null })
                         })
                         setUserReferralPhone(newReferralPhone || '')
+                        setUserReferenceDisplayName(referralName || '')
                     } else if (refResult && typeof refResult === 'object') {
                         const refData = refResult as any
                         if (refData.success && refData.status === 'pending') {
@@ -2608,6 +2638,7 @@ export default function PremiumLoyaltyTemplate({
                             alert('Your reference change has been submitted for approval.')
                         } else if (refData.success) {
                             setUserReferralPhone(newReferralPhone || '')
+                            setUserReferenceDisplayName(referralName || '')
                         } else {
                             setProfileSaveError(refData.error || 'Reference change failed')
                         }
@@ -2615,6 +2646,7 @@ export default function PremiumLoyaltyTemplate({
                 } catch (refErr) {
                     console.error('Referral change error:', refErr)
                     setUserReferralPhone(newReferralPhone || '')
+                    setUserReferenceDisplayName(referralName || '')
                 }
             }
 
@@ -2628,8 +2660,10 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.address !== undefined) {
                 setUserAddress(updateData.address || '')
             }
-            if (updateData.shop_name !== undefined) {
-                setUserShopName(updateData.shop_name || '')
+            if (updateData.shop_name !== undefined || updateData.organization_id !== undefined) {
+                const nextLinkedShopName = updateData.organization_id ? (newShopName.trim() || '') : ''
+                setUserShopName(nextLinkedShopName)
+                setNewShopName(nextLinkedShopName)
             }
             if (updateData.organization_id !== undefined) {
                 setUserLinkedOrganizationId(updateData.organization_id || null)
@@ -2639,12 +2673,13 @@ export default function PremiumLoyaltyTemplate({
             if (refreshedProfile?.success) {
                 setIsShopUser(Boolean(refreshedProfile.isShop))
                 setShopName(refreshedProfile.orgName || '')
-                setUserShopName(refreshedProfile.shop_name || '')
-                setNewShopName(refreshedProfile.shop_name || '')
+                setUserShopName(refreshedProfile.organizationId ? (refreshedProfile.orgName || '') : '')
+                setNewShopName(refreshedProfile.organizationId ? (refreshedProfile.orgName || '') : '')
                 setUserLinkedOrganizationId(refreshedProfile.organizationId || null)
                 setNewLinkedOrganizationId(refreshedProfile.organizationId || null)
                 setUserReferralPhone(refreshedProfile.referralPhone || '')
                 setNewReferralPhone(refreshedProfile.referralPhone || '')
+                setUserReferenceDisplayName(refreshedProfile.referenceDisplayName || '')
             }
 
             setProfileSaveSuccess(true)
@@ -2862,10 +2897,11 @@ export default function PremiumLoyaltyTemplate({
             setNewPhone(profileResult.phone || '')
             setUserAddress(profileResult.address || '')
             setNewAddress(profileResult.address || '')
-            setUserShopName(profileResult.shop_name || '')
-            setNewShopName(profileResult.shop_name || '')
+            setUserShopName(profileResult.organizationId ? (profileResult.orgName || '') : '')
+            setNewShopName(profileResult.organizationId ? (profileResult.orgName || '') : '')
             setUserReferralPhone(profileResult.referralPhone || '')
             setNewReferralPhone(profileResult.referralPhone || '')
+            setUserReferenceDisplayName(profileResult.referenceDisplayName || '')
             if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
         }
     }
@@ -6195,9 +6231,20 @@ export default function PremiumLoyaltyTemplate({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2">
-                                        <Shield className="w-4 h-4 text-gray-400" />
-                                        <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
+                                    <div className="flex items-start gap-2">
+                                        <Shield className="w-4 h-4 text-gray-400 mt-0.5" />
+                                        {userReferralPhone ? (
+                                            <div className="min-w-0">
+                                                {userReferenceDisplayName && (
+                                                    <div className="text-gray-900 font-medium truncate">{userReferenceDisplayName}</div>
+                                                )}
+                                                <div className={`truncate ${userReferenceDisplayName ? 'text-sm text-gray-500' : 'text-gray-900'}`}>
+                                                    {userReferralPhone}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-900">Not set</span>
+                                        )}
                                     </div>
                                 )}
                                 {!((editingReferralPhone ? newReferralPhone : userReferralPhone) || '').trim() && (
@@ -6268,10 +6315,10 @@ export default function PremiumLoyaltyTemplate({
                                 ) : (
                                     <div className="flex items-start gap-2">
                                         <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
-                                        <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
+                                        <span className="block text-gray-900 text-sm">{userShopName || 'Not set'}</span>
                                     </div>
                                 )}
-                                {!((!isShopUser && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
+                                {!((!isShopUser && editingShopName ? newShopName : userShopName) || '').trim() && (
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                 )}
                             </div>
@@ -6624,6 +6671,16 @@ export default function PremiumLoyaltyTemplate({
             {showPointsLoginModal && !showPointsSuccessModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={closeCollectPointsModal}
+                                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                                aria-label="Close collect points dialog"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                         <div className="text-center">
                             <div
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
@@ -6708,7 +6765,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                                     {pointsErrorTitle && <p className="text-sm font-semibold text-amber-900 text-center mb-1">{pointsErrorTitle}</p>}
                                     <p className="text-sm text-amber-700 text-center">
-                                        {pointsError || "You're not linked to any shop yet. Continue collecting points as a consumer?"}
+                                        {withUserGreeting(pointsError, userName)}
                                     </p>
                                 </div>
 

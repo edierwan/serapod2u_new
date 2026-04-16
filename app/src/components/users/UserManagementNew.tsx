@@ -112,6 +112,7 @@ interface User {
   id: string;
   email: string;
   full_name: string | null;
+  call_name?: string | null;
   phone: string | null;
   referral_phone: string | null;
   consumer_claim_confirmed_at: string | null;
@@ -141,6 +142,10 @@ type SortField =
   | "referral_phone"
   | "last_login_at";
 type SortDirection = "asc" | "desc";
+
+const getUserDisplayName = (user: Pick<User, "call_name" | "full_name" | "email">): string => {
+  return user.call_name?.trim() || user.full_name?.trim() || user.email || "No Name";
+};
 
 export default function UserManagementNew({
   userProfile,
@@ -1130,6 +1135,7 @@ export default function UserManagementNew({
         const userPhoneDigits = normalizePhoneForSearch(user.phone || '');
 
         const matchesSearch =
+          user.call_name?.toLowerCase().includes(searchLower) ||
           user.full_name?.toLowerCase().includes(searchLower) ||
           user.email.toLowerCase().includes(searchLower) ||
           user.phone?.includes(searchQuery) ||
@@ -1189,8 +1195,8 @@ export default function UserManagementNew({
           aVal = aVal ? 1 : 0;
           bVal = bVal ? 1 : 0;
         } else if (sortField === "full_name") {
-          aVal = (aVal || "").toLowerCase();
-          bVal = (bVal || "").toLowerCase();
+          aVal = getUserDisplayName(a).toLowerCase();
+          bVal = getUserDisplayName(b).toLowerCase();
         } else if (sortField === "role_code") {
           aVal =
             roles.find((r) => r.role_code === a.role_code)?.role_name ||
@@ -1681,12 +1687,12 @@ export default function UserManagementNew({
                                         `${user.avatar_url.split("?")[0]}?t=${new Date(user.updated_at).getTime()}`,
                                       ) || user.avatar_url
                                     }
-                                    alt={user.full_name || "User"}
+                                    alt={getUserDisplayName(user)}
                                     key={`avatar-${user.id}-${user.updated_at}`}
                                   />
                                 )}
                                 <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
-                                  {getInitials(user.full_name)}
+                                  {getInitials(getUserDisplayName(user))}
                                 </AvatarFallback>
                               </Avatar>
                               {/* Online status indicator */}
@@ -1706,7 +1712,7 @@ export default function UserManagementNew({
                                 className="text-gray-900 truncate font-medium hover:text-blue-600 hover:underline transition-colors text-left block max-w-full"
                                 title="Click to edit user"
                               >
-                                {user.full_name || "No Name"}
+                                {getUserDisplayName(user)}
                               </button>
                               {user.phone && (
                                 <div className="text-xs text-gray-500 truncate">
@@ -1760,7 +1766,7 @@ export default function UserManagementNew({
                             return (
                               <div className="min-w-0">
                                 <div className="text-gray-900 font-medium truncate">
-                                  {referenceUser.full_name || "No Name"}
+                                  {getUserDisplayName(referenceUser)}
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">
                                   {referenceUser.phone || user.referral_phone}
@@ -1804,66 +1810,66 @@ export default function UserManagementNew({
                                   </TooltipContent>
                                 </Tooltip>
                               )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                handleToggleActive(
-                                  user.id,
-                                  user.is_active,
-                                  user.full_name || user.email,
-                                )
-                              }
-                              disabled={isSaving || user.id === userProfile.id}
-                              className={
-                                user.is_active
-                                  ? "text-green-600 hover:text-green-700 hover:bg-green-50"
-                                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
-                              }
-                              title={
-                                user.id === userProfile.id
-                                  ? "Cannot deactivate yourself"
-                                  : user.is_active
-                                    ? "Deactivate user"
-                                    : "Activate user"
-                              }
-                            >
-                              <Power className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setEditingUser(user);
-                                setDialogOpen(true);
-                              }}
-                              disabled={isSaving}
-                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                              title="Edit user"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            {resolveCurrentUserLevel() === 1 && (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() =>
-                                  handleDeleteUser(
+                                  handleToggleActive(
                                     user.id,
+                                    user.is_active,
                                     user.full_name || user.email,
                                   )
                                 }
                                 disabled={isSaving || user.id === userProfile.id}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                className={
+                                  user.is_active
+                                    ? "text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                                }
                                 title={
                                   user.id === userProfile.id
-                                    ? "Cannot delete yourself"
-                                    : "Delete user (OTP required)"
+                                    ? "Cannot deactivate yourself"
+                                    : user.is_active
+                                      ? "Deactivate user"
+                                      : "Activate user"
                                 }
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Power className="w-4 h-4" />
                               </Button>
-                            )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingUser(user);
+                                  setDialogOpen(true);
+                                }}
+                                disabled={isSaving}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Edit user"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              {resolveCurrentUserLevel() === 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleDeleteUser(
+                                      user.id,
+                                      user.full_name || user.email,
+                                    )
+                                  }
+                                  disabled={isSaving || user.id === userProfile.id}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  title={
+                                    user.id === userProfile.id
+                                      ? "Cannot delete yourself"
+                                      : "Delete user (OTP required)"
+                                  }
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           </TooltipProvider>
                         </TableCell>

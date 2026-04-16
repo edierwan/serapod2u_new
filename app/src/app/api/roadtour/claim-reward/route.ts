@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
         }
 
         const orgType = userProfile?.organizations?.org_type_code || null
-        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
+        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || 'shop'
         const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
         const requestedClaimLane = null
         const laneExperience = resolveClaimLaneExperience({
