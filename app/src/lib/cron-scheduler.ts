@@ -19,13 +19,62 @@ const CRON_JOBS = [
   { path: '/api/cron/notification-outbox-worker',    schedule: '*/1 * * * *' },
 ]
 
+function normalizeBaseUrl(rawUrl: string): string {
+  const withProtocol = rawUrl.includes('://') ? rawUrl : `https://${rawUrl}`
+  const parsed = new URL(withProtocol)
+
+  if (parsed.hostname.startsWith('www.')) {
+    parsed.hostname = parsed.hostname.slice(4)
+  }
+
+  parsed.pathname = ''
+  parsed.search = ''
+  parsed.hash = ''
+
+  return parsed.toString().replace(/\/$/, '')
+}
+
 function getBaseUrl(): string {
-  // Prefer explicit config, fall back to localhost
-  return (
+  const coolifyHost = process.env.COOLIFY_FQDN
+    ?.split(',')
+    .map((value) => value.trim())
+    .find(Boolean)
+
+  const configuredUrl =
+    process.env.INTERNAL_CRON_BASE_URL ||
+    coolifyHost ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    `http://localhost:${process.env.PORT || 3000}`
-  )
+    process.env.NEXT_PUBLIC_SITE_URL
+
+  if (configuredUrl) {
+    return normalizeBaseUrl(configuredUrl)
+  }
+
+  return `http://localhost:${process.env.PORT || 3000}`
+}
+
+async function fetchCronEndpoint(url: string, secret?: string): Promise<Response> {
+  const headers = secret ? { Authorization: `Bearer ${secret}` } : {}
+  const response = await fetch(url, {
+    method: 'GET',
+    headers,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(55_000),
+  })
+
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location')
+    if (location) {
+      const redirectedUrl = new URL(location, url).toString()
+      return fetch(redirectedUrl, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(55_000),
+      })
+    }
+  }
+
+  return response
 }
 
 async function triggerJob(path: string): Promise<void> {
@@ -33,11 +82,7 @@ async function triggerJob(path: string): Promise<void> {
   const secret = process.env.CRON_SECRET || process.env.WORKER_SECRET
 
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: secret ? { Authorization: `Bearer ${secret}` } : {},
-      signal: AbortSignal.timeout(55_000), // 55s timeout (jobs run every 60s)
-    })
+    const res = await fetchCronEndpoint(url, secret)
 
     if (!res.ok) {
       console.warn(`[Cron] ${path} responded ${res.status}`)
