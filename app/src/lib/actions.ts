@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
 import { normalizePhoneE164 } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
+import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import {
   findCodeByVerificationToken,
   logNotificationEvent as logRegistrationNotificationEvent,
@@ -343,6 +344,55 @@ export async function updateUserWithAuth(userId: string, userData: {
         if (!position || position.organization_id !== targetOrgId) {
           return { success: false, error: 'Invalid position for this organization' }
         }
+      }
+    }
+
+    if (updateData.organization_id !== undefined || updateData.referral_phone !== undefined) {
+      const { data: existingUser, error: existingUserError } = await adminClient
+        .from('users')
+        .select(`
+          organization_id,
+          referral_phone,
+          organizations!fk_users_organization(org_type_code)
+        `)
+        .eq('id', userId)
+        .single()
+
+      if (existingUserError) {
+        return { success: false, error: 'Failed to resolve current user profile for confirmation logic' }
+      }
+
+      const nextOrganizationId = updateData.organization_id !== undefined
+        ? updateData.organization_id
+        : existingUser?.organization_id || null
+      const nextReferralPhone = updateData.referral_phone !== undefined
+        ? updateData.referral_phone
+        : existingUser?.referral_phone || null
+
+      let nextOrganizationTypeCode = (existingUser?.organizations as any)?.org_type_code || null
+
+      if (nextOrganizationId && nextOrganizationId !== existingUser?.organization_id) {
+        const { data: organizationData, error: organizationError } = await adminClient
+          .from('organizations')
+          .select('org_type_code')
+          .eq('id', nextOrganizationId)
+          .maybeSingle()
+
+        if (organizationError) {
+          return { success: false, error: 'Failed to resolve selected organization for confirmation logic' }
+        }
+
+        nextOrganizationTypeCode = organizationData?.org_type_code || null
+      } else if (!nextOrganizationId) {
+        nextOrganizationTypeCode = null
+      }
+
+      if (hasLinkedShopProfile({
+        organization_id: nextOrganizationId,
+        organizationTypeCode: nextOrganizationTypeCode,
+        referral_phone: nextReferralPhone,
+      })) {
+        updateData.consumer_claim_confirmed_at = null
       }
     }
 

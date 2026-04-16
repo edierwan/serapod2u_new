@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
+import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 
 /**
  * POST /api/user/update-profile
@@ -279,6 +280,61 @@ export async function POST(request: NextRequest) {
     if (referral_phone !== undefined) {
       const trimmedReferral = referral_phone?.trim() || ''
       updateData.referral_phone = trimmedReferral ? normalizePhone(trimmedReferral) : null
+    }
+
+    if (organization_id !== undefined || referral_phone !== undefined) {
+      const { data: existingUser, error: existingUserError } = await adminClient
+        .from('users')
+        .select(`
+          organization_id,
+          referral_phone,
+          organizations!fk_users_organization(org_type_code)
+        `)
+        .eq('id', userId)
+        .single()
+
+      if (existingUserError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to resolve current profile state' },
+          { status: 500 }
+        )
+      }
+
+      const nextOrganizationId = updateData.organization_id !== undefined
+        ? updateData.organization_id
+        : existingUser?.organization_id || null
+      const nextReferralPhone = updateData.referral_phone !== undefined
+        ? updateData.referral_phone
+        : existingUser?.referral_phone || null
+
+      let nextOrganizationTypeCode = (existingUser?.organizations as any)?.org_type_code || null
+
+      if (nextOrganizationId && nextOrganizationId !== existingUser?.organization_id) {
+        const { data: organizationData, error: organizationError } = await adminClient
+          .from('organizations')
+          .select('org_type_code')
+          .eq('id', nextOrganizationId)
+          .maybeSingle()
+
+        if (organizationError) {
+          return NextResponse.json(
+            { success: false, error: 'Failed to resolve selected shop' },
+            { status: 500 }
+          )
+        }
+
+        nextOrganizationTypeCode = organizationData?.org_type_code || null
+      } else if (!nextOrganizationId) {
+        nextOrganizationTypeCode = null
+      }
+
+      if (hasLinkedShopProfile({
+        organization_id: nextOrganizationId,
+        organizationTypeCode: nextOrganizationTypeCode,
+        referral_phone: nextReferralPhone,
+      })) {
+        updateData.consumer_claim_confirmed_at = null
+      }
     }
 
     // Update database

@@ -56,6 +56,12 @@ import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
 import { updateUserHr } from "@/lib/api/hr";
 import { samePhone } from "@/utils/phone";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 
@@ -80,6 +86,15 @@ const formatRelativeTime = (dateString: string | null): string => {
   }
 };
 
+const formatDateTime = (dateString: string | null): string => {
+  if (!dateString) return "Never";
+  try {
+    return new Date(dateString).toLocaleString();
+  } catch {
+    return "Unknown";
+  }
+};
+
 // Check if user is online (logged in within last 15 minutes)
 const isUserOnline = (lastLoginAt: string | null): boolean => {
   if (!lastLoginAt) return false;
@@ -99,6 +114,7 @@ interface User {
   full_name: string | null;
   phone: string | null;
   referral_phone: string | null;
+  consumer_claim_confirmed_at: string | null;
   is_active: boolean;
   is_verified: boolean;
   last_login_at: string | null;
@@ -310,31 +326,58 @@ export default function UserManagementNew({
     }
   };
 
-  // ── Last QR Scan times for Guest/Shop view ──────────────────────────
+  // Track latest QR activity per visible user so Last Activity reflects either
+  // direct login or premium-template / QR usage, whichever is newer.
   const [lastScanMap, setLastScanMap] = useState<Map<string, string>>(new Map());
 
-  const isGuestShopView = roleFilter === 'GUEST' || roleFilter === 'USER' || orgTypeFilter === 'SHOP';
-
   useEffect(() => {
-    if (!isGuestShopView || !isReady) {
+    if (!isReady || users.length === 0) {
       setLastScanMap(new Map());
       return;
     }
 
     const loadLastScans = async () => {
       try {
-        // Fetch the latest scan per consumer
-        const { data, error } = await supabase
-          .from('consumer_qr_scans')
-          .select('consumer_id, scanned_at')
-          .eq('is_manual_adjustment', false)
-          .order('scanned_at', { ascending: false });
+        const userIds = users.map((user) => user.id).filter(Boolean);
 
-        if (error) { console.error('Last scan fetch error:', error); return; }
-        // Build map: first occurrence per consumer_id = latest scan
+        if (userIds.length === 0) {
+          setLastScanMap(new Map());
+          return;
+        }
+
+        const chunkSize = 250;
+        const chunks: string[][] = [];
+
+        for (let index = 0; index < userIds.length; index += chunkSize) {
+          chunks.push(userIds.slice(index, index + chunkSize));
+        }
+
+        const results = await Promise.all(
+          chunks.map(async (chunk) => {
+            const { data, error } = await supabase
+              .from('consumer_qr_scans')
+              .select('consumer_id, scanned_at')
+              .in('consumer_id', chunk)
+              .eq('is_manual_adjustment', false)
+              .not('scanned_at', 'is', null)
+              .order('scanned_at', { ascending: false });
+
+            if (error) {
+              throw error;
+            }
+
+            return data || [];
+          }),
+        );
+
         const map = new Map<string, string>();
-        (data || []).forEach((row: any) => {
-          if (row.consumer_id && !map.has(row.consumer_id)) {
+        results.flat().forEach((row: any) => {
+          if (!row.consumer_id || !row.scanned_at) {
+            return;
+          }
+
+          const existing = map.get(row.consumer_id);
+          if (!existing || row.scanned_at > existing) {
             map.set(row.consumer_id, row.scanned_at);
           }
         });
@@ -345,7 +388,29 @@ export default function UserManagementNew({
     };
 
     loadLastScans();
-  }, [isGuestShopView, isReady, supabase]);
+  }, [isReady, supabase, users]);
+
+  const getLatestActivityAt = (user: User): string | null => {
+    const lastScanAt = lastScanMap.get(user.id) || null;
+
+    if (!user.last_login_at) return lastScanAt;
+    if (!lastScanAt) return user.last_login_at;
+
+    return new Date(user.last_login_at).getTime() >= new Date(lastScanAt).getTime()
+      ? user.last_login_at
+      : lastScanAt;
+  };
+
+  const hasConsumerLaneConfirmation = (user: User): boolean => {
+    if (!user.consumer_claim_confirmed_at) {
+      return false;
+    }
+
+    const org = organizations.find((candidate) => candidate.id === user.organization_id);
+    const isLinkedShopProfile = Boolean(org && org.org_type_code === 'SHOP' && user.referral_phone);
+
+    return !isLinkedShopProfile;
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1089,7 +1154,7 @@ export default function UserManagementNew({
         // Status filter
         const matchesStatus =
           !statusFilter ||
-          (statusFilter === "online" && isUserOnline(user.last_login_at)) ||
+          (statusFilter === "online" && isUserOnline(getLatestActivityAt(user))) ||
           (statusFilter === "active" && user.is_active) ||
           (statusFilter === "inactive" && !user.is_active) ||
           (statusFilter === "verified" && user.is_verified) ||
@@ -1112,9 +1177,14 @@ export default function UserManagementNew({
         if (bVal === null || bVal === undefined) return -1;
 
         // Handle different data types
-        if (sortField === "created_at" || sortField === "last_login_at") {
+        if (sortField === "created_at") {
           aVal = new Date(aVal).getTime();
           bVal = new Date(bVal).getTime();
+        } else if (sortField === "last_login_at") {
+          aVal = getLatestActivityAt(a);
+          bVal = getLatestActivityAt(b);
+          aVal = aVal ? new Date(aVal).getTime() : 0;
+          bVal = bVal ? new Date(bVal).getTime() : 0;
         } else if (sortField === "is_active") {
           aVal = aVal ? 1 : 0;
           bVal = bVal ? 1 : 0;
@@ -1156,6 +1226,7 @@ export default function UserManagementNew({
     sortDirection,
     organizations,
     roles,
+    lastScanMap,
   ]);
 
   // Pagination calculations - handle "All" option when pageSize is -1
@@ -1181,7 +1252,7 @@ export default function UserManagementNew({
     total: filteredUsers.length, // Show filtered count based on active filters
     active: filteredUsers.filter((u) => u.is_active).length,
     verified: filteredUsers.filter((u) => u.is_verified).length,
-    online: filteredUsers.filter((u) => isUserOnline(u.last_login_at)).length,
+    online: filteredUsers.filter((u) => isUserOnline(getLatestActivityAt(u))).length,
   };
 
   const getInitials = (name: string | null): string => {
@@ -1569,7 +1640,7 @@ export default function UserManagementNew({
                           onClick={() => handleSort("last_login_at")}
                           className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
                         >
-                          {isGuestShopView ? 'Last QR Scan' : 'Last Login'}
+                          Last Activity
                           {sortField === "last_login_at" ? (
                             sortDirection === "asc" ? (
                               <ArrowUp className="w-4 h-4" />
@@ -1619,7 +1690,7 @@ export default function UserManagementNew({
                                 </AvatarFallback>
                               </Avatar>
                               {/* Online status indicator */}
-                              {isUserOnline(user.last_login_at) && (
+                              {isUserOnline(getLatestActivityAt(user)) && (
                                 <span
                                   className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"
                                   title="Online now"
@@ -1700,41 +1771,39 @@ export default function UserManagementNew({
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {isGuestShopView ? (
-                              /* Show last QR scan time */
-                              (() => {
-                                const lastScan = lastScanMap.get(user.id);
-                                return lastScan ? (
-                                  <span className="text-gray-900">
-                                    {formatRelativeTime(lastScan)}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 italic">No scans</span>
-                                );
-                              })()
-                            ) : (
-                              <>
-                                {isUserOnline(user.last_login_at) && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
-                                    Online
-                                  </span>
-                                )}
-                                <span
-                                  className={
-                                    user.last_login_at
-                                      ? "text-gray-900"
-                                      : "text-gray-400 italic"
-                                  }
-                                >
-                                  {formatRelativeTime(user.last_login_at)}
-                                </span>
-                              </>
+                            {isUserOnline(getLatestActivityAt(user)) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
+                                Online
+                              </span>
                             )}
+                            <span
+                              className={
+                                getLatestActivityAt(user)
+                                  ? "text-gray-900"
+                                  : "text-gray-400 italic"
+                              }
+                              title={formatDateTime(getLatestActivityAt(user))}
+                            >
+                              {formatRelativeTime(getLatestActivityAt(user))}
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <TooltipProvider delayDuration={150}>
+                            <div className="flex items-center justify-end gap-1">
+                              {hasConsumerLaneConfirmation(user) && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-amber-200 bg-amber-50 text-amber-600">
+                                      <Shield className="w-4 h-4" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Consumer lane confirmed on {formatDateTime(user.consumer_claim_confirmed_at)}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1795,7 +1864,8 @@ export default function UserManagementNew({
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             )}
-                          </div>
+                            </div>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))}

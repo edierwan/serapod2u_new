@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
             .select('organization_id')
             .eq('id', user.id)
             .single();
-        
+
         const orgId = userProfile?.organization_id;
         if (!orgId) {
             return NextResponse.json({ error: 'No organization found' }, { status: 400 });
@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
         if (logsError) {
             console.error('Error fetching send logs:', logsError);
             // Return empty if table doesn't exist yet
-            return NextResponse.json({ 
-                logs: [], 
+            return NextResponse.json({
+                logs: [],
                 stats: {
                     sent_today: 0,
                     failed_today: 0,
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
         today.setHours(0, 0, 0, 0);
 
         const todayLogs = logs.filter((l: any) => new Date(l.created_at) >= today);
-        
+
         const stats = {
             sent_today: todayLogs.length,
             failed_today: todayLogs.filter((l: any) => l.status === 'failed').length,
@@ -155,13 +155,13 @@ export async function GET(request: NextRequest) {
 function calculateAvgDeliveryTime(logs: any[]): number {
     const deliveredLogs = logs.filter((l: any) => l.delivered_at && l.sent_at);
     if (deliveredLogs.length === 0) return 0;
-    
+
     const totalSeconds = deliveredLogs.reduce((acc: number, l: any) => {
         const sent = new Date(l.sent_at).getTime();
         const delivered = new Date(l.delivered_at).getTime();
         return acc + (delivered - sent) / 1000;
     }, 0);
-    
+
     return Math.round(totalSeconds / deliveredLogs.length * 10) / 10;
 }
 
@@ -171,6 +171,6 @@ async function getActiveCampaignsCount(supabase: any, orgId: string): Promise<nu
         .select('id')
         .eq('org_id', orgId)
         .eq('status', 'sending');
-    
+
     return data?.length || 0;
 }

@@ -242,6 +242,11 @@ export async function POST(request: NextRequest) {
                 .eq('id', userId)
                 .single()
 
+            await (supabase as any)
+                .from('users')
+                .update({ last_login_at: new Date().toISOString() })
+                .eq('id', userId)
+
             userProfile = profile || null
             if (userProfile?.phone) userPhone = userProfile.phone
             console.log('[RT] profile:', userProfile ? `org=${userProfile.organization_id}, orgType=${userProfile.organizations?.org_type_code}, shop=${userProfile.shop_name}` : 'null', profileError ? `err=${profileError.message}` : '')

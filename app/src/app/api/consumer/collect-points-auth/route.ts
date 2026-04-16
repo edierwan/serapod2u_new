@@ -96,6 +96,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    await supabaseAdmin
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', shopUser.id)
+
     // Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
     const requestedClaimLane = preferred_claim_lane === 'shop' ? 'shop' : null

@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (error || !user) {
-        return NextResponse.json({ 
-          success: false, 
-          message: 'User not found' 
+        return NextResponse.json({
+          success: false,
+          message: 'User not found'
         })
       }
 
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       if (!phoneVariants.length) {
         return NextResponse.json({ success: false, message: 'User not found' })
       }
-      
+
       // Query with OR condition for all variants
       const { data: users, error } = await supabaseAdmin
         .from('users')
@@ -94,9 +94,9 @@ export async function POST(request: NextRequest) {
         .limit(1)
 
       if (error || !users || users.length === 0) {
-        return NextResponse.json({ 
-          success: false, 
-          message: 'User not found' 
+        return NextResponse.json({
+          success: false,
+          message: 'User not found'
         })
       }
 
