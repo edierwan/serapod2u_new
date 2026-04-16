@@ -23,11 +23,13 @@ import {
   Banknote,
   PlayCircle,
   Users,
+  Building2,
 } from 'lucide-react'
 import { Database } from '@/types/database'
 import { ReferralIncentiveSettings } from './ReferralIncentiveSettings'
 import { RoadtourRewardSettings } from './RoadtourRewardSettings'
 import { UserRegistrationBonusSettings } from './UserRegistrationBonusSettings'
+import { ShopRequestSettingsPanel } from '@/components/shop-requests/ShopRequestSettingsPanel'
 import { normalizePointClaimSettings, type PointClaimMode } from '@/lib/engagement/point-claim-settings'
 import { DEFAULT_REPORT_STATUS_SETTINGS, describeReportStatusRule, normalizeReportStatusSettings, type ReportStatusSettings, type ReportStatusTarget } from '@/lib/engagement/report-status-settings'
 import { toast } from '@/components/ui/use-toast'
@@ -63,7 +65,7 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
   const [reportStatusSettings, setReportStatusSettings] = useState<ReportStatusSettings>(DEFAULT_REPORT_STATUS_SETTINGS)
 
   // Sub-tab state
-  const [settingsTab, setSettingsTab] = useState<'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status'>('points')
+  const [settingsTab, setSettingsTab] = useState<'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status' | 'shop-requests'>('points')
 
   // Alert state
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null)
@@ -359,8 +361,8 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
       )}
 
       {/* Sub-tabs */}
-      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status')}>
-        <TabsList className="grid w-full max-w-6xl grid-cols-6">
+      <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as 'points' | 'roadtour' | 'registration' | 'media' | 'referral' | 'status' | 'shop-requests')}>
+        <TabsList className="grid w-full max-w-6xl grid-cols-7">
           <TabsTrigger value="points" className="gap-2">
             <Coins className="h-4 w-4" />
             Point Collection
@@ -384,6 +386,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
           <TabsTrigger value="status" className="gap-2">
             <Users className="h-4 w-4" />
             Report Status
+          </TabsTrigger>
+          <TabsTrigger value="shop-requests" className="gap-2">
+            <Building2 className="h-4 w-4" />
+            Shop Requests
           </TabsTrigger>
         </TabsList>
 
@@ -911,6 +917,10 @@ export function PointsConfigurationSettings({ userProfile }: PointsConfiguration
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="shop-requests" className="space-y-6 mt-6">
+          <ShopRequestSettingsPanel onAlert={showAlert} />
         </TabsContent>
 
       </Tabs>

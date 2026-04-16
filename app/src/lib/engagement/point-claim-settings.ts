@@ -22,6 +22,21 @@ interface ConsumerClaimConfirmationInput extends ShopLinkProfile {
     consumerClaimConfirmedAt?: string | null
 }
 
+interface ClaimLaneExperienceInput extends ShopLinkProfile {
+    claimMode: PointClaimMode
+    consumerClaimConfirmedAt?: string | null
+    consumerConfirmation?: boolean
+    preferredClaimLane?: 'shop' | null
+}
+
+export interface ClaimLaneExperienceResult {
+    claimLane: PointClaimLane
+    hasLinkedShopProfile: boolean
+    consumerPathAvailable: boolean
+    shouldPromptConsumerChoice: boolean
+    shouldRequireShopProfile: boolean
+}
+
 function toPositiveNumber(value: unknown, fallback: number) {
     const parsed = Number(value)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -65,4 +80,66 @@ export function requiresConsumerClaimConfirmation(input: ConsumerClaimConfirmati
     return input.claimLane === 'consumer'
         && !input.consumerClaimConfirmedAt
         && !hasLinkedShopProfile(input)
+}
+
+export function resolveClaimLaneExperience(input: ClaimLaneExperienceInput): ClaimLaneExperienceResult {
+    const linkedShopProfile = hasLinkedShopProfile(input)
+    const organizationClaimLane = resolvePointClaimLane(input.organizationTypeCode)
+    const canUseShopLane = organizationClaimLane === 'shop' || linkedShopProfile
+
+    if (input.claimMode !== 'dual') {
+        return {
+            claimLane: 'shop',
+            hasLinkedShopProfile: linkedShopProfile,
+            consumerPathAvailable: false,
+            shouldPromptConsumerChoice: false,
+            shouldRequireShopProfile: !canUseShopLane,
+        }
+    }
+
+    if (canUseShopLane) {
+        return {
+            claimLane: 'shop',
+            hasLinkedShopProfile: linkedShopProfile,
+            consumerPathAvailable: true,
+            shouldPromptConsumerChoice: false,
+            shouldRequireShopProfile: false,
+        }
+    }
+
+    if (input.preferredClaimLane === 'shop') {
+        return {
+            claimLane: 'shop',
+            hasLinkedShopProfile: linkedShopProfile,
+            consumerPathAvailable: true,
+            shouldPromptConsumerChoice: false,
+            shouldRequireShopProfile: true,
+        }
+    }
+
+    if (input.consumerConfirmation || input.consumerClaimConfirmedAt) {
+        return {
+            claimLane: 'consumer',
+            hasLinkedShopProfile: linkedShopProfile,
+            consumerPathAvailable: true,
+            shouldPromptConsumerChoice: false,
+            shouldRequireShopProfile: false,
+        }
+    }
+
+    return {
+        claimLane: 'consumer',
+        hasLinkedShopProfile: linkedShopProfile,
+        consumerPathAvailable: true,
+        shouldPromptConsumerChoice: true,
+        shouldRequireShopProfile: false,
+    }
+}
+
+export function resolveRemainingClaimLane(claimMode: PointClaimMode, claimLane: PointClaimLane): PointClaimLane | null {
+    if (claimMode !== 'dual') {
+        return null
+    }
+
+    return claimLane === 'shop' ? 'consumer' : 'shop'
 }

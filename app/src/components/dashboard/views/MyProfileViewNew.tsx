@@ -23,6 +23,7 @@ import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
+import { ShopRequestDialog } from '@/components/shop-requests/ShopRequestDialog'
 
 interface UserProfile {
   id: string
@@ -99,6 +100,8 @@ interface MyProfileViewNewProps {
 export default function MyProfileViewNew({ userProfile: initialProfile }: MyProfileViewNewProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isShopRequestOpen, setIsShopRequestOpen] = useState(false)
+  const [pendingShopRequestName, setPendingShopRequestName] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [userProfile, setUserProfile] = useState<UserProfile>(initialProfile)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
@@ -1134,6 +1137,10 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                             organization_id: shop?.org_id || formData.organization_id,
                           })
                         }}
+                        onCreateRequest={(shopName) => {
+                          setPendingShopRequestName(shopName)
+                          setIsShopRequestOpen(true)
+                        }}
                         disabled={isSaving}
                         placeholder="Search shop or type name..."
                         maxLength={50}
@@ -1143,6 +1150,18 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   )}
 
                   <div className="flex gap-3 pt-4">
+                    <ShopRequestDialog
+                      open={isShopRequestOpen}
+                      onOpenChange={setIsShopRequestOpen}
+                      defaultShopName={pendingShopRequestName}
+                      onSubmitted={() => {
+                        setIsShopRequestOpen(false)
+                        toast({
+                          title: 'Shop Request Submitted',
+                          description: 'HQ/Admin will review your request before the shop can be selected in Profile Information.',
+                        })
+                      }}
+                    />
                     <Button
                       onClick={handleSave}
                       className="flex-1 gap-2 bg-green-600 hover:bg-green-700"

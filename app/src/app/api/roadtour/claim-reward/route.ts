@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePointClaimSettings, resolveClaimLaneExperience } from '@/lib/engagement/point-claim-settings'
+import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
@@ -122,7 +124,7 @@ async function calculateRoadtourUserBalance(supabase: any, userId: string | null
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { token, shop_id, consumer_phone, consumer_name, survey_answers, geolocation, login_email, login_password } = body
+        const { token, shop_id, consumer_phone, consumer_name, survey_answers, geolocation, login_email, login_password, consumer_confirmation } = body
 
         if (!token) {
             return NextResponse.json({ message: 'Missing QR token.' }, { status: 400 })
@@ -170,6 +172,12 @@ export async function POST(request: NextRequest) {
             default_points, reward_mode, survey_template_id, org_id,
             duplicate_rule_reward
         } = validation as any
+        const { data: orgSettingsRow } = await (supabase as any)
+            .from('organizations')
+            .select('settings')
+            .eq('id', org_id)
+            .maybeSingle()
+        const pointClaimSettings = normalizePointClaimSettings(orgSettingsRow?.settings, Number(default_points || 0))
         const qrRecord = await resolveRoadtourByToken(token)
         const campaignName = (validation as any).campaign_name || qrRecord?.campaign_name || 'RoadTour'
         const referenceName = (validation as any).account_manager_name || qrRecord?.account_manager_name || 'Reference'
@@ -230,7 +238,7 @@ export async function POST(request: NextRequest) {
         if (userId) {
             const { data: profile, error: profileError } = await (supabase as any)
                 .from('users')
-                .select('phone, full_name, shop_name, referral_phone, organization_id, organizations!fk_users_organization(org_type_code, org_name)')
+                .select('phone, full_name, shop_name, referral_phone, organization_id, consumer_claim_confirmed_at, organizations!fk_users_organization(org_type_code, org_name)')
                 .eq('id', userId)
                 .single()
 
@@ -242,35 +250,67 @@ export async function POST(request: NextRequest) {
         const orgType = userProfile?.organizations?.org_type_code || null
         const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
         const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
-        const roadtourShopOnlyMessage = `Hi ${consumerDisplayName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
-        const hasShopProfile = Boolean(userProfile?.shop_name?.trim() && userProfile?.referral_phone?.trim())
-        const isShopUser = orgType === 'SHOP'
-        const isConsumerLaneUser = !orgType || orgType === 'INDEP'
+        const requestedClaimLane = null
+        const laneExperience = resolveClaimLaneExperience({
+            claimMode: pointClaimSettings.claimMode,
+            organization_id: userProfile?.organization_id,
+            organizationTypeCode: orgType,
+            referral_phone: userProfile?.referral_phone,
+            consumerClaimConfirmedAt: userProfile?.consumer_claim_confirmed_at,
+            consumerConfirmation: consumer_confirmation === true,
+            preferredClaimLane: requestedClaimLane,
+        })
+        const profileCompletion = resolveCollectProfileCompletion({
+            name: consumerDisplayName,
+            claimLane: laneExperience.claimLane,
+            requestedClaimLane,
+            organizationId: userProfile?.organization_id,
+            organizationTypeCode: orgType,
+            referralPhone: userProfile?.referral_phone,
+        })
 
         const qrShopId = (validation as any).shop_id || null
         const explicitShopId = shop_id || null
         const resolvedScanShopId = explicitShopId || qrShopId
-        // Use authenticated SHOP organization for reward context and duplicate rules.
-        // Also accept org_id for legacy users with shop_name text who have an org linked.
-        const resolvedRewardShopId = resolvedScanShopId || ((isShopUser || hasShopProfile) ? userProfile?.organization_id || null : null)
+        const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
 
-        // 2b. Profile completion gate — same check as product collect-points flow
-        // Users must either be linked to a SHOP org OR have shop_name + referral_phone filled
-        // (legacy users may have shop_name set via text without org linkage)
-        if (userId && userProfile) {
-            if (!isShopUser && !hasShopProfile) {
-                const missing: string[] = []
-                if (!userProfile.shop_name?.trim()) missing.push('Shop Name')
-                if (!userProfile.referral_phone?.trim()) missing.push('Reference')
-                return NextResponse.json(
-                    {
-                        requiresProfileUpdate: true,
-                        message: roadtourShopOnlyMessage,
-                        code: 'PROFILE_INCOMPLETE',
-                        missing,
-                    },
-                    { status: 400 }
-                )
+        if (laneExperience.shouldPromptConsumerChoice) {
+            return NextResponse.json(
+                {
+                    requiresConsumerConfirmation: true,
+                    message: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
+                    modalTitle: 'Choose Claim Type',
+                    modalMessage: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
+                    consumerOptionLabel: 'Consumer',
+                    shopOptionLabel: 'Belong to Shop',
+                    code: 'CLAIM_TYPE_REQUIRED',
+                },
+                { status: 409 }
+            )
+        }
+
+        if (profileCompletion.shouldBlockCollect) {
+            return NextResponse.json(
+                {
+                    requiresProfileUpdate: true,
+                    message: profileCompletion.modalMessage,
+                    modalTitle: profileCompletion.modalTitle,
+                    modalMessage: profileCompletion.modalMessage,
+                    missing: profileCompletion.missingFields,
+                    code: 'PROFILE_INCOMPLETE',
+                },
+                { status: 400 }
+            )
+        }
+
+        if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
+            const confirmedAt = new Date().toISOString()
+            await (supabase as any)
+                .from('users')
+                .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+                .eq('id', userId)
+            if (userProfile) {
+                userProfile.consumer_claim_confirmed_at = confirmedAt
             }
         }
 
@@ -280,7 +320,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
-                    message: roadtourShopOnlyMessage,
+                    message: profileCompletion.modalMessage || `Hi ${consumerDisplayName}, your profile is not complete. Please update your shop and reference in Profile to collect points.`,
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }

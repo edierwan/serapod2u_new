@@ -84,6 +84,7 @@ import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
+import { ShopRequestDialog } from '@/components/shop-requests/ShopRequestDialog'
 import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
 
 // Types
@@ -536,6 +537,8 @@ export default function PremiumLoyaltyTemplate({
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm'>('login')
     const [pendingProfileCollectLane, setPendingProfileCollectLane] = useState<'shop' | null>(null)
     const [pendingProfileCollectEmail, setPendingProfileCollectEmail] = useState('')
+    const [isShopRequestOpen, setIsShopRequestOpen] = useState(false)
+    const [pendingShopRequestName, setPendingShopRequestName] = useState('')
     const [consumerClaimConfirmed, setConsumerClaimConfirmed] = useState(false)
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
@@ -2922,6 +2925,8 @@ export default function PremiumLoyaltyTemplate({
 
     const openConsumerClaimConfirmationPrompt = (message?: string, email?: string | null) => {
         setCollectingPoints(false)
+        setPendingProfileCollectLane('shop')
+        setPointsErrorTitle('Choose Claim Type')
         setPointsError(message || "You're not linked to any shop yet. Continue collecting points as a consumer?")
         setPointsErrorAction(null)
         setPendingProfileCollectEmail(email || userEmail)
@@ -3248,7 +3253,7 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // --- RoadTour claim handlers (only used when roadtourContext is provided) ---
-    const handleRoadtourClaimWithSession = async () => {
+    const handleRoadtourClaimWithSession = async (options: { consumerConfirmation?: boolean } = {}) => {
         if (!roadtourContext) return
         setCollectingPoints(true)
         setPointsError('')
@@ -3258,7 +3263,7 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ token: roadtourContext.token, geolocation }),
+                body: JSON.stringify({ token: roadtourContext.token, geolocation, consumer_confirmation: options.consumerConfirmation === true }),
             })
             const data = await response.json()
 
@@ -3270,6 +3275,10 @@ export default function PremiumLoyaltyTemplate({
             }
             if (data.code === 'SHOP_REQUIRED') {
                 openRoadtourShopOnlyPrompt(data.message)
+                return
+            }
+            if (data.requiresConsumerConfirmation) {
+                openConsumerClaimConfirmationPrompt(data.modalMessage || data.message || data.error, userEmail)
                 return
             }
             if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
@@ -3302,7 +3311,7 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
-    const handleRoadtourClaimWithLogin = async () => {
+    const handleRoadtourClaimWithLogin = async (options: { consumerConfirmation?: boolean } = {}) => {
         if (!roadtourContext || !shopId.trim() || !shopPassword.trim()) return
         setCollectingPoints(true)
         setPointsError('')
@@ -3332,11 +3341,15 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ token: roadtourContext.token, login_email: email, login_password: shopPassword, geolocation }),
+                body: JSON.stringify({ token: roadtourContext.token, login_email: email, login_password: shopPassword, geolocation, consumer_confirmation: options.consumerConfirmation === true }),
             })
             const data = await response.json()
             if (data.code === 'SHOP_REQUIRED') {
                 openRoadtourShopOnlyPrompt(data.message)
+                return
+            }
+            if (data.requiresConsumerConfirmation) {
+                openConsumerClaimConfirmationPrompt(data.modalMessage || data.message || data.error, email)
                 return
             }
             if (data.requiresProfileUpdate || data.code === 'PROFILE_INCOMPLETE') {
@@ -6225,6 +6238,10 @@ export default function PremiumLoyaltyTemplate({
                                                         setNewShopName(displayName)
                                                         setNewLinkedOrganizationId(shop?.org_id || null)
                                                     }}
+                                                    onCreateRequest={(shopName) => {
+                                                        setPendingShopRequestName(shopName)
+                                                        setIsShopRequestOpen(true)
+                                                    }}
                                                     placeholder="Search shop by name..."
                                                     maxLength={50}
                                                 />
@@ -6252,6 +6269,16 @@ export default function PremiumLoyaltyTemplate({
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
                                 )}
                             </div>
+
+                            <ShopRequestDialog
+                                open={isShopRequestOpen}
+                                onOpenChange={setIsShopRequestOpen}
+                                defaultShopName={pendingShopRequestName}
+                                onSubmitted={() => {
+                                    setIsShopRequestOpen(false)
+                                    alert('Your shop request has been submitted for HQ review.')
+                                }}
+                            />
 
                             {/* Save Button */}
                             {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone) && (
@@ -6673,6 +6700,7 @@ export default function PremiumLoyaltyTemplate({
                         ) : collectPointsStep === 'consumer-confirm' ? (
                             <>
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                                    {pointsErrorTitle && <p className="text-sm font-semibold text-amber-900 text-center mb-1">{pointsErrorTitle}</p>}
                                     <p className="text-sm text-amber-700 text-center">
                                         {pointsError || "You're not linked to any shop yet. Continue collecting points as a consumer?"}
                                     </p>
@@ -6683,10 +6711,20 @@ export default function PremiumLoyaltyTemplate({
                                         onClick={openProfileForPendingCollectFlow}
                                         className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                     >
-                                        Link to Shop
+                                        Belong to Shop
                                     </button>
                                     <button
                                         onClick={() => {
+                                            if (roadtourContext) {
+                                                if (isAuthenticated) {
+                                                    void handleRoadtourClaimWithSession({ consumerConfirmation: true })
+                                                    return
+                                                }
+
+                                                void handleRoadtourClaimWithLogin({ consumerConfirmation: true })
+                                                return
+                                            }
+
                                             if (isAuthenticated) {
                                                 void handleCollectPointsWithSession({ consumerConfirmation: true })
                                                 return
@@ -6703,7 +6741,7 @@ export default function PremiumLoyaltyTemplate({
                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                                 Confirming...
                                             </span>
-                                        ) : consumerClaimConfirmed ? 'Confirmed' : 'Yes'}
+                                        ) : consumerClaimConfirmed ? 'Confirmed' : 'Consumer'}
                                     </button>
                                 </div>
                             </>
