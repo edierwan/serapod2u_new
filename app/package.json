@@ -10,6 +10,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
+    "test": "vitest run",
     "modec:worker": "tsx ../scripts/modec-worker.ts"
   },
   "dependencies": {
@@ -75,6 +76,8 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
@@ -84,10 +87,12 @@
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.0.1",
     "baseline-browser-mapping": "^2.9.19",
+    "jsdom": "^26.1.0",
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5"
+    "typescript": "5.8.3",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "exceljs": {

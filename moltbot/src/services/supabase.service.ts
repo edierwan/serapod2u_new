@@ -3,6 +3,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config';
+import { normalizePhoneToE164 } from '../../../shared/phone/index.js';
 
 // Database types
 export interface WhatsAppBotAdmin {
@@ -90,15 +91,10 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 /**
- * Normalize phone number to digits only with country code
+ * Normalize phone number to canonical E.164 format
  */
 export function normalizePhone(phone: string): string {
-    const digits = phone.replace(/\D/g, '');
-    // If starts with 0, assume Malaysia and prepend 60
-    if (digits.startsWith('0')) {
-        return '60' + digits.substring(1);
-    }
-    return digits;
+    return normalizePhoneToE164(phone) || '';
 }
 
 /**

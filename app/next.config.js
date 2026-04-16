@@ -1,3 +1,5 @@
+const path = require('path')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -12,12 +14,12 @@ const nextConfig = {
   },
 
   // Set output file tracing root for dependency tracing in production builds
-  outputFileTracingRoot: __dirname,
+  outputFileTracingRoot: path.join(__dirname, '..'),
 
   // Turbopack configuration - must match outputFileTracingRoot
   // This prevents the warning: "Both outputFileTracingRoot and turbopack.root are set"
   turbopack: {
-    root: __dirname,
+    root: path.join(__dirname, '..'),
   },
 
   allowedDevOrigins: ['192.168.1.5', 'localhost'],

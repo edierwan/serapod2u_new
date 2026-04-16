@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { toProviderPhone } from '../../../shared/phone/index.js';
 
 export class GatewayService {
   private url: string;
@@ -17,22 +18,10 @@ export class GatewayService {
   }
 
   /**
-   * Normalize phone number to digits only (e.g. 60123456789)
+   * Convert canonical/internal phone format to provider digits
    */
   private normalizePhone(phone: string): string {
-    // Remove all non-digits
-    let cleaned = phone.replace(/\D/g, '');
-
-    // Handle Malaysian local format 012... -> 6012...
-    if (cleaned.startsWith('0')) {
-      cleaned = '60' + cleaned.substring(1);
-    }
-    
-    // If it starts with 60, keep it. If just 123... (unlikely without country code), 
-    // we assume it needs country code or is already intl. 
-    // Baileys needs country code prefix.
-    
-    return cleaned;
+    return toProviderPhone(phone) || '';
   }
   /**
    * Send WhatsApp message via Gateway

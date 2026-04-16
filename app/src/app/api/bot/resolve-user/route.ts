@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,21 +28,6 @@ function getServiceClient() {
             }
         }
     )
-}
-
-/**
- * Normalize phone to E.164 format
- */
-function normalizePhone(phone: string): string {
-    // Remove all non-digit characters
-    let cleaned = phone.replace(/\D/g, '')
-
-    // Handle Malaysian numbers
-    if (cleaned.startsWith('0')) {
-        cleaned = '60' + cleaned.substring(1)
-    }
-
-    return cleaned
 }
 
 export async function GET(request: NextRequest) {
@@ -73,15 +59,22 @@ export async function GET(request: NextRequest) {
             }, { status: 400 })
         }
 
-        const normalizedPhone = normalizePhone(phone)
+        const normalizedPhone = normalizePhoneE164(phone)
+        const providerPhone = normalizedPhone ? toProviderPhone(normalizedPhone) : null
+        if (!normalizedPhone) {
+            return NextResponse.json({
+                found: false,
+                error: 'Invalid phone number'
+            }, { status: 400 })
+        }
 
         // Also create E.164 variants for matching
         const phoneVariants = [
-            phone,
             normalizedPhone,
-            `+${normalizedPhone}`,
-            normalizedPhone.replace(/^60/, '0'), // Local format
+            providerPhone,
+            providerPhone?.startsWith('60') ? `0${providerPhone.slice(2)}` : null,
         ]
+            .filter(Boolean)
 
         const supabase = getServiceClient()
 

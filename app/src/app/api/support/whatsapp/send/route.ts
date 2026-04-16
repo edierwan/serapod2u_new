@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { normalizePhoneE164, phoneToJid } from '@/utils/phone'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
           'x-api-key': BAILEYS_API_KEY || ''
         },
         body: JSON.stringify({
-          to: recipientPhone.replace(/^\+/, ''),  // Remove + prefix
+          to: toProviderPhone(recipientPhone),
           text: text,
           metadata: {
             source: 'serapod',

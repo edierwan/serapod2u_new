@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePhoneE164 } from '@/utils/phone'
 
 // Type for user data query result
 interface UserData {
@@ -68,9 +69,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Normalize phone to digits only
-        const phoneDigits = phone.replace(/\D/g, '')
-
-        if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+        const normalizedPhone = normalizePhoneE164(phone)
+        if (!normalizedPhone) {
             return NextResponse.json({ error: 'Invalid phone number format' }, { status: 400 })
         }
 
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
             .from('whatsapp_bot_admins' as any)
             .insert({
                 org_id: userData.organization_id,
-                phone_digits: phoneDigits,
+                phone_digits: normalizedPhone,
                 display_name: displayName || null,
                 created_by: user.id
             })
