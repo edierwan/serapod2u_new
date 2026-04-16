@@ -2,6 +2,7 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { normalizePhoneToE164 } from '../../../shared/phone/index.js';
 import {
     RecognizeUserResponse,
     GetPointsBalanceResponse,
@@ -68,14 +69,10 @@ class SerapodClient {
     }
 
     /**
-     * Normalize phone to E.164 digits format (e.g., 60123456789)
+     * Normalize phone to canonical E.164 format
      */
     private normalizePhone(phone: string): string {
-        let cleaned = phone.replace(/\D/g, '');
-        if (cleaned.startsWith('0')) {
-            cleaned = '60' + cleaned.substring(1);
-        }
-        return cleaned;
+        return normalizePhoneToE164(phone) || phone;
     }
 
     /**

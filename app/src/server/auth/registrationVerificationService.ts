@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { normalizePhoneE164 } from '@/utils/phone'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 export const OTP_LENGTH = 4
 export const OTP_EXPIRY_MINUTES = 5
@@ -263,7 +263,10 @@ export async function sendOtpViaWhatsApp(
         return { success: false, error: 'WhatsApp gateway is not configured for registration verification.' }
     }
 
-    const recipientDigits = phone.replace(/^\+/, '')
+    const recipientDigits = toProviderPhone(phone)
+    if (!recipientDigits) {
+        return { success: false, error: 'Invalid phone number' }
+    }
     const message =
         `Serapod2U registration verification code: *${code}*\n\n` +
         `Please enter this 4-digit code to confirm your mobile number. ` +

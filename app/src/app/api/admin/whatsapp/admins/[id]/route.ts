@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { normalizePhoneE164 } from '@/utils/phone'
 
 // Type for user data query result
 interface UserData {
@@ -74,7 +75,13 @@ export async function PATCH(
         const updates: Record<string, any> = {}
         if (body.displayName !== undefined) updates.display_name = body.displayName
         if (body.isActive !== undefined) updates.is_active = body.isActive
-        if (body.phone) updates.phone_digits = body.phone.replace(/\D/g, '')
+        if (body.phone) {
+            const normalizedPhone = normalizePhoneE164(body.phone)
+            if (!normalizedPhone) {
+                return NextResponse.json({ error: 'Invalid phone number format' }, { status: 400 })
+            }
+            updates.phone_digits = normalizedPhone
+        }
 
         // Use 'as any' since table may not be in generated types yet
         const { data: updated, error } = await (supabase

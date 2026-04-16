@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
+import { normalizePhoneE164 } from '@/utils/phone'
 
 type AdminClient = SupabaseClient<any, 'public', any>
 
@@ -108,10 +109,5 @@ export async function loadScopedShopUsers(
 }
 
 export function normalizePhone(value?: string | null): string {
-    if (!value) return ''
-    const digits = value.replace(/\D/g, '')
-    if (!digits) return ''
-    if (digits.startsWith('60')) return digits
-    if (digits.startsWith('0')) return `6${digits}`
-    return digits
+    return value ? (normalizePhoneE164(value) || '') : ''
 }

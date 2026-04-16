@@ -1,6 +1,7 @@
 // src/services/memory.ts
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import { normalizePhoneToE164 } from '../../../shared/phone/index.js';
 import {
     ConversationMemory,
     ConversationTurn,
@@ -34,14 +35,10 @@ class MemoryStore {
     }
 
     /**
-     * Normalize phone to digits only
+     * Normalize phone to canonical E.164
      */
     private normalizePhone(phone: string): string {
-        let cleaned = phone.replace(/\D/g, '');
-        if (cleaned.startsWith('0')) {
-            cleaned = '60' + cleaned.substring(1);
-        }
-        return cleaned;
+        return normalizePhoneToE164(phone) || phone;
     }
 
     /**

@@ -4,14 +4,7 @@ import {
     type ShopRequestNotificationSettings,
 } from '@/lib/engagement/shop-request-settings'
 import { applyShopRequestTemplate, buildShopRequestTemplateValues, type ShopRequestRecord } from './core'
-
-function normalizePhone(phone?: string | null) {
-    const digits = String(phone || '').trim().replace(/[^\d+]/g, '')
-    if (!digits) return null
-    if (digits.startsWith('+')) return digits.slice(1)
-    if (digits.startsWith('0')) return `6${digits}`
-    return digits
-}
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 async function resolveRecipients(supabase: any, orgId: string, settings: ShopRequestNotificationSettings) {
     if (settings.recipientMode === 'hq_org') {
@@ -91,8 +84,9 @@ export async function sendShopRequestNotifications(params: {
     const values = buildShopRequestTemplateValues(params.request)
 
     for (const recipient of recipients) {
-        const phone = normalizePhone(recipient.phone_number)
-        if (!phone) continue
+        const canonicalPhone = normalizePhoneE164(recipient.phone_number || '')
+        const providerPhone = canonicalPhone ? toProviderPhone(canonicalPhone) : null
+        if (!canonicalPhone || !providerPhone) continue
 
         const renderedMessage = applyShopRequestTemplate(template, values)
 
@@ -106,7 +100,7 @@ export async function sendShopRequestNotifications(params: {
                 config.apiKey,
                 'POST',
                 '/messages/send',
-                { to: phone, text: renderedMessage },
+                { to: providerPhone, text: renderedMessage },
                 config.tenantId,
             )
 
@@ -125,7 +119,7 @@ export async function sendShopRequestNotifications(params: {
             supabase: params.supabase,
             shopRequestId: params.request.id,
             notificationType: params.notificationType,
-            phoneNumber: recipient.phone_number,
+            phoneNumber: canonicalPhone,
             recipientLabel: recipient.recipient_label,
             renderedMessage,
             sendStatus,

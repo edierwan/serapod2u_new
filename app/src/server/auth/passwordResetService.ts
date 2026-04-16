@@ -14,7 +14,7 @@
 
 import crypto from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
-import { normalizePhoneE164 } from '@/utils/phone'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 // ── Constants ───────────────────────────────────────────────────────────
 export const OTP_LENGTH = 4
@@ -346,7 +346,10 @@ export async function sendOtpViaWhatsApp(
     }
 
     // Phone to send to: strip + for Baileys (expects 60xxxx format or full digits)
-    const recipientDigits = phone.replace(/^\+/, '')
+    const recipientDigits = toProviderPhone(phone)
+    if (!recipientDigits) {
+        return { success: false, error: 'Invalid phone number' }
+    }
 
     const message =
         `Your Serapod2U reset code is *${code}*. This code expires in ${OTP_EXPIRY_MINUTES} minutes. ` +

@@ -8,6 +8,7 @@ import { memoryStore } from './memory';
 import { supabaseService } from './supabase.client';
 import * as supabaseDB from './supabase.service';
 import { parseCommand, isCommand } from '../utils/command-parser';
+import { normalizePhoneToE164 } from '../../../shared/phone/index.js';
 import {
     InboundMsg,
     GatewayWebhookPayload,
@@ -82,14 +83,10 @@ export class WebhookHandler {
     }
 
     /**
-     * Normalize phone number to digits only with 60 prefix
+     * Normalize phone number to canonical E.164 format
      */
     private normalizePhone(phone: string): string {
-        let cleaned = phone.replace(/\D/g, '');
-        if (cleaned.startsWith('0')) {
-            cleaned = '60' + cleaned.substring(1);
-        }
-        return cleaned;
+        return normalizePhoneToE164(phone) || phone;
     }
 
     /**

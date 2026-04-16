@@ -1,59 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
-/**
- * Normalize phone number to try multiple formats for lookup
- * Returns an array of possible phone formats to search for
- */
 function getPhoneVariants(phone: string): string[] {
-  // Remove all non-digit characters
-  const digitsOnly = phone.replace(/\D/g, '');
-  
-  const variants: string[] = [];
-  
-  // If starts with 0 (local format like 0123191746)
-  if (digitsOnly.startsWith('0')) {
-    const withoutLeadingZero = digitsOnly.substring(1);
-    variants.push(
-      digitsOnly,                     // 0123191746
-      `60${withoutLeadingZero}`,      // 60123191746
-      `+60${withoutLeadingZero}`,     // +60123191746
-    );
-  }
-  // If starts with 60 (country code format)
-  else if (digitsOnly.startsWith('60')) {
-    const withoutCountryCode = digitsOnly.substring(2);
-    variants.push(
-      digitsOnly,                     // 60123191746
-      `+${digitsOnly}`,               // +60123191746
-      `0${withoutCountryCode}`,       // 0123191746
-    );
-  }
-  // If starts with + (already has plus)
-  else if (phone.startsWith('+')) {
-    const withoutPlus = digitsOnly;
-    variants.push(
-      phone,                          // +60123191746 (original)
-      withoutPlus,                    // 60123191746
-    );
-    if (withoutPlus.startsWith('60')) {
-      variants.push(`0${withoutPlus.substring(2)}`); // 0123191746
+  const normalized = normalizePhoneE164(phone)
+  if (!normalized) return []
+
+  const providerPhone = toProviderPhone(normalized)
+  const variants = [normalized]
+  if (providerPhone) {
+    variants.push(providerPhone)
+    if (providerPhone.startsWith('60')) {
+      variants.push(`0${providerPhone.slice(2)}`)
     }
   }
-  // Just digits, assume needs 60 prefix
-  else {
-    variants.push(
-      digitsOnly,                     // 123191746
-      `60${digitsOnly}`,              // 60123191746
-      `+60${digitsOnly}`,             // +60123191746
-      `0${digitsOnly}`,               // 0123191746
-    );
-  }
-  
-  // Remove duplicates
-  return [...new Set(variants)];
+
+  return [...new Set(variants.filter(Boolean))]
 }
 
 /**
@@ -117,8 +81,10 @@ export async function POST(request: NextRequest) {
         matched_by: 'email'
       })
     } else {
-      // Phone lookup - try multiple format variants
-      const phoneVariants = getPhoneVariants(rawQuery);
+      const phoneVariants = getPhoneVariants(rawQuery)
+      if (!phoneVariants.length) {
+        return NextResponse.json({ success: false, message: 'User not found' })
+      }
       
       // Query with OR condition for all variants
       const { data: users, error } = await supabaseAdmin

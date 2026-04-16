@@ -19,6 +19,7 @@ import * as path from 'path';
 import QRCode from 'qrcode';
 import { logger } from '../utils/logger';
 import { webhookService } from './webhook.service';
+import { toProviderPhone } from '../../../shared/phone/index.js';
 
 export type PairingState = 'connected' | 'waiting_qr' | 'disconnected' | 'connecting' | 'reconnecting';
 
@@ -837,16 +838,10 @@ class TenantSocketManager {
         }
 
         try {
-            // Normalize phone number
-            let phone = to.replace(/\D/g, '');
-
-            // Handle Malaysian numbers (starts with 0)
-            if (phone.startsWith('0')) {
-                phone = '60' + phone.substring(1);
+            const phone = toProviderPhone(to);
+            if (!phone) {
+                return { ok: false, error: 'Invalid phone number' };
             }
-
-            // Ensure it doesn't start with +
-            phone = phone.replace(/^\+/, '');
 
             const jid = `${phone}@s.whatsapp.net`;
 
@@ -878,11 +873,10 @@ class TenantSocketManager {
         }
 
         try {
-            let phone = to.replace(/\D/g, '');
-            if (phone.startsWith('0')) {
-                phone = '60' + phone.substring(1);
+            const phone = toProviderPhone(to);
+            if (!phone) {
+                return { ok: false, error: 'Invalid phone number' };
             }
-            phone = phone.replace(/^\+/, '');
 
             const jid = `${phone}@s.whatsapp.net`;
 

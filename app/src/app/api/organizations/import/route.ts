@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import Papa from 'papaparse'
 import ExcelJS from 'exceljs'
 import { ORG_CODE_REGEX, ORG_CODE_PREFIX_MAP } from '@/lib/utils/orgValidation'
+import { normalizePhoneE164, samePhone } from '@/utils/phone'
 
 // CSV/Excel column → DB field mapping with known aliases
 const COLUMN_MAP: Record<string, string> = {
@@ -77,12 +78,7 @@ function parseBooleanMY(val: string | null | undefined): boolean {
 }
 
 function normalizePhone(phone: string | null | undefined): string | null {
-  if (!phone) return null
-  let p = phone.toString().trim().replace(/[^0-9+]/g, '')
-  // Normalize Malaysian phone: 601... format
-  if (p.startsWith('0')) p = '60' + p.substring(1)
-  if (!p.startsWith('+') && p.startsWith('60')) p = '+' + p
-  return p || null
+  return phone ? normalizePhoneE164(phone) : null
 }
 
 interface ImportRow {
@@ -265,7 +261,7 @@ export async function POST(request: NextRequest) {
       if (existingOrgs && orgName) {
         const match = existingOrgs.find((o: any) => {
           const nameMatch = o.org_name?.toLowerCase().trim() === orgName.toLowerCase()
-          const phoneMatch = !contactPhone || !o.contact_phone || o.contact_phone.replace(/[^0-9]/g, '') === contactPhone.replace(/[^+0-9]/g, '').replace('+', '')
+          const phoneMatch = !contactPhone || !o.contact_phone || samePhone(o.contact_phone, contactPhone)
           return nameMatch && phoneMatch
         })
         if (match) {

@@ -1,13 +1,6 @@
 import { callGateway, getWhatsAppConfig } from '@/app/api/settings/whatsapp/_utils'
 import { buildRoadTourUrl } from '@/lib/roadtour/url'
-
-function normalizePhone(phone?: string | null) {
-    const digits = String(phone || '').trim().replace(/[^\d+]/g, '')
-    if (!digits) return null
-    if (digits.startsWith('+')) return digits.slice(1)
-    if (digits.startsWith('0')) return `6${digits}`
-    return digits
-}
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 function applyTemplate(template: string, values: Record<string, string | number | null | undefined>) {
     return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => String(values[key] ?? ''))
@@ -91,8 +84,9 @@ export async function sendRoadtourClaimNotifications(params: {
     )
 
     for (const recipient of recipients) {
-        const phone = normalizePhone(recipient.phone_number)
-        if (!phone) continue
+        const canonicalPhone = normalizePhoneE164(recipient.phone_number || '')
+        const providerPhone = canonicalPhone ? toProviderPhone(canonicalPhone) : null
+        if (!canonicalPhone || !providerPhone) continue
 
         const geoLabel = params.geoLabel?.trim() || 'Unknown location'
 
@@ -119,7 +113,7 @@ export async function sendRoadtourClaimNotifications(params: {
                 config.apiKey,
                 'POST',
                 '/messages/send',
-                { to: phone, text: renderedMessage },
+                { to: providerPhone, text: renderedMessage },
                 config.tenantId,
             )
 
@@ -139,7 +133,7 @@ export async function sendRoadtourClaimNotifications(params: {
             campaign_id: params.campaignId,
             qr_code_id: params.qrCodeId || null,
             account_manager_user_id: params.accountManagerUserId || null,
-            phone_number: recipient.phone_number,
+            phone_number: canonicalPhone,
             recipient_label: recipient.recipient_label,
             notification_type: params.notificationType,
             send_status: sendStatus,

@@ -20,6 +20,7 @@ import * as path from 'path';
 import QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
+import { toProviderPhone } from '../../../shared/phone/index.js';
 
 export type PairingState = 'connected' | 'waiting_qr' | 'disconnected' | 'connecting' | 'reconnecting';
 
@@ -347,16 +348,10 @@ export class BaileysService {
     }
 
     try {
-      // Normalize phone number
-      let phone = to.replace(/\D/g, '');
-
-      // Handle Malaysian numbers (starts with 0)
-      if (phone.startsWith('0')) {
-        phone = '60' + phone.substring(1);
+      const phone = toProviderPhone(to);
+      if (!phone) {
+        return { ok: false, error: 'Invalid phone number' };
       }
-
-      // Ensure it doesn't start with +
-      phone = phone.replace(/^\+/, '');
 
       const jid = `${phone}@s.whatsapp.net`;
 

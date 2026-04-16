@@ -277,7 +277,8 @@ export async function POST(request: NextRequest) {
 
     // Handle referral_phone update
     if (referral_phone !== undefined) {
-      updateData.referral_phone = referral_phone?.trim() || null
+      const trimmedReferral = referral_phone?.trim() || ''
+      updateData.referral_phone = trimmedReferral ? normalizePhone(trimmedReferral) : null
     }
 
     // Update database

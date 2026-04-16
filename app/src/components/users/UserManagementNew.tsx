@@ -55,6 +55,7 @@ import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
 import { updateUserHr } from "@/lib/api/hr";
+import { samePhone } from "@/utils/phone";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 
@@ -1671,9 +1672,31 @@ export default function UserManagementNew({
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-gray-900">
-                            {user.referral_phone || "-"}
-                          </span>
+                          {(() => {
+                            if (!user.referral_phone) {
+                              return <span className="text-gray-900">-</span>;
+                            }
+
+                            const referenceUser = users.find((candidate) => {
+                              if (!candidate.phone || candidate.id === user.id) return false;
+                              return samePhone(candidate.phone, user.referral_phone);
+                            });
+
+                            if (!referenceUser) {
+                              return <span className="text-gray-900">{user.referral_phone}</span>;
+                            }
+
+                            return (
+                              <div className="min-w-0">
+                                <div className="text-gray-900 font-medium truncate">
+                                  {referenceUser.full_name || "No Name"}
+                                </div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {referenceUser.phone || user.referral_phone}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
