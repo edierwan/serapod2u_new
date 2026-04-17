@@ -175,6 +175,7 @@ export async function GET(request: NextRequest) {
         avatarUrl: avatarUrlWithCache,
         phone: userProfile.phone || '',
         referralPhone: userProfile.referral_phone || '',
+        referenceUserId: linkValidation.referenceUserId,
         referenceDisplayName,
         invalidReference: linkValidation.invalidReference,
         invalidShop: linkValidation.invalidShop,

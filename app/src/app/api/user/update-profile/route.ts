@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, referral_phone, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -283,7 +283,31 @@ export async function POST(request: NextRequest) {
       updateData.referral_phone = trimmedReferral ? normalizePhone(trimmedReferral) : null
     }
 
-    if (organization_id !== undefined || referral_phone !== undefined) {
+    let canonicalReferenceUserId: string | null = null
+    if (reference_user_id !== undefined) {
+      canonicalReferenceUserId = reference_user_id?.trim() || null
+    }
+
+    if (canonicalReferenceUserId) {
+      const { data: referenceUser, error: referenceError } = await adminClient
+        .from('users')
+        .select('id, phone, can_be_reference, is_active')
+        .eq('id', canonicalReferenceUserId)
+        .maybeSingle()
+
+      if (referenceError || !referenceUser) {
+        return NextResponse.json(
+          { success: false, error: 'Selected reference could not be found.' },
+          { status: 400 }
+        )
+      }
+
+      updateData.referral_phone = referenceUser.phone || null
+    } else if (reference_user_id !== undefined && !canonicalReferenceUserId) {
+      updateData.referral_phone = null
+    }
+
+    if (organization_id !== undefined || referral_phone !== undefined || reference_user_id !== undefined) {
       const { data: existingUser, error: existingUserError } = await adminClient
         .from('users')
         .select(`
@@ -344,6 +368,7 @@ export async function POST(request: NextRequest) {
         organizationId: nextOrganizationId,
         shopName: nextShopName,
         referralPhone: nextReferralPhone,
+        referenceUserId: canonicalReferenceUserId,
       })
 
       if (nextShopName && linkValidation.invalidShop) {

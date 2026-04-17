@@ -8,18 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { createClient } from '@/lib/supabase/client'
-
-interface StateOption {
-    id: string
-    state_name: string
-}
-
-interface DistrictOption {
-    id: string
-    district_name: string
-    state_id: string
-}
+import { toTitleCaseWords } from '@/lib/utils'
 
 interface ShopRequestDialogProps {
     open: boolean
@@ -34,7 +23,6 @@ export function ShopRequestDialog({
     defaultShopName = '',
     onSubmitted,
 }: ShopRequestDialogProps) {
-    const supabase = createClient()
     const [shopName, setShopName] = useState(defaultShopName)
     const [branch, setBranch] = useState('')
     const [contactName, setContactName] = useState('')

@@ -20,6 +20,23 @@ async function resolveStateId(adminClient: any, stateName?: string | null) {
     return data?.id || null
 }
 
+async function resolveApprovedParentOrgId(adminClient: any, requestRow: any, fallbackParentOrgId?: string | null) {
+    const candidateId = requestRow.requested_parent_org_id || fallbackParentOrgId || null
+    if (!candidateId) return null
+
+    const { data: parentOrg } = await adminClient
+        .from('organizations')
+        .select('id, org_type_code, is_active')
+        .eq('id', candidateId)
+        .maybeSingle()
+
+    if (parentOrg?.is_active && parentOrg.org_type_code === 'DIST') {
+        return parentOrg.id
+    }
+
+    return null
+}
+
 export async function POST(request: NextRequest, context: { params: Promise<{ requestId: string }> }) {
     try {
         const supabase = await createClient()
@@ -48,6 +65,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ re
         }
 
         const stateId = await resolveStateId(adminClient, body.state || requestRow.requested_state)
+        const parentOrgId = await resolveApprovedParentOrgId(adminClient, requestRow, body.parentOrgId)
 
         const orgInsert = buildApprovedShopOrganization({
             request: {
@@ -56,16 +74,26 @@ export async function POST(request: NextRequest, context: { params: Promise<{ re
                 branch: body.branch || requestRow.requested_branch,
                 contactName: body.contactName || requestRow.requested_contact_name,
                 contactPhone: body.contactPhone || requestRow.requested_contact_phone,
+                contactEmail: body.contactEmail || requestRow.requested_contact_email,
                 address: body.address || requestRow.requested_address,
                 state: body.state || requestRow.requested_state,
+                hotFlavourBrands: body.hotFlavourBrands || requestRow.requested_hot_flavour_brands,
+                sellsSerapodFlavour: body.sellsSerapodFlavour ?? requestRow.requested_sells_serapod_flavour,
+                sellsSbox: body.sellsSbox ?? requestRow.requested_sells_sbox,
+                sellsSboxSpecialEdition: body.sellsSboxSpecialEdition ?? requestRow.requested_sells_sbox_special_edition,
+                parentOrgId: parentOrgId || requestRow.requested_parent_org_id,
                 notes: requestRow.notes,
                 requesterName: requestRow.requester_name,
                 requesterPhone: requestRow.requester_phone,
             },
-            parentOrgId: requestRow.notification_org_id,
+            parentOrgId,
             stateId,
             createdBy: user.id,
         })
+
+        if (!orgInsert.parent_org_id) {
+            return NextResponse.json({ success: false, error: 'No valid parent distributor could be resolved for this shop request.' }, { status: 400 })
+        }
 
         const { data: createdOrg, error: createError } = await adminClient
             .from('organizations')
@@ -114,8 +142,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ re
                     branch: createdOrg.branch,
                     contactName: body.contactName || requestRow.requested_contact_name,
                     contactPhone: body.contactPhone || requestRow.requested_contact_phone,
+                    contactEmail: body.contactEmail || requestRow.requested_contact_email,
                     address: body.address || requestRow.requested_address,
                     state: body.state || requestRow.requested_state,
+                    hotFlavourBrands: body.hotFlavourBrands || requestRow.requested_hot_flavour_brands,
+                    sellsSerapodFlavour: body.sellsSerapodFlavour ?? requestRow.requested_sells_serapod_flavour,
+                    sellsSbox: body.sellsSbox ?? requestRow.requested_sells_sbox,
+                    sellsSboxSpecialEdition: body.sellsSboxSpecialEdition ?? requestRow.requested_sells_sbox_special_edition,
+                    parentOrgId: parentOrgId || requestRow.requested_parent_org_id,
                     notes: requestRow.notes,
                     requesterName: requestRow.requester_name,
                     requesterPhone: requestRow.requester_phone,

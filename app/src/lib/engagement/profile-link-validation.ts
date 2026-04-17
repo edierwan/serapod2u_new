@@ -7,6 +7,7 @@ export interface ProfileLinkValidationInput {
     organizationId?: string | null
     shopName?: string | null
     referralPhone?: string | null
+    referenceUserId?: string | null
 }
 
 export interface ProfileLinkValidationResult {
@@ -42,7 +43,7 @@ export async function resolveProfileLinkValidation(
     input: ProfileLinkValidationInput,
 ): Promise<ProfileLinkValidationResult> {
     const hasShopValue = hasValue(input.shopName) || hasValue(input.organizationId)
-    const hasReferenceValue = hasValue(input.referralPhone)
+    const hasReferenceValue = hasValue(input.referralPhone) || hasValue(input.referenceUserId)
 
     let organizationTypeCode: string | null = null
     let organizationName: string | null = null
@@ -64,7 +65,23 @@ export async function resolveProfileLinkValidation(
     let referenceDisplayName: string | null = null
     let isReferenceLinkValid = false
 
-    if (hasReferenceValue) {
+    if (hasValue(input.referenceUserId)) {
+        const { data: referenceUser } = await supabaseAdmin
+            .from('users')
+            .select('id, phone, full_name, call_name, can_be_reference, is_active')
+            .eq('id', input.referenceUserId)
+            .maybeSingle()
+
+        if (referenceUser) {
+            referenceUserId = referenceUser.id || null
+            referenceDisplayName = referenceUser.call_name?.trim()
+                || referenceUser.full_name?.trim()
+                || null
+            isReferenceLinkValid = Boolean(referenceUser.can_be_reference && referenceUser.is_active)
+        }
+    }
+
+    if (!referenceUserId && hasValue(input.referralPhone)) {
         const phoneCandidates = buildPhoneCandidates(input.referralPhone)
 
         if (phoneCandidates.length > 0) {

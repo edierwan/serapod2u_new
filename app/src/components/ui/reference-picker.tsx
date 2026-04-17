@@ -59,10 +59,10 @@ export function ReferencePicker({
                     const res = await fetch(`/api/reference/search?q=${encodeURIComponent(value)}&limit=5`)
                     const data = await res.json()
                     if (data.success && data.results?.length > 0) {
-                        // Find exact match by phone
-                        const match = data.results.find((r: ReferenceUser) =>
-                            r.phone === value || r.phone?.replace(/\D/g, '') === value?.replace(/\D/g, '')
-                        )
+                        const match = data.results.find((r: ReferenceUser) => r.user_id === referenceUserId)
+                            || data.results.find((r: ReferenceUser) =>
+                                r.phone === value || r.phone?.replace(/\D/g, '') === value?.replace(/\D/g, '')
+                            )
                         if (match) {
                             setSelectedRef(match)
                             setResolvedName(match.full_name)
@@ -81,7 +81,7 @@ export function ReferencePicker({
             }
             resolveExisting()
         }
-    }, [value, selectedRef])
+    }, [referenceUserId, value, selectedRef])
 
     // Close dropdown when clicking outside
     useEffect(() => {

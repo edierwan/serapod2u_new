@@ -656,6 +656,7 @@ export default function PremiumLoyaltyTemplate({
     // Account settings states
     const [userPhone, setUserPhone] = useState('')
     const [userReferralPhone, setUserReferralPhone] = useState('')
+    const [userReferenceUserId, setUserReferenceUserId] = useState<string | null>(null)
     const [userId, setUserId] = useState<string | null>(null)
     const [editingName, setEditingName] = useState(false)
     const [editingPhone, setEditingPhone] = useState(false)
@@ -672,6 +673,7 @@ export default function PremiumLoyaltyTemplate({
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
     const [newReferralPhone, setNewReferralPhone] = useState('')
+    const [newReferenceUserId, setNewReferenceUserId] = useState<string | null>(null)
     const [userReferenceDisplayName, setUserReferenceDisplayName] = useState('')
     const [referralName, setReferralName] = useState('')
     const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
@@ -991,6 +993,7 @@ export default function PremiumLoyaltyTemplate({
                 bankAccountNumber: profile.bankAccountNumber || '',
                 bankAccountHolderName: profile.bankAccountHolderName || '',
                 referralPhone: profile.referralPhone || '',
+                referenceUserId: profile.referenceUserId || null,
                 consumerClaimConfirmedAt: profile.consumerClaimConfirmedAt || null,
                 invalidReference: profile.invalidReference === true,
                 invalidShop: profile.invalidShop === true,
@@ -1082,7 +1085,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -1112,12 +1115,14 @@ export default function PremiumLoyaltyTemplate({
                         setNewLinkedOrganizationId(organizationId || null)
                         setUserPhone(phone)
                         setUserReferralPhone(referralPhone || '')
+                        setUserReferenceUserId(referenceUserId || null)
                         setUserReferenceDisplayName(referenceDisplayName || '')
                         setInvalidReference(invalidReference === true)
                         setInvalidShop(invalidShop === true)
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                         setNewPhone(phone)
                         setNewReferralPhone(referralPhone || '')
+                        setNewReferenceUserId(referenceUserId || null)
                         setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                         // Set points and bank details for ALL users (Shop and Independent)
@@ -1197,7 +1202,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, referenceDisplayName, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -1209,12 +1214,14 @@ export default function PremiumLoyaltyTemplate({
                             setNewLinkedOrganizationId(organizationId || null)
                             setUserPhone(phone)
                             setUserReferralPhone(referralPhone || '')
+                            setUserReferenceUserId(referenceUserId || null)
                             setUserReferenceDisplayName(referenceDisplayName || '')
                             setInvalidReference(invalidReference === true)
                             setInvalidShop(invalidShop === true)
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             setNewReferralPhone(referralPhone || '')
+                            setNewReferenceUserId(referenceUserId || null)
                             setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                             // Set points and bank details for ALL users
@@ -1243,6 +1250,7 @@ export default function PremiumLoyaltyTemplate({
                     setUserAvatarUrl(null)
                     setShopName('')
                     setUserPhone('')
+                    setUserReferenceUserId(null)
                     setConsumerClaimConfirmed(false)
                     setUserId(null)
                 }
@@ -2545,7 +2553,7 @@ export default function PremiumLoyaltyTemplate({
             }
 
             // Add referral phone if changed — use RPC for approval flow
-            const referralPhoneChanged = newReferralPhone !== userReferralPhone
+            const referralPhoneChanged = newReferralPhone !== userReferralPhone || newReferenceUserId !== userReferenceUserId
             if (referralPhoneChanged) {
                 if (newReferralPhone && newReferralPhone.trim()) {
                     const validation = validatePhoneNumber(newReferralPhone.trim())
@@ -2560,8 +2568,16 @@ export default function PremiumLoyaltyTemplate({
                         setSavingProfile(false)
                         return
                     }
+
+                    if (!newReferenceUserId) {
+                        setProfileSaveError(INVALID_REFERENCE_WARNING_MESSAGE)
+                        setSavingProfile(false)
+                        return
+                    }
                 }
-                // Don't include in updateData — handled via RPC after main save
+
+                updateData.referral_phone = newReferralPhone.trim() || null
+                updateData.reference_user_id = newReferenceUserId
             }
 
             // Add bank details if shop user or independent consumer
@@ -2634,43 +2650,10 @@ export default function PremiumLoyaltyTemplate({
                 throw new Error(data.error || 'Failed to update profile')
             }
 
-            // Handle referral phone change via RPC (supports approval flow)
             if (referralPhoneChanged) {
-                try {
-                    const { data: refResult, error: refError } = await supabase.rpc('process_reference_change', {
-                        p_shop_user_id: userId,
-                        p_new_ref_phone: newReferralPhone?.trim() || null,
-                        p_requested_by: userId
-                    })
-
-                    if (refError) {
-                        console.error('Referral change RPC error:', refError)
-                        // Fallback: update directly via API if RPC not deployed yet
-                        await fetch('/api/user/update-profile', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId, referral_phone: newReferralPhone?.trim() || null })
-                        })
-                        setUserReferralPhone(newReferralPhone || '')
-                        setUserReferenceDisplayName(referralName || '')
-                    } else if (refResult && typeof refResult === 'object') {
-                        const refData = refResult as any
-                        if (refData.success && refData.status === 'pending') {
-                            setProfileSaveError('')
-                            // Show pending info — don't update local state since it's pending
-                            alert('Your reference change has been submitted for approval.')
-                        } else if (refData.success) {
-                            setUserReferralPhone(newReferralPhone || '')
-                            setUserReferenceDisplayName(referralName || '')
-                        } else {
-                            setProfileSaveError(refData.error || 'Reference change failed')
-                        }
-                    }
-                } catch (refErr) {
-                    console.error('Referral change error:', refErr)
-                    setUserReferralPhone(newReferralPhone || '')
-                    setUserReferenceDisplayName(referralName || '')
-                }
+                setUserReferralPhone(newReferralPhone || '')
+                setUserReferenceUserId(newReferenceUserId || null)
+                setUserReferenceDisplayName(referralName || '')
             }
 
             // Update local state
@@ -2702,6 +2685,8 @@ export default function PremiumLoyaltyTemplate({
                 setNewLinkedOrganizationId(refreshedProfile.organizationId || null)
                 setUserReferralPhone(refreshedProfile.referralPhone || '')
                 setNewReferralPhone(refreshedProfile.referralPhone || '')
+                setUserReferenceUserId(refreshedProfile.referenceUserId || null)
+                setNewReferenceUserId(refreshedProfile.referenceUserId || null)
                 setUserReferenceDisplayName(refreshedProfile.referenceDisplayName || '')
                 setInvalidReference(refreshedProfile.invalidReference === true)
                 setInvalidShop(refreshedProfile.invalidShop === true)
@@ -2926,6 +2911,8 @@ export default function PremiumLoyaltyTemplate({
             setNewShopName(profileResult.organizationId ? (profileResult.orgName || '') : '')
             setUserReferralPhone(profileResult.referralPhone || '')
             setNewReferralPhone(profileResult.referralPhone || '')
+            setUserReferenceUserId(profileResult.referenceUserId || null)
+            setNewReferenceUserId(profileResult.referenceUserId || null)
             setUserReferenceDisplayName(profileResult.referenceDisplayName || '')
             if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
         }
@@ -6240,6 +6227,7 @@ export default function PremiumLoyaltyTemplate({
                                             onClick={() => {
                                                 setEditingReferralPhone(true)
                                                 setNewReferralPhone(userReferralPhone)
+                                                setNewReferenceUserId(userReferenceUserId)
                                             }}
                                             className="text-sm font-medium"
                                             style={{ color: config.primary_color }}
@@ -6254,14 +6242,19 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="flex-1">
                                                 <ReferencePicker
                                                     value={newReferralPhone}
+                                                    referenceUserId={newReferenceUserId}
                                                     onSelect={(ref: ReferenceUser | null, phone: string) => {
                                                         setNewReferralPhone(phone)
                                                         if (ref) {
+                                                            setNewReferenceUserId(ref.user_id)
                                                             setReferralCheckStatus('valid')
                                                             setReferralName(ref.full_name)
                                                         } else if (!phone) {
+                                                            setNewReferenceUserId(null)
                                                             setReferralCheckStatus('idle')
                                                             setReferralName('')
+                                                        } else {
+                                                            setNewReferenceUserId(null)
                                                         }
                                                     }}
                                                     placeholder="Search by name, phone, or email..."
@@ -6273,6 +6266,7 @@ export default function PremiumLoyaltyTemplate({
                                                 onClick={() => {
                                                     setEditingReferralPhone(false)
                                                     setNewReferralPhone(userReferralPhone)
+                                                    setNewReferenceUserId(userReferenceUserId)
                                                     setReferralCheckStatus('idle')
                                                 }}
                                             >
@@ -6390,7 +6384,7 @@ export default function PremiumLoyaltyTemplate({
                             />
 
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone) && (
+                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone || newReferenceUserId !== userReferenceUserId) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}
