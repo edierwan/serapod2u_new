@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,7 @@ export function ShopRequestDialog({
     defaultShopName = '',
     onSubmitted,
 }: ShopRequestDialogProps) {
+    const supabase = useMemo(() => createClient(), [])
     const [shopName, setShopName] = useState(defaultShopName)
     const [branch, setBranch] = useState('')
     const [contactName, setContactName] = useState('')

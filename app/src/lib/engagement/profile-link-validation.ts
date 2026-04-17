@@ -111,7 +111,7 @@ export async function resolveProfileLinkValidation(
     return {
         hasShopValue,
         isShopLinkValid,
-        invalidShop: hasShopValue && !isShopLinkValid,
+        invalidShop: hasValue(input.organizationId) && !isShopLinkValid,
         organizationTypeCode,
         organizationName,
         hasReferenceValue,

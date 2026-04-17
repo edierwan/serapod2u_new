@@ -101,7 +101,7 @@ export function resolveCollectProfileCompletion(input: CollectProfileCompletionI
     const validReferenceLink = hasValidReferenceLink(input)
 
     const missingShop = requiresShopProfile && !hasShopValue
-    const invalidShop = requiresShopProfile && hasShopValue && !validShopLink
+    const invalidShop = requiresShopProfile && hasValue(input.organizationId) && !validShopLink
     const missingReference = requiresShopProfile && !hasReferenceValue
     const invalidReference = requiresShopProfile && hasReferenceValue && !validReferenceLink
     const shouldBlockCollect = missingShop || missingReference || invalidShop || invalidReference
