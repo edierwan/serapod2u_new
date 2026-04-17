@@ -73,9 +73,13 @@ export async function resolveProfileLinkValidation(
                 .select('id, phone, full_name, call_name, can_be_reference, is_active')
                 .in('phone', phoneCandidates)
 
-            const matchedUser = (candidateUsers || []).find((candidate: any) =>
+            const matchingUsers = (candidateUsers || []).filter((candidate: any) =>
                 samePhone(candidate.phone, input.referralPhone)
             )
+
+            const matchedUser = matchingUsers.find((candidate: any) => candidate.can_be_reference && candidate.is_active)
+                || matchingUsers.find((candidate: any) => candidate.is_active)
+                || matchingUsers[0]
 
             if (matchedUser) {
                 referenceUserId = matchedUser.id || null
