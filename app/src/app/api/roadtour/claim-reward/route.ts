@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePointClaimSettings, resolveClaimLaneExperience } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
@@ -260,10 +261,16 @@ export async function POST(request: NextRequest) {
             claimMode: pointClaimSettings.claimMode,
             organization_id: userProfile?.organization_id,
             organizationTypeCode: orgType,
+            shop_name: userProfile?.shop_name,
             referral_phone: userProfile?.referral_phone,
             consumerClaimConfirmedAt: userProfile?.consumer_claim_confirmed_at,
             consumerConfirmation: consumer_confirmation === true,
             preferredClaimLane: requestedClaimLane,
+        })
+        const linkValidation = await resolveProfileLinkValidation(supabase as any, {
+            organizationId: userProfile?.organization_id,
+            shopName: userProfile?.shop_name,
+            referralPhone: userProfile?.referral_phone,
         })
         const profileCompletion = resolveCollectProfileCompletion({
             name: consumerDisplayName,
@@ -271,7 +278,10 @@ export async function POST(request: NextRequest) {
             requestedClaimLane,
             organizationId: userProfile?.organization_id,
             organizationTypeCode: orgType,
+            shopName: userProfile?.shop_name,
             referralPhone: userProfile?.referral_phone,
+            isShopLinkValid: linkValidation.isShopLinkValid,
+            isReferenceLinkValid: linkValidation.isReferenceLinkValid,
         })
 
         const qrShopId = (validation as any).shop_id || null

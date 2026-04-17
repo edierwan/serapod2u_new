@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 
 /**
  * POST /api/user/update-profile
@@ -287,6 +288,7 @@ export async function POST(request: NextRequest) {
         .from('users')
         .select(`
           organization_id,
+          shop_name,
           referral_phone,
           organizations!fk_users_organization(org_type_code)
         `)
@@ -303,6 +305,9 @@ export async function POST(request: NextRequest) {
       const nextOrganizationId = updateData.organization_id !== undefined
         ? updateData.organization_id
         : existingUser?.organization_id || null
+      const nextShopName = updateData.shop_name !== undefined
+        ? updateData.shop_name
+        : existingUser?.shop_name || null
       const nextReferralPhone = updateData.referral_phone !== undefined
         ? updateData.referral_phone
         : existingUser?.referral_phone || null
@@ -328,10 +333,40 @@ export async function POST(request: NextRequest) {
         nextOrganizationTypeCode = null
       }
 
+      if (nextShopName && !nextOrganizationId) {
+        return NextResponse.json(
+          { success: false, error: 'Please select a valid shop organization before saving this shop.' },
+          { status: 400 }
+        )
+      }
+
+      const linkValidation = await resolveProfileLinkValidation(adminClient, {
+        organizationId: nextOrganizationId,
+        shopName: nextShopName,
+        referralPhone: nextReferralPhone,
+      })
+
+      if (nextShopName && linkValidation.invalidShop) {
+        return NextResponse.json(
+          { success: false, error: 'Selected shop must be linked to an active shop organization.' },
+          { status: 400 }
+        )
+      }
+
+      if (nextReferralPhone && linkValidation.invalidReference) {
+        return NextResponse.json(
+          { success: false, error: 'Selected reference must be an active eligible reference.' },
+          { status: 400 }
+        )
+      }
+
       if (hasLinkedShopProfile({
         organization_id: nextOrganizationId,
         organizationTypeCode: nextOrganizationTypeCode,
+        shop_name: nextShopName,
         referral_phone: nextReferralPhone,
+        isShopLinkValid: linkValidation.isShopLinkValid,
+        isReferenceLinkValid: linkValidation.isReferenceLinkValid,
       })) {
         updateData.consumer_claim_confirmed_at = null
       }

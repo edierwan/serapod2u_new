@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { samePhone } from '@/utils/phone'
+import { resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 
 /**
  * GET /api/user/profile
@@ -99,44 +100,20 @@ export async function GET(request: NextRequest) {
       organizationId: userProfile.organization_id
     })
 
+    const linkValidation = await resolveProfileLinkValidation(supabaseAdmin, {
+      organizationId: userProfile.organization_id,
+      shopName: userProfile.shop_name,
+      referralPhone: userProfile.referral_phone,
+    })
+
     // Fetch organization info if organization_id exists
     let isShop = false
-    let orgName = ''
+    let orgName = linkValidation.organizationName || ''
     let bankId = null
     let bankName = null
     let bankAccountNumber = null
     let bankAccountHolderName = null
-    let referenceDisplayName = null
-
-    if (userProfile.referral_phone) {
-      const { data: referenceMatches, error: referenceSearchError } = await supabaseAdmin.rpc('search_eligible_references' as any, {
-        p_search_term: userProfile.referral_phone.trim(),
-        p_limit: 10
-      })
-
-      if (referenceSearchError) {
-        console.error('Reference lookup failed:', referenceSearchError)
-      } else {
-        const matchedReference = (referenceMatches || []).find((candidate: any) =>
-          samePhone(candidate.phone, userProfile.referral_phone)
-        )
-
-        if (matchedReference?.user_id) {
-          const { data: referenceProfile } = await supabaseAdmin
-            .from('users')
-            .select('call_name, full_name')
-            .eq('id', matchedReference.user_id)
-            .maybeSingle()
-
-          referenceDisplayName = referenceProfile?.call_name?.trim()
-            || referenceProfile?.full_name?.trim()
-            || matchedReference.full_name
-            || null
-        } else if (matchedReference?.full_name) {
-          referenceDisplayName = matchedReference.full_name
-        }
-      }
-    }
+    const referenceDisplayName = linkValidation.referenceDisplayName
 
     if (userProfile.organization_id) {
       const { data: orgData, error: orgError } = await supabaseAdmin
@@ -177,51 +154,11 @@ export async function GET(request: NextRequest) {
 
     // Fetch points balance
     // GUEST/CONSUMER users always use consumer balance, even if linked to a shop org
-    const isConsumerRole = ['GUEST', 'CONSUMER', 'USER'].includes(userProfile.role_code)
-    let pointsBalance = 0
-    if (isShop && userProfile.organization_id && !isConsumerRole) {
-      const { data: balanceData } = await supabaseAdmin
-        .from('v_shop_points_balance')
-        .select('current_balance')
-        .eq('shop_id', userProfile.organization_id)
-        .maybeSingle()
-
-      pointsBalance = balanceData?.current_balance || 0
-    } else if (!userProfile.organization_id || isConsumerRole) {
-      // Independent Consumer - Prefer the consolidated view used by Admin monitor
-      const { data: balanceData, error: balanceError } = await supabaseAdmin
-        .from('v_consumer_points_balance')
-        .select('current_balance')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!balanceError && balanceData?.current_balance !== undefined && balanceData?.current_balance !== null) {
-        pointsBalance = balanceData.current_balance
-        console.log(`💰 Points balance for consumer ${user.id} from view: ${pointsBalance}`)
-      } else {
-        // Fallback: Use shop_points_ledger if view is unavailable
-        const { data: ledgerData, error: ledgerError } = await supabaseAdmin
-          .from('shop_points_ledger')
-          .select('points_change')
-          .eq('consumer_id', user.id)
-
-        if (!ledgerError && ledgerData && ledgerData.length > 0) {
-          pointsBalance = ledgerData.reduce((sum, row) => sum + (row.points_change || 0), 0)
-          console.log(`💰 Points balance for consumer ${user.id} from ledger: ${pointsBalance}`)
-        } else {
-          // Final fallback: Query consumer_qr_scans directly
-          const { data: scans } = await supabaseAdmin
-            .from('consumer_qr_scans')
-            .select('points_amount')
-            .eq('consumer_id', user.id)
-            .eq('collected_points', true)
-
-          if (scans && scans.length > 0) {
-            pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
-          }
-        }
-      }
-    }
+    const pointsBalance = (await resolveTrustedPointsBalance(supabaseAdmin, {
+      userId: user.id,
+      roleCode: userProfile.role_code,
+      organizationId: userProfile.organization_id,
+    })).balance
 
     // Add cache-busting to avatar URL
     const avatarUrlWithCache = userProfile.avatar_url
@@ -239,6 +176,10 @@ export async function GET(request: NextRequest) {
         phone: userProfile.phone || '',
         referralPhone: userProfile.referral_phone || '',
         referenceDisplayName,
+        invalidReference: linkValidation.invalidReference,
+        invalidShop: linkValidation.invalidShop,
+        isReferenceValid: linkValidation.isReferenceLinkValid,
+        isShopValid: linkValidation.isShopLinkValid,
         address: userProfile.address || '',
         shop_name: userProfile.shop_name,
         consumerClaimConfirmedAt: userProfile.consumer_claim_confirmed_at || null,
