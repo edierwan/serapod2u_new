@@ -144,16 +144,14 @@ These are the same logical changes, just different commit SHAs (staging was reba
 
 ## E. Environment / Config Differences
 
-| Setting | Local (.env.local) | Staging (container) | Production (container) |
-|---------|-------------------|---------------------|----------------------|
-| Supabase URL | `sb-stg-serapod.getouch.co` | Internal `http://kong:8000` | Internal `http://kong:8000` |
-| Supabase Public URL | N/A | N/A | `supabase-prd-serapod.getouch.cloud` |
+| Setting | Local (.env.local) | Staging (Coolify) | Production (Coolify) |
+|---------|-------------------|-------------------|---------------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://sb-stg-serapod.getouch.co` | `https://supabase-stg-serapod.getouch.cloud` | `https://supabase-prd-serapod.getouch.cloud` |
 | App URL | `localhost:3000` | `stg.serapod2u.com` | `serapod2u.com` (assumed) |
 | NODE_ENV | development | production | production |
 | DB Pool | Points to preprod `100.84.14.93:6543` | N/A | N/A |
-| Supabase keys | Staging keys | **Production keys** ⚠️ | Production keys |
 
-**⚠️ Note**: The staging container is using **production Supabase keys** (`SUPABASE_PUBLIC_URL=supabase-prd-serapod.getouch.cloud`). This means staging app may be reading/writing to the **production database**. This needs verification — it could mean staging and production share the same DB, or the env vars may be mislabeled.
+**✅ Verified (18 Apr 2026)**: Staging and production use **separate Supabase instances**. Confirmed via Coolify env vars. An earlier draft of this report flagged a false alarm based on an unused `SUPABASE_PUBLIC_URL` env var (not referenced anywhere in code — the codebase uses `NEXT_PUBLIC_SUPABASE_URL` exclusively). The stale var was likely from the production container or a leftover config.
 
 **Local env** points to staging Supabase (`sb-stg-serapod.getouch.co`) with staging keys, and DATABASE_POOL_URL points to preprod server. This is expected for local development.
 
@@ -165,57 +163,47 @@ These are the same logical changes, just different commit SHAs (staging was reba
 
 | # | Risk | Impact | Resolution |
 |---|------|--------|------------|
-| 1 | **⚠️ Verify staging Supabase target** | Staging container has `SUPABASE_PUBLIC_URL=supabase-prd-serapod.getouch.cloud` — may be hitting prod DB | Check Coolify env vars for staging app; confirm whether staging has its own DB or shares prod |
-| 2 | **Shop requests migration** | `shop_requests` table doesn't exist in prod. Shop create flow will fail. | Apply migration OR ensure feature is admin-only and won't be accessed until ready |
+| 1 | **Shop requests migration** | `shop_requests` table doesn't exist in prod. Shop create flow will fail. | Apply migration OR ensure feature is admin-only and won't be accessed until ready |
 
 ### Medium risk
 
 | # | Risk | Impact | Resolution |
 |---|------|--------|------------|
-| 3 | Marketing daily reporting migrations not applied | Marketing reporting features won't work | Apply migrations when marketing reporting is ready to launch |
-| 4 | Uncommitted `check-collection-status` change | Uses `resolveTrustedPointsBalance` — needs review | Review and either commit or discard |
-| 5 | Branch divergence (staging rebased from main) | Cannot fast-forward merge staging→main | Will need `git merge staging` into main (or force-push) |
+| 2 | Marketing daily reporting migrations not applied | Marketing reporting features won't work | Apply migrations when marketing reporting is ready to launch |
+| 3 | Uncommitted `check-collection-status` change | Uses `resolveTrustedPointsBalance` — needs review | Review and either commit or discard |
+| 4 | Branch divergence (staging rebased from main) | Cannot fast-forward merge staging→main | Will need `git merge staging` into main (or force-push) |
 
 ### Low risk / Informational
 
 | # | Risk | Notes |
 |---|------|-------|
-| 6 | Phone normalization hardening | Improved but backward-compatible |
-| 7 | WhatsApp gateway changes | Bug fixes, no breaking changes |
-| 8 | moltbot package-lock churn | Large diff but just dependency resolution |
+| 5 | Phone normalization hardening | Improved but backward-compatible |
+| 6 | WhatsApp gateway changes | Bug fixes, no breaking changes |
+| 7 | moltbot package-lock churn | Large diff but just dependency resolution |
 
 ---
 
 ## G. Recommended Next Actions
 
-### Step 1: Verify Staging DB Target (URGENT)
-```bash
-# On VPS, check if staging app has its own Supabase or shares prod
-ssh deploy@72.62.253.182
-# Check staging container's actual Supabase URL used at runtime
-docker exec <staging-app-container> printenv | grep SUPABASE
-```
-If staging is using prod DB, all staging testing has been against production data. This must be confirmed before any merge.
-
-### Step 2: Apply Shop Requests Migration to Production
+### Step 1: Apply Shop Requests Migration to Production
 ```sql
 -- Run on production DB (only if shop create feature should be available)
 -- First create base table if needed, then run:
 -- supabase/migrations/20260417_shop_request_masterdata_alignment.sql
 ```
 
-### Step 3: Apply Marketing Reporting Migrations (Optional)
+### Step 2: Apply Marketing Reporting Migrations (Optional)
 ```sql
 -- Run on production DB when marketing reporting is needed:
 -- supabase/migrations/20260415_marketing_daily_reporting.sql
 -- supabase/migrations/20260415_marketing_daily_reporting_inbound.sql
 ```
 
-### Step 4: Review Uncommitted Changes
+### Step 3: Review Uncommitted Changes
 - `check-collection-status/route.ts`: Review trusted balance resolver change
 - `user/profile/route.ts`: Indentation only — safe to commit or discard
 
-### Step 5: Merge staging → main
+### Step 4: Merge staging → main
 ```bash
 git checkout main
 git merge staging
@@ -223,14 +211,14 @@ git merge staging
 git push origin main
 ```
 
-### Step 6: Sync preprod
+### Step 5: Sync preprod
 ```bash
 git checkout preprod
 git merge staging
 git push origin preprod
 ```
 
-### Step 7: Post-merge Verification
+### Step 6: Post-merge Verification
 - Verify production deployment succeeds
 - Test RoadTour flow end-to-end on production
 - Test product QR dual-claim on production
