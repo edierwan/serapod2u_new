@@ -3931,8 +3931,10 @@ export default function PremiumLoyaltyTemplate({
                                     <h1 className="text-2xl font-bold">
                                         {userName || 'Valued Member'} ✨
                                     </h1>
-                                    {isAuthenticated && isShopUser && shopName && (
-                                        <p className="text-white/70 text-xs mt-1">{shopName}</p>
+                                    {isAuthenticated && (
+                                        <p className="text-white/70 text-xs mt-1">
+                                            {isShopUser && shopName ? `${shopName} (Shop Staff)` : 'Consumer'}
+                                        </p>
                                     )}
                                 </>
                             )}
