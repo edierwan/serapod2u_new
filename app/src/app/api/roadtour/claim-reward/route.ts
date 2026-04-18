@@ -294,20 +294,9 @@ export async function POST(request: NextRequest) {
         const resolvedScanShopId = explicitShopId || qrShopId
         const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
 
-        if (laneExperience.shouldPromptConsumerChoice) {
-            return NextResponse.json(
-                {
-                    requiresConsumerConfirmation: true,
-                    message: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
-                    modalTitle: 'Choose Claim Type',
-                    modalMessage: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
-                    consumerOptionLabel: 'Consumer',
-                    shopOptionLabel: 'Belong to Shop',
-                    code: 'CLAIM_TYPE_REQUIRED',
-                },
-                { status: 409 }
-            )
-        }
+        // RoadTour does NOT use the product dual-claim lane selection.
+        // Users without a shop will be caught by SHOP_REQUIRED / PROFILE_INCOMPLETE gates below.
+        // Skip the consumer-choice prompt entirely for RoadTour.
 
         // Persist consumer confirmation before profile check so it is always saved
         if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
