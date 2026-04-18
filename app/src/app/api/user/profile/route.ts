@@ -174,12 +174,12 @@ export async function GET(request: NextRequest) {
     const missingReference = !linkValidation.hasReferenceValue
     const profileIncompleteMessage = profileIncomplete
       ? getIncompleteProfileMessage({
-          name: userProfile.full_name,
-          missingShop,
-          missingReference,
-          invalidShop: linkValidation.invalidShop,
-          invalidReference: linkValidation.invalidReference,
-        })
+        name: userProfile.full_name,
+        missingShop,
+        missingReference,
+        invalidShop: linkValidation.invalidShop,
+        invalidReference: linkValidation.invalidReference,
+      })
       : ''
 
     return NextResponse.json({

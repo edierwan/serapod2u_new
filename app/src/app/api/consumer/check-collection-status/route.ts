@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { resolveQrCodeRecord, checkPointsCollected, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
+import { resolveQrCodeRecord, checkPointsCollected, calculateShopTotalPoints, resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
 
 /**
  * GET /api/consumer/check-collection-status
@@ -77,9 +77,13 @@ export async function GET(request: NextRequest) {
     let totalBalance = 0
     if (collectionData) {
       console.log('✅ Found collection record:', collectionData)
-      const shopId = collectionData.shop_id
-      if (shopId) {
-        totalBalance = await calculateShopTotalPoints(supabase, shopId)
+      if (collectionData.consumer_id) {
+        const resolvedBalance = await resolveTrustedPointsBalance(supabase, {
+          userId: collectionData.consumer_id,
+        })
+        totalBalance = resolvedBalance.balance
+      } else if (collectionData.shop_id) {
+        totalBalance = await calculateShopTotalPoints(supabase, collectionData.shop_id)
       } else {
         totalBalance = collectionData.points_amount || 0
       }
