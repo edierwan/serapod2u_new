@@ -496,6 +496,9 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         split?: { enabled: boolean; batchSize: number };
     }) => {
         setShowPrelaunchModal(false);
+
+        // Idempotency: prevent double-click
+        if (submitting) return;
         setSubmitting(true);
 
         try {
@@ -540,7 +543,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
 
                 // If "Send Now" mode, launch the campaign immediately
                 if (config.mode === 'send_now' && campaignData?.id) {
-                    toast({ title: "Campaign Created", description: "Now sending to recipients..." });
+                    // Show launching state - NOT success yet
+                    toast({ title: "Launching Campaign...", description: "Preparing to send to recipients..." });
 
                     const launchRes = await fetch(`/api/wa/marketing/campaigns/${campaignData.id}/launch`, {
                         method: 'POST',
@@ -560,15 +564,17 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                             'system-high-volume': 'High Volume'
                         };
                         toast({
-                            title: "Campaign Launched! 🚀",
-                            description: `Sending to ${estimatedRecipients} recipients using ${presetNames[config.presetId] || config.presetId} preset`
+                            title: "Campaign Launched!",
+                            description: `Sending to ${launchData.total_recipients ?? estimatedRecipients} recipients using ${presetNames[config.presetId] || config.presetId} preset`
                         });
                     } else {
-                        const launchError = await launchRes.json();
+                        const launchError = await launchRes.json().catch(() => ({ error: 'Unknown error' }));
+                        const retryable = launchError.retryable !== false;
                         toast({
-                            title: "Campaign Created",
-                            description: `Campaign saved but launch failed: ${launchError.error}`,
-                            variant: "destructive"
+                            title: "Launch Failed",
+                            description: `Campaign saved as draft. ${launchError.error || 'Internal server error'}${retryable ? ' — you can retry from the Campaigns list.' : ''}`,
+                            variant: "destructive",
+                            duration: 8000,
                         });
                     }
                 } else {
