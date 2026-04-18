@@ -79,12 +79,12 @@ import dynamic from 'next/dynamic'
 
 // Dynamically import QrScanner to avoid SSR issues
 const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr: false })
-import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
+import { validatePhoneNumber, normalizePhone, getStorageUrl, toTitleCaseWords } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
-import { ShopRequestDialog } from '@/components/shop-requests/ShopRequestDialog'
+import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
 import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
 import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
 
@@ -6379,7 +6379,7 @@ export default function PremiumLoyaltyTemplate({
                                                         setNewLinkedOrganizationId(shop?.org_id || null)
                                                     }}
                                                     onCreateRequest={(shopName) => {
-                                                        setPendingShopRequestName(shopName)
+                                                        setPendingShopRequestName(toTitleCaseWords(shopName.trim()))
                                                         setIsShopRequestOpen(true)
                                                     }}
                                                     placeholder="Search shop by name..."
@@ -6413,13 +6413,19 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
 
-                            <ShopRequestDialog
+                            <CreateShopDialog
                                 open={isShopRequestOpen}
                                 onOpenChange={setIsShopRequestOpen}
                                 defaultShopName={pendingShopRequestName}
-                                onSubmitted={() => {
+                                onCreated={async (org) => {
                                     setIsShopRequestOpen(false)
-                                    alert('Your shop request has been submitted for HQ review.')
+                                    setNewShopName(org.org_name + (org.branch ? ` (${org.branch})` : ''))
+                                    setNewLinkedOrganizationId(org.id)
+                                    setEditingShopName(false)
+                                    // Refresh profile to pick up the new org link
+                                    if (userId) {
+                                        await populateProfileEditor(userId)
+                                    }
                                 }}
                             />
 
