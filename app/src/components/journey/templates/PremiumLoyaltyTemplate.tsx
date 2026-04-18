@@ -3013,7 +3013,7 @@ export default function PremiumLoyaltyTemplate({
         setPendingProfileCollectLane('shop')
         setPendingProfileCollectEmail(email || userEmail)
         setPointsErrorTitle('Complete Your Profile')
-        setPointsError(message || 'This QR already claimed by a customer. Only shop staff can claim it now.')
+        setPointsError(message || 'This QR was already claimed by a consumer. Only shop staff can claim it now.')
         setPointsErrorAction('shop-profile-link')
         setCollectPointsStep('complete-profile')
         setShowPointsLoginModal(true)
@@ -6818,7 +6818,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                                     {pointsErrorAction === 'shop-profile-link' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            This QR already claimed by a customer. Only shop staff can claim it now.{' '}
+                                            This QR was already claimed by a consumer. Only shop staff can claim it now.{' '}
                                             <button
                                                 type="button"
                                                 onClick={openProfileForPendingCollectFlow}

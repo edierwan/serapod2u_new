@@ -578,8 +578,15 @@ export async function POST(request: NextRequest) {
         const remainingLane = pointClaimSettings.claimMode === 'dual'
           ? (claimLane === 'shop' ? 'consumer' : 'shop')
           : null
+        const userName = shopUser.full_name?.trim() || null
         const errorMessage = remainingLane
-          ? `This QR code was already collected by the ${claimLane === 'shop' ? 'shop staff' : 'consumer'} lane. Only ${remainingLane === 'shop' ? 'shop staff' : 'consumer'} can collect it now.`
+          ? claimLane === 'shop'
+            ? userName
+              ? `Hi ${userName}, this QR was already claimed by another shop. It is no longer available for shop claim. Only the consumer can claim it now.`
+              : 'This QR was already claimed by another shop. It is no longer available for shop claim. Only the consumer can claim it now.'
+            : userName
+              ? `Hi ${userName}, this QR was already claimed by a consumer. Only shop staff can claim it now.`
+              : 'This QR was already claimed by a consumer. Only shop staff can claim it now.'
           : 'Points for this QR code have already been collected.'
 
         return NextResponse.json(
