@@ -3,7 +3,8 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePointClaimSettings, resolveClaimLaneExperience } from '@/lib/engagement/point-claim-settings'
-import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
+import { resolveCollectProfileCompletion, getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
@@ -253,17 +254,28 @@ export async function POST(request: NextRequest) {
         }
 
         const orgType = userProfile?.organizations?.org_type_code || null
-        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || userProfile?.shop_name?.trim() || 'shop'
-        const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
+        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || null
+        const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || null
+        const duplicateMessage = consumerDisplayName && duplicateShopName
+            ? `Hi ${consumerDisplayName} from ${duplicateShopName}, you have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
+            : consumerDisplayName
+                ? `Hi ${consumerDisplayName}, you have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
+                : `You have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
         const requestedClaimLane = null
         const laneExperience = resolveClaimLaneExperience({
             claimMode: pointClaimSettings.claimMode,
             organization_id: userProfile?.organization_id,
             organizationTypeCode: orgType,
+            shop_name: userProfile?.shop_name,
             referral_phone: userProfile?.referral_phone,
             consumerClaimConfirmedAt: userProfile?.consumer_claim_confirmed_at,
             consumerConfirmation: consumer_confirmation === true,
             preferredClaimLane: requestedClaimLane,
+        })
+        const linkValidation = await resolveProfileLinkValidation(supabase as any, {
+            organizationId: userProfile?.organization_id,
+            shopName: userProfile?.shop_name,
+            referralPhone: userProfile?.referral_phone,
         })
         const profileCompletion = resolveCollectProfileCompletion({
             name: consumerDisplayName,
@@ -271,7 +283,10 @@ export async function POST(request: NextRequest) {
             requestedClaimLane,
             organizationId: userProfile?.organization_id,
             organizationTypeCode: orgType,
+            shopName: userProfile?.shop_name,
             referralPhone: userProfile?.referral_phone,
+            isShopLinkValid: linkValidation.isShopLinkValid,
+            isReferenceLinkValid: linkValidation.isReferenceLinkValid,
         })
 
         const qrShopId = (validation as any).shop_id || null
@@ -279,19 +294,20 @@ export async function POST(request: NextRequest) {
         const resolvedScanShopId = explicitShopId || qrShopId
         const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
 
-        if (laneExperience.shouldPromptConsumerChoice) {
-            return NextResponse.json(
-                {
-                    requiresConsumerConfirmation: true,
-                    message: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
-                    modalTitle: 'Choose Claim Type',
-                    modalMessage: 'Choose whether to continue as a consumer or update your profile to claim as shop staff.',
-                    consumerOptionLabel: 'Consumer',
-                    shopOptionLabel: 'Belong to Shop',
-                    code: 'CLAIM_TYPE_REQUIRED',
-                },
-                { status: 409 }
-            )
+        // RoadTour does NOT use the product dual-claim lane selection.
+        // Users without a shop will be caught by SHOP_REQUIRED / PROFILE_INCOMPLETE gates below.
+        // Skip the consumer-choice prompt entirely for RoadTour.
+
+        // Persist consumer confirmation before profile check so it is always saved
+        if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
+            const confirmedAt = new Date().toISOString()
+            await (supabase as any)
+                .from('users')
+                .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+                .eq('id', userId)
+            if (userProfile) {
+                userProfile.consumer_claim_confirmed_at = confirmedAt
+            }
         }
 
         if (profileCompletion.shouldBlockCollect) {
@@ -308,24 +324,27 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
-            const confirmedAt = new Date().toISOString()
-            await (supabase as any)
-                .from('users')
-                .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
-                .eq('id', userId)
-            if (userProfile) {
-                userProfile.consumer_claim_confirmed_at = confirmedAt
-            }
-        }
-
         // 2c. Shop context gate — use QR's shop_id when user didn't provide one
         const require_shop_context = (validation as any).require_shop_context
         if (require_shop_context && !resolvedRewardShopId) {
+            // Compute real missing-field message based on actual profile state,
+            // ignoring consumer lane bypass (which clears profileCompletion.modalMessage)
+            const shopMissing = !userProfile?.organization_id
+            const shopInvalid = !!userProfile?.organization_id && !linkValidation.isShopLinkValid
+            const refMissing = !userProfile?.referral_phone?.trim()
+            const refInvalid = !!userProfile?.referral_phone?.trim() && !linkValidation.isReferenceLinkValid
+            const shopRequiredMessage = getIncompleteProfileMessage({
+                name: consumerDisplayName,
+                missingShop: shopMissing,
+                missingReference: refMissing,
+                invalidShop: shopInvalid,
+                invalidReference: refInvalid,
+            }) || `Hi ${consumerDisplayName || 'there'}, your **shop** is not valid. Please update your profile before collecting points.`
+
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
-                    message: profileCompletion.modalMessage || `Hi ${consumerDisplayName}, your profile is not complete. Please update your shop and reference in Profile to collect points.`,
+                    message: shopRequiredMessage,
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }
@@ -492,13 +511,13 @@ export async function POST(request: NextRequest) {
                     notificationType: 'duplicate',
                     campaignName,
                     referenceName,
-                    shopName: duplicateShopName,
-                    consumerName: consumerDisplayName,
+                    shopName: duplicateShopName || 'Unknown shop',
+                    consumerName: consumerDisplayName || 'Unknown consumer',
                     canonicalPath: qrRecord?.canonical_path || null,
                     geoLabel: resolvedGeoLabel,
-                    message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+                    message: duplicateMessage,
                 })
-                return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
+                return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
             }
             await notifyClaim({
                 scanEventId: scanEvent.id,
@@ -508,8 +527,8 @@ export async function POST(request: NextRequest) {
                 notificationType: 'failed',
                 campaignName,
                 referenceName,
-                shopName: duplicateShopName,
-                consumerName: consumerDisplayName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
                 canonicalPath: qrRecord?.canonical_path || null,
                 geoLabel: resolvedGeoLabel,
                 message: rewardError.message || 'Reward processing failed.',
@@ -528,13 +547,13 @@ export async function POST(request: NextRequest) {
                 notificationType: 'duplicate',
                 campaignName,
                 referenceName,
-                shopName: duplicateShopName,
-                consumerName: consumerDisplayName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
                 canonicalPath: qrRecord?.canonical_path || null,
                 geoLabel: resolvedGeoLabel,
-                message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+                message: duplicateMessage,
             })
-            return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
+            return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
         }
 
         const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
@@ -547,8 +566,8 @@ export async function POST(request: NextRequest) {
             notificationType: 'success',
             campaignName,
             referenceName,
-            shopName: duplicateShopName,
-            consumerName: consumerDisplayName,
+            shopName: duplicateShopName || 'Unknown shop',
+            consumerName: consumerDisplayName || 'Unknown consumer',
             pointsAwarded: default_points,
             balanceAfter: totalBalance,
             canonicalPath: qrRecord?.canonical_path || null,

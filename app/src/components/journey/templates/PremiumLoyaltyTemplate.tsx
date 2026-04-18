@@ -79,13 +79,14 @@ import dynamic from 'next/dynamic'
 
 // Dynamically import QrScanner to avoid SSR issues
 const QrScanner = dynamic(() => import('@/components/scanner/QrScanner'), { ssr: false })
-import { validatePhoneNumber, normalizePhone, getStorageUrl } from '@/lib/utils'
+import { validatePhoneNumber, normalizePhone, getStorageUrl, toTitleCaseWords } from '@/lib/utils'
 import { useToast } from '@/components/ui/use-toast'
 import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
-import { ShopRequestDialog } from '@/components/shop-requests/ShopRequestDialog'
+import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
 import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
+import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
 
 // Types
 interface JourneyConfig {
@@ -655,6 +656,7 @@ export default function PremiumLoyaltyTemplate({
     // Account settings states
     const [userPhone, setUserPhone] = useState('')
     const [userReferralPhone, setUserReferralPhone] = useState('')
+    const [userReferenceUserId, setUserReferenceUserId] = useState<string | null>(null)
     const [userId, setUserId] = useState<string | null>(null)
     const [editingName, setEditingName] = useState(false)
     const [editingPhone, setEditingPhone] = useState(false)
@@ -671,8 +673,14 @@ export default function PremiumLoyaltyTemplate({
     const [newName, setNewName] = useState('')
     const [newPhone, setNewPhone] = useState('')
     const [newReferralPhone, setNewReferralPhone] = useState('')
+    const [newReferenceUserId, setNewReferenceUserId] = useState<string | null>(null)
+    const [userReferenceDisplayName, setUserReferenceDisplayName] = useState('')
     const [referralName, setReferralName] = useState('')
     const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
+    const [invalidReference, setInvalidReference] = useState(false)
+    const [invalidShop, setInvalidShop] = useState(false)
+    const [profileIncomplete, setProfileIncomplete] = useState(false)
+    const [profileIncompleteMessage, setProfileIncompleteMessage] = useState('')
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
@@ -714,7 +722,32 @@ export default function PremiumLoyaltyTemplate({
 
     const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
         const resolvedName = (name || userName || 'there').trim()
-        return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
+        return `Hi ${resolvedName}, your **shop** and **reference** are not valid. Please update your profile before collecting points.`
+    }
+
+    const withUserGreeting = (message?: string | null, name?: string | null) => {
+        const resolvedName = (name || userName || 'there').trim()
+        const baseMessage = (message || "You're not linked to any shop yet. Continue collecting points as a consumer?").trim()
+
+        if (!baseMessage) {
+            return `Hi ${resolvedName}, please review your claim type before continuing.`
+        }
+
+        if (/^hi\s/i.test(baseMessage)) {
+            return baseMessage
+        }
+
+        return `Hi ${resolvedName}, ${baseMessage.charAt(0).toLowerCase()}${baseMessage.slice(1)}`
+    }
+
+    const closeCollectPointsModal = () => {
+        setShowPointsLoginModal(false)
+        setPointsError('')
+        setPointsErrorTitle('')
+        setPointsErrorAction(null)
+        setPendingProfileCollectLane(null)
+        setPendingProfileCollectEmail('')
+        setCollectPointsStep('login')
     }
 
     const resolveRoadtourGeolocation = async (forcePrompt = false) => {
@@ -955,13 +988,21 @@ export default function PremiumLoyaltyTemplate({
                 phone: profile.phone || '',
                 address: profile.address || '',
                 shop_name: profile.shop_name || '',
+                referenceDisplayName: profile.referenceDisplayName || '',
                 pointsBalance: profile.pointsBalance || 0,
                 bankId: profile.bankId || '',
                 bankName: profile.bankName || '',
                 bankAccountNumber: profile.bankAccountNumber || '',
                 bankAccountHolderName: profile.bankAccountHolderName || '',
                 referralPhone: profile.referralPhone || '',
-                consumerClaimConfirmedAt: profile.consumerClaimConfirmedAt || null
+                referenceUserId: profile.referenceUserId || null,
+                consumerClaimConfirmedAt: profile.consumerClaimConfirmedAt || null,
+                invalidReference: profile.invalidReference === true,
+                invalidShop: profile.invalidShop === true,
+                isReferenceValid: profile.isReferenceValid === true,
+                isShopValid: profile.isShopValid === true,
+                profileIncomplete: profile.profileIncomplete === true,
+                profileIncompleteMessage: profile.profileIncompleteMessage || '',
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
@@ -1048,7 +1089,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop, profileIncomplete: _profileIncomplete, profileIncompleteMessage: _profileIncompleteMessage } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -1078,9 +1119,14 @@ export default function PremiumLoyaltyTemplate({
                         setNewLinkedOrganizationId(organizationId || null)
                         setUserPhone(phone)
                         setUserReferralPhone(referralPhone || '')
+                        setUserReferenceUserId(referenceUserId || null)
+                        setUserReferenceDisplayName(referenceDisplayName || '')
+                        setInvalidReference(invalidReference === true)
+                        setInvalidShop(invalidShop === true)
                         setNewName(fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || '')
                         setNewPhone(phone)
                         setNewReferralPhone(referralPhone || '')
+                        setNewReferenceUserId(referenceUserId || null)
                         setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                         // Set points and bank details for ALL users (Shop and Independent)
@@ -1093,8 +1139,20 @@ export default function PremiumLoyaltyTemplate({
                         // Set address
                         setUserAddress(address || '')
                         setNewAddress(address || '')
-                        setUserShopName(shop_name || '')
-                        setNewShopName(shop_name || '')
+                        setUserShopName(organizationId ? (orgName || '') : '')
+                        setNewShopName(organizationId ? (orgName || '') : '')
+
+                        // Profile completeness check — show proactive modal
+                        setProfileIncomplete(_profileIncomplete === true)
+                        setProfileIncompleteMessage(_profileIncompleteMessage || '')
+                        if (_profileIncomplete) {
+                            console.log('🔐 Profile incomplete — showing proactive modal')
+                            openCollectPointsProfilePrompt({
+                                modalTitle: 'Complete Your Profile',
+                                modalMessage: _profileIncompleteMessage,
+                                error: _profileIncompleteMessage,
+                            })
+                        }
                     } else {
                         console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -1160,7 +1218,7 @@ export default function PremiumLoyaltyTemplate({
 
                     // Fetch profile
                     try {
-                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, address, shop_name, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt } = await checkUserOrganization(session.user.id) as any
+                        const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = await checkUserOrganization(session.user.id) as any
 
                         if (success) {
                             console.log('🔐 Profile fetched on SIGNED_IN')
@@ -1172,9 +1230,14 @@ export default function PremiumLoyaltyTemplate({
                             setNewLinkedOrganizationId(organizationId || null)
                             setUserPhone(phone)
                             setUserReferralPhone(referralPhone || '')
+                            setUserReferenceUserId(referenceUserId || null)
+                            setUserReferenceDisplayName(referenceDisplayName || '')
+                            setInvalidReference(invalidReference === true)
+                            setInvalidShop(invalidShop === true)
                             setNewName(fullName || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || '')
                             setNewPhone(phone)
                             setNewReferralPhone(referralPhone || '')
+                            setNewReferenceUserId(referenceUserId || null)
                             setConsumerClaimConfirmed(Boolean(consumerClaimConfirmedAt))
 
                             // Set points and bank details for ALL users
@@ -1185,8 +1248,8 @@ export default function PremiumLoyaltyTemplate({
                             // Set address
                             setUserAddress(address || '')
                             setNewAddress(address || '')
-                            setUserShopName(shop_name || '')
-                            setNewShopName(shop_name || '')
+                            setUserShopName(organizationId ? (orgName || '') : '')
+                            setNewShopName(organizationId ? (orgName || '') : '')
                         }
                     } catch (error) {
                         console.error('🔐 Profile fetch error on auth change:', error)
@@ -1203,6 +1266,7 @@ export default function PremiumLoyaltyTemplate({
                     setUserAvatarUrl(null)
                     setShopName('')
                     setUserPhone('')
+                    setUserReferenceUserId(null)
                     setConsumerClaimConfirmed(false)
                     setUserId(null)
                 }
@@ -2498,8 +2562,14 @@ export default function PremiumLoyaltyTemplate({
                 updateData.organization_id = newLinkedOrganizationId
             }
 
+            if (!isShopUser && newShopName.trim() && !newLinkedOrganizationId) {
+                setProfileSaveError('Please select a valid shop organization before saving.')
+                setSavingProfile(false)
+                return
+            }
+
             // Add referral phone if changed — use RPC for approval flow
-            const referralPhoneChanged = newReferralPhone !== userReferralPhone
+            const referralPhoneChanged = newReferralPhone !== userReferralPhone || newReferenceUserId !== userReferenceUserId
             if (referralPhoneChanged) {
                 if (newReferralPhone && newReferralPhone.trim()) {
                     const validation = validatePhoneNumber(newReferralPhone.trim())
@@ -2508,8 +2578,22 @@ export default function PremiumLoyaltyTemplate({
                         setSavingProfile(false)
                         return
                     }
+
+                    if (referralCheckStatus !== 'valid') {
+                        setProfileSaveError(INVALID_REFERENCE_WARNING_MESSAGE)
+                        setSavingProfile(false)
+                        return
+                    }
+
+                    if (!newReferenceUserId) {
+                        setProfileSaveError(INVALID_REFERENCE_WARNING_MESSAGE)
+                        setSavingProfile(false)
+                        return
+                    }
                 }
-                // Don't include in updateData — handled via RPC after main save
+
+                updateData.referral_phone = newReferralPhone.trim() || null
+                updateData.reference_user_id = newReferenceUserId
             }
 
             // Add bank details if shop user or independent consumer
@@ -2582,40 +2666,10 @@ export default function PremiumLoyaltyTemplate({
                 throw new Error(data.error || 'Failed to update profile')
             }
 
-            // Handle referral phone change via RPC (supports approval flow)
             if (referralPhoneChanged) {
-                try {
-                    const { data: refResult, error: refError } = await supabase.rpc('process_reference_change', {
-                        p_shop_user_id: userId,
-                        p_new_ref_phone: newReferralPhone?.trim() || null,
-                        p_requested_by: userId
-                    })
-
-                    if (refError) {
-                        console.error('Referral change RPC error:', refError)
-                        // Fallback: update directly via API if RPC not deployed yet
-                        await fetch('/api/user/update-profile', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId, referral_phone: newReferralPhone?.trim() || null })
-                        })
-                        setUserReferralPhone(newReferralPhone || '')
-                    } else if (refResult && typeof refResult === 'object') {
-                        const refData = refResult as any
-                        if (refData.success && refData.status === 'pending') {
-                            setProfileSaveError('')
-                            // Show pending info — don't update local state since it's pending
-                            alert('Your reference change has been submitted for approval.')
-                        } else if (refData.success) {
-                            setUserReferralPhone(newReferralPhone || '')
-                        } else {
-                            setProfileSaveError(refData.error || 'Reference change failed')
-                        }
-                    }
-                } catch (refErr) {
-                    console.error('Referral change error:', refErr)
-                    setUserReferralPhone(newReferralPhone || '')
-                }
+                setUserReferralPhone(newReferralPhone || '')
+                setUserReferenceUserId(newReferenceUserId || null)
+                setUserReferenceDisplayName(referralName || '')
             }
 
             // Update local state
@@ -2628,8 +2682,10 @@ export default function PremiumLoyaltyTemplate({
             if (updateData.address !== undefined) {
                 setUserAddress(updateData.address || '')
             }
-            if (updateData.shop_name !== undefined) {
-                setUserShopName(updateData.shop_name || '')
+            if (updateData.shop_name !== undefined || updateData.organization_id !== undefined) {
+                const nextLinkedShopName = updateData.organization_id ? (newShopName.trim() || '') : ''
+                setUserShopName(nextLinkedShopName)
+                setNewShopName(nextLinkedShopName)
             }
             if (updateData.organization_id !== undefined) {
                 setUserLinkedOrganizationId(updateData.organization_id || null)
@@ -2639,12 +2695,19 @@ export default function PremiumLoyaltyTemplate({
             if (refreshedProfile?.success) {
                 setIsShopUser(Boolean(refreshedProfile.isShop))
                 setShopName(refreshedProfile.orgName || '')
-                setUserShopName(refreshedProfile.shop_name || '')
-                setNewShopName(refreshedProfile.shop_name || '')
+                setUserShopName(refreshedProfile.organizationId ? (refreshedProfile.orgName || '') : '')
+                setNewShopName(refreshedProfile.organizationId ? (refreshedProfile.orgName || '') : '')
                 setUserLinkedOrganizationId(refreshedProfile.organizationId || null)
                 setNewLinkedOrganizationId(refreshedProfile.organizationId || null)
                 setUserReferralPhone(refreshedProfile.referralPhone || '')
                 setNewReferralPhone(refreshedProfile.referralPhone || '')
+                setUserReferenceUserId(refreshedProfile.referenceUserId || null)
+                setNewReferenceUserId(refreshedProfile.referenceUserId || null)
+                setUserReferenceDisplayName(refreshedProfile.referenceDisplayName || '')
+                setInvalidReference(refreshedProfile.invalidReference === true)
+                setInvalidShop(refreshedProfile.invalidShop === true)
+                setProfileIncomplete(refreshedProfile.profileIncomplete === true)
+                setProfileIncompleteMessage(refreshedProfile.profileIncompleteMessage || '')
             }
 
             setProfileSaveSuccess(true)
@@ -2654,12 +2717,16 @@ export default function PremiumLoyaltyTemplate({
             setEditingShopName(false)
             setEditingReferralPhone(false)
 
-            if (pendingLaneRetry === 'shop') {
+            if (pendingLaneRetry === 'shop' && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
                 setShowProfileInfo(false)
-                if (isAuthenticated) {
-                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
+                setPendingProfileCollectLane(null)
+                if (roadtourContext) {
+                    // RoadTour flow: resume via RoadTour claim API, not product QR
+                    await handleRoadtourClaimWithSession()
+                } else if (isAuthenticated) {
+                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 } else {
-                    await handleCollectPoints({ preferredClaimLane: 'shop' })
+                    await handleCollectPoints({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 }
             }
 
@@ -2862,11 +2929,18 @@ export default function PremiumLoyaltyTemplate({
             setNewPhone(profileResult.phone || '')
             setUserAddress(profileResult.address || '')
             setNewAddress(profileResult.address || '')
-            setUserShopName(profileResult.shop_name || '')
-            setNewShopName(profileResult.shop_name || '')
+            setUserShopName(profileResult.organizationId ? (profileResult.orgName || '') : '')
+            setNewShopName(profileResult.organizationId ? (profileResult.orgName || '') : '')
             setUserReferralPhone(profileResult.referralPhone || '')
             setNewReferralPhone(profileResult.referralPhone || '')
+            setUserReferenceUserId(profileResult.referenceUserId || null)
+            setNewReferenceUserId(profileResult.referenceUserId || null)
+            setUserReferenceDisplayName(profileResult.referenceDisplayName || '')
             if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
+            setInvalidReference(profileResult.invalidReference === true)
+            setInvalidShop(profileResult.invalidShop === true)
+            setProfileIncomplete(profileResult.profileIncomplete === true)
+            setProfileIncompleteMessage(profileResult.profileIncompleteMessage || '')
         }
     }
 
@@ -2939,7 +3013,7 @@ export default function PremiumLoyaltyTemplate({
         setPendingProfileCollectLane('shop')
         setPendingProfileCollectEmail(email || userEmail)
         setPointsErrorTitle('Complete Your Profile')
-        setPointsError(message || 'This QR already claimed by a customer. Only shop staff can claim it now.')
+        setPointsError(message || 'This QR was already claimed by a consumer. Only shop staff can claim it now.')
         setPointsErrorAction('shop-profile-link')
         setCollectPointsStep('complete-profile')
         setShowPointsLoginModal(true)
@@ -2947,7 +3021,7 @@ export default function PremiumLoyaltyTemplate({
 
     const openRoadtourShopOnlyPrompt = (message?: string) => {
         setCollectingPoints(false)
-        setPendingProfileCollectLane(null)
+        setPendingProfileCollectLane('shop')
         setPointsErrorTitle('Complete Your Profile')
         setPointsError(message || getRoadtourProfileIncompleteMessage(userName))
         setPointsErrorAction('roadtour-shop-only')
@@ -2956,15 +3030,49 @@ export default function PremiumLoyaltyTemplate({
     }
 
     const canAutoRetryShopLane = () => {
+        const activeShopName = newShopName || userShopName
+        const activeOrganizationId = newLinkedOrganizationId || userLinkedOrganizationId
+        const activeReferralPhone = newReferralPhone || userReferralPhone
+
         return !isShopUser
-            && hasValidLinkedShop({ organizationId: newLinkedOrganizationId || userLinkedOrganizationId })
-            && hasValidReferenceLink({ referralPhone: newReferralPhone || userReferralPhone })
+            && hasValidLinkedShop({
+                organizationId: activeOrganizationId,
+                shopName: activeShopName,
+                isShopLinkValid: activeOrganizationId
+                    ? (newLinkedOrganizationId && newLinkedOrganizationId !== userLinkedOrganizationId ? true : !invalidShop)
+                    : undefined,
+            })
+            && hasValidReferenceLink({
+                referralPhone: activeReferralPhone,
+                isReferenceLinkValid: newReferralPhone && newReferralPhone !== userReferralPhone
+                    ? referralCheckStatus === 'valid'
+                    : activeReferralPhone.trim() ? !invalidReference : undefined,
+            })
     }
 
     // Handle points collection
-    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
         const consumerConfirmation = options.consumerConfirmation === true
+
+        if (!options.skipProfileCheck && profileIncomplete) {
+            openCollectPointsProfilePrompt({
+                modalTitle: 'Complete Your Profile',
+                modalMessage: profileIncompleteMessage,
+                error: profileIncompleteMessage,
+            })
+            return
+        }
+
+        if (!options.skipProfileCheck && normalizedClaimLane === 'shop' && (invalidReference || invalidShop)) {
+            const blockingMessage = invalidReference ? INVALID_REFERENCE_WARNING_MESSAGE : INVALID_SHOP_WARNING_MESSAGE
+            openCollectPointsProfilePrompt({
+                modalTitle: 'Complete Your Profile',
+                modalMessage: blockingMessage,
+                error: blockingMessage,
+            })
+            return
+        }
 
         if (!shopId || !shopPassword) {
             setPointsError('Please enter your Shop ID and password')
@@ -3052,6 +3160,8 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsLoginModal(false)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    setPendingProfileCollectLane(null)
+                    setPendingProfileCollectEmail('')
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
@@ -3136,9 +3246,18 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection using existing session (for authenticated shop users)
-    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
         const preferredClaimLane = options.preferredClaimLane
         const consumerConfirmation = options.consumerConfirmation === true
+
+        if (!options.skipProfileCheck && profileIncomplete) {
+            openCollectPointsProfilePrompt({
+                modalTitle: 'Complete Your Profile',
+                modalMessage: profileIncompleteMessage,
+                error: profileIncompleteMessage,
+            })
+            return
+        }
 
         if (!qrCode) {
             setPointsError('QR code not available')
@@ -3207,6 +3326,8 @@ export default function PremiumLoyaltyTemplate({
                     setPointsCollected(true)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    setPendingProfileCollectLane(null)
+                    setPendingProfileCollectEmail('')
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
@@ -3808,12 +3929,12 @@ export default function PremiumLoyaltyTemplate({
                                 <>
                                     <p className="text-white/80 text-sm">Welcome back</p>
                                     <h1 className="text-2xl font-bold">
-                                        {isAuthenticated && isShopUser && shopName
-                                            ? shopName
-                                            : userName || 'Valued Member'} ✨
+                                        {userName || 'Valued Member'} ✨
                                     </h1>
-                                    {isAuthenticated && isShopUser && userName && shopName && (
-                                        <p className="text-white/70 text-xs mt-1">{userName}</p>
+                                    {isAuthenticated && (
+                                        <p className="text-white/70 text-xs mt-1">
+                                            {isShopUser && shopName ? `${shopName} (Shop Staff)` : 'Consumer'}
+                                        </p>
                                     )}
                                 </>
                             )}
@@ -5530,9 +5651,12 @@ export default function PremiumLoyaltyTemplate({
                 </div>
                 <h1 className="text-xl font-bold">
                     {isAuthenticated
-                        ? (isShopUser && shopName ? shopName : userName || 'User')
+                        ? (userName || 'User')
                         : 'Guest User'}
                 </h1>
+                {isAuthenticated && isShopUser && shopName && (
+                    <p className="text-white/70 text-xs">{shopName}</p>
+                )}
                 <p className="text-white/80 text-sm">
                     {isAuthenticated
                         ? (userEmail || 'No email')
@@ -6154,6 +6278,7 @@ export default function PremiumLoyaltyTemplate({
                                             onClick={() => {
                                                 setEditingReferralPhone(true)
                                                 setNewReferralPhone(userReferralPhone)
+                                                setNewReferenceUserId(userReferenceUserId)
                                             }}
                                             className="text-sm font-medium"
                                             style={{ color: config.primary_color }}
@@ -6168,14 +6293,19 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="flex-1">
                                                 <ReferencePicker
                                                     value={newReferralPhone}
+                                                    referenceUserId={newReferenceUserId}
                                                     onSelect={(ref: ReferenceUser | null, phone: string) => {
                                                         setNewReferralPhone(phone)
                                                         if (ref) {
+                                                            setNewReferenceUserId(ref.user_id)
                                                             setReferralCheckStatus('valid')
                                                             setReferralName(ref.full_name)
                                                         } else if (!phone) {
+                                                            setNewReferenceUserId(null)
                                                             setReferralCheckStatus('idle')
                                                             setReferralName('')
+                                                        } else {
+                                                            setNewReferenceUserId(null)
                                                         }
                                                     }}
                                                     placeholder="Search by name, phone, or email..."
@@ -6187,6 +6317,7 @@ export default function PremiumLoyaltyTemplate({
                                                 onClick={() => {
                                                     setEditingReferralPhone(false)
                                                     setNewReferralPhone(userReferralPhone)
+                                                    setNewReferenceUserId(userReferenceUserId)
                                                     setReferralCheckStatus('idle')
                                                 }}
                                             >
@@ -6195,13 +6326,27 @@ export default function PremiumLoyaltyTemplate({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2">
-                                        <Shield className="w-4 h-4 text-gray-400" />
-                                        <span className="text-gray-900">{userReferralPhone || 'Not set'}</span>
+                                    <div className="flex items-start gap-2">
+                                        <Shield className="w-4 h-4 text-gray-400 mt-0.5" />
+                                        {userReferralPhone ? (
+                                            <div className="min-w-0">
+                                                {userReferenceDisplayName && (
+                                                    <div className="text-gray-900 font-medium truncate">{userReferenceDisplayName}</div>
+                                                )}
+                                                <div className={`truncate ${userReferenceDisplayName ? 'text-sm text-gray-500' : 'text-gray-900'}`}>
+                                                    {userReferralPhone}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <span className="text-gray-900">Not set</span>
+                                        )}
                                     </div>
                                 )}
                                 {!((editingReferralPhone ? newReferralPhone : userReferralPhone) || '').trim() && (
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your reference to collect points</p>
+                                )}
+                                {((editingReferralPhone ? newReferralPhone : userReferralPhone) || '').trim() && (editingReferralPhone ? (newReferralPhone === userReferralPhone ? invalidReference : referralCheckStatus === 'invalid') : invalidReference) && (
+                                    <p className="text-xs text-amber-700 mt-1">{INVALID_REFERENCE_WARNING_MESSAGE}</p>
                                 )}
                             </div>
 
@@ -6245,7 +6390,7 @@ export default function PremiumLoyaltyTemplate({
                                                         setNewLinkedOrganizationId(shop?.org_id || null)
                                                     }}
                                                     onCreateRequest={(shopName) => {
-                                                        setPendingShopRequestName(shopName)
+                                                        setPendingShopRequestName(toTitleCaseWords(shopName.trim()))
                                                         setIsShopRequestOpen(true)
                                                     }}
                                                     placeholder="Search shop by name..."
@@ -6268,26 +6413,35 @@ export default function PremiumLoyaltyTemplate({
                                 ) : (
                                     <div className="flex items-start gap-2">
                                         <Building2 className="w-4 h-4 text-gray-400 mt-0.5" />
-                                        <span className="block text-gray-900 text-sm">{userShopName || shopName || 'Not set'}</span>
+                                        <span className="block text-gray-900 text-sm">{userShopName || 'Not set'}</span>
                                     </div>
                                 )}
-                                {!((!isShopUser && editingShopName ? newShopName : (userShopName || shopName)) || '').trim() && (
+                                {!((!isShopUser && editingShopName ? newShopName : userShopName) || '').trim() && (
                                     <p className="text-xs text-red-500 italic mt-1">* Required — please set your shop name to collect points</p>
+                                )}
+                                {!isShopUser && (((editingShopName ? newShopName : userShopName) || '').trim()) && (editingShopName ? !newLinkedOrganizationId : invalidShop) && (
+                                    <p className="text-xs text-amber-700 mt-1">{INVALID_SHOP_WARNING_MESSAGE}</p>
                                 )}
                             </div>
 
-                            <ShopRequestDialog
+                            <CreateShopDialog
                                 open={isShopRequestOpen}
                                 onOpenChange={setIsShopRequestOpen}
                                 defaultShopName={pendingShopRequestName}
-                                onSubmitted={() => {
+                                onCreated={async (org) => {
                                     setIsShopRequestOpen(false)
-                                    alert('Your shop request has been submitted for HQ review.')
+                                    setNewShopName(org.org_name + (org.branch ? ` (${org.branch})` : ''))
+                                    setNewLinkedOrganizationId(org.id)
+                                    setEditingShopName(false)
+                                    // Refresh profile to pick up the new org link
+                                    if (userId) {
+                                        await populateProfileEditor(userId)
+                                    }
                                 }}
                             />
 
                             {/* Save Button */}
-                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone) && (
+                            {(editingName || editingPhone || editingShopName || editingReferralPhone) && (newName !== userName || newPhone !== userPhone || (!isShopUser && (newShopName !== userShopName || newLinkedOrganizationId !== userLinkedOrganizationId)) || newReferralPhone !== userReferralPhone || newReferenceUserId !== userReferenceUserId) && (
                                 <div className="p-4 border-t border-gray-100">
                                     <Button
                                         onClick={handleSaveProfile}
@@ -6624,6 +6778,16 @@ export default function PremiumLoyaltyTemplate({
             {showPointsLoginModal && !showPointsSuccessModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={closeCollectPointsModal}
+                                className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                                aria-label="Close collect points dialog"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                         <div className="text-center">
                             <div
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
@@ -6656,7 +6820,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                                     {pointsErrorAction === 'shop-profile-link' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            This QR already claimed by a customer. Only shop staff can claim it now.{' '}
+                                            This QR was already claimed by a consumer. Only shop staff can claim it now.{' '}
                                             <button
                                                 type="button"
                                                 onClick={openProfileForPendingCollectFlow}
@@ -6667,11 +6831,23 @@ export default function PremiumLoyaltyTemplate({
                                         </p>
                                     ) : pointsErrorAction === 'roadtour-shop-only' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            {pointsError || getRoadtourProfileIncompleteMessage(userName)}
+                                            {(pointsError || getRoadtourProfileIncompleteMessage(userName))
+                                                .split(/(\*\*[^*]+\*\*)/g)
+                                                .map((part, i) =>
+                                                    part.startsWith('**') && part.endsWith('**')
+                                                        ? <strong key={i}>{part.slice(2, -2)}</strong>
+                                                        : part
+                                                )}
                                         </p>
                                     ) : (
                                         <p className="text-sm text-amber-700 text-center">
-                                            {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
+                                            {(pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.')
+                                                .split(/(\*\*[^*]+\*\*)/g)
+                                                .map((part, i) =>
+                                                    part.startsWith('**') && part.endsWith('**')
+                                                        ? <strong key={i}>{part.slice(2, -2)}</strong>
+                                                        : part
+                                                )}
                                         </p>
                                     )}
                                 </div>
@@ -6708,7 +6884,7 @@ export default function PremiumLoyaltyTemplate({
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                                     {pointsErrorTitle && <p className="text-sm font-semibold text-amber-900 text-center mb-1">{pointsErrorTitle}</p>}
                                     <p className="text-sm text-amber-700 text-center">
-                                        {pointsError || "You're not linked to any shop yet. Continue collecting points as a consumer?"}
+                                        {withUserGreeting(pointsError, userName)}
                                     </p>
                                 </div>
 

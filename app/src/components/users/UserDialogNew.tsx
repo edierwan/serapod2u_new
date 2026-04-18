@@ -48,6 +48,10 @@ interface PositionOption {
   is_active: boolean
 }
 
+const getDisplayName = (value: { call_name?: string | null; full_name?: string | null; email?: string | null }) => {
+  return value.call_name?.trim() || value.full_name?.trim() || value.email?.trim() || 'New User'
+}
+
 // Image compression utility for avatars
 // Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
 const compressImage = (file: File): Promise<File> => {
@@ -846,7 +850,7 @@ export default function UserDialogNew({
               <Avatar className="w-16 h-16 border-2 border-white shadow-sm">
                 <AvatarImage src={avatarPreview || undefined} />
                 <AvatarFallback className="text-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white font-medium">
-                  {getInitials(formData.full_name as string | null)}
+                  {getInitials(getDisplayName(formData as any))}
                 </AvatarFallback>
               </Avatar>
               <button
@@ -867,7 +871,7 @@ export default function UserDialogNew({
             />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">
-                {formData.full_name || 'New User'}
+                {getDisplayName(formData as any)}
               </p>
               <p className="text-xs text-gray-500 truncate">
                 {formData.email || 'No email set'}

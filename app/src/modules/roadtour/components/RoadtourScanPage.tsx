@@ -111,6 +111,7 @@ export default function RoadtourScanPage() {
     const [profileReference, setProfileReference] = useState('')
     const [profileSaving, setProfileSaving] = useState(false)
     const [profileError, setProfileError] = useState('')
+    const [profileIncompleteMsg, setProfileIncompleteMsg] = useState('')
 
     // Forgot password
     const [showForgotPassword, setShowForgotPassword] = useState(false)
@@ -450,6 +451,7 @@ export default function RoadtourScanPage() {
             if (!resp.ok) {
                 // Profile completion gate — same behavior as product flow
                 if (result.code === 'PROFILE_INCOMPLETE') {
+                    setProfileIncompleteMsg(result.message || '')
                     setProfileError('')
                     setStep('complete-profile')
                     setProcessing(false)
@@ -678,7 +680,15 @@ export default function RoadtourScanPage() {
                         </div>
 
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
-                            <p className="text-sm text-amber-700">Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.</p>
+                            <p className="text-sm text-amber-700">
+                                {(profileIncompleteMsg || 'Your **shop** and **reference** are not valid. Please update your profile before collecting points.')
+                                    .split(/(\*\*[^*]+\*\*)/g)
+                                    .map((part, i) =>
+                                        part.startsWith('**') && part.endsWith('**')
+                                            ? <strong key={i}>{part.slice(2, -2)}</strong>
+                                            : part
+                                    )}
+                            </p>
                         </div>
 
                         {profileError && (

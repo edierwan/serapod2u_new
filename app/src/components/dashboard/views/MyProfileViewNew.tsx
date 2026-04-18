@@ -1082,6 +1082,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       disabled={isSaving}
                       placeholder="Search reference by name, phone, or email..."
                     />
+                    {formData.referral_phone && !referralName && !referralDisplayName && !validationErrors.referral_phone && (
+                      <p className="text-xs text-amber-700 mt-1">Stored reference is from an older profile value. Please update to the latest eligible reference.</p>
+                    )}
                     {validationErrors.referral_phone && <p className="text-xs text-red-500 mt-1">{validationErrors.referral_phone}</p>}
                   </div>
                   <div>
@@ -1250,6 +1253,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           <p className={`text-sm ${referralDisplayName ? 'text-gray-500' : 'text-base font-medium text-gray-900'}`}>
                             {userProfile.referral_phone}
                           </p>
+                          {!referralDisplayName && (
+                            <p className="text-xs text-amber-700 mt-1">Please update to the latest eligible reference.</p>
+                          )}
                         </div>
                       ) : (
                         <p className="text-base font-medium text-gray-900 mt-1">
