@@ -2720,7 +2720,10 @@ export default function PremiumLoyaltyTemplate({
             if (pendingLaneRetry === 'shop' && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
                 setShowProfileInfo(false)
                 setPendingProfileCollectLane(null)
-                if (isAuthenticated) {
+                if (roadtourContext) {
+                    // RoadTour flow: resume via RoadTour claim API, not product QR
+                    await handleRoadtourClaimWithSession()
+                } else if (isAuthenticated) {
                     await handleCollectPointsWithSession({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 } else {
                     await handleCollectPoints({ preferredClaimLane: 'shop', skipProfileCheck: true })
