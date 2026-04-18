@@ -17,7 +17,8 @@ type Campaign = {
     id: string;
     name: string;
     objective: string;
-    status: 'draft' | 'scheduled' | 'sending' | 'paused' | 'completed' | 'failed' | 'archived';
+    status: 'draft' | 'scheduled' | 'sending' | 'paused' | 'completed' | 'failed' | 'launch_failed' | 'archived';
+    launch_error_message?: string | null;
     created_at: string;
     updated_at: string;
     scheduled_at: string | null;
@@ -144,6 +145,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
             case 'completed': return <Badge className="bg-green-600">Completed</Badge>;
             case 'paused': return <Badge variant="outline" className="border-orange-500 text-orange-500">Paused</Badge>;
             case 'failed': return <Badge variant="destructive">Failed</Badge>;
+            case 'launch_failed': return <Badge variant="destructive" className="border-orange-500 bg-orange-100 text-orange-700">Launch Failed</Badge>;
             default: return <Badge variant="outline">{status}</Badge>;
         }
     };
@@ -216,24 +218,30 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
         if (!campaign) return;
         
         setRunningNow(true);
+        const isRetry = campaign.status === 'launch_failed';
         try {
-            const res = await fetch(`/api/wa/marketing/campaigns/${campaign.id}/run-now`, {
+            // For launch_failed campaigns, call launch directly; for others use run-now
+            const endpoint = isRetry
+                ? `/api/wa/marketing/campaigns/${campaign.id}/launch`
+                : `/api/wa/marketing/campaigns/${campaign.id}/run-now`;
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
             
             if (res.ok) {
+                const data = await res.json();
                 toast({
-                    title: "Campaign Started! 🚀",
-                    description: `${campaign.name} is now sending to ${campaign.estimated_count} recipients`
+                    title: isRetry ? "Campaign Retried!" : "Campaign Started!",
+                    description: `${campaign.name} is now sending to ${data.total_recipients ?? campaign.total_recipients ?? campaign.estimated_count} recipients`
                 });
                 setRunNowConfirm({ show: false, campaign: null });
                 handleRefresh();
             } else {
                 const error = await res.json();
                 toast({
-                    title: "Failed to start campaign",
-                    description: error.error || "Campaign is not eligible to run now",
+                    title: isRetry ? "Retry failed" : "Failed to start campaign",
+                    description: error.error || "Campaign could not be launched",
                     variant: "destructive"
                 });
             }
@@ -490,6 +498,16 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                                                 Run Now
                                                             </DropdownMenuItem>
                                                         )}
+                                                        {/* Retry Launch for launch_failed campaigns */}
+                                                        {c.status === 'launch_failed' && (
+                                                            <DropdownMenuItem
+                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-orange-700 hover:bg-orange-50 cursor-pointer focus:bg-orange-50 rounded-md mx-1"
+                                                            >
+                                                                <Rocket className="h-4 w-4 text-orange-600" />
+                                                                Retry Launch
+                                                            </DropdownMenuItem>
+                                                        )}
                                                         {c.status === 'sending' && (
                                                             <DropdownMenuItem
                                                                 onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
@@ -651,6 +669,14 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                         </Card>
                                     </div>
                                 </div>
+
+                                {selectedCampaign.status === 'launch_failed' && selectedCampaign.launch_error_message && (
+                                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm space-y-1">
+                                        <div className="font-medium text-red-800">Launch Failed</div>
+                                        <div className="text-red-700">{selectedCampaign.launch_error_message}</div>
+                                        <p className="text-red-600 text-xs mt-2">You can retry from the Actions menu.</p>
+                                    </div>
+                                )}
                             </div>
                             <SheetFooter>
                                 <Button variant="outline" onClick={() => setSelectedCampaign(null)}>Close</Button>
@@ -671,21 +697,27 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2">
-                            <Rocket className="h-5 w-5 text-green-600" />
-                            Run Campaign Now?
+                            <Rocket className={`h-5 w-5 ${runNowConfirm.campaign?.status === 'launch_failed' ? 'text-orange-600' : 'text-green-600'}`} />
+                            {runNowConfirm.campaign?.status === 'launch_failed' ? 'Retry Campaign Launch?' : 'Run Campaign Now?'}
                         </AlertDialogTitle>
                         <AlertDialogDescription>
                             <div className="space-y-3">
                                 <p>
-                                    You are about to start sending <strong>{runNowConfirm.campaign?.name}</strong> immediately.
+                                    You are about to {runNowConfirm.campaign?.status === 'launch_failed' ? 'retry' : 'start'} sending <strong>{runNowConfirm.campaign?.name}</strong> immediately.
                                 </p>
+                                {runNowConfirm.campaign?.launch_error_message && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
+                                        <div className="font-medium">Previous error:</div>
+                                        <div className="text-red-700 mt-1">{runNowConfirm.campaign.launch_error_message}</div>
+                                    </div>
+                                )}
                                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
                                     <div className="flex items-start gap-2">
                                         <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                                         <div>
                                             <div className="font-medium">This action cannot be undone</div>
                                             <div className="text-amber-700 mt-1">
-                                                Messages will be sent to <strong>{runNowConfirm.campaign?.estimated_count?.toLocaleString()}</strong> recipients.
+                                                Messages will be sent to <strong>{(runNowConfirm.campaign?.total_recipients ?? runNowConfirm.campaign?.estimated_count)?.toLocaleString()}</strong> recipients.
                                             </div>
                                         </div>
                                     </div>
@@ -698,17 +730,17 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                         <AlertDialogAction
                             onClick={handleRunNowConfirmed}
                             disabled={runningNow}
-                            className="bg-green-600 hover:bg-green-700"
+                            className={runNowConfirm.campaign?.status === 'launch_failed' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'}
                         >
                             {runningNow ? (
                                 <>
                                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    Starting...
+                                    {runNowConfirm.campaign?.status === 'launch_failed' ? 'Retrying...' : 'Starting...'}
                                 </>
                             ) : (
                                 <>
                                     <Rocket className="h-4 w-4 mr-2" />
-                                    Run Now
+                                    {runNowConfirm.campaign?.status === 'launch_failed' ? 'Retry Launch' : 'Run Now'}
                                 </>
                             )}
                         </AlertDialogAction>

@@ -40,28 +40,37 @@ export async function POST(
             return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
         }
 
-        // Server-side validation: Only "scheduled" or "draft" status campaigns can be run now
-        if (campaign.status !== 'scheduled' && campaign.status !== 'draft') {
+        // Server-side validation: Only "scheduled", "draft", or "launch_failed" campaigns can be run now
+        if (!['scheduled', 'draft', 'launch_failed'].includes(campaign.status)) {
             return NextResponse.json({ 
-                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled or draft campaigns can be run immediately.` 
+                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled, draft, or launch_failed campaigns can be run immediately.` 
             }, { status: 400 });
         }
 
-        // Additional validation: Campaign must have a scheduled_at time
-        if (!campaign.scheduled_at) {
+        // For launch_failed, skip the scheduled_at requirement
+        const isRetry = campaign.status === 'launch_failed';
+
+        // Additional validation: Campaign must have a scheduled_at time (unless retrying)
+        if (!campaign.scheduled_at && !isRetry) {
             return NextResponse.json({ 
                 error: 'Campaign has no scheduled time. Cannot run now.' 
             }, { status: 400 });
         }
 
         // Clear scheduled_at and forward to the launch endpoint
-        // This effectively makes it launch immediately
+        // For launch_failed retries, also clear the error fields
+        const updatePayload: Record<string, any> = {
+            scheduled_at: null,
+            updated_at: new Date().toISOString(),
+        };
+        if (isRetry) {
+            updatePayload.launch_error_code = null;
+            updatePayload.launch_error_message = null;
+        }
+
         await (adminClient as any)
             .from('marketing_campaigns')
-            .update({ 
-                scheduled_at: null,
-                updated_at: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq('id', campaignId);
 
         // Call the launch endpoint to actually send the campaign
@@ -76,13 +85,16 @@ export async function POST(
 
         if (!launchRes.ok) {
             const error = await launchRes.json();
-            // Restore scheduled_at if launch failed
+            // Restore original state if launch failed
+            const restorePayload: Record<string, any> = {
+                status: isRetry ? 'launch_failed' : 'scheduled',
+            };
+            if (!isRetry) {
+                restorePayload.scheduled_at = campaign.scheduled_at;
+            }
             await (adminClient as any)
                 .from('marketing_campaigns')
-                .update({ 
-                    scheduled_at: campaign.scheduled_at,
-                    status: 'scheduled'
-                })
+                .update(restorePayload)
                 .eq('id', campaignId);
             
             return NextResponse.json({ 
