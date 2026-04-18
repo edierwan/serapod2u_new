@@ -3,7 +3,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { normalizePointClaimSettings, resolveClaimLaneExperience } from '@/lib/engagement/point-claim-settings'
-import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
+import { resolveCollectProfileCompletion, getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
@@ -338,10 +338,24 @@ export async function POST(request: NextRequest) {
         // 2c. Shop context gate — use QR's shop_id when user didn't provide one
         const require_shop_context = (validation as any).require_shop_context
         if (require_shop_context && !resolvedRewardShopId) {
+            // Compute real missing-field message based on actual profile state,
+            // ignoring consumer lane bypass (which clears profileCompletion.modalMessage)
+            const shopMissing = !userProfile?.organization_id
+            const shopInvalid = !!userProfile?.organization_id && !linkValidation.isShopLinkValid
+            const refMissing = !userProfile?.referral_phone?.trim()
+            const refInvalid = !!userProfile?.referral_phone?.trim() && !linkValidation.isReferenceLinkValid
+            const shopRequiredMessage = getIncompleteProfileMessage({
+                name: consumerDisplayName,
+                missingShop: shopMissing,
+                missingReference: refMissing,
+                invalidShop: shopInvalid,
+                invalidReference: refInvalid,
+            }) || `Hi ${consumerDisplayName || 'there'}, your **shop** is not valid. Please update your profile before collecting points.`
+
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
-                    message: profileCompletion.modalMessage || `Hi ${consumerDisplayName || 'there'}, your **shop** and **reference** are not valid. Please update your profile before collecting points.`,
+                    message: shopRequiredMessage,
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }
