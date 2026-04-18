@@ -309,6 +309,18 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Persist consumer confirmation before profile check so it is always saved
+        if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
+            const confirmedAt = new Date().toISOString()
+            await (supabase as any)
+                .from('users')
+                .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+                .eq('id', userId)
+            if (userProfile) {
+                userProfile.consumer_claim_confirmed_at = confirmedAt
+            }
+        }
+
         if (profileCompletion.shouldBlockCollect) {
             return NextResponse.json(
                 {
@@ -321,17 +333,6 @@ export async function POST(request: NextRequest) {
                 },
                 { status: 400 }
             )
-        }
-
-        if (laneExperience.claimLane === 'consumer' && consumer_confirmation && userId && !userProfile?.consumer_claim_confirmed_at) {
-            const confirmedAt = new Date().toISOString()
-            await (supabase as any)
-                .from('users')
-                .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
-                .eq('id', userId)
-            if (userProfile) {
-                userProfile.consumer_claim_confirmed_at = confirmedAt
-            }
         }
 
         // 2c. Shop context gate — use QR's shop_id when user didn't provide one

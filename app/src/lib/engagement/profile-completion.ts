@@ -84,6 +84,20 @@ export function getIncompleteProfileMessage(input: IncompleteProfileMessageInput
 }
 
 export function resolveCollectProfileCompletion(input: CollectProfileCompletionInput): CollectProfileCompletionResult {
+    // Consumer lane users do not need shop/reference to collect points
+    if (input.claimLane === 'consumer') {
+        return {
+            shouldBlockCollect: false,
+            modalTitle: '',
+            modalMessage: '',
+            missingShop: false,
+            missingReference: false,
+            invalidShop: false,
+            invalidReference: false,
+            missingFields: [],
+        }
+    }
+
     const hasShopValue = hasShopProfileValue(input)
     const hasReferenceValue = hasValue(input.referralPhone)
     const validShopLink = hasValidLinkedShop(input)

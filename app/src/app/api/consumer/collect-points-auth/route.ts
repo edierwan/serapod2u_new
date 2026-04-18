@@ -344,6 +344,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Persist consumer confirmation before profile check so it is always saved
+    if (claimLane === 'consumer' && consumer_confirmation && !shopUser.consumer_claim_confirmed_at) {
+      const confirmedAt = new Date().toISOString()
+      const { error: confirmationError } = await supabaseAdmin
+        .from('users')
+        .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
+        .eq('id', shopUser.id)
+
+      if (confirmationError) {
+        console.error('Failed to persist consumer claim confirmation:', confirmationError)
+        return NextResponse.json(
+          { success: false, error: 'Unable to save consumer confirmation right now. Please try again.' },
+          { status: 500 }
+        )
+      }
+
+      shopUser.consumer_claim_confirmed_at = confirmedAt
+    }
+
     if (profileCompletion.shouldBlockCollect) {
       return NextResponse.json(
         {
@@ -362,24 +381,6 @@ export async function POST(request: NextRequest) {
         },
         { status: 400 }
       )
-    }
-
-    if (claimLane === 'consumer' && consumer_confirmation && !shopUser.consumer_claim_confirmed_at) {
-      const confirmedAt = new Date().toISOString()
-      const { error: confirmationError } = await supabaseAdmin
-        .from('users')
-        .update({ consumer_claim_confirmed_at: confirmedAt, updated_at: confirmedAt })
-        .eq('id', shopUser.id)
-
-      if (confirmationError) {
-        console.error('Failed to persist consumer claim confirmation:', confirmationError)
-        return NextResponse.json(
-          { success: false, error: 'Unable to save consumer confirmation right now. Please try again.' },
-          { status: 500 }
-        )
-      }
-
-      shopUser.consumer_claim_confirmed_at = confirmedAt
     }
 
     const pointsToAward = claimLane === 'shop'

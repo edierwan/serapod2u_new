@@ -1164,7 +1164,8 @@ export default function UserManagementNew({
           (statusFilter === "active" && user.is_active) ||
           (statusFilter === "inactive" && !user.is_active) ||
           (statusFilter === "verified" && user.is_verified) ||
-          (statusFilter === "unverified" && !user.is_verified);
+          (statusFilter === "unverified" && !user.is_verified) ||
+          (statusFilter === "consumer-verified" && hasConsumerLaneConfirmation(user));
 
         return (
           matchesSearch &&
@@ -1472,6 +1473,7 @@ export default function UserManagementNew({
                 <option value="inactive">Inactive</option>
                 <option value="verified">Verified</option>
                 <option value="unverified">Unverified</option>
+                <option value="consumer-verified">Consumer Verified</option>
               </select>
             </div>
           </div>
