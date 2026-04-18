@@ -3921,12 +3921,10 @@ export default function PremiumLoyaltyTemplate({
                                 <>
                                     <p className="text-white/80 text-sm">Welcome back</p>
                                     <h1 className="text-2xl font-bold">
-                                        {isAuthenticated && isShopUser && shopName
-                                            ? shopName
-                                            : userName || 'Valued Member'} ✨
+                                        {userName || 'Valued Member'} ✨
                                     </h1>
-                                    {isAuthenticated && isShopUser && userName && shopName && (
-                                        <p className="text-white/70 text-xs mt-1">{userName}</p>
+                                    {isAuthenticated && isShopUser && shopName && (
+                                        <p className="text-white/70 text-xs mt-1">{shopName}</p>
                                     )}
                                 </>
                             )}
@@ -5643,9 +5641,12 @@ export default function PremiumLoyaltyTemplate({
                 </div>
                 <h1 className="text-xl font-bold">
                     {isAuthenticated
-                        ? (isShopUser && shopName ? shopName : userName || 'User')
+                        ? (userName || 'User')
                         : 'Guest User'}
                 </h1>
+                {isAuthenticated && isShopUser && shopName && (
+                    <p className="text-white/70 text-xs">{shopName}</p>
+                )}
                 <p className="text-white/80 text-sm">
                     {isAuthenticated
                         ? (userEmail || 'No email')
