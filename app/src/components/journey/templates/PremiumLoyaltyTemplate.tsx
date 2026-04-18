@@ -2717,12 +2717,13 @@ export default function PremiumLoyaltyTemplate({
             setEditingShopName(false)
             setEditingReferralPhone(false)
 
-            if (pendingLaneRetry === 'shop') {
+            if (pendingLaneRetry === 'shop' && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
                 setShowProfileInfo(false)
+                setPendingProfileCollectLane(null)
                 if (isAuthenticated) {
-                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
+                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 } else {
-                    await handleCollectPoints({ preferredClaimLane: 'shop' })
+                    await handleCollectPoints({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 }
             }
 
@@ -3047,11 +3048,11 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection
-    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
         const consumerConfirmation = options.consumerConfirmation === true
 
-        if (profileIncomplete) {
+        if (!options.skipProfileCheck && profileIncomplete) {
             openCollectPointsProfilePrompt({
                 modalTitle: 'Complete Your Profile',
                 modalMessage: profileIncompleteMessage,
@@ -3060,7 +3061,7 @@ export default function PremiumLoyaltyTemplate({
             return
         }
 
-        if (normalizedClaimLane === 'shop' && (invalidReference || invalidShop)) {
+        if (!options.skipProfileCheck && normalizedClaimLane === 'shop' && (invalidReference || invalidShop)) {
             const blockingMessage = invalidReference ? INVALID_REFERENCE_WARNING_MESSAGE : INVALID_SHOP_WARNING_MESSAGE
             openCollectPointsProfilePrompt({
                 modalTitle: 'Complete Your Profile',
@@ -3156,6 +3157,8 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsLoginModal(false)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    setPendingProfileCollectLane(null)
+                    setPendingProfileCollectEmail('')
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
@@ -3240,11 +3243,11 @@ export default function PremiumLoyaltyTemplate({
     }
 
     // Handle points collection using existing session (for authenticated shop users)
-    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
+    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
         const preferredClaimLane = options.preferredClaimLane
         const consumerConfirmation = options.consumerConfirmation === true
 
-        if (profileIncomplete) {
+        if (!options.skipProfileCheck && profileIncomplete) {
             openCollectPointsProfilePrompt({
                 modalTitle: 'Complete Your Profile',
                 modalMessage: profileIncompleteMessage,
@@ -3320,6 +3323,8 @@ export default function PremiumLoyaltyTemplate({
                     setPointsCollected(true)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    setPendingProfileCollectLane(null)
+                    setPendingProfileCollectEmail('')
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
