@@ -3021,7 +3021,7 @@ export default function PremiumLoyaltyTemplate({
 
     const openRoadtourShopOnlyPrompt = (message?: string) => {
         setCollectingPoints(false)
-        setPendingProfileCollectLane(null)
+        setPendingProfileCollectLane('shop')
         setPointsErrorTitle('Complete Your Profile')
         setPointsError(message || getRoadtourProfileIncompleteMessage(userName))
         setPointsErrorAction('roadtour-shop-only')
