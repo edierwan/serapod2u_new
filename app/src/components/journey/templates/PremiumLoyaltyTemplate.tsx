@@ -722,7 +722,7 @@ export default function PremiumLoyaltyTemplate({
 
     const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
         const resolvedName = (name || userName || 'there').trim()
-        return `Hi ${resolvedName}, your profile is not complete. Please update your Shop and Reference in Profile to collect points. This bonus is for shop staff only.`
+        return `Hi ${resolvedName}, your **shop** and **reference** are not valid. Please update your profile before collecting points.`
     }
 
     const withUserGreeting = (message?: string | null, name?: string | null) => {
@@ -6829,7 +6829,13 @@ export default function PremiumLoyaltyTemplate({
                                         </p>
                                     ) : pointsErrorAction === 'roadtour-shop-only' ? (
                                         <p className="text-sm text-amber-700 text-center">
-                                            {pointsError || getRoadtourProfileIncompleteMessage(userName)}
+                                            {(pointsError || getRoadtourProfileIncompleteMessage(userName))
+                                                .split(/(\*\*[^*]+\*\*)/g)
+                                                .map((part, i) =>
+                                                    part.startsWith('**') && part.endsWith('**')
+                                                        ? <strong key={i}>{part.slice(2, -2)}</strong>
+                                                        : part
+                                                )}
                                         </p>
                                     ) : (
                                         <p className="text-sm text-amber-700 text-center">

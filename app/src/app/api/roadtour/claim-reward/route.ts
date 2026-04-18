@@ -341,7 +341,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     requiresProfileUpdate: true,
-                    message: profileCompletion.modalMessage || `Hi ${consumerDisplayName}, your profile is not complete. Please update your shop and reference in Profile to collect points.`,
+                    message: profileCompletion.modalMessage || `Hi ${consumerDisplayName || 'there'}, your **shop** and **reference** are not valid. Please update your profile before collecting points.`,
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }
