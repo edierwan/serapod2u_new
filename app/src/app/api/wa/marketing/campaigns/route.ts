@@ -108,7 +108,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, objective, audience_filters, message_body, template_id, scheduled_at, quiet_hours_enabled, quiet_hours_start, quiet_hours_end } = body;
+    const { name, objective, audience_filters, message_body, template_id, scheduled_at, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, safety_preset_id } = body;
 
     // Validate inputs
     if (!name || !objective || !message_body) {
@@ -132,12 +132,14 @@ export async function POST(request: Request) {
         status,
         audience_filters: normalizedAudienceFilters,
         estimated_count: estimatedCount,
+        total_recipients: estimatedCount,
         message_body,
         template_id: safeTemplateId,
         scheduled_at,
         quiet_hours_enabled,
         quiet_hours_start,
         quiet_hours_end,
+        safety_preset_id: safety_preset_id || null,
         created_by: user.id
       })
       .select()
