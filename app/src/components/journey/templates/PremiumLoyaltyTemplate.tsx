@@ -679,6 +679,8 @@ export default function PremiumLoyaltyTemplate({
     const [referralCheckStatus, setReferralCheckStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
     const [invalidReference, setInvalidReference] = useState(false)
     const [invalidShop, setInvalidShop] = useState(false)
+    const [profileIncomplete, setProfileIncomplete] = useState(false)
+    const [profileIncompleteMessage, setProfileIncompleteMessage] = useState('')
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
@@ -999,6 +1001,8 @@ export default function PremiumLoyaltyTemplate({
                 invalidShop: profile.invalidShop === true,
                 isReferenceValid: profile.isReferenceValid === true,
                 isShopValid: profile.isShopValid === true,
+                profileIncomplete: profile.profileIncomplete === true,
+                profileIncompleteMessage: profile.profileIncompleteMessage || '',
             }
         } catch (error) {
             console.error('🔐 Error checking user organization:', error)
@@ -1085,7 +1089,7 @@ export default function PremiumLoyaltyTemplate({
 
                 try {
                     const profileResult = await checkUserOrganization(user.id)
-                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop } = profileResult as any
+                    const { success, isShop, fullName, organizationId, avatarUrl, orgName, phone, referralPhone, referenceUserId, address, referenceDisplayName, pointsBalance, sessionInvalid, bankId, bankAccountNumber, bankAccountHolderName, consumerClaimConfirmedAt, invalidReference, invalidShop, profileIncomplete: _profileIncomplete, profileIncompleteMessage: _profileIncompleteMessage } = profileResult as any
 
                     if (sessionInvalid) {
                         console.log('🔐 Session was invalid, clearing auth state')
@@ -1137,6 +1141,18 @@ export default function PremiumLoyaltyTemplate({
                         setNewAddress(address || '')
                         setUserShopName(organizationId ? (orgName || '') : '')
                         setNewShopName(organizationId ? (orgName || '') : '')
+
+                        // Profile completeness check — show proactive modal
+                        setProfileIncomplete(_profileIncomplete === true)
+                        setProfileIncompleteMessage(_profileIncompleteMessage || '')
+                        if (_profileIncomplete) {
+                            console.log('🔐 Profile incomplete — showing proactive modal')
+                            openCollectPointsProfilePrompt({
+                                modalTitle: 'Complete Your Profile',
+                                modalMessage: _profileIncompleteMessage,
+                                error: _profileIncompleteMessage,
+                            })
+                        }
                     } else {
                         console.warn('🔐 Profile fetch failed, using basic info')
                         setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User')
@@ -2690,6 +2706,8 @@ export default function PremiumLoyaltyTemplate({
                 setUserReferenceDisplayName(refreshedProfile.referenceDisplayName || '')
                 setInvalidReference(refreshedProfile.invalidReference === true)
                 setInvalidShop(refreshedProfile.invalidShop === true)
+                setProfileIncomplete(refreshedProfile.profileIncomplete === true)
+                setProfileIncompleteMessage(refreshedProfile.profileIncompleteMessage || '')
             }
 
             setProfileSaveSuccess(true)
@@ -2915,6 +2933,10 @@ export default function PremiumLoyaltyTemplate({
             setNewReferenceUserId(profileResult.referenceUserId || null)
             setUserReferenceDisplayName(profileResult.referenceDisplayName || '')
             if (profileResult.avatarUrl) setUserAvatarUrl(profileResult.avatarUrl)
+            setInvalidReference(profileResult.invalidReference === true)
+            setInvalidShop(profileResult.invalidShop === true)
+            setProfileIncomplete(profileResult.profileIncomplete === true)
+            setProfileIncompleteMessage(profileResult.profileIncompleteMessage || '')
         }
     }
 
@@ -3028,6 +3050,15 @@ export default function PremiumLoyaltyTemplate({
     const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
         const consumerConfirmation = options.consumerConfirmation === true
+
+        if (profileIncomplete) {
+            openCollectPointsProfilePrompt({
+                modalTitle: 'Complete Your Profile',
+                modalMessage: profileIncompleteMessage,
+                error: profileIncompleteMessage,
+            })
+            return
+        }
 
         if (normalizedClaimLane === 'shop' && (invalidReference || invalidShop)) {
             const blockingMessage = invalidReference ? INVALID_REFERENCE_WARNING_MESSAGE : INVALID_SHOP_WARNING_MESSAGE
@@ -3212,6 +3243,15 @@ export default function PremiumLoyaltyTemplate({
     const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean } = {}) => {
         const preferredClaimLane = options.preferredClaimLane
         const consumerConfirmation = options.consumerConfirmation === true
+
+        if (profileIncomplete) {
+            openCollectPointsProfilePrompt({
+                modalTitle: 'Complete Your Profile',
+                modalMessage: profileIncompleteMessage,
+                error: profileIncompleteMessage,
+            })
+            return
+        }
 
         if (!qrCode) {
             setPointsError('QR code not available')
@@ -6778,7 +6818,13 @@ export default function PremiumLoyaltyTemplate({
                                         </p>
                                     ) : (
                                         <p className="text-sm text-amber-700 text-center">
-                                            {pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.'}
+                                            {(pointsError || 'Your account does not have a shop set yet. Please update Shop Name and Reference in Profile first.')
+                                                .split(/(\*\*[^*]+\*\*)/g)
+                                                .map((part, i) =>
+                                                    part.startsWith('**') && part.endsWith('**')
+                                                        ? <strong key={i}>{part.slice(2, -2)}</strong>
+                                                        : part
+                                                )}
                                         </p>
                                     )}
                                 </div>

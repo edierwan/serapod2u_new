@@ -42,7 +42,7 @@ export async function resolveProfileLinkValidation(
     supabaseAdmin: any,
     input: ProfileLinkValidationInput,
 ): Promise<ProfileLinkValidationResult> {
-    const hasShopValue = hasValue(input.shopName) || hasValue(input.organizationId)
+    const hasShopValue = hasValue(input.organizationId)
     const hasReferenceValue = hasValue(input.referralPhone) || hasValue(input.referenceUserId)
 
     let organizationTypeCode: string | null = null
@@ -111,7 +111,7 @@ export async function resolveProfileLinkValidation(
     return {
         hasShopValue,
         isShopLinkValid,
-        invalidShop: hasValue(input.organizationId) && !isShopLinkValid,
+        invalidShop: hasShopValue && !isShopLinkValid,
         organizationTypeCode,
         organizationName,
         hasReferenceValue,

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
+import { getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
 
 /**
  * GET /api/user/profile
@@ -165,6 +166,22 @@ export async function GET(request: NextRequest) {
       ? `${userProfile.avatar_url.split('?')[0]}?v=${Date.now()}`
       : null
 
+    // Compute profile completeness for collecting points
+    const shopComplete = linkValidation.isShopLinkValid
+    const referenceComplete = linkValidation.isReferenceLinkValid
+    const profileIncomplete = !shopComplete || !referenceComplete
+    const missingShop = !linkValidation.hasShopValue
+    const missingReference = !linkValidation.hasReferenceValue
+    const profileIncompleteMessage = profileIncomplete
+      ? getIncompleteProfileMessage({
+          name: userProfile.full_name,
+          missingShop,
+          missingReference,
+          invalidShop: linkValidation.invalidShop,
+          invalidReference: linkValidation.invalidReference,
+        })
+      : ''
+
     return NextResponse.json({
       success: true,
       profile: {
@@ -181,6 +198,8 @@ export async function GET(request: NextRequest) {
         invalidShop: linkValidation.invalidShop,
         isReferenceValid: linkValidation.isReferenceLinkValid,
         isShopValid: linkValidation.isShopLinkValid,
+        profileIncomplete,
+        profileIncompleteMessage,
         address: userProfile.address || '',
         shop_name: userProfile.shop_name,
         consumerClaimConfirmedAt: userProfile.consumer_claim_confirmed_at || null,
