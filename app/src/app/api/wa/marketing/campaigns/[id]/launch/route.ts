@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils';
+import { normalizePhoneE164 } from '@/utils/phone';
+import {
+    buildDailyReportingData,
+    normalizeDailyReportingConfig,
+    renderDailyReportingMessage,
+} from '@/lib/reporting/dailyReporting';
+
+function normalizeUuid(value: unknown) {
+    if (typeof value !== 'string') {
+        return value ?? null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    return trimmed.length >= 20 ? trimmed : null;
+}
+
+function normalizeIdArray(values: unknown) {
+    if (!Array.isArray(values)) {
+        return [];
+    }
+
+    return values
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+}
 
 export async function POST(
     request: NextRequest,
@@ -44,6 +74,19 @@ export async function POST(
             return NextResponse.json({ error: 'Campaign is already sending' }, { status: 400 });
         }
 
+        const isDailyReportingCampaign = campaign.objective === 'Daily Reporting';
+        const reportingConfig = normalizeDailyReportingConfig(campaign.audience_filters?.reporting);
+        const reportReferenceDate = campaign.scheduled_at ? new Date(campaign.scheduled_at) : new Date();
+        const dailyReportingData = isDailyReportingCampaign
+            ? await buildDailyReportingData(supabase as any, {
+                reportType: reportingConfig.reportType,
+                referenceDate: reportReferenceDate,
+            })
+            : null;
+        const resolvedMessageBody = dailyReportingData
+            ? renderDailyReportingMessage(dailyReportingData, reportingConfig.enableReplyAction)
+            : campaign.message_body;
+
         // Resolve recipients
         const audienceFilters = campaign.audience_filters || {};
         const audienceUrl = `${request.nextUrl.origin}/api/wa/marketing/audience/resolve`;
@@ -56,8 +99,8 @@ export async function POST(
             body: JSON.stringify({
                 mode: audienceFilters.mode || 'filters',
                 filters: audienceFilters.filters,
-                segment_id: audienceFilters.segment_id,
-                user_ids: audienceFilters.user_ids,
+                segment_id: normalizeUuid(audienceFilters.segment_id),
+                user_ids: normalizeIdArray(audienceFilters.user_ids),
                 overrides: audienceFilters.overrides,
                 include_all: true
             })
@@ -93,6 +136,10 @@ export async function POST(
             organization_id: r.is_organization ? r.id : null,
             organization_name: r.org_name || null,
             organization_type: r.organization_type || null,
+            report_date: dailyReportingData?.reportDateIso || null,
+            report_type: dailyReportingData?.reportType || null,
+            message_snapshot: resolvedMessageBody,
+            reply_enabled: isDailyReportingCampaign ? reportingConfig.enableReplyAction : false,
             status: 'queued',
             sent_by: user.id,
             created_at: new Date().toISOString()
@@ -107,9 +154,13 @@ export async function POST(
 
         // Insert logs in batches
         const BATCH_SIZE = 500;
+        const insertedSendLogs: Array<{ id: string; recipient_phone: string; recipient_name: string | null }> = [];
         for (let i = 0; i < sendLogs.length; i += BATCH_SIZE) {
             const batch = sendLogs.slice(i, i + BATCH_SIZE);
-            const { error: insertError } = await (supabaseAdmin as any).from('marketing_send_logs').insert(batch);
+            const { data: batchRows, error: insertError } = await (supabaseAdmin as any)
+                .from('marketing_send_logs')
+                .insert(batch)
+                .select('id, recipient_phone, recipient_name');
             if (insertError) {
                 console.error('Error inserting send logs:', insertError);
                 await (supabase as any)
@@ -117,6 +168,51 @@ export async function POST(
                     .update({ status: 'failed' })
                     .eq('id', campaignId);
                 return NextResponse.json({ error: 'Failed to create delivery logs' }, { status: 500 });
+            }
+
+            insertedSendLogs.push(...((batchRows || []) as Array<{ id: string; recipient_phone: string; recipient_name: string | null }>));
+        }
+
+        if (isDailyReportingCampaign && dailyReportingData && reportingConfig.enableReplyAction) {
+            const sessionRows = insertedSendLogs.map((log) => ({
+                campaign_id: campaignId,
+                send_log_id: log.id,
+                org_id: orgId,
+                recipient_phone: normalizePhoneE164(log.recipient_phone || ''),
+                recipient_name: log.recipient_name || null,
+                report_date: dailyReportingData.reportDateIso,
+                report_type: dailyReportingData.reportType,
+                period_start: dailyReportingData.periodStartIso,
+                period_end: dailyReportingData.periodEndIso,
+                unique_customer_count: dailyReportingData.uniqueCustomers,
+                unique_customer_details: dailyReportingData.uniqueCustomerDetails,
+                message_snapshot: resolvedMessageBody,
+                provider_context: {
+                    report_type: dailyReportingData.reportType,
+                },
+                reply_enabled: true,
+                last_detail_page_sent: 0,
+                status: 'active',
+                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            }));
+
+            for (let i = 0; i < sessionRows.length; i += BATCH_SIZE) {
+                const batch = sessionRows.slice(i, i + BATCH_SIZE);
+                const { error: sessionError } = await (supabaseAdmin as any)
+                    .from('marketing_report_sessions')
+                    .insert(batch);
+
+                if (sessionError) {
+                    console.error('Error inserting Daily Reporting sessions:', sessionError);
+                    await (supabase as any)
+                        .from('marketing_campaigns')
+                        .update({ status: 'failed' })
+                        .eq('id', campaignId);
+
+                    return NextResponse.json({ error: 'Failed to prepare Daily Reporting reply sessions' }, { status: 500 });
+                }
             }
         }
 
@@ -137,10 +233,11 @@ export async function POST(
         sendMessagesAsync(
             supabaseAdmin,
             campaignId,
-            campaign.message_body,
+            resolvedMessageBody,
             recipients,
             waConfig,
-            orgId
+            orgId,
+            isDailyReportingCampaign
         );
 
         return NextResponse.json({
@@ -162,7 +259,8 @@ async function sendMessagesAsync(
     messageBody: string,
     recipients: any[],
     waConfig: { baseUrl: string; apiKey: string | undefined; tenantId: string },
-    companyId: string
+    companyId: string,
+    skipPersonalization: boolean = false,
 ) {
     let sentCount = 0;
     let failedCount = 0;
@@ -197,13 +295,15 @@ async function sendMessagesAsync(
             }
 
             // Personalize message - use single braces {name} to match templates
-            const personalizedMessage = messageBody
-                .replace(/{name}/g, recipient.name || 'Customer')
-                .replace(/{city}/g, recipient.city || recipient.location || '')
-                .replace(/{points_balance}/g, pointsBalance)
-                .replace(/{short_link}/g, appUrl)
-                .replace(/{org_name}/g, recipient.org_name || '')
-                .replace(/{phone}/g, recipient.phone || '');
+            const personalizedMessage = skipPersonalization
+                ? messageBody
+                : messageBody
+                    .replace(/{name}/g, recipient.name || 'Customer')
+                    .replace(/{city}/g, recipient.city || recipient.location || '')
+                    .replace(/{points_balance}/g, pointsBalance)
+                    .replace(/{short_link}/g, appUrl)
+                    .replace(/{org_name}/g, recipient.org_name || '')
+                    .replace(/{phone}/g, recipient.phone || '');
 
             // Send via gateway using shared utility (same as test-send)
             const phone = recipient.phone.replace(/[^\d]/g, '');
@@ -220,16 +320,34 @@ async function sendMessagesAsync(
                 waConfig.tenantId
             );
 
+            const providerMessageId = result?.message_id || result?.provider_message_id || null;
+
             if (result.ok !== false && !result.error) {
                 // Update log with success
                 await supabase
                     .from('marketing_send_logs')
                     .update({
                         status: 'delivered',
+                        provider_message_id: providerMessageId,
+                        provider_response: result,
                         delivered_at: new Date().toISOString()
                     })
                     .eq('campaign_id', campaignId)
                     .eq('recipient_phone', recipient.phone);
+
+                if (skipPersonalization) {
+                    await supabase
+                        .from('marketing_report_sessions')
+                        .update({
+                            provider_message_id: providerMessageId,
+                            provider_chat_id: normalizePhoneE164(recipient.phone),
+                            last_outbound_message_id: providerMessageId,
+                            last_outbound_sent_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('campaign_id', campaignId)
+                        .eq('recipient_phone', normalizePhoneE164(recipient.phone));
+                }
 
                 deliveredCount++;
                 sentCount++;
@@ -239,6 +357,8 @@ async function sendMessagesAsync(
                     .from('marketing_send_logs')
                     .update({
                         status: 'failed',
+                        provider_message_id: providerMessageId,
+                        provider_response: result,
                         error_message: result.error || 'Failed to send'
                     })
                     .eq('campaign_id', campaignId)

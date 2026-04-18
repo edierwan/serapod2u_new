@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
+import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 
 /**
  * POST /api/user/update-profile
@@ -28,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId, full_name, phone, referral_phone, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
+    const { userId, full_name, phone, referral_phone, reference_user_id, address, shop_name, organization_id, bank_id, bank_account_number, bank_account_holder_name } = body
 
     // Verify user is updating their own profile
     if (authUser.id !== userId) {
@@ -279,6 +281,120 @@ export async function POST(request: NextRequest) {
     if (referral_phone !== undefined) {
       const trimmedReferral = referral_phone?.trim() || ''
       updateData.referral_phone = trimmedReferral ? normalizePhone(trimmedReferral) : null
+    }
+
+    let canonicalReferenceUserId: string | null = null
+    if (reference_user_id !== undefined) {
+      canonicalReferenceUserId = reference_user_id?.trim() || null
+    }
+
+    if (canonicalReferenceUserId) {
+      const { data: referenceUser, error: referenceError } = await adminClient
+        .from('users')
+        .select('id, phone, can_be_reference, is_active')
+        .eq('id', canonicalReferenceUserId)
+        .maybeSingle()
+
+      if (referenceError || !referenceUser) {
+        return NextResponse.json(
+          { success: false, error: 'Selected reference could not be found.' },
+          { status: 400 }
+        )
+      }
+
+      updateData.referral_phone = referenceUser.phone || null
+    } else if (reference_user_id !== undefined && !canonicalReferenceUserId) {
+      updateData.referral_phone = null
+    }
+
+    if (organization_id !== undefined || referral_phone !== undefined || reference_user_id !== undefined) {
+      const { data: existingUser, error: existingUserError } = await adminClient
+        .from('users')
+        .select(`
+          organization_id,
+          shop_name,
+          referral_phone,
+          organizations!fk_users_organization(org_type_code)
+        `)
+        .eq('id', userId)
+        .single()
+
+      if (existingUserError) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to resolve current profile state' },
+          { status: 500 }
+        )
+      }
+
+      const nextOrganizationId = updateData.organization_id !== undefined
+        ? updateData.organization_id
+        : existingUser?.organization_id || null
+      const nextShopName = updateData.shop_name !== undefined
+        ? updateData.shop_name
+        : existingUser?.shop_name || null
+      const nextReferralPhone = updateData.referral_phone !== undefined
+        ? updateData.referral_phone
+        : existingUser?.referral_phone || null
+
+      let nextOrganizationTypeCode = (existingUser?.organizations as any)?.org_type_code || null
+
+      if (nextOrganizationId && nextOrganizationId !== existingUser?.organization_id) {
+        const { data: organizationData, error: organizationError } = await adminClient
+          .from('organizations')
+          .select('org_type_code')
+          .eq('id', nextOrganizationId)
+          .maybeSingle()
+
+        if (organizationError) {
+          return NextResponse.json(
+            { success: false, error: 'Failed to resolve selected shop' },
+            { status: 500 }
+          )
+        }
+
+        nextOrganizationTypeCode = organizationData?.org_type_code || null
+      } else if (!nextOrganizationId) {
+        nextOrganizationTypeCode = null
+      }
+
+      if (nextShopName && !nextOrganizationId) {
+        return NextResponse.json(
+          { success: false, error: 'Please select a valid shop organization before saving this shop.' },
+          { status: 400 }
+        )
+      }
+
+      const linkValidation = await resolveProfileLinkValidation(adminClient, {
+        organizationId: nextOrganizationId,
+        shopName: nextShopName,
+        referralPhone: nextReferralPhone,
+        referenceUserId: canonicalReferenceUserId,
+      })
+
+      if (nextShopName && linkValidation.invalidShop) {
+        return NextResponse.json(
+          { success: false, error: 'Selected shop must be linked to an active shop organization.' },
+          { status: 400 }
+        )
+      }
+
+      if (nextReferralPhone && linkValidation.invalidReference) {
+        return NextResponse.json(
+          { success: false, error: 'Selected reference must be an active eligible reference.' },
+          { status: 400 }
+        )
+      }
+
+      if (hasLinkedShopProfile({
+        organization_id: nextOrganizationId,
+        organizationTypeCode: nextOrganizationTypeCode,
+        shop_name: nextShopName,
+        referral_phone: nextReferralPhone,
+        isShopLinkValid: linkValidation.isShopLinkValid,
+        isReferenceLinkValid: linkValidation.isReferenceLinkValid,
+      })) {
+        updateData.consumer_claim_confirmed_at = null
+      }
     }
 
     // Update database

@@ -31,6 +31,15 @@ import {
     type TemplateSafetyResult
 } from '@/lib/template-safety.client';
 import { NumberHealth } from '@/lib/wa-safety';
+import { getDailyReportingTemplate } from '@/lib/reporting/dailyReporting';
+
+const DAILY_REPORTING_TEMPLATE_VARIABLES = [
+    'report_date',
+    'today_scans',
+    'yesterday_scans',
+    'this_week_scans',
+    'unique_customers'
+];
 
 
 type WizardProps = {
@@ -44,6 +53,18 @@ type WizardProps = {
 type WinbackCategory = NonNullable<AudienceFilters['winback_category']>;
 type WinbackStatus = NonNullable<AudienceFilters['winback_status']>;
 type WinbackScanMode = NonNullable<AudienceFilters['winback_last_scan_mode']>;
+
+type DailyReportingPreview = {
+    message: string;
+    report: {
+        reportDateLabel: string;
+        reportType: 'daily' | 'weekly';
+        todayScans: number;
+        yesterdayScans: number;
+        thisWeekScans: number;
+        uniqueCustomers: number;
+    };
+};
 
 const DEFAULT_WINBACK_FILTERS: Pick<AudienceFilters, 'winback_category' | 'winback_status' | 'winback_last_scan_mode' | 'winback_last_scan_days' | 'winback_points_min'> = {
     winback_category: 'shop_performance',
@@ -152,6 +173,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     const [estimatedRecipients, setEstimatedRecipients] = useState(0);
     const [acknowledgeRisk, setAcknowledgeRisk] = useState(false);
     const [showPrelaunchModal, setShowPrelaunchModal] = useState(false);
+    const [dailyReportingPreview, setDailyReportingPreview] = useState<DailyReportingPreview | null>(null);
+    const [loadingDailyReportingPreview, setLoadingDailyReportingPreview] = useState(false);
 
     const [segments, setSegments] = useState<any[]>([]);
     const [templates, setTemplates] = useState<any[]>([]);
@@ -176,6 +199,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     const [formData, setFormData] = useState({
         name: '',
         objective: 'Promo',
+        reportingType: 'daily' as 'daily' | 'weekly',
+        enableReplyAction: true,
 
         // Audience
         audienceMode: 'filters' as 'filters' | 'segment' | 'specific_users',
@@ -207,6 +232,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
             setFormData({
                 name: editingCampaign.name || '',
                 objective: editingCampaign.objective || 'Promo',
+                reportingType: editingCampaign.audience_filters?.reporting?.report_type === 'weekly' ? 'weekly' : 'daily',
+                enableReplyAction: editingCampaign.audience_filters?.reporting?.enable_reply_action !== false,
                 audienceMode: audienceFilters.mode || 'filters',
                 selectedSegmentId: audienceFilters.segment_id || '',
                 selectedUserIds: audienceFilters.user_ids || [],
@@ -276,10 +303,19 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         }
     }, [selectedLanguage, templates, formData.templateId]);
 
+    const isDailyReportingObjective = formData.objective === 'Daily Reporting';
+
     // Validate message safety when it changes
     useEffect(() => {
-        if (formData.message) {
-            const result = validateTemplate(formData.message);
+        const messageToValidate = isDailyReportingObjective
+            ? (dailyReportingPreview?.message || formData.message)
+            : formData.message;
+
+        if (messageToValidate) {
+            const result = validateTemplate(messageToValidate, isDailyReportingObjective ? {
+                requiresPersonalization: false,
+                additionalSupportedVariables: DAILY_REPORTING_TEMPLATE_VARIABLES,
+            } : undefined);
             setMessageSafety(result);
             // Reset acknowledgement if risk changes
             if (result.riskScore >= 80 || result.riskScore < 50) {
@@ -288,7 +324,74 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         } else {
             setMessageSafety(null);
         }
-    }, [formData.message]);
+    }, [dailyReportingPreview?.message, formData.message, isDailyReportingObjective]);
+
+    useEffect(() => {
+        if (!isDailyReportingObjective) {
+            setDailyReportingPreview(null);
+            return;
+        }
+
+        const nextTemplate = getDailyReportingTemplate(formData.enableReplyAction);
+        setFormData((prev) => prev.message === nextTemplate && prev.templateId === ''
+            ? prev
+            : {
+                ...prev,
+                templateId: '',
+                message: nextTemplate,
+            });
+    }, [isDailyReportingObjective, formData.enableReplyAction]);
+
+    useEffect(() => {
+        if (!isDailyReportingObjective) return;
+
+        let cancelled = false;
+
+        const loadPreview = async () => {
+            setLoadingDailyReportingPreview(true);
+            try {
+                const referenceDate = formData.scheduleType === 'schedule' && formData.scheduledDate
+                    ? formData.scheduledDate.toISOString()
+                    : new Date().toISOString();
+
+                const res = await fetch('/api/wa/marketing/reporting/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        report_type: formData.reportingType,
+                        enable_reply_action: formData.enableReplyAction,
+                        referenceDate,
+                    })
+                });
+
+                if (!res.ok) {
+                    throw new Error('Failed to load Daily Reporting preview');
+                }
+
+                const data = await res.json();
+                if (!cancelled) {
+                    setDailyReportingPreview({
+                        message: data.message,
+                        report: data.report,
+                    });
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    setDailyReportingPreview(null);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoadingDailyReportingPreview(false);
+                }
+            }
+        };
+
+        loadPreview();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isDailyReportingObjective, formData.reportingType, formData.enableReplyAction, formData.scheduleType, formData.scheduledDate]);
 
     // Memoized count change handler
     const handleCountChange = useCallback((count: number) => {
@@ -306,7 +409,8 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     const handleBack = () => setStep(s => Math.max(s - 1, 1));
 
     const handleTestSend = async () => {
-        if (!formData.message) {
+        const resolvedTestMessage = isDailyReportingObjective ? (dailyReportingPreview?.message || formData.message) : formData.message;
+        if (!resolvedTestMessage) {
             toast({ title: "Error", description: "Please enter a message first.", variant: "destructive" });
             return;
         }
@@ -316,8 +420,16 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    message: formData.message,
-                    test_user_id: formData.selectedUserIds?.[0]
+                    message: resolvedTestMessage,
+                    test_user_id: formData.selectedUserIds?.[0],
+                    objective: formData.objective,
+                    reporting: isDailyReportingObjective ? {
+                        report_type: formData.reportingType,
+                        enable_reply_action: formData.enableReplyAction,
+                        referenceDate: formData.scheduleType === 'schedule' && formData.scheduledDate
+                            ? formData.scheduledDate.toISOString()
+                            : new Date().toISOString(),
+                    } : undefined,
                 })
             });
             const data = await res.json();
@@ -401,8 +513,12 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     audience_filters: {
                         mode: effectiveAudienceMode,
                         filters: formData.filters,
-                        segment_id: isWinbackObjective ? '' : formData.selectedSegmentId,
-                        user_ids: isWinbackObjective ? [] : formData.selectedUserIds,
+                        segment_id: isWinbackObjective ? null : (formData.selectedSegmentId || null),
+                        user_ids: isWinbackObjective ? [] : formData.selectedUserIds.filter(Boolean),
+                        reporting: isDailyReportingObjective ? {
+                            report_type: formData.reportingType,
+                            enable_reply_action: formData.enableReplyAction,
+                        } : undefined,
                         estimated_count: estimatedRecipients,
                         overrides: {
                             include_ids: formData.overrideIncludeIds,
@@ -410,7 +526,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         }
                     },
                     message_body: formData.message,
-                    template_id: formData.templateId,
+                    template_id: formData.templateId || null,
                     scheduled_at: scheduledAt,
                     quiet_hours_enabled: formData.quietHours,
                     // Include preset configuration for audit
@@ -571,12 +687,53 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                         <SelectItem value="Promo">Marketing / Promo</SelectItem>
                                         <SelectItem value="Announcement">Announcement</SelectItem>
                                         <SelectItem value="Loyalty Reminder">Loyalty Reminder</SelectItem>
+                                        <SelectItem value="Daily Reporting">Daily Reporting</SelectItem>
                                         <SelectItem value="Winback">User Winback</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <p className="text-sm text-gray-500">This helps categorize your campaigns in reports.</p>
                             </div>
                         </div>
+
+                        {isDailyReportingObjective && (
+                            <div className="grid md:grid-cols-2 gap-8 rounded-xl border bg-slate-50/80 p-5">
+                                <div className="space-y-3">
+                                    <Label className="text-base">Report Type</Label>
+                                    <Select
+                                        value={formData.reportingType}
+                                        onValueChange={(value: 'daily' | 'weekly') => setFormData((prev) => ({
+                                            ...prev,
+                                            reportingType: value,
+                                        }))}
+                                    >
+                                        <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="daily">Daily</SelectItem>
+                                            <SelectItem value="weekly">Weekly</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-sm text-gray-500">
+                                        Weekly values always use fixed Monday 00:00:00 to Sunday 23:59:59 logic.
+                                    </p>
+                                </div>
+                                <div className="space-y-3">
+                                    <Label className="text-base">Reply Action</Label>
+                                    <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
+                                        <div>
+                                            <div className="font-medium text-sm text-gray-900">Enable unique customer detail replies</div>
+                                            <p className="text-sm text-gray-500">Reply 1 shows the first page and Reply 2 continues the list.</p>
+                                        </div>
+                                        <Switch
+                                            checked={formData.enableReplyAction}
+                                            onCheckedChange={(checked) => setFormData((prev) => ({
+                                                ...prev,
+                                                enableReplyAction: checked,
+                                            }))}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -807,169 +964,205 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     <div className="grid md:grid-cols-2 gap-8 h-[500px]">
                         <div className="flex flex-col gap-4 h-full overflow-hidden">
                             <div className="space-y-4">
-                                {isWinbackObjective && winbackTemplateSuggestions.length > 0 && (
-                                    <div className="space-y-2">
-                                        <Label>Suggested Winback Starters</Label>
-                                        <div className="grid gap-2">
-                                            {winbackTemplateSuggestions.slice(0, 3).map((preset) => (
-                                                <button
-                                                    key={preset.id}
-                                                    type="button"
-                                                    className="rounded-lg border bg-muted/30 p-3 text-left transition-colors hover:bg-muted"
-                                                    onClick={() => setFormData(prev => ({
-                                                        ...prev,
-                                                        templateId: '',
-                                                        message: preset.message,
-                                                    }))}
-                                                >
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <span className="font-medium text-sm">{preset.title}</span>
-                                                        <Badge variant="outline">{preset.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-                                                    </div>
-                                                    <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
-                                                </button>
-                                            ))}
+                                {isDailyReportingObjective ? (
+                                    <>
+                                        <div className="rounded-xl border bg-slate-50/70 p-4 space-y-3">
+                                            <div>
+                                                <Label>Default Daily Reporting Template</Label>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    This objective uses the fixed management reporting format and generates fresh values at send time.
+                                                </p>
+                                            </div>
+                                            <Textarea
+                                                className="min-h-[170px] resize-none font-mono text-sm bg-white"
+                                                value={formData.message}
+                                                readOnly
+                                            />
                                         </div>
-                                    </div>
-                                )}
 
-                                <div className="space-y-2">
-                                    <Label>Template Language</Label>
-                                    <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
-                                        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Language" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="EN">EN</SelectItem>
-                                            <SelectItem value="BM">BM</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Template Category</Label>
-                                    <div className="flex flex-wrap gap-2 pb-2">
-                                        {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
-                                            const count = cat === 'All Categories'
-                                                ? templatesByLanguage.length
-                                                : templatesByLanguage.filter(t => (t.category || 'General') === cat).length;
-                                            return (
-                                                <Badge
-                                                    key={cat}
-                                                    variant={selectedCategory === cat ? "default" : "outline"}
-                                                    className={`cursor-pointer px-3 py-1 font-normal transition-colors ${selectedCategory === cat ? '' : 'hover:bg-muted'
-                                                        } ${getCategoryBadgeColor(cat)}`}
-                                                    onClick={() => {
-                                                        setSelectedCategory(cat);
-                                                    }}
-                                                >
-                                                    {cat}
-                                                    {cat !== 'All Categories' && (
-                                                        <span className="ml-1 text-[10px] opacity-70">
-                                                            ({count})
-                                                        </span>
-                                                    )}
-                                                </Badge>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="rounded-lg border bg-white p-3">
+                                                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Report Type</div>
+                                                <div className="mt-1 text-sm font-semibold text-foreground">{formData.reportingType === 'weekly' ? 'Weekly' : 'Daily'}</div>
+                                            </div>
+                                            <div className="rounded-lg border bg-white p-3">
+                                                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reply Action</div>
+                                                <div className="mt-1 text-sm font-semibold text-foreground">{formData.enableReplyAction ? 'Enabled' : 'Disabled'}</div>
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {isWinbackObjective && winbackTemplateSuggestions.length > 0 && (
+                                            <div className="space-y-2">
+                                                <Label>Suggested Winback Starters</Label>
+                                                <div className="grid gap-2">
+                                                    {winbackTemplateSuggestions.slice(0, 3).map((preset) => (
+                                                        <button
+                                                            key={preset.id}
+                                                            type="button"
+                                                            className="rounded-lg border bg-muted/30 p-3 text-left transition-colors hover:bg-muted"
+                                                            onClick={() => setFormData(prev => ({
+                                                                ...prev,
+                                                                templateId: '',
+                                                                message: preset.message,
+                                                            }))}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <span className="font-medium text-sm">{preset.title}</span>
+                                                                <Badge variant="outline">{preset.status === 'active' ? 'Active' : 'Inactive'}</Badge>
+                                                            </div>
+                                                            <p className="mt-1 text-xs text-muted-foreground">{preset.description}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
 
-                                <div className="space-y-2">
-                                    <Label>Template</Label>
-                                    <Select
-                                        value={formData.templateId}
-                                        onValueChange={(val) => {
-                                            if (val === 'scratch') {
-                                                setFormData({
-                                                    ...formData,
-                                                    templateId: '',
-                                                    message: ''
-                                                });
-                                            } else {
-                                                const tmpl = templates.find(t => t.id === val);
-                                                setFormData({
-                                                    ...formData,
-                                                    templateId: val,
-                                                    message: tmpl?.body || formData.message
-                                                });
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
-                                        <SelectContent className="max-h-[300px]">
-                                            <SelectItem value="scratch">
-                                                <span className="flex items-center gap-2">
-                                                    <span className="text-muted-foreground">✏️</span>
-                                                    Start from Scratch
-                                                </span>
-                                            </SelectItem>
-                                            {selectedCategory === 'All Categories' ? (
-                                                // Group templates by category when showing all
-                                                Object.entries(
-                                                    templatesByLanguage.reduce((acc, t) => {
-                                                        const cat = t.category || 'General';
-                                                        if (!acc[cat]) acc[cat] = [];
-                                                        acc[cat].push(t);
-                                                        return acc;
-                                                    }, {} as Record<string, typeof templatesByLanguage>)
-                                                ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
-                                                    <div key={category}>
-                                                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
-                                                            {category} ({categoryTemplates.length})
-                                                        </div>
-                                                        {categoryTemplates.map(t => (
-                                                            <SelectItem key={t.id} value={t.id}>
-                                                                <span className="flex items-center gap-2">
-                                                                    {t.name}
-                                                                    {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                        <div className="space-y-2">
+                                            <Label>Template Language</Label>
+                                            <Select value={selectedLanguage} onValueChange={(value: 'EN' | 'BM') => setSelectedLanguage(value)}>
+                                                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Language" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="EN">EN</SelectItem>
+                                                    <SelectItem value="BM">BM</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>Template Category</Label>
+                                            <div className="flex flex-wrap gap-2 pb-2">
+                                                {['All Categories', 'Engagement', 'Informational', 'Loyalty', 'Promotional', 'Reactivation', 'Seasonal', 'VIP', 'General'].map((cat) => {
+                                                    const count = cat === 'All Categories'
+                                                        ? templatesByLanguage.length
+                                                        : templatesByLanguage.filter(t => (t.category || 'General') === cat).length;
+                                                    return (
+                                                        <Badge
+                                                            key={cat}
+                                                            variant={selectedCategory === cat ? "default" : "outline"}
+                                                            className={`cursor-pointer px-3 py-1 font-normal transition-colors ${selectedCategory === cat ? '' : 'hover:bg-muted'
+                                                                } ${getCategoryBadgeColor(cat)}`}
+                                                            onClick={() => {
+                                                                setSelectedCategory(cat);
+                                                            }}
+                                                        >
+                                                            {cat}
+                                                            {cat !== 'All Categories' && (
+                                                                <span className="ml-1 text-[10px] opacity-70">
+                                                                    ({count})
                                                                 </span>
-                                                            </SelectItem>
-                                                        ))}
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                // Show templates for selected category
-                                                templatesByLanguage
-                                                    .filter(t => (t.category || 'General') === selectedCategory)
-                                                    .map(t => (
-                                                        <SelectItem key={t.id} value={t.id}>
-                                                            <span className="flex items-center gap-2">
-                                                                {t.name}
-                                                                {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
-                                                            </span>
-                                                        </SelectItem>
-                                                    ))
-                                            )}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                                                            )}
+                                                        </Badge>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
 
+                                        <div className="space-y-2">
+                                            <Label>Template</Label>
+                                            <Select
+                                                value={formData.templateId}
+                                                onValueChange={(val) => {
+                                                    if (val === 'scratch') {
+                                                        setFormData({
+                                                            ...formData,
+                                                            templateId: '',
+                                                            message: ''
+                                                        });
+                                                    } else {
+                                                        const tmpl = templates.find(t => t.id === val);
+                                                        setFormData({
+                                                            ...formData,
+                                                            templateId: val,
+                                                            message: tmpl?.body || formData.message
+                                                        });
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger><SelectValue placeholder="Choose a template..." /></SelectTrigger>
+                                                <SelectContent className="max-h-[300px]">
+                                                    <SelectItem value="scratch">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-muted-foreground">✏️</span>
+                                                            Start from Scratch
+                                                        </span>
+                                                    </SelectItem>
+                                                    {selectedCategory === 'All Categories' ? (
+                                                        // Group templates by category when showing all
+                                                        Object.entries(
+                                                            templatesByLanguage.reduce((acc, t) => {
+                                                                const cat = t.category || 'General';
+                                                                if (!acc[cat]) acc[cat] = [];
+                                                                acc[cat].push(t);
+                                                                return acc;
+                                                            }, {} as Record<string, typeof templatesByLanguage>)
+                                                        ).sort(([a], [b]) => a.localeCompare(b)).map(([category, categoryTemplates]) => (
+                                                            <div key={category}>
+                                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
+                                                                    {category} ({categoryTemplates.length})
+                                                                </div>
+                                                                {categoryTemplates.map(t => (
+                                                                    <SelectItem key={t.id} value={t.id}>
+                                                                        <span className="flex items-center gap-2">
+                                                                            {t.name}
+                                                                            {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                                        </span>
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        // Show templates for selected category
+                                                        templatesByLanguage
+                                                            .filter(t => (t.category || 'General') === selectedCategory)
+                                                            .map(t => (
+                                                                <SelectItem key={t.id} value={t.id}>
+                                                                    <span className="flex items-center gap-2">
+                                                                        {t.name}
+                                                                        {t.is_system && <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">System</Badge>}
+                                                                    </span>
+                                                                </SelectItem>
+                                                            ))
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                    </>
+                                )}
                             </div>
                             <div className="flex-1 flex flex-col gap-2 min-h-0">
                                 <div className="flex items-center justify-between">
-                                    <Label>Message Body</Label>
-                                    <button
-                                        type="button"
-                                        className="text-xs text-blue-600 hover:underline"
-                                        onClick={() => {
-                                            const params = new URLSearchParams(searchParams.toString());
-                                            params.set('tab', 'message-setup');
-                                            router.push(`?${params.toString()}`);
-                                        }}
-                                    >
-                                        Manage Message Setup →
-                                    </button>
+                                    <Label>{isDailyReportingObjective ? 'Generated Message' : 'Message Body'}</Label>
+                                    {!isDailyReportingObjective && (
+                                        <button
+                                            type="button"
+                                            className="text-xs text-blue-600 hover:underline"
+                                            onClick={() => {
+                                                const params = new URLSearchParams(searchParams.toString());
+                                                params.set('tab', 'message-setup');
+                                                router.push(`?${params.toString()}`);
+                                            }}
+                                        >
+                                            Manage Message Setup →
+                                        </button>
+                                    )}
                                 </div>
                                 <Textarea
                                     className="flex-1 resize-none font-mono text-sm"
                                     placeholder="Type your message here..."
-                                    value={formData.message}
+                                    value={isDailyReportingObjective ? (dailyReportingPreview?.message || formData.message) : formData.message}
                                     onChange={e => setFormData({ ...formData, message: e.target.value })}
+                                    readOnly={isDailyReportingObjective}
                                 />
                             </div>
-                            <div className="flex gap-2 flex-wrap">
-                                {['{name}', '{city}', '{points_balance}', '{short_link}'].map(v => (
-                                    <Button key={v} variant="secondary" size="sm" className="h-6 px-2 text-xs" onClick={() => insertVariable(v)}>{v}</Button>
-                                ))}
-                            </div>
+                            {!isDailyReportingObjective && (
+                                <div className="flex gap-2 flex-wrap">
+                                    {['{name}', '{city}', '{points_balance}', '{short_link}'].map(v => (
+                                        <Button key={v} variant="secondary" size="sm" className="h-6 px-2 text-xs" onClick={() => insertVariable(v)}>{v}</Button>
+                                    ))}
+                                </div>
+                            )}
                             <Button variant="outline" onClick={handleTestSend} disabled={testing}>
                                 {testing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
                                 Send Test Message
@@ -985,7 +1178,11 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                 </div>
                                 <div className="bg-[#e5ddd5] h-[350px] p-4 flex flex-col gap-2 overflow-y-auto bg-opacity-30">
                                     <div className="bg-white p-2 rounded-lg rounded-tl-none shadow-sm text-sm self-start max-w-[90%] whitespace-pre-wrap">
-                                        {formData.message || <span className="text-gray-400 italic">Message preview...</span>}
+                                        {loadingDailyReportingPreview && isDailyReportingObjective ? (
+                                            <span className="inline-flex items-center gap-2 text-gray-400 italic"><Loader2 className="h-4 w-4 animate-spin" /> Building report preview...</span>
+                                        ) : (
+                                            (isDailyReportingObjective ? dailyReportingPreview?.message : formData.message) || <span className="text-gray-400 italic">Message preview...</span>
+                                        )}
                                         <div className="text-[10px] text-gray-400 text-right mt-1">{format(new Date(), 'HH:mm')}</div>
                                     </div>
                                 </div>
@@ -1013,6 +1210,18 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                         <span className="text-gray-500">Objective</span>
                                         <Badge variant="outline">{formData.objective}</Badge>
                                     </div>
+                                    {isDailyReportingObjective && (
+                                        <>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Report Type</span>
+                                                <span className="font-medium capitalize">{formData.reportingType}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Reply Action</span>
+                                                <span className="font-medium">{formData.enableReplyAction ? 'Enabled' : 'Disabled'}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Safety Advisor - Shows recommended preset and estimated runtime */}

@@ -13,10 +13,10 @@ import cron from 'node-cron'
  */
 
 const CRON_JOBS = [
-  { path: '/api/cron/qr-reverse-worker',            schedule: '*/1 * * * *' },
-  { path: '/api/cron/qr-generation-worker',          schedule: '*/1 * * * *' },
-  { path: '/api/cron/manufacturer-packing-worker',   schedule: '*/1 * * * *' },
-  { path: '/api/cron/notification-outbox-worker',    schedule: '*/1 * * * *' },
+  { path: '/api/cron/qr-reverse-worker', schedule: '*/1 * * * *' },
+  { path: '/api/cron/qr-generation-worker', schedule: '*/1 * * * *' },
+  { path: '/api/cron/manufacturer-packing-worker', schedule: '*/1 * * * *' },
+  { path: '/api/cron/notification-outbox-worker', schedule: '*/1 * * * *' },
 ]
 
 function normalizeBaseUrl(rawUrl: string): string {

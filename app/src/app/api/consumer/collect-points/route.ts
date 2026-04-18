@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { resolveQrCodeRecord, calculateShopTotalPoints } from '@/lib/utils/qr-resolver'
+import { resolveQrCodeRecord, resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
 import {
   normalizePointClaimSettings,
   resolveClaimLaneExperience,
 } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 
 /**
  * POST /api/consumer/collect-points
@@ -188,6 +189,11 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       )
     }
+
+    await supabaseAdmin
+      .from('users')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', shopUser.id)
 
     // 3. Verify user belongs to a SHOP organization OR is an independent consumer
     const organization = shopUser.organizations as any
@@ -433,10 +439,16 @@ export async function POST(request: NextRequest) {
       claimMode: pointClaimSettings.claimMode,
       organization_id: shopUser.organization_id,
       organizationTypeCode: organization?.org_type_code,
+      shop_name: shopUser.shop_name,
       referral_phone: shopUser.referral_phone,
       consumerClaimConfirmedAt: shopUser.consumer_claim_confirmed_at,
       consumerConfirmation: consumer_confirmation === true,
       preferredClaimLane: requestedClaimLane,
+    })
+    const linkValidation = await resolveProfileLinkValidation(supabaseAdmin, {
+      organizationId: shopUser.organization_id,
+      shopName: shopUser.shop_name,
+      referralPhone: shopUser.referral_phone,
     })
     const claimLane = laneExperience.claimLane
     const profileCompletion = resolveCollectProfileCompletion({
@@ -445,7 +457,10 @@ export async function POST(request: NextRequest) {
       requestedClaimLane,
       organizationId: shopUser.organization_id,
       organizationTypeCode: organization?.org_type_code,
+      shopName: shopUser.shop_name,
       referralPhone: shopUser.referral_phone,
+      isShopLinkValid: linkValidation.isShopLinkValid,
+      isReferenceLinkValid: linkValidation.isReferenceLinkValid,
     })
 
     if (laneExperience.shouldPromptConsumerChoice) {
@@ -465,25 +480,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (profileCompletion.shouldBlockCollect) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'PROFILE_INCOMPLETE',
-          requiresProfileUpdate: true,
-          email: emailToAuth,
-          missingFields: profileCompletion.missingFields,
-          missingShop: profileCompletion.missingShop,
-          missingReference: profileCompletion.missingReference,
-          shouldBlockCollect: profileCompletion.shouldBlockCollect,
-          modalTitle: profileCompletion.modalTitle,
-          modalMessage: profileCompletion.modalMessage,
-          error: profileCompletion.modalMessage,
-        },
-        { status: 400 }
-      )
-    }
-
+    // Persist consumer confirmation before profile check so it is always saved
     if (claimLane === 'consumer' && consumer_confirmation && !shopUser.consumer_claim_confirmed_at) {
       const confirmedAt = new Date().toISOString()
       const { error: confirmationError } = await supabaseAdmin
@@ -500,6 +497,27 @@ export async function POST(request: NextRequest) {
       }
 
       shopUser.consumer_claim_confirmed_at = confirmedAt
+    }
+
+    if (profileCompletion.shouldBlockCollect) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PROFILE_INCOMPLETE',
+          requiresProfileUpdate: true,
+          email: emailToAuth,
+          missingFields: profileCompletion.missingFields,
+          missingShop: profileCompletion.missingShop,
+          missingReference: profileCompletion.missingReference,
+          invalidShop: profileCompletion.invalidShop,
+          invalidReference: profileCompletion.invalidReference,
+          shouldBlockCollect: profileCompletion.shouldBlockCollect,
+          modalTitle: profileCompletion.modalTitle,
+          modalMessage: profileCompletion.modalMessage,
+          error: profileCompletion.modalMessage,
+        },
+        { status: 400 }
+      )
     }
 
     const pointsToAward = claimLane === 'shop'
@@ -541,19 +559,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Helper to calculate balance based on user type
-    const calculateBalance = async () => {
-      if (claimLane === 'shop' && shopUser.organization_id) {
-        return await calculateShopTotalPoints(supabaseAdmin, shopUser.organization_id)
-      }
+    const beforeBalance = await resolveTrustedPointsBalance(supabaseAdmin, {
+      userId: authenticatedUserId,
+      roleCode: shopUser.role_code,
+      organizationId: shopUser.organization_id,
+    })
 
-      const { data: consumerBalance } = await supabaseAdmin
-        .from('v_consumer_points_balance')
-        .select('current_balance')
-        .eq('user_id', authenticatedUserId)
-        .maybeSingle()
-      return consumerBalance?.current_balance || 0
-    }
+    const calculateBalance = async () => resolveTrustedPointsBalance(supabaseAdmin, {
+      userId: authenticatedUserId,
+      roleCode: shopUser.role_code,
+      organizationId: shopUser.organization_id,
+    })
 
     // Handle RPC result
     if (!result.success) {
@@ -563,8 +579,15 @@ export async function POST(request: NextRequest) {
         const remainingLane = pointClaimSettings.claimMode === 'dual'
           ? (claimLane === 'shop' ? 'consumer' : 'shop')
           : null
+        const userName = shopUser.full_name?.trim() || null
         const errorMessage = remainingLane
-          ? `This QR code was already collected by the ${claimLane === 'shop' ? 'shop staff' : 'consumer'} lane. Only ${remainingLane === 'shop' ? 'shop staff' : 'consumer'} can collect it now.`
+          ? claimLane === 'shop'
+            ? userName
+              ? `Hi ${userName}, this QR was already claimed by another shop. It is no longer available for shop claim. Only the consumer can claim it now.`
+              : 'This QR was already claimed by another shop. It is no longer available for shop claim. Only the consumer can claim it now.'
+            : userName
+              ? `Hi ${userName}, this QR was already claimed by a consumer. Only shop staff can claim it now.`
+              : 'This QR was already claimed by a consumer. Only shop staff can claim it now.'
           : 'Points for this QR code have already been collected.'
 
         return NextResponse.json(
@@ -573,7 +596,8 @@ export async function POST(request: NextRequest) {
             already_collected: true,
             error: errorMessage,
             points_earned: result.points_earned || 0,
-            total_balance: totalBalance,
+            total_balance: totalBalance.balance,
+            balance_source: totalBalance.source,
             email: emailToAuth,
             claim_mode: pointClaimSettings.claimMode,
             claim_lane: claimLane,
@@ -610,10 +634,39 @@ export async function POST(request: NextRequest) {
     // 6. Calculate total points collected
     const totalBalance = await calculateBalance()
 
+    console.info('POINT_CLAIM_AUDIT', {
+      user_id: authenticatedUserId,
+      consumer_id: authenticatedUserId,
+      shop_id: shopUser.organization_id || null,
+      qr_code_id: qrCodeData.id,
+      claim_lane: claimLane,
+      role_code: shopUser.role_code,
+      before_balance: beforeBalance.balance,
+      delta: pointsToAward,
+      after_balance: totalBalance.balance,
+      source_ledger: totalBalance.source,
+    })
+
+    if (totalBalance.balance < beforeBalance.balance) {
+      console.warn('POINT_CLAIM_ANOMALY', {
+        user_id: authenticatedUserId,
+        consumer_id: authenticatedUserId,
+        shop_id: shopUser.organization_id || null,
+        qr_code_id: qrCodeData.id,
+        claim_lane: claimLane,
+        before_balance: beforeBalance.balance,
+        delta: pointsToAward,
+        after_balance: totalBalance.balance,
+        source_ledger: totalBalance.source,
+        reason: 'balance_decreased_after_earn_claim',
+      })
+    }
+
     return NextResponse.json({
       success: true,
       points_earned: pointsToAward,
-      total_balance: totalBalance,
+      total_balance: totalBalance.balance,
+      balance_source: totalBalance.source,
       shop_name: shopUser.full_name || shopUser.email,
       qr_code: qrCodeData.code,
       message: 'Points collected successfully!',

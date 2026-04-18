@@ -57,68 +57,68 @@ export async function POST(request: NextRequest) {
     // Authenticate user
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
-    
+
     const supabaseAdmin = getServiceClient()
-    
+
     // Check if user is admin
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id, role, is_super_admin, full_name, email')
       .eq('id', user.id)
       .single()
-    
+
     if (userError || !userData) {
       return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404 })
     }
-    
+
     const isAdmin = userData.role === 'admin' || userData.role === 'super_admin' || userData.is_super_admin
     if (!isAdmin) {
       return NextResponse.json({ ok: false, error: 'Admin access required' }, { status: 403 })
     }
-    
+
     const body: SendPayload = await request.json()
     const { threadId, toPhoneE164, text, tenantId } = body
-    
+
     // Validate required fields
     if (!threadId || !text) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Missing required fields: threadId, text' 
+      return NextResponse.json({
+        ok: false,
+        error: 'Missing required fields: threadId, text'
       }, { status: 400 })
     }
-    
+
     // Get conversation details
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('support_conversations')
       .select('id, whatsapp_user_phone, external_chat_id, created_by_user_id')
       .eq('id', threadId)
       .single()
-    
+
     if (convError || !conversation) {
       return NextResponse.json({ ok: false, error: 'Conversation not found' }, { status: 404 })
     }
-    
+
     // Determine recipient phone
-    const recipientPhone = toPhoneE164 
-      ? normalizePhoneE164(toPhoneE164) 
+    const recipientPhone = toPhoneE164
+      ? normalizePhoneE164(toPhoneE164)
       : conversation.whatsapp_user_phone
-    
+
     if (!recipientPhone) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'No WhatsApp phone number for this conversation' 
+      return NextResponse.json({
+        ok: false,
+        error: 'No WhatsApp phone number for this conversation'
       }, { status: 400 })
     }
-    
+
     console.log(`[WhatsApp Send] Sending to ${recipientPhone} for conversation ${threadId}`)
-    
+
     // Generate a unique outbound ID to prevent echo loops
     const outboundId = `out_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-    
+
     // Step 1: Create the message in our database FIRST
     // This ensures we have record even if gateway fails
     const { data: message, error: msgError } = await supabaseAdmin
@@ -140,23 +140,23 @@ export async function POST(request: NextRequest) {
       })
       .select('id')
       .single()
-    
+
     if (msgError) {
       console.error('[WhatsApp Send] Failed to create message:', msgError)
       throw msgError
     }
-    
+
     // Step 2: Send via Baileys Gateway
     let gatewaySuccess = false
     let gatewayMessageId: string | null = null
     let gatewayError: string | null = null
-    
+
     try {
       const gatewayTenantId = tenantId || DEFAULT_TENANT_ID
       const gatewayUrl = `${BAILEYS_GATEWAY_URL}/tenants/${gatewayTenantId}/messages/send`
-      
+
       console.log(`[WhatsApp Send] Calling gateway: ${gatewayUrl}`)
-      
+
       const gatewayResponse = await fetch(gatewayUrl, {
         method: 'POST',
         headers: {
@@ -174,9 +174,9 @@ export async function POST(request: NextRequest) {
           }
         })
       })
-      
+
       const gatewayResult = await gatewayResponse.json()
-      
+
       if (gatewayResult.ok) {
         gatewaySuccess = true
         gatewayMessageId = gatewayResult.message_id || gatewayResult.jid
@@ -185,12 +185,12 @@ export async function POST(request: NextRequest) {
         gatewayError = gatewayResult.error || 'Unknown gateway error'
         console.error(`[WhatsApp Send] Gateway failed: ${gatewayError}`)
       }
-      
+
     } catch (gwError: any) {
       gatewayError = gwError.message || 'Gateway connection failed'
       console.error('[WhatsApp Send] Gateway error:', gwError)
     }
-    
+
     // Step 3: Update message with gateway result
     const updateData: Record<string, any> = {
       metadata: {
@@ -201,24 +201,24 @@ export async function POST(request: NextRequest) {
         admin_name: userData.full_name || userData.email
       }
     }
-    
+
     if (gatewayMessageId) {
       // Store WhatsApp message ID for dedup when echo comes back
       updateData.external_message_id = gatewayMessageId
     }
-    
+
     await supabaseAdmin
       .from('support_conversation_messages')
       .update(updateData)
       .eq('id', message.id)
-    
+
     // Step 4: Update conversation
     const { data: conv } = await supabaseAdmin
       .from('support_conversations')
       .select('user_unread_count, status')
       .eq('id', threadId)
       .single()
-    
+
     await supabaseAdmin
       .from('support_conversations')
       .update({
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .eq('id', threadId)
-    
+
     // Step 5: Log to audit
     await supabaseAdmin.from('whatsapp_message_logs').insert({
       tenant_id: tenantId || DEFAULT_TENANT_ID,
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
         admin_id: user.id
       }
     })
-    
+
     // Return result
     if (!gatewaySuccess) {
       return NextResponse.json({
@@ -257,19 +257,19 @@ export async function POST(request: NextRequest) {
         storedInDb: true
       }, { status: 502 })
     }
-    
+
     return NextResponse.json({
       ok: true,
       messageId: message.id,
       whatsappMessageId: gatewayMessageId,
       threadId
     })
-    
+
   } catch (error: any) {
     console.error('[WhatsApp Send] Error:', error)
-    return NextResponse.json({ 
-      ok: false, 
-      error: error.message || 'Internal server error' 
+    return NextResponse.json({
+      ok: false,
+      error: error.message || 'Internal server error'
     }, { status: 500 })
   }
 }

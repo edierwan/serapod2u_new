@@ -10,7 +10,7 @@ export class GatewayService {
   constructor() {
     this.url = config.gateway.url;
     this.apiKey = config.gateway.apiKey;
-    
+
     // Ensure URL doesn't end with slash
     if (this.url.endsWith('/')) {
       this.url = this.url.slice(0, -1);
@@ -44,21 +44,21 @@ export class GatewayService {
         }
       });
 
-      logger.info({ 
-        status: response.status, 
-        data: response.data 
+      logger.info({
+        status: response.status,
+        data: response.data
       }, 'Gateway send success');
       return true;
 
     } catch (error: any) {
       if (axios.isAxiosError(error)) {
-        logger.error({ 
+        logger.error({
           status: error.response?.status,
           data: error.response?.data,
           message: error.message
         }, 'Gateway send failed');
       } else {
-        logger.error({ 
+        logger.error({
           error: error.message,
           stack: error.stack
         }, 'Gateway connection error');

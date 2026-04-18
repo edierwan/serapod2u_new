@@ -15,6 +15,8 @@ interface ShopLinkProfile {
     organizationTypeCode?: string | null
     shop_name?: string | null
     referral_phone?: string | null
+    isShopLinkValid?: boolean | null
+    isReferenceLinkValid?: boolean | null
 }
 
 interface ConsumerClaimConfirmationInput extends ShopLinkProfile {
@@ -71,8 +73,11 @@ export function hasLinkedShopProfile(profile: ShopLinkProfile): boolean {
     return hasValidLinkedShop({
         organizationId: profile.organization_id,
         organizationTypeCode: profile.organizationTypeCode,
+        shopName: profile.shop_name,
+        isShopLinkValid: profile.isShopLinkValid,
     }) && hasValidReferenceLink({
         referralPhone: profile.referral_phone,
+        isReferenceLinkValid: profile.isReferenceLinkValid,
     })
 }
 

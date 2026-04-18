@@ -25,8 +25,14 @@ interface ShopRequestRow {
     requested_branch: string | null
     requested_contact_name: string | null
     requested_contact_phone: string | null
+    requested_contact_email: string | null
     requested_address: string | null
     requested_state: string | null
+    requested_hot_flavour_brands: string | null
+    requested_sells_serapod_flavour: boolean
+    requested_sells_sbox: boolean
+    requested_sells_sbox_special_edition: boolean
+    requested_parent_org_id: string | null
     notes: string | null
     status: 'pending' | 'approved' | 'rejected'
     review_notes: string | null
@@ -116,8 +122,14 @@ export function ShopRequestSettingsPanel({ onAlert }: ShopRequestSettingsPanelPr
                     branch: row.requested_branch,
                     contactName: row.requested_contact_name,
                     contactPhone: row.requested_contact_phone,
+                    contactEmail: row.requested_contact_email,
                     address: row.requested_address,
                     state: row.requested_state,
+                    hotFlavourBrands: row.requested_hot_flavour_brands,
+                    sellsSerapodFlavour: row.requested_sells_serapod_flavour,
+                    sellsSbox: row.requested_sells_sbox,
+                    sellsSboxSpecialEdition: row.requested_sells_sbox_special_edition,
+                    parentOrgId: row.requested_parent_org_id,
                     reviewNotes: reviewNotes[requestId] || '',
                 }),
             })
@@ -214,8 +226,16 @@ export function ShopRequestSettingsPanel({ onAlert }: ShopRequestSettingsPanelPr
                             <div className="grid gap-3 md:grid-cols-2">
                                 <Input value={row.requested_contact_name || ''} readOnly placeholder="Contact name" />
                                 <Input value={row.requested_contact_phone || ''} readOnly placeholder="Contact phone" />
+                                <Input value={row.requested_contact_email || ''} readOnly placeholder="Contact email" />
                                 <Input value={row.requested_state || ''} readOnly placeholder="State" />
                                 <Input value={row.requested_address || ''} readOnly placeholder="Address" />
+                                <Input value={row.requested_hot_flavour_brands || ''} readOnly placeholder="Hot flavour brands" />
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-3">
+                                <Input value={row.requested_sells_serapod_flavour ? 'Ya' : 'Tidak'} readOnly placeholder="Sells Flavour Serapod" />
+                                <Input value={row.requested_sells_sbox ? 'Ya' : 'Tidak'} readOnly placeholder="Sells S.Box" />
+                                <Input value={row.requested_sells_sbox_special_edition ? 'Ya' : 'Tidak'} readOnly placeholder="Sells S.Box Special Edition" />
                             </div>
 
                             <Textarea value={reviewNotes[row.id] ?? row.review_notes ?? ''} onChange={(event) => setReviewNotes((current) => ({ ...current, [row.id]: event.target.value }))} rows={2} placeholder="Review notes" />

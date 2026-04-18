@@ -25,16 +25,22 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
         HOST: '0.0.0.0',
-        
+
         // Multi-tenant auth root: each tenant gets ${AUTH_ROOT}/tenant_${tenantId}
         AUTH_ROOT: '/opt/baileys-gateway/auth',
-        
+
         // Tenant registry file path (default: /opt/baileys-gateway/tenants.json)
         // TENANTS_FILE_PATH: '/opt/baileys-gateway/tenants.json',
-        
+
         // CORS allowed origins
         ALLOWED_ORIGINS: 'https://app.serapod2u.com,https://serapod2u.com',
-        
+
+        // Serapod app ingest endpoint (Daily Reporting replies, support inbox)
+        // Set to the app's ingest URL so the gateway forwards inbound messages there too
+        SERAPOD_INGEST_URL: 'https://stg.serapod2u.com/api/support/whatsapp/ingest',
+        // Uses MOLTBOT_WEBHOOK_SECRET by default if not set
+        // SERAPOD_INGEST_SECRET: '',
+
         // Logging
         LOG_LEVEL: 'info',
       },
@@ -60,7 +66,7 @@ module.exports = {
       instances: 1,
       kill_timeout: 5000,
       listen_timeout: 10000,
-      
+
       // Memory management
       max_memory_restart: '500M',
     },

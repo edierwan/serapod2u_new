@@ -29,7 +29,7 @@ interface AnalyticsData {
   uniqueShopsVisited: number
   topManagers: { user_id: string; full_name: string; visit_count: number; points_total: number }[]
   topCampaigns: { campaign_id: string; name: string; visit_count: number; scan_count: number }[]
-  recentScans: { id: string; scanned_at: string; consumer_phone: string | null; shop_name: string | null; points: number; status: string }[]
+  recentScans: { id: string; scanned_at: string; consumer_name: string | null; consumer_phone: string | null; shop_name: string | null; points: number; status: string }[]
 }
 
 export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAnalyticsViewProps) {
@@ -65,7 +65,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           .select('id, campaign_id, account_manager_user_id, shop_id, scan:official_scan_event_id(points_awarded), roadtour_campaigns!inner(org_id, name), users:account_manager_user_id(full_name)')
           .eq('roadtour_campaigns.org_id', companyId),
         (supabase as any).from('roadtour_scan_events')
-          .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
+          .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), scanned_by_user:scanned_by_user_id(full_name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
           .eq('roadtour_qr_codes.roadtour_campaigns.org_id', companyId)
           .order('scan_time', { ascending: false })
           .limit(100),
@@ -119,6 +119,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         recentScans: scansList.map((s: any) => ({
           id: s.id,
           scanned_at: s.scan_time,
+          consumer_name: s.scanned_by_user?.full_name || null,
           consumer_phone: s.consumer_phone,
           shop_name: s.organizations?.org_name || null,
           points: s.points_awarded,
@@ -277,7 +278,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
               {data.recentScans.slice(scanPage * scansPerPage, (scanPage + 1) * scansPerPage).map((s) => (
                 <div key={s.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
-                    <p className="text-sm font-medium">{s.consumer_phone || 'Unknown consumer'}</p>
+                    <p className="text-sm font-medium">{s.consumer_name || s.consumer_phone || 'Unknown consumer'}{s.consumer_name && s.consumer_phone ? ` (${s.consumer_phone})` : ''}</p>
                     <p className="text-xs text-muted-foreground">{s.shop_name || 'Unknown shop'} · {new Date(s.scanned_at).toLocaleDateString()} {new Date(s.scanned_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</p>
                   </div>
                   <div className="flex items-center gap-2">

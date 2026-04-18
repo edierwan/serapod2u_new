@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sanitizeShopRequestForm } from '@/lib/shop-requests/core'
+import { buildPendingShopRequestInsert, sanitizeShopRequestForm, validateShopRequestForm } from '@/lib/shop-requests/core'
 import { sendShopRequestNotifications } from '@/lib/shop-requests/notifications'
 
 async function resolveNotificationOrgId(adminClient: any, organizationId?: string | null) {
@@ -34,6 +34,59 @@ async function resolveNotificationOrgId(adminClient: any, organizationId?: strin
     return fallbackOrg?.id || null
 }
 
+async function resolveShopRequestParentOrgId(adminClient: any, organizationId?: string | null) {
+    const fixedCodes = ['DH04', 'DT004']
+
+    const { data: fixedDistributor } = await adminClient
+        .from('organizations')
+        .select('id')
+        .eq('org_type_code', 'DIST')
+        .in('org_code', fixedCodes)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+    if (fixedDistributor?.id) {
+        return fixedDistributor.id
+    }
+
+    if (organizationId) {
+        const { data: currentOrg } = await adminClient
+            .from('organizations')
+            .select('id, parent_org_id, org_type_code')
+            .eq('id', organizationId)
+            .maybeSingle()
+
+        if (currentOrg?.org_type_code === 'DIST') {
+            return currentOrg.id
+        }
+
+        if (currentOrg?.parent_org_id) {
+            const { data: parentOrg } = await adminClient
+                .from('organizations')
+                .select('id, org_type_code')
+                .eq('id', currentOrg.parent_org_id)
+                .maybeSingle()
+
+            if (parentOrg?.org_type_code === 'DIST') {
+                return parentOrg.id
+            }
+        }
+    }
+
+    const { data: fallbackDistributor } = await adminClient
+        .from('organizations')
+        .select('id')
+        .eq('org_type_code', 'DIST')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+    return fallbackDistributor?.id || null
+}
+
 export async function POST(request: NextRequest) {
     try {
         const supabase = await createClient()
@@ -56,30 +109,27 @@ export async function POST(request: NextRequest) {
 
         const rawBody = await request.json()
         const form = sanitizeShopRequestForm(rawBody)
+        const validation = validateShopRequestForm(form)
 
-        if (!form.shopName) {
-            return NextResponse.json({ success: false, error: 'Shop name is required.' }, { status: 400 })
+        if (!validation.valid) {
+            return NextResponse.json({ success: false, error: validation.errors[0] }, { status: 400 })
         }
 
         const notificationOrgId = await resolveNotificationOrgId(adminClient, requester.organization_id)
+        const parentOrgId = await resolveShopRequestParentOrgId(adminClient, requester.organization_id)
+        const insertPayload = buildPendingShopRequestInsert({
+            notificationOrgId,
+            parentOrgId,
+            requesterUserId: requester.id,
+            requesterName: requester.full_name || null,
+            requesterPhone: requester.phone || null,
+            form,
+        })
 
         const { data: inserted, error: insertError } = await adminClient
             .from('shop_requests')
-            .insert({
-                notification_org_id: notificationOrgId,
-                requester_user_id: requester.id,
-                requester_name: requester.full_name || null,
-                requester_phone: requester.phone || null,
-                requested_shop_name: form.shopName,
-                requested_branch: form.branch || null,
-                requested_contact_name: form.contactName || null,
-                requested_contact_phone: form.contactPhone || null,
-                requested_address: form.address || null,
-                requested_state: form.state || null,
-                notes: form.notes || null,
-                status: 'pending',
-            })
-            .select('id, requested_shop_name, requested_branch, requested_contact_name, requested_contact_phone, requested_address, requested_state, notes, requester_name, requester_phone')
+            .insert(insertPayload)
+            .select('id, requested_shop_name, requested_branch, requested_contact_name, requested_contact_phone, requested_contact_email, requested_address, requested_state, requested_hot_flavour_brands, requested_sells_serapod_flavour, requested_sells_sbox, requested_sells_sbox_special_edition, notes, requester_name, requester_phone, requested_parent_org_id')
             .single()
 
         if (insertError || !inserted) {
@@ -103,8 +153,14 @@ export async function POST(request: NextRequest) {
                     branch: inserted.requested_branch,
                     contactName: inserted.requested_contact_name,
                     contactPhone: inserted.requested_contact_phone,
+                    contactEmail: inserted.requested_contact_email,
                     address: inserted.requested_address,
                     state: inserted.requested_state,
+                    hotFlavourBrands: inserted.requested_hot_flavour_brands,
+                    sellsSerapodFlavour: inserted.requested_sells_serapod_flavour,
+                    sellsSbox: inserted.requested_sells_sbox,
+                    sellsSboxSpecialEdition: inserted.requested_sells_sbox_special_edition,
+                    parentOrgId: inserted.requested_parent_org_id,
                     notes: inserted.notes,
                     requesterName: inserted.requester_name,
                     requesterPhone: inserted.requester_phone,

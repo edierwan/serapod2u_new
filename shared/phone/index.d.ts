@@ -1,10 +1,10 @@
 export type ParsedPhone = {
-  input: unknown;
-  digits: string;
-  e164: string | null;
-  provider: string | null;
-  valid: boolean;
-  reason: string | null;
+    input: unknown;
+    digits: string;
+    e164: string | null;
+    provider: string | null;
+    valid: boolean;
+    reason: string | null;
 };
 
 export declare const E164_REGEX: RegExp;

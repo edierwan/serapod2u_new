@@ -10,6 +10,12 @@ export function normalizePhone(phone: string): string {
   return normalizePhoneE164(phone)
 }
 
+export function toTitleCaseWords(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\b[\p{L}\p{N}]/gu, (char) => char.toUpperCase())
+}
+
 export function getStorageUrl(path: string | null) {
   if (!path) return '';
   if (path.startsWith('http')) return path;

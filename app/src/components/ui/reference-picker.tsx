@@ -37,12 +37,21 @@ export function ReferencePicker({
     const [isOpen, setIsOpen] = useState(false)
     const [selectedRef, setSelectedRef] = useState<ReferenceUser | null>(null)
     const [resolvedName, setResolvedName] = useState<string | null>(null)
+    const [hasTriedResolve, setHasTriedResolve] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
     // Resolve initial value to a display name
     useEffect(() => {
+        setHasTriedResolve(false)
+
+        if (!value) {
+            setResolvedName(null)
+            setSelectedRef(null)
+            return
+        }
+
         if (value && !selectedRef) {
             // Try to resolve the existing referral_phone to a name
             const resolveExisting = async () => {
@@ -50,24 +59,29 @@ export function ReferencePicker({
                     const res = await fetch(`/api/reference/search?q=${encodeURIComponent(value)}&limit=5`)
                     const data = await res.json()
                     if (data.success && data.results?.length > 0) {
-                        // Find exact match by phone
-                        const match = data.results.find((r: ReferenceUser) =>
-                            r.phone === value || r.phone?.replace(/\D/g, '') === value?.replace(/\D/g, '')
-                        )
+                        const match = data.results.find((r: ReferenceUser) => r.user_id === referenceUserId)
+                            || data.results.find((r: ReferenceUser) =>
+                                r.phone === value || r.phone?.replace(/\D/g, '') === value?.replace(/\D/g, '')
+                            )
                         if (match) {
                             setSelectedRef(match)
                             setResolvedName(match.full_name)
                         } else {
                             setResolvedName(null)
                         }
+                    } else {
+                        setResolvedName(null)
                     }
                 } catch {
                     // Silently fail - just show raw value
+                    setResolvedName(null)
+                } finally {
+                    setHasTriedResolve(true)
                 }
             }
             resolveExisting()
         }
-    }, [value])
+    }, [referenceUserId, value, selectedRef])
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -117,6 +131,7 @@ export function ReferencePicker({
     const handleSelect = (ref: ReferenceUser) => {
         setSelectedRef(ref)
         setResolvedName(ref.full_name)
+        setHasTriedResolve(true)
         setSearchTerm('')
         setIsOpen(false)
         setResults([])
@@ -126,6 +141,7 @@ export function ReferencePicker({
     const handleClear = () => {
         setSelectedRef(null)
         setResolvedName(null)
+        setHasTriedResolve(false)
         setSearchTerm('')
         setResults([])
         setIsOpen(false)
@@ -143,6 +159,8 @@ export function ReferencePicker({
     const displayValue = selectedRef
         ? selectedRef.full_name
         : resolvedName || value || ''
+
+    const showLegacyReferenceWarning = Boolean(value && !selectedRef && !resolvedName && hasTriedResolve)
 
     return (
         <div ref={containerRef} className={cn('relative', className)}>
@@ -232,6 +250,12 @@ export function ReferencePicker({
                     <p className="text-sm text-muted-foreground">No eligible references found</p>
                     <p className="text-xs text-muted-foreground/70 mt-1">Only users marked as eligible references appear here</p>
                 </div>
+            )}
+
+            {showLegacyReferenceWarning && (
+                <p className="mt-1 text-xs text-amber-700">
+                    Stored reference {value} is not matched to a current eligible reference. Please update the latest reference.
+                </p>
             )}
         </div>
     )

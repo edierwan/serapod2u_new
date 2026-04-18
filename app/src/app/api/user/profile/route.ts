@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
+import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
+import { getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
 
 /**
  * GET /api/user/profile
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
         id,
         email,
         full_name,
+        call_name,
         avatar_url,
         phone,
         referral_phone,
@@ -97,13 +101,20 @@ export async function GET(request: NextRequest) {
       organizationId: userProfile.organization_id
     })
 
+    const linkValidation = await resolveProfileLinkValidation(supabaseAdmin, {
+      organizationId: userProfile.organization_id,
+      shopName: userProfile.shop_name,
+      referralPhone: userProfile.referral_phone,
+    })
+
     // Fetch organization info if organization_id exists
     let isShop = false
-    let orgName = ''
+    let orgName = linkValidation.organizationName || ''
     let bankId = null
     let bankName = null
     let bankAccountNumber = null
     let bankAccountHolderName = null
+    const referenceDisplayName = linkValidation.referenceDisplayName
 
     if (userProfile.organization_id) {
       const { data: orgData, error: orgError } = await supabaseAdmin
@@ -144,56 +155,32 @@ export async function GET(request: NextRequest) {
 
     // Fetch points balance
     // GUEST/CONSUMER users always use consumer balance, even if linked to a shop org
-    const isConsumerRole = ['GUEST', 'CONSUMER', 'USER'].includes(userProfile.role_code)
-    let pointsBalance = 0
-    if (isShop && userProfile.organization_id && !isConsumerRole) {
-      const { data: balanceData } = await supabaseAdmin
-        .from('v_shop_points_balance')
-        .select('current_balance')
-        .eq('shop_id', userProfile.organization_id)
-        .maybeSingle()
-
-      pointsBalance = balanceData?.current_balance || 0
-    } else if (!userProfile.organization_id || isConsumerRole) {
-      // Independent Consumer - Prefer the consolidated view used by Admin monitor
-      const { data: balanceData, error: balanceError } = await supabaseAdmin
-        .from('v_consumer_points_balance')
-        .select('current_balance')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!balanceError && balanceData?.current_balance !== undefined && balanceData?.current_balance !== null) {
-        pointsBalance = balanceData.current_balance
-        console.log(`💰 Points balance for consumer ${user.id} from view: ${pointsBalance}`)
-      } else {
-        // Fallback: Use shop_points_ledger if view is unavailable
-        const { data: ledgerData, error: ledgerError } = await supabaseAdmin
-          .from('shop_points_ledger')
-          .select('points_change')
-          .eq('consumer_id', user.id)
-
-        if (!ledgerError && ledgerData && ledgerData.length > 0) {
-          pointsBalance = ledgerData.reduce((sum, row) => sum + (row.points_change || 0), 0)
-          console.log(`💰 Points balance for consumer ${user.id} from ledger: ${pointsBalance}`)
-        } else {
-          // Final fallback: Query consumer_qr_scans directly
-          const { data: scans } = await supabaseAdmin
-            .from('consumer_qr_scans')
-            .select('points_amount')
-            .eq('consumer_id', user.id)
-            .eq('collected_points', true)
-
-          if (scans && scans.length > 0) {
-            pointsBalance = scans.reduce((sum, scan) => sum + (scan.points_amount || 0), 0)
-          }
-        }
-      }
-    }
+    const pointsBalance = (await resolveTrustedPointsBalance(supabaseAdmin, {
+      userId: user.id,
+      roleCode: userProfile.role_code,
+      organizationId: userProfile.organization_id,
+    })).balance
 
     // Add cache-busting to avatar URL
     const avatarUrlWithCache = userProfile.avatar_url
       ? `${userProfile.avatar_url.split('?')[0]}?v=${Date.now()}`
       : null
+
+    // Compute profile completeness for collecting points
+    const shopComplete = linkValidation.isShopLinkValid
+    const referenceComplete = linkValidation.isReferenceLinkValid
+    const profileIncomplete = !shopComplete || !referenceComplete
+    const missingShop = !linkValidation.hasShopValue
+    const missingReference = !linkValidation.hasReferenceValue
+    const profileIncompleteMessage = profileIncomplete
+      ? getIncompleteProfileMessage({
+        name: userProfile.full_name,
+        missingShop,
+        missingReference,
+        invalidShop: linkValidation.invalidShop,
+        invalidReference: linkValidation.invalidReference,
+      })
+      : ''
 
     return NextResponse.json({
       success: true,
@@ -201,9 +188,18 @@ export async function GET(request: NextRequest) {
         id: userProfile.id,
         email: userProfile.email || user.email,
         fullName: userProfile.full_name || '',
+        callName: userProfile.call_name || '',
         avatarUrl: avatarUrlWithCache,
         phone: userProfile.phone || '',
         referralPhone: userProfile.referral_phone || '',
+        referenceUserId: linkValidation.referenceUserId,
+        referenceDisplayName,
+        invalidReference: linkValidation.invalidReference,
+        invalidShop: linkValidation.invalidShop,
+        isReferenceValid: linkValidation.isReferenceLinkValid,
+        isShopValid: linkValidation.isShopLinkValid,
+        profileIncomplete,
+        profileIncompleteMessage,
         address: userProfile.address || '',
         shop_name: userProfile.shop_name,
         consumerClaimConfirmedAt: userProfile.consumer_claim_confirmed_at || null,

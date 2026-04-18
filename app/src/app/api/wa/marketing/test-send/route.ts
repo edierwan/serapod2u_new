@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import { getWhatsAppConfig, callGateway, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
+import { normalizePhoneE164 } from '@/utils/phone';
+import { buildDailyReportingData } from '@/lib/reporting/dailyReporting';
 
 // Normalize phone number to E.164 format for Malaysian/Chinese numbers
 function normalizePhone(phone: string): string {
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { message, number, test_user_id, test_phone } = body;
+    const { message, number, test_user_id, test_phone, objective, reporting } = body;
 
     // Get WhatsApp config using shared utility
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
@@ -177,8 +179,6 @@ export async function POST(request: Request) {
       .replace(/{points_balance}/g, resolvedPoints)
       .replace(/{short_link}/g, appUrl);
 
-    const phone = targetNumber.replace(/[^\d]/g, '');
-
     // Use the same gateway call as the working test in Settings
     const result = await callGateway(
       config.baseUrl,
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
       'POST',
       '/messages/send',
       {
-        to: phone,
+        to: targetNumber,
         text: processedMessage,
       },
       config.tenantId
@@ -198,16 +198,128 @@ export async function POST(request: Request) {
       userId: user.id,
       orgId: userProfile.organization_id,
       metadata: {
-        recipient: phone,
+        recipient: targetNumber,
         result,
         tenantId: config.tenantId,
       },
     });
 
-    if (!result.ok) {
+    const isSuccess = result?.success ?? result?.ok ?? false;
+    const providerMessageId = result?.message_id || result?.provider_message_id || null;
+
+    if (!isSuccess) {
       return NextResponse.json({
         error: result.error || 'Failed to send WhatsApp message via gateway'
       }, { status: 500 });
+    }
+
+    if (objective === 'Daily Reporting' && reporting?.enable_reply_action !== false) {
+      const reportType = reporting?.report_type === 'weekly' ? 'weekly' : 'daily';
+      const referenceDate = reporting?.referenceDate ? new Date(reporting.referenceDate) : new Date();
+      const reportData = await buildDailyReportingData(supabaseAdmin, {
+        reportType,
+        referenceDate,
+      });
+      const normalizedRecipientPhone = normalizePhoneE164(targetNumber);
+      const nowIso = new Date().toISOString();
+      const expiresAtIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: campaignRow, error: campaignError } = await (supabaseAdmin as any)
+        .from('marketing_campaigns')
+        .insert({
+          org_id: userProfile.organization_id,
+          name: `[TEST] Daily Reporting ${new Date().toLocaleString('en-MY')}`,
+          objective: 'Daily Reporting',
+          status: 'archived',
+          audience_filters: {
+            mode: 'test_send',
+            reporting: {
+              report_type: reportType,
+              enable_reply_action: true,
+            },
+            is_test: true,
+          },
+          estimated_count: 1,
+          message_body: processedMessage,
+          quiet_hours_enabled: false,
+          total_recipients: 1,
+          sent_count: 1,
+          delivered_count: 1,
+          created_by: user.id,
+          sent_at: nowIso,
+          completed_at: nowIso,
+          created_at: nowIso,
+          updated_at: nowIso,
+        })
+        .select('id')
+        .single();
+
+      if (campaignError) {
+        console.error('[Test Send] Failed to create Daily Reporting test campaign:', campaignError);
+      } else {
+        const { data: sendLogRow, error: sendLogError } = await (supabaseAdmin as any)
+          .from('marketing_send_logs')
+          .insert({
+            campaign_id: campaignRow.id,
+            company_id: userProfile.organization_id,
+            recipient_phone: normalizedRecipientPhone,
+            recipient_name: resolvedName,
+            status: 'delivered',
+            report_date: reportData.reportDateIso,
+            report_type: reportData.reportType,
+            message_snapshot: processedMessage,
+            reply_enabled: true,
+            sent_by: user.id,
+            sent_at: nowIso,
+            delivered_at: nowIso,
+            provider_message_id: providerMessageId,
+            provider_response: result,
+            created_at: nowIso,
+            updated_at: nowIso,
+          })
+          .select('id')
+          .single();
+
+        if (sendLogError) {
+          console.error('[Test Send] Failed to create Daily Reporting test send log:', sendLogError);
+        } else {
+          const { error: sessionError } = await (supabaseAdmin as any)
+            .from('marketing_report_sessions')
+            .insert({
+              campaign_id: campaignRow.id,
+              send_log_id: sendLogRow.id,
+              org_id: userProfile.organization_id,
+              recipient_phone: normalizedRecipientPhone,
+              recipient_name: resolvedName,
+              report_date: reportData.reportDateIso,
+              report_type: reportData.reportType,
+              period_start: reportData.periodStartIso,
+              period_end: reportData.periodEndIso,
+              unique_customer_count: reportData.uniqueCustomers,
+              unique_customer_details: reportData.uniqueCustomerDetails,
+              message_snapshot: processedMessage,
+              provider_message_id: providerMessageId,
+              provider_chat_id: normalizedRecipientPhone,
+              provider_context: {
+                tenant_id: config.tenantId,
+                source: 'marketing_test_send',
+                is_test: true,
+              },
+              reply_enabled: true,
+              last_detail_page_sent: 0,
+              expires_at: expiresAtIso,
+              last_outbound_message_id: providerMessageId,
+              last_outbound_sent_at: nowIso,
+              status: 'active',
+              created_at: nowIso,
+              updated_at: nowIso,
+            });
+
+          if (sessionError) {
+            console.error('[Test Send] Failed to create Daily Reporting test session:', sessionError);
+          }
+        }
+      }
     }
 
     return NextResponse.json({ success: true, sent_to: targetNumber });
