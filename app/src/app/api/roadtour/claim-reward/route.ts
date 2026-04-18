@@ -254,8 +254,13 @@ export async function POST(request: NextRequest) {
         }
 
         const orgType = userProfile?.organizations?.org_type_code || null
-        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || 'shop'
-        const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || 'Unknown consumer'
+        const duplicateShopName = userProfile?.organizations?.org_name?.trim() || null
+        const consumerDisplayName = userProfile?.full_name?.trim() || consumer_name?.trim() || userPhone || null
+        const duplicateMessage = consumerDisplayName && duplicateShopName
+            ? `Hi ${consumerDisplayName} from ${duplicateShopName}, you have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
+            : consumerDisplayName
+                ? `Hi ${consumerDisplayName}, you have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
+                : `You have already claimed the reward for this Road Tour campaign. Thank you for being part of our RoadTour.`
         const requestedClaimLane = null
         const laneExperience = resolveClaimLaneExperience({
             claimMode: pointClaimSettings.claimMode,
@@ -502,13 +507,13 @@ export async function POST(request: NextRequest) {
                     notificationType: 'duplicate',
                     campaignName,
                     referenceName,
-                    shopName: duplicateShopName,
-                    consumerName: consumerDisplayName,
+                    shopName: duplicateShopName || 'Unknown shop',
+                    consumerName: consumerDisplayName || 'Unknown consumer',
                     canonicalPath: qrRecord?.canonical_path || null,
                     geoLabel: resolvedGeoLabel,
-                    message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+                    message: duplicateMessage,
                 })
-                return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
+                return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
             }
             await notifyClaim({
                 scanEventId: scanEvent.id,
@@ -518,8 +523,8 @@ export async function POST(request: NextRequest) {
                 notificationType: 'failed',
                 campaignName,
                 referenceName,
-                shopName: duplicateShopName,
-                consumerName: consumerDisplayName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
                 canonicalPath: qrRecord?.canonical_path || null,
                 geoLabel: resolvedGeoLabel,
                 message: rewardError.message || 'Reward processing failed.',
@@ -538,13 +543,13 @@ export async function POST(request: NextRequest) {
                 notificationType: 'duplicate',
                 campaignName,
                 referenceName,
-                shopName: duplicateShopName,
-                consumerName: consumerDisplayName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
                 canonicalPath: qrRecord?.canonical_path || null,
                 geoLabel: resolvedGeoLabel,
-                message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`,
+                message: duplicateMessage,
             })
-            return NextResponse.json({ message: `Your ${duplicateShopName} have already claimed the reward for this Road Tour campaign.`, code: 'DUPLICATE' }, { status: 409 })
+            return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
         }
 
         const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
@@ -557,8 +562,8 @@ export async function POST(request: NextRequest) {
             notificationType: 'success',
             campaignName,
             referenceName,
-            shopName: duplicateShopName,
-            consumerName: consumerDisplayName,
+            shopName: duplicateShopName || 'Unknown shop',
+            consumerName: consumerDisplayName || 'Unknown consumer',
             pointsAwarded: default_points,
             balanceAfter: totalBalance,
             canonicalPath: qrRecord?.canonical_path || null,
