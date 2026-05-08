@@ -60,6 +60,11 @@ interface ConsumerProfile {
   email: string | null
 }
 
+interface ContactLines {
+  phone: string
+  email: string
+}
+
 // ── Constants ──────────────────────────────────────────────────────────
 const COLORS = {
   primary: '#3b82f6',
@@ -351,13 +356,18 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     [period]
   )
 
+  const formatContactLines = (phone?: string | null, email?: string | null): ContactLines => ({
+    phone: phone || '-',
+    email: email || '-',
+  })
+
   const activeShopRows = useMemo(() => {
     const shopMap = new Map<string, {
       shopId: string
       shopName: string
-      shopCode: string
       contactName: string
-      contactValue: string
+      contactPhone: string
+      contactEmail: string
       totalScans: number
       lastScanDate: string | null
       pointsIssued: number
@@ -369,16 +379,17 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       const info = shops.get(scan.shop_id)
       const contact = shopContacts.get(scan.shop_id)
       const existing = shopMap.get(scan.shop_id)
+      const contactLines = formatContactLines(contact?.phone, contact?.email)
       const nextLastScan = !existing?.lastScanDate || (scan.scanned_at && scan.scanned_at > existing.lastScanDate)
         ? scan.scanned_at
         : existing?.lastScanDate || null
 
       shopMap.set(scan.shop_id, {
         shopId: scan.shop_id,
-        shopName: info ? `${info.org_name}${info.branch ? ` (${info.branch})` : ''}` : scan.shop_id,
-        shopCode: info?.org_code || scan.shop_id,
+        shopName: info ? `${info.org_name}${info.branch ? ` (${info.branch})` : ''}` : 'Unknown Shop',
         contactName: contact?.full_name || '—',
-        contactValue: [contact?.phone, contact?.email].filter(Boolean).join(' / ') || '—',
+        contactPhone: contactLines.phone,
+        contactEmail: contactLines.email,
         totalScans: (existing?.totalScans || 0) + 1,
         lastScanDate: nextLastScan || null,
         pointsIssued: (existing?.pointsIssued || 0) + (scan.points_amount || 0),
@@ -393,7 +404,8 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     const consumerMap = new Map<string, {
       consumerId: string
       consumerName: string
-      contactValue: string
+      phone: string
+      email: string
       shopName: string
       totalScans: number
       firstScanDate: string | null
@@ -405,14 +417,16 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     periodScans.forEach((scan) => {
       if (!scan.consumer_id) return
       const profile = consumerProfiles.get(scan.consumer_id)
+      const contactLines = formatContactLines(profile?.phone, profile?.email)
       const shopInfo = scan.shop_id ? shops.get(scan.shop_id) : null
       const shopName = shopInfo ? `${shopInfo.org_name}${shopInfo.branch ? ` (${shopInfo.branch})` : ''}` : '—'
       const existing = consumerMap.get(scan.consumer_id)
 
       consumerMap.set(scan.consumer_id, {
         consumerId: scan.consumer_id,
-        consumerName: profile?.full_name || `Consumer ${scan.consumer_id.slice(0, 8)}`,
-        contactValue: [profile?.phone, profile?.email].filter(Boolean).join(' / ') || '—',
+        consumerName: profile?.full_name || '—',
+        phone: contactLines.phone,
+        email: contactLines.email,
         shopName: scan.scanned_at && (!existing?.lastScanDate || scan.scanned_at >= existing.lastScanDate) ? shopName : existing?.shopName || shopName,
         totalScans: (existing?.totalScans || 0) + 1,
         firstScanDate: !existing?.firstScanDate || (scan.scanned_at && scan.scanned_at < existing.firstScanDate)
@@ -433,7 +447,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     const query = detailSearch.trim().toLowerCase()
     if (!query || detailDialog !== 'shops') return activeShopRows
     return activeShopRows.filter((row) =>
-      [row.shopName, row.shopCode, row.contactName, row.contactValue, row.status]
+      [row.shopName, row.contactName, row.contactPhone, row.contactEmail, row.status]
         .join(' ')
         .toLowerCase()
         .includes(query)
@@ -444,7 +458,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     const query = detailSearch.trim().toLowerCase()
     if (!query || detailDialog !== 'consumers') return consumerRows
     return consumerRows.filter((row) =>
-      [row.consumerId, row.consumerName, row.contactValue, row.shopName, row.status]
+      [row.consumerName, row.phone, row.email, row.shopName, row.status]
         .join(' ')
         .toLowerCase()
         .includes(query)
@@ -809,7 +823,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
 
           <div className="relative mb-3">
             <Input
-              placeholder={detailDialog === 'shops' ? 'Search shops, code, contact, phone, or email...' : 'Search consumers, phone, email, or shop...'}
+              placeholder={detailDialog === 'shops' ? 'Search shops, contact, phone, or email...' : 'Search consumers, phone, email, or shop...'}
               value={detailSearch}
               onChange={(event) => setDetailSearch(event.target.value)}
               className="pl-3"
@@ -831,7 +845,6 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                   <thead className="sticky top-0 bg-background z-10 border-b">
                     <tr className="text-xs font-semibold uppercase text-muted-foreground">
                       <th className="px-3 py-2.5 text-left">Shop Name</th>
-                      <th className="px-3 py-2.5 text-left">Shop Code / ID</th>
                       <th className="px-3 py-2.5 text-left">Owner / Contact</th>
                       <th className="px-3 py-2.5 text-left">Phone / Email</th>
                       <th className="px-3 py-2.5 text-right">Total Scans</th>
@@ -844,9 +857,13 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                     {filteredActiveShopRows.map((row) => (
                       <tr key={row.shopId} className="hover:bg-muted/30">
                         <td className="px-3 py-2.5 font-medium">{row.shopName}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{row.shopCode}</td>
                         <td className="px-3 py-2.5">{row.contactName}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{row.contactValue}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          <div className="space-y-0.5">
+                            <div>{row.contactPhone}</div>
+                            <div>{row.contactEmail}</div>
+                          </div>
+                        </td>
                         <td className="px-3 py-2.5 text-right font-semibold">{row.totalScans.toLocaleString()}</td>
                         <td className="px-3 py-2.5 text-right text-muted-foreground">{row.lastScanDate ? format(new Date(row.lastScanDate), 'dd MMM yyyy HH:mm') : '—'}</td>
                         <td className="px-3 py-2.5 text-right">{row.pointsIssued.toLocaleString()}</td>
@@ -864,7 +881,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-background z-10 border-b">
                   <tr className="text-xs font-semibold uppercase text-muted-foreground">
-                    <th className="px-3 py-2.5 text-left">Consumer Name / ID</th>
+                    <th className="px-3 py-2.5 text-left">Consumer Name</th>
                     <th className="px-3 py-2.5 text-left">Phone / Email</th>
                     <th className="px-3 py-2.5 text-left">Shop Name</th>
                     <th className="px-3 py-2.5 text-right">Total Scans</th>
@@ -877,13 +894,13 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                 <tbody className="divide-y divide-border/50">
                   {filteredConsumerRows.map((row) => (
                     <tr key={row.consumerId} className="hover:bg-muted/30">
-                      <td className="px-3 py-2.5 font-medium">
-                        <div className="min-w-0">
-                          <div>{row.consumerName}</div>
-                          <div className="text-xs text-muted-foreground">{row.consumerId}</div>
+                      <td className="px-3 py-2.5 font-medium">{row.consumerName}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
+                        <div className="space-y-0.5">
+                          <div>{row.phone}</div>
+                          <div>{row.email}</div>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{row.contactValue}</td>
                       <td className="px-3 py-2.5">{row.shopName}</td>
                       <td className="px-3 py-2.5 text-right font-semibold">{row.totalScans.toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-right text-muted-foreground">{row.firstScanDate ? format(new Date(row.firstScanDate), 'dd MMM yyyy HH:mm') : '—'}</td>

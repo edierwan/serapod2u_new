@@ -138,9 +138,7 @@ interface ManufacturerRow {
 interface StrategyInsightDetailRow {
   variantId: string
   productName: string
-  sku: string
-  category: string
-  manufacturer: string
+  variantName: string
   unitsOrdered: number
   revenue: number
   currentStock: number
@@ -727,9 +725,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       detailRows.set(variantId, {
         variantId,
         productName: product?.product_name || variant.variant_name,
-        sku: variant.manufacturer_sku || variant.variant_code || product?.product_code || variantId,
-        category: product?.category_id ? categoryMap.get(product.category_id) || 'Uncategorized' : 'Uncategorized',
-        manufacturer: product?.manufacturer_id ? manufacturerMap.get(product.manufacturer_id) || '—' : '—',
+        variantName: variant.variant_name || '-',
         unitsOrdered: current.units,
         revenue: current.revenue,
         currentStock,
@@ -771,7 +767,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       promo,
       top,
     }
-  }, [periodItems, comparisonItems, inventory, variantMap, productMap, categoryMap, manufacturerMap, orderItems, orderDateMap])
+  }, [periodItems, comparisonItems, inventory, variantMap, productMap, orderItems, orderDateMap])
 
   const insightConfig = useMemo(() => ({
     rising: {
@@ -825,7 +821,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
     const query = insightSearch.trim().toLowerCase()
     if (!query) return activeInsightRows
     return activeInsightRows.filter((row) =>
-      [row.productName, row.sku, row.category, row.manufacturer, row.demandTrend, row.statusRecommendation]
+      [row.productName, row.variantName, row.demandTrend, row.statusRecommendation]
         .join(' ')
         .toLowerCase()
         .includes(query)
@@ -1543,7 +1539,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by product, SKU, category, manufacturer, or recommendation..."
+              placeholder="Search by product, variant, demand trend, or recommendation..."
               value={insightSearch}
               onChange={(event) => setInsightSearch(event.target.value)}
               className="pl-9"
@@ -1564,9 +1560,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                 <thead className="sticky top-0 bg-background z-10 border-b">
                   <tr className="text-xs font-semibold uppercase text-muted-foreground">
                     <th className="px-3 py-2.5 text-left">Product Name</th>
-                    <th className="px-3 py-2.5 text-left">SKU</th>
-                    <th className="px-3 py-2.5 text-left">Category</th>
-                    <th className="px-3 py-2.5 text-left">Manufacturer</th>
+                    <th className="px-3 py-2.5 text-left">Variant</th>
                     <th className="px-3 py-2.5 text-right">Units Ordered</th>
                     <th className="px-3 py-2.5 text-right">Revenue</th>
                     <th className="px-3 py-2.5 text-right">Current Stock</th>
@@ -1580,9 +1574,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                   {filteredInsightRows.map((row) => (
                     <tr key={row.variantId} className="hover:bg-muted/30">
                       <td className="px-3 py-2.5 font-medium">{row.productName}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground">{row.sku}</td>
-                      <td className="px-3 py-2.5">{row.category}</td>
-                      <td className="px-3 py-2.5">{row.manufacturer}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{row.variantName}</td>
                       <td className="px-3 py-2.5 text-right font-semibold">{row.unitsOrdered.toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-right">RM {row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       <td className="px-3 py-2.5 text-right">{row.currentStock.toLocaleString()}</td>
