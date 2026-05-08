@@ -65,6 +65,7 @@ import {
   differenceInDays,
   parseISO,
 } from 'date-fns'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ProductsTabProps {
@@ -93,6 +94,8 @@ interface OrderItemRow {
 interface VariantRow {
   id: string
   variant_name: string
+  variant_code: string
+  manufacturer_sku: string | null
   product_id: string
   is_active: boolean
   base_cost: number | null
@@ -105,6 +108,7 @@ interface ProductRow {
   product_code: string
   is_active: boolean
   category_id: string | null
+  manufacturer_id: string | null
 }
 
 interface InventoryRow {
@@ -122,6 +126,28 @@ interface InventoryRow {
 interface CategoryRow {
   id: string
   category_name: string
+}
+
+type StrategyInsightKey = 'rising' | 'at_risk' | 'promo' | 'top'
+
+interface ManufacturerRow {
+  id: string
+  org_name: string
+}
+
+interface StrategyInsightDetailRow {
+  variantId: string
+  productName: string
+  sku: string
+  category: string
+  manufacturer: string
+  unitsOrdered: number
+  revenue: number
+  currentStock: number
+  growthPercent: number | null
+  demandTrend: string
+  lastOrderedDate: string | null
+  statusRecommendation: string
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -239,8 +265,11 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
   const [products, setProducts] = useState<ProductRow[]>([])
   const [inventory, setInventory] = useState<InventoryRow[]>([])
   const [categories, setCategories] = useState<CategoryRow[]>([])
+  const [manufacturers, setManufacturers] = useState<ManufacturerRow[]>([])
   const [showSkuModal, setShowSkuModal] = useState(false)
   const [skuSearch, setSkuSearch] = useState('')
+  const [selectedInsightKey, setSelectedInsightKey] = useState<StrategyInsightKey | null>(null)
+  const [insightSearch, setInsightSearch] = useState('')
 
   // ── Data Fetching ────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -255,10 +284,10 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
           .gte('created_at', last12Start),
         supabase
           .from('product_variants')
-          .select('id, variant_name, product_id, is_active, base_cost, suggested_retail_price'),
+          .select('id, variant_name, variant_code, manufacturer_sku, product_id, is_active, base_cost, suggested_retail_price'),
         supabase
           .from('products')
-          .select('id, product_name, product_code, is_active, category_id'),
+          .select('id, product_name, product_code, is_active, category_id, manufacturer_id'),
         supabase
           .from('product_inventory')
           .select('variant_id, organization_id, quantity_on_hand, quantity_available, quantity_allocated, reorder_point, average_cost, total_value, updated_at'),
@@ -287,6 +316,17 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       setProducts((productsRes.data || []) as unknown as ProductRow[])
       setInventory((inventoryRes.data || []) as unknown as InventoryRow[])
       setCategories((categoriesRes.data || []) as unknown as CategoryRow[])
+
+      const manufacturerIds = [...new Set(((productsRes.data || []) as ProductRow[]).map((product) => product.manufacturer_id).filter(Boolean))]
+      if (manufacturerIds.length > 0) {
+        const { data: manufacturerRows } = await supabase
+          .from('organizations')
+          .select('id, org_name')
+          .in('id', manufacturerIds)
+        setManufacturers((manufacturerRows || []) as ManufacturerRow[])
+      } else {
+        setManufacturers([])
+      }
     } catch (err) {
       console.error('ProductsTab fetch error:', err)
     }
@@ -322,6 +362,18 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
     return m
   }, [orders])
 
+  const categoryMap = useMemo(() => {
+    const m = new Map<string, string>()
+    categories.forEach((category) => m.set(category.id, category.category_name))
+    return m
+  }, [categories])
+
+  const manufacturerMap = useMemo(() => {
+    const m = new Map<string, string>()
+    manufacturers.forEach((manufacturer) => m.set(manufacturer.id, manufacturer.org_name))
+    return m
+  }, [manufacturers])
+
   // ── Period Filtering ─────────────────────────────────────────────────────
   const { start: periodStart, end: periodEnd } = useMemo(() => getDateRange(period), [period])
 
@@ -336,6 +388,30 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
   const periodItems = useMemo(
     () => orderItems.filter(item => periodOrderIds.has(item.order_id)),
     [orderItems, periodOrderIds]
+  )
+
+  const comparisonRange = useMemo(() => {
+    const dayCount = Math.max(differenceInDays(periodEnd, periodStart) + 1, 1)
+    return {
+      start: subDays(periodStart, dayCount),
+      end: subDays(periodStart, 1),
+    }
+  }, [periodEnd, periodStart])
+
+  const comparisonOrders = useMemo(() => {
+    const start = comparisonRange.start.toISOString()
+    const end = comparisonRange.end.toISOString()
+    return orders.filter((order) => order.created_at >= start && order.created_at <= end)
+  }, [comparisonRange.end, comparisonRange.start, orders])
+
+  const comparisonOrderIds = useMemo(
+    () => new Set(comparisonOrders.map((order) => order.id)),
+    [comparisonOrders]
+  )
+
+  const comparisonItems = useMemo(
+    () => orderItems.filter((item) => comparisonOrderIds.has(item.order_id)),
+    [comparisonOrderIds, orderItems]
   )
 
   // ── 1. KPI Metrics ──────────────────────────────────────────────────────
@@ -609,98 +685,162 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
   }, [periodItems, variantMap, productMap])
 
   // ── 7. Strategy Insights ─────────────────────────────────────────────────
-  const strategyInsights = useMemo(() => {
-    const now = new Date()
-    const last3Start = subMonths(now, 3).toISOString()
-    const prev3Start = subMonths(now, 6).toISOString()
+  const strategyInsightDetails = useMemo<Record<StrategyInsightKey, StrategyInsightDetailRow[]>>(() => {
+    const currentMetrics = new Map<string, { units: number; revenue: number }>()
+    const previousMetrics = new Map<string, { units: number; revenue: number }>()
+    const inventoryByVariant = new Map<string, number>()
 
-    const last3OrderIds = new Set(
-      orders.filter(o => o.created_at >= last3Start).map(o => o.id)
+    periodItems.forEach((item) => {
+      const current = currentMetrics.get(item.variant_id) || { units: 0, revenue: 0 }
+      current.units += item.qty || 0
+      current.revenue += item.line_total || 0
+      currentMetrics.set(item.variant_id, current)
+    })
+
+    comparisonItems.forEach((item) => {
+      const previous = previousMetrics.get(item.variant_id) || { units: 0, revenue: 0 }
+      previous.units += item.qty || 0
+      previous.revenue += item.line_total || 0
+      previousMetrics.set(item.variant_id, previous)
+    })
+
+    inventory.forEach((row) => {
+      inventoryByVariant.set(row.variant_id, (inventoryByVariant.get(row.variant_id) || 0) + (row.quantity_on_hand || 0))
+    })
+
+    const detailRows = new Map<string, StrategyInsightDetailRow>()
+    const allVariantIds = new Set<string>([
+      ...currentMetrics.keys(),
+      ...previousMetrics.keys(),
+      ...inventoryByVariant.keys(),
+    ])
+
+    allVariantIds.forEach((variantId) => {
+      const variant = variantMap.get(variantId)
+      if (!variant) return
+      const product = productMap.get(variant.product_id)
+      const current = currentMetrics.get(variantId) || { units: 0, revenue: 0 }
+      const previous = previousMetrics.get(variantId) || { units: 0, revenue: 0 }
+      const currentStock = inventoryByVariant.get(variantId) || 0
+      const growthPercent = previous.units > 0 ? ((current.units - previous.units) / previous.units) * 100 : null
+
+      detailRows.set(variantId, {
+        variantId,
+        productName: product?.product_name || variant.variant_name,
+        sku: variant.manufacturer_sku || variant.variant_code || product?.product_code || variantId,
+        category: product?.category_id ? categoryMap.get(product.category_id) || 'Uncategorized' : 'Uncategorized',
+        manufacturer: product?.manufacturer_id ? manufacturerMap.get(product.manufacturer_id) || '—' : '—',
+        unitsOrdered: current.units,
+        revenue: current.revenue,
+        currentStock,
+        growthPercent,
+        demandTrend: growthPercent === null ? (current.units > 0 ? 'New' : 'No trend') : growthPercent >= 20 ? 'Rising' : growthPercent <= -20 ? 'Declining' : 'Stable',
+        lastOrderedDate: orderItems
+          .filter((item) => item.variant_id === variantId)
+          .map((item) => orderDateMap.get(item.order_id) || null)
+          .filter(Boolean)
+          .sort()
+          .at(-1) || null,
+        statusRecommendation: 'Monitor performance',
+      })
+    })
+
+    const rising = Array.from(detailRows.values())
+      .filter((row) => row.growthPercent !== null && row.growthPercent > 20)
+      .map((row) => ({ ...row, statusRecommendation: 'Scale inventory and protect availability' }))
+      .sort((left, right) => (right.growthPercent || 0) - (left.growthPercent || 0))
+
+    const atRisk = Array.from(detailRows.values())
+      .filter((row) => row.growthPercent !== null && row.growthPercent < -30)
+      .map((row) => ({ ...row, statusRecommendation: 'Review sell-through and address demand drop' }))
+      .sort((left, right) => (left.growthPercent || 0) - (right.growthPercent || 0))
+
+    const promo = Array.from(detailRows.values())
+      .filter((row) => row.currentStock > 0 && row.unitsOrdered < row.currentStock * 0.1)
+      .map((row) => ({ ...row, statusRecommendation: 'Consider promotion, bundle, or markdown' }))
+      .sort((left, right) => right.currentStock - left.currentStock)
+
+    const top = Array.from(detailRows.values())
+      .filter((row) => row.unitsOrdered > 0 && row.growthPercent !== null && row.growthPercent >= -10)
+      .map((row) => ({ ...row, statusRecommendation: 'Sustain supply and prioritize replenishment' }))
+      .sort((left, right) => right.unitsOrdered - left.unitsOrdered)
+
+    return {
+      rising,
+      at_risk: atRisk,
+      promo,
+      top,
+    }
+  }, [periodItems, comparisonItems, inventory, variantMap, productMap, categoryMap, manufacturerMap, orderItems, orderDateMap])
+
+  const insightConfig = useMemo(() => ({
+    rising: {
+      icon: <Rocket className="h-5 w-5" />,
+      title: 'Rising Stars',
+      description: 'Products with >20% growth vs the previous equivalent period',
+      color: COLORS.success,
+      bgColor: 'bg-emerald-500/10',
+      borderColor: 'border-emerald-500/30',
+    },
+    at_risk: {
+      icon: <ShieldAlert className="h-5 w-5" />,
+      title: 'At Risk',
+      description: 'Products with declining demand trend',
+      color: COLORS.danger,
+      bgColor: 'bg-red-500/10',
+      borderColor: 'border-red-500/30',
+    },
+    promo: {
+      icon: <Megaphone className="h-5 w-5" />,
+      title: 'Promotion Candidates',
+      description: 'High inventory with low recent demand',
+      color: COLORS.warning,
+      bgColor: 'bg-amber-500/10',
+      borderColor: 'border-amber-500/30',
+    },
+    top: {
+      icon: <Crown className="h-5 w-5" />,
+      title: 'Top Performers',
+      description: 'Consistent high demand products',
+      color: COLORS.primary,
+      bgColor: 'bg-blue-500/10',
+      borderColor: 'border-blue-500/30',
+    },
+  }), [])
+
+  const strategyInsights = useMemo(() => (
+    (Object.entries(insightConfig) as Array<[StrategyInsightKey, typeof insightConfig[StrategyInsightKey]]>).map(([key, config]) => ({
+      key,
+      ...config,
+      value: strategyInsightDetails[key].length,
+    }))
+  ), [insightConfig, strategyInsightDetails])
+
+  const activeInsightRows = useMemo(
+    () => (selectedInsightKey ? strategyInsightDetails[selectedInsightKey] : []),
+    [selectedInsightKey, strategyInsightDetails]
+  )
+
+  const filteredInsightRows = useMemo(() => {
+    const query = insightSearch.trim().toLowerCase()
+    if (!query) return activeInsightRows
+    return activeInsightRows.filter((row) =>
+      [row.productName, row.sku, row.category, row.manufacturer, row.demandTrend, row.statusRecommendation]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
     )
-    const prev3OrderIds = new Set(
-      orders.filter(o => o.created_at >= prev3Start && o.created_at < last3Start).map(o => o.id)
-    )
+  }, [activeInsightRows, insightSearch])
 
-    const last3Map = new Map<string, number>()
-    const prev3Map = new Map<string, number>()
+  const periodLabel = useMemo(
+    () => PERIOD_OPTIONS.find((option) => option.value === period)?.label || 'Selected Period',
+    [period]
+  )
 
-    orderItems.forEach(item => {
-      if (last3OrderIds.has(item.order_id)) {
-        last3Map.set(item.variant_id, (last3Map.get(item.variant_id) || 0) + (item.qty || 0))
-      }
-      if (prev3OrderIds.has(item.order_id)) {
-        prev3Map.set(item.variant_id, (prev3Map.get(item.variant_id) || 0) + (item.qty || 0))
-      }
-    })
-
-    const risingStars: string[] = []
-    const atRisk: string[] = []
-    const topPerformers: string[] = []
-
-    const allV = new Set([...last3Map.keys(), ...prev3Map.keys()])
-    allV.forEach(vid => {
-      const recent = last3Map.get(vid) || 0
-      const previous = prev3Map.get(vid) || 0
-      if (previous > 0 && recent > previous * 1.2) risingStars.push(vid)
-      if (previous > 0 && recent < previous * 0.7) atRisk.push(vid)
-      if (recent > 0 && previous > 0 && recent >= previous * 0.9) topPerformers.push(vid)
-    })
-
-    // Promotion candidates: high inventory + low recent demand
-    const invByVariant = new Map<string, number>()
-    inventory.forEach(inv => {
-      invByVariant.set(inv.variant_id, (invByVariant.get(inv.variant_id) || 0) + (inv.quantity_on_hand || 0))
-    })
-
-    const promotionCandidates: string[] = []
-    invByVariant.forEach((qty, vid) => {
-      const recentDemand = last3Map.get(vid) || 0
-      if (qty > 0 && recentDemand < qty * 0.1) promotionCandidates.push(vid)
-    })
-
-    return [
-      {
-        key: 'rising',
-        icon: <Rocket className="h-5 w-5" />,
-        title: 'Rising Stars',
-        value: risingStars.length,
-        description: 'Products with >20% growth in last 3 months',
-        color: COLORS.success,
-        bgColor: 'bg-emerald-500/10',
-        borderColor: 'border-emerald-500/30',
-      },
-      {
-        key: 'at_risk',
-        icon: <ShieldAlert className="h-5 w-5" />,
-        title: 'At Risk',
-        value: atRisk.length,
-        description: 'Products with declining demand trend',
-        color: COLORS.danger,
-        bgColor: 'bg-red-500/10',
-        borderColor: 'border-red-500/30',
-      },
-      {
-        key: 'promo',
-        icon: <Megaphone className="h-5 w-5" />,
-        title: 'Promotion Candidates',
-        value: promotionCandidates.length,
-        description: 'High inventory with low recent demand',
-        color: COLORS.warning,
-        bgColor: 'bg-amber-500/10',
-        borderColor: 'border-amber-500/30',
-      },
-      {
-        key: 'top',
-        icon: <Crown className="h-5 w-5" />,
-        title: 'Top Performers',
-        value: topPerformers.length,
-        description: 'Consistent high demand products',
-        color: COLORS.primary,
-        bgColor: 'bg-blue-500/10',
-        borderColor: 'border-blue-500/30',
-      },
-    ]
-  }, [orders, orderItems, inventory])
+  const openInsightDialog = (key: StrategyInsightKey) => {
+    setInsightSearch('')
+    setSelectedInsightKey(key)
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -757,6 +897,42 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         </div>
       </div>
 
+      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Zap className="h-4 w-4 text-amber-500" />
+            Product Strategy Insights
+          </CardTitle>
+          <CardDescription>Data-driven recommendations based on product performance analysis</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {strategyInsights.map((insight) => (
+              <Card
+                key={insight.key}
+                className={`border shadow-none ${insight.bgColor} ${insight.borderColor} transition-all hover:-translate-y-0.5 hover:shadow-lg`}
+              >
+                <button
+                  type="button"
+                  onClick={() => openInsightDialog(insight.key)}
+                  className="w-full rounded-lg p-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                  style={{ ['--tw-ring-color' as never]: insight.color }}
+                >
+                  <div className="flex items-center gap-2 mb-3" style={{ color: insight.color }}>
+                    {insight.icon}
+                    <span className="text-sm font-semibold">{insight.title}</span>
+                  </div>
+                  <p className="text-3xl font-bold mb-1" style={{ color: insight.color }}>
+                    {insight.value}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{insight.description}</p>
+                </button>
+              </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── 1. KPI Cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {/* Active SKUs */}
@@ -766,8 +942,10 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               <Boxes className="h-4 w-4 text-blue-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Active SKUs</span>
             </div>
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
-              <AnimatedCounter value={kpis.activeSKUs} />
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+              <ExecutiveKpiValue className="text-blue-600 dark:text-blue-400">
+                <AnimatedCounter value={kpis.activeSKUs} />
+              </ExecutiveKpiValue>
               <Eye className="h-4 w-4 text-blue-400 opacity-60" />
             </div>
             <p className="text-xs text-muted-foreground mt-1">click to view SKU details</p>
@@ -782,9 +960,9 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               <ShoppingCart className="h-4 w-4 text-emerald-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Units Ordered</span>
             </div>
-            <div className="text-2xl font-bold">
+            <ExecutiveKpiValue>
               <AnimatedCounter value={kpis.totalUnits} />
-            </div>
+            </ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">in period</p>
           </CardContent>
           <div className="h-1 bg-gradient-to-r from-emerald-500 to-emerald-400" />
@@ -797,9 +975,9 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               <TrendingUp className="h-4 w-4 text-purple-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Revenue</span>
             </div>
-            <div className="text-2xl font-bold">
+            <ExecutiveKpiValue>
               <AnimatedCounter value={kpis.totalRevenue} prefix="RM " decimals={0} />
-            </div>
+            </ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">line total</p>
           </CardContent>
           <div className="h-1 bg-gradient-to-r from-purple-500 to-purple-400" />
@@ -812,9 +990,9 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               <Layers className="h-4 w-4 text-amber-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Inventory Value</span>
             </div>
-            <div className="text-2xl font-bold">
+            <ExecutiveKpiValue>
               <AnimatedCounter value={kpis.inventoryValue} prefix="RM " decimals={0} />
-            </div>
+            </ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">total stock</p>
           </CardContent>
           <div className="h-1 bg-gradient-to-r from-amber-500 to-amber-400" />
@@ -827,9 +1005,9 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
               <Zap className="h-4 w-4 text-cyan-500" />
               <span className="text-xs font-medium uppercase tracking-wide">Turnover Ratio</span>
             </div>
-            <div className="text-2xl font-bold">
+            <ExecutiveKpiValue>
               <AnimatedCounter value={kpis.turnoverRatio} decimals={2} suffix="x" />
-            </div>
+            </ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">units / inventory</p>
           </CardContent>
           <div className="h-1 bg-gradient-to-r from-cyan-500 to-cyan-400" />
@@ -1250,35 +1428,6 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
             </Card>
           )}
 
-          {/* ── 7. Product Strategy Insights ─────────────────────────────── */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" />
-                Product Strategy Insights
-              </CardTitle>
-              <CardDescription>Data-driven recommendations based on product performance analysis</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {strategyInsights.map((insight) => (
-                  <div
-                    key={insight.key}
-                    className={`rounded-lg border p-4 ${insight.bgColor} ${insight.borderColor}`}
-                  >
-                    <div className="flex items-center gap-2 mb-3" style={{ color: insight.color }}>
-                      {insight.icon}
-                      <span className="text-sm font-semibold">{insight.title}</span>
-                    </div>
-                    <p className="text-3xl font-bold mb-1" style={{ color: insight.color }}>
-                      {insight.value}
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{insight.description}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         </>
       )}
 
@@ -1378,6 +1527,74 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                   <p>No SKUs match your search</p>
                 </div>
               )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selectedInsightKey !== null} onOpenChange={(open) => { if (!open) setSelectedInsightKey(null) }}>
+        <DialogContent className="max-w-6xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{selectedInsightKey ? `${insightConfig[selectedInsightKey].title} (${activeInsightRows.length})` : 'Product Insight Detail'}</DialogTitle>
+            <DialogDescription>
+              {selectedInsightKey ? `${insightConfig[selectedInsightKey].description} • ${periodLabel}` : periodLabel}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by product, SKU, category, manufacturer, or recommendation..."
+              value={insightSearch}
+              onChange={(event) => setInsightSearch(event.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="flex-1 overflow-auto min-h-0 rounded-lg border">
+            {loading || refreshing ? (
+              <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading product insight records...
+              </div>
+            ) : filteredInsightRows.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                No product records match this insight category for the selected period.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-background z-10 border-b">
+                  <tr className="text-xs font-semibold uppercase text-muted-foreground">
+                    <th className="px-3 py-2.5 text-left">Product Name</th>
+                    <th className="px-3 py-2.5 text-left">SKU</th>
+                    <th className="px-3 py-2.5 text-left">Category</th>
+                    <th className="px-3 py-2.5 text-left">Manufacturer</th>
+                    <th className="px-3 py-2.5 text-right">Units Ordered</th>
+                    <th className="px-3 py-2.5 text-right">Revenue</th>
+                    <th className="px-3 py-2.5 text-right">Current Stock</th>
+                    <th className="px-3 py-2.5 text-right">Growth %</th>
+                    <th className="px-3 py-2.5 text-left">Demand Trend</th>
+                    <th className="px-3 py-2.5 text-right">Last Ordered</th>
+                    <th className="px-3 py-2.5 text-left">Status / Recommendation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {filteredInsightRows.map((row) => (
+                    <tr key={row.variantId} className="hover:bg-muted/30">
+                      <td className="px-3 py-2.5 font-medium">{row.productName}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{row.sku}</td>
+                      <td className="px-3 py-2.5">{row.category}</td>
+                      <td className="px-3 py-2.5">{row.manufacturer}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold">{row.unitsOrdered.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right">RM {row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td className="px-3 py-2.5 text-right">{row.currentStock.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.growthPercent === null ? 'New' : `${row.growthPercent.toFixed(1)}%`}</td>
+                      <td className="px-3 py-2.5">{row.demandTrend}</td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.lastOrderedDate ? format(parseISO(row.lastOrderedDate), 'dd MMM yyyy') : '—'}</td>
+                      <td className="px-3 py-2.5">{row.statusRecommendation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </DialogContent>
       </Dialog>

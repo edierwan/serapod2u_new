@@ -36,6 +36,7 @@ import {
 import { format, parseISO } from 'date-fns'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import RepeatRateAnalytics from './RepeatRateAnalytics'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 import type {
   DistributorReportData,
   KPICard,
@@ -124,9 +125,7 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
   const isDown = kpi.trend === 'down'
   const isClickable = !!onClick
 
-  // Adaptive font: smaller for large RM values
   const isLargeRM = kpi.label.includes('Amount') || kpi.label.includes('Order Value')
-  const valueFontClass = isLargeRM ? 'text-lg lg:text-xl' : 'text-xl lg:text-2xl'
 
   return (
     <Card
@@ -145,7 +144,7 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
         <div className="flex items-start justify-between">
           <div className="space-y-1 min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{kpi.label}</p>
-            <div className={`${valueFontClass} font-bold text-foreground tracking-tight truncate`}>
+            <ExecutiveKpiValue>
               {typeof kpi.value === 'number' && !kpi.formattedValue.includes('%') ? (
                 <AnimatedCounter
                   value={kpi.value}
@@ -155,7 +154,7 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
               ) : (
                 kpi.formattedValue
               )}
-            </div>
+            </ExecutiveKpiValue>
             <div className="flex items-center gap-1.5 flex-wrap">
               {kpi.delta !== null && (
                 <Badge

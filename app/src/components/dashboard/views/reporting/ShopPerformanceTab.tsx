@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -16,6 +18,7 @@ import {
   ArrowUpRight, ArrowDownRight, ChevronRight,
 } from 'lucide-react'
 import { format, subDays, subMonths, eachMonthOfInterval } from 'date-fns'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface ShopPerformanceTabProps {
@@ -37,7 +40,24 @@ interface ScanRow {
 interface ShopInfo {
   id: string
   org_name: string
+  org_code: string | null
   branch: string | null
+}
+
+interface ShopContact {
+  organization_id: string | null
+  full_name: string | null
+  phone: string | null
+  email: string | null
+  role_code: string | null
+  is_active: boolean | null
+}
+
+interface ConsumerProfile {
+  id: string
+  full_name: string | null
+  phone: string | null
+  email: string | null
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -101,7 +121,11 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
   const [refreshing, setRefreshing] = useState(false)
   const [scans, setScans] = useState<ScanRow[]>([])
   const [shops, setShops] = useState<Map<string, ShopInfo>>(new Map())
+  const [shopContacts, setShopContacts] = useState<Map<string, ShopContact>>(new Map())
+  const [consumerProfiles, setConsumerProfiles] = useState<Map<string, ConsumerProfile>>(new Map())
   const [drillShopId, setDrillShopId] = useState<string | null>(null)
+  const [detailDialog, setDetailDialog] = useState<'shops' | 'consumers' | null>(null)
+  const [detailSearch, setDetailSearch] = useState('')
 
   const tooltipBg = isDark ? '#1f2937' : '#ffffff'
   const tooltipStyle = {
@@ -130,6 +154,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
 
         // Fetch shop info for all referenced shop_ids
         const shopIds = [...new Set((scanData as any[]).map(s => s.shop_id).filter(Boolean))]
+        const consumerIds = [...new Set((scanData as any[]).map(s => s.consumer_id).filter(Boolean))]
         if (shopIds.length > 0) {
           const shopMap = new Map<string, ShopInfo>()
           const batchSize = 200
@@ -137,13 +162,58 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             const batch = shopIds.slice(i, i + batchSize)
             const { data: orgData } = await supabase
               .from('organizations')
-              .select('id, org_name, branch')
+              .select('id, org_name, org_code, branch')
               .in('id', batch)
             if (orgData) {
               (orgData as any[]).forEach(o => shopMap.set(o.id, o))
             }
           }
           setShops(shopMap)
+
+          const contactMap = new Map<string, ShopContact>()
+          for (let i = 0; i < shopIds.length; i += batchSize) {
+            const batch = shopIds.slice(i, i + batchSize)
+            const { data: userData } = await supabase
+              .from('users')
+              .select('organization_id, full_name, phone, email, role_code, is_active')
+              .in('organization_id', batch)
+
+            if (userData) {
+              ;(userData as ShopContact[]).forEach((user) => {
+                if (!user.organization_id) return
+                const existing = contactMap.get(user.organization_id)
+                const existingScore = existing
+                  ? Number(existing.is_active) * 4 + Number(Boolean(existing.full_name)) * 3 + Number(Boolean(existing.phone || existing.email)) * 2 + Number(existing.role_code !== 'GUEST')
+                  : -1
+                const nextScore = Number(user.is_active) * 4 + Number(Boolean(user.full_name)) * 3 + Number(Boolean(user.phone || user.email)) * 2 + Number(user.role_code !== 'GUEST')
+                if (!existing || nextScore > existingScore) {
+                  contactMap.set(user.organization_id, user)
+                }
+              })
+            }
+          }
+          setShopContacts(contactMap)
+        }
+
+        if (consumerIds.length > 0) {
+          const profileMap = new Map<string, ConsumerProfile>()
+          const batchSize = 200
+          for (let i = 0; i < consumerIds.length; i += batchSize) {
+            const batch = consumerIds.slice(i, i + batchSize)
+            const { data: userData } = await supabase
+              .from('users')
+              .select('id, full_name, phone, email')
+              .in('id', batch)
+
+            if (userData) {
+              ;(userData as ConsumerProfile[]).forEach((user) => {
+                profileMap.set(user.id, user)
+              })
+            }
+          }
+          setConsumerProfiles(profileMap)
+        } else {
+          setConsumerProfiles(new Map())
         }
       }
     } catch (err) {
@@ -276,6 +346,116 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     return bins.filter(b => b.count > 0)
   }, [periodScans])
 
+  const periodLabel = useMemo(
+    () => PERIOD_OPTIONS.find((option) => option.value === period)?.label || 'Selected Period',
+    [period]
+  )
+
+  const activeShopRows = useMemo(() => {
+    const shopMap = new Map<string, {
+      shopId: string
+      shopName: string
+      shopCode: string
+      contactName: string
+      contactValue: string
+      totalScans: number
+      lastScanDate: string | null
+      pointsIssued: number
+      status: string
+    }>()
+
+    periodScans.forEach((scan) => {
+      if (!scan.shop_id) return
+      const info = shops.get(scan.shop_id)
+      const contact = shopContacts.get(scan.shop_id)
+      const existing = shopMap.get(scan.shop_id)
+      const nextLastScan = !existing?.lastScanDate || (scan.scanned_at && scan.scanned_at > existing.lastScanDate)
+        ? scan.scanned_at
+        : existing?.lastScanDate || null
+
+      shopMap.set(scan.shop_id, {
+        shopId: scan.shop_id,
+        shopName: info ? `${info.org_name}${info.branch ? ` (${info.branch})` : ''}` : scan.shop_id,
+        shopCode: info?.org_code || scan.shop_id,
+        contactName: contact?.full_name || '—',
+        contactValue: [contact?.phone, contact?.email].filter(Boolean).join(' / ') || '—',
+        totalScans: (existing?.totalScans || 0) + 1,
+        lastScanDate: nextLastScan || null,
+        pointsIssued: (existing?.pointsIssued || 0) + (scan.points_amount || 0),
+        status: 'Active',
+      })
+    })
+
+    return Array.from(shopMap.values()).sort((left, right) => right.totalScans - left.totalScans)
+  }, [periodScans, shops, shopContacts])
+
+  const consumerRows = useMemo(() => {
+    const consumerMap = new Map<string, {
+      consumerId: string
+      consumerName: string
+      contactValue: string
+      shopName: string
+      totalScans: number
+      firstScanDate: string | null
+      lastScanDate: string | null
+      pointsIssued: number
+      status: string
+    }>()
+
+    periodScans.forEach((scan) => {
+      if (!scan.consumer_id) return
+      const profile = consumerProfiles.get(scan.consumer_id)
+      const shopInfo = scan.shop_id ? shops.get(scan.shop_id) : null
+      const shopName = shopInfo ? `${shopInfo.org_name}${shopInfo.branch ? ` (${shopInfo.branch})` : ''}` : '—'
+      const existing = consumerMap.get(scan.consumer_id)
+
+      consumerMap.set(scan.consumer_id, {
+        consumerId: scan.consumer_id,
+        consumerName: profile?.full_name || `Consumer ${scan.consumer_id.slice(0, 8)}`,
+        contactValue: [profile?.phone, profile?.email].filter(Boolean).join(' / ') || '—',
+        shopName: scan.scanned_at && (!existing?.lastScanDate || scan.scanned_at >= existing.lastScanDate) ? shopName : existing?.shopName || shopName,
+        totalScans: (existing?.totalScans || 0) + 1,
+        firstScanDate: !existing?.firstScanDate || (scan.scanned_at && scan.scanned_at < existing.firstScanDate)
+          ? scan.scanned_at
+          : existing.firstScanDate,
+        lastScanDate: !existing?.lastScanDate || (scan.scanned_at && scan.scanned_at > existing.lastScanDate)
+          ? scan.scanned_at
+          : existing.lastScanDate,
+        pointsIssued: (existing?.pointsIssued || 0) + (scan.points_amount || 0),
+        status: 'Active',
+      })
+    })
+
+    return Array.from(consumerMap.values()).sort((left, right) => right.totalScans - left.totalScans)
+  }, [periodScans, consumerProfiles, shops])
+
+  const filteredActiveShopRows = useMemo(() => {
+    const query = detailSearch.trim().toLowerCase()
+    if (!query || detailDialog !== 'shops') return activeShopRows
+    return activeShopRows.filter((row) =>
+      [row.shopName, row.shopCode, row.contactName, row.contactValue, row.status]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [activeShopRows, detailDialog, detailSearch])
+
+  const filteredConsumerRows = useMemo(() => {
+    const query = detailSearch.trim().toLowerCase()
+    if (!query || detailDialog !== 'consumers') return consumerRows
+    return consumerRows.filter((row) =>
+      [row.consumerId, row.consumerName, row.contactValue, row.shopName, row.status]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [consumerRows, detailDialog, detailSearch])
+
+  const openDetailDialog = (view: 'shops' | 'consumers') => {
+    setDetailSearch('')
+    setDetailDialog(view)
+  }
+
   // ── Render ───────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -325,17 +505,23 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
-          <CardContent className="pt-5 pb-4">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-purple-400/30">
+          <button
+            type="button"
+            onClick={() => openDetailDialog('shops')}
+            className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+          >
+            <CardContent className="pt-5 pb-4 cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Shops</span>
               <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
                 <Store className="h-4 w-4 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
-            <div className="text-2xl font-bold"><AnimatedCounter value={kpis.activeShops} /></div>
-            <p className="text-xs text-muted-foreground mt-1">with scans in period</p>
-          </CardContent>
+            <ExecutiveKpiValue><AnimatedCounter value={kpis.activeShops} /></ExecutiveKpiValue>
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">with scans in period <Eye className="h-3 w-3" /></p>
+            </CardContent>
+          </button>
         </Card>
         <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
           <CardContent className="pt-5 pb-4">
@@ -345,21 +531,27 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                 <Scan className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
-            <div className="text-2xl font-bold"><AnimatedCounter value={kpis.totalScans} /></div>
+            <ExecutiveKpiValue><AnimatedCounter value={kpis.totalScans} /></ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">across all shops</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
-          <CardContent className="pt-5 pb-4">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-green-400/30">
+          <button
+            type="button"
+            onClick={() => openDetailDialog('consumers')}
+            className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+          >
+            <CardContent className="pt-5 pb-4 cursor-pointer">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Consumers</span>
               <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
                 <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
               </div>
             </div>
-            <div className="text-2xl font-bold"><AnimatedCounter value={kpis.uniqueConsumers} /></div>
-            <p className="text-xs text-muted-foreground mt-1">unique consumers</p>
-          </CardContent>
+            <ExecutiveKpiValue><AnimatedCounter value={kpis.uniqueConsumers} /></ExecutiveKpiValue>
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">unique consumers <Eye className="h-3 w-3" /></p>
+            </CardContent>
+          </button>
         </Card>
         <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
           <CardContent className="pt-5 pb-4">
@@ -369,7 +561,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                 <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
-            <div className="text-2xl font-bold"><AnimatedCounter value={kpis.totalPoints} /></div>
+            <ExecutiveKpiValue><AnimatedCounter value={kpis.totalPoints} /></ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">total points</p>
           </CardContent>
         </Card>
@@ -381,7 +573,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                 <TrendingUp className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
               </div>
             </div>
-            <div className="text-2xl font-bold"><AnimatedCounter value={kpis.avgScansPerShop} decimals={1} /></div>
+            <ExecutiveKpiValue><AnimatedCounter value={kpis.avgScansPerShop} decimals={1} /></ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">scans per shop</p>
           </CardContent>
         </Card>
@@ -598,6 +790,114 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={detailDialog !== null} onOpenChange={(open) => { if (!open) setDetailDialog(null) }}>
+        <DialogContent className="max-w-6xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              {detailDialog === 'shops'
+                ? `Active Shops (${activeShopRows.length})`
+                : `Consumers (${consumerRows.length})`}
+            </DialogTitle>
+            <DialogDescription>
+              {periodLabel}
+              {detailDialog === 'shops'
+                ? ' • Shops with scan activity in the selected reporting period'
+                : ' • Consumers active in the selected reporting period'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="relative mb-3">
+            <Input
+              placeholder={detailDialog === 'shops' ? 'Search shops, code, contact, phone, or email...' : 'Search consumers, phone, email, or shop...'}
+              value={detailSearch}
+              onChange={(event) => setDetailSearch(event.target.value)}
+              className="pl-3"
+            />
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
+            {loading || refreshing ? (
+              <div className="flex h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading detail records...
+              </div>
+            ) : detailDialog === 'shops' ? (
+              filteredActiveShopRows.length === 0 ? (
+                <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                  No active shops found for this period.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-background z-10 border-b">
+                    <tr className="text-xs font-semibold uppercase text-muted-foreground">
+                      <th className="px-3 py-2.5 text-left">Shop Name</th>
+                      <th className="px-3 py-2.5 text-left">Shop Code / ID</th>
+                      <th className="px-3 py-2.5 text-left">Owner / Contact</th>
+                      <th className="px-3 py-2.5 text-left">Phone / Email</th>
+                      <th className="px-3 py-2.5 text-right">Total Scans</th>
+                      <th className="px-3 py-2.5 text-right">Last Scan Date</th>
+                      <th className="px-3 py-2.5 text-right">Points Issued</th>
+                      <th className="px-3 py-2.5 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {filteredActiveShopRows.map((row) => (
+                      <tr key={row.shopId} className="hover:bg-muted/30">
+                        <td className="px-3 py-2.5 font-medium">{row.shopName}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{row.shopCode}</td>
+                        <td className="px-3 py-2.5">{row.contactName}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{row.contactValue}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold">{row.totalScans.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right text-muted-foreground">{row.lastScanDate ? format(new Date(row.lastScanDate), 'dd MMM yyyy HH:mm') : '—'}</td>
+                        <td className="px-3 py-2.5 text-right">{row.pointsIssued.toLocaleString()}</td>
+                        <td className="px-3 py-2.5 text-right"><Badge variant="secondary">{row.status}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            ) : filteredConsumerRows.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                No consumers found for this period.
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-background z-10 border-b">
+                  <tr className="text-xs font-semibold uppercase text-muted-foreground">
+                    <th className="px-3 py-2.5 text-left">Consumer Name / ID</th>
+                    <th className="px-3 py-2.5 text-left">Phone / Email</th>
+                    <th className="px-3 py-2.5 text-left">Shop Name</th>
+                    <th className="px-3 py-2.5 text-right">Total Scans</th>
+                    <th className="px-3 py-2.5 text-right">First Scan Date</th>
+                    <th className="px-3 py-2.5 text-right">Last Scan Date</th>
+                    <th className="px-3 py-2.5 text-right">Points / Rewards</th>
+                    <th className="px-3 py-2.5 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {filteredConsumerRows.map((row) => (
+                    <tr key={row.consumerId} className="hover:bg-muted/30">
+                      <td className="px-3 py-2.5 font-medium">
+                        <div className="min-w-0">
+                          <div>{row.consumerName}</div>
+                          <div className="text-xs text-muted-foreground">{row.consumerId}</div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{row.contactValue}</td>
+                      <td className="px-3 py-2.5">{row.shopName}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold">{row.totalScans.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.firstScanDate ? format(new Date(row.firstScanDate), 'dd MMM yyyy HH:mm') : '—'}</td>
+                      <td className="px-3 py-2.5 text-right text-muted-foreground">{row.lastScanDate ? format(new Date(row.lastScanDate), 'dd MMM yyyy HH:mm') : '—'}</td>
+                      <td className="px-3 py-2.5 text-right">{row.pointsIssued.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right"><Badge variant="secondary">{row.status}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

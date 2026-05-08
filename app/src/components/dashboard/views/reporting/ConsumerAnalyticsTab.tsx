@@ -20,6 +20,7 @@ import {
   format, subDays, subMonths, startOfMonth, endOfMonth,
   eachMonthOfInterval, parseISO, differenceInDays, getDay, getHours,
 } from 'date-fns'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ConsumerAnalyticsTabProps {
@@ -637,14 +638,16 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
                 <button
                   type="button"
                   onClick={card.onClick}
-                  className="text-2xl font-bold text-foreground underline decoration-dotted underline-offset-4 hover:text-blue-600 transition-colors"
+                  className="max-w-full text-foreground underline decoration-dotted underline-offset-4 hover:text-blue-600 transition-colors"
                 >
-                  <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
+                  <ExecutiveKpiValue className="text-foreground hover:text-blue-600">
+                    <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
+                  </ExecutiveKpiValue>
                 </button>
               ) : (
-                <div className="text-2xl font-bold text-foreground">
+                <ExecutiveKpiValue>
                   <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
-                </div>
+                </ExecutiveKpiValue>
               )}
               <div className="flex items-center gap-2 mt-1">
                 {card.growth !== null && (
