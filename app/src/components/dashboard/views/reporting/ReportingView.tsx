@@ -61,6 +61,7 @@ import {
 import { format, subDays, startOfMonth, endOfMonth, differenceInDays } from 'date-fns'
 import ConsumerAnalyticsTab from './ConsumerAnalyticsTab'
 import DistributorReportsTab from './DistributorReportsTab'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 import OperationsTab from './OperationsTab'
 import ProductsTab from './ProductsTab'
 import ShopPerformanceTab from './ShopPerformanceTab'
@@ -169,8 +170,8 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                         {loading ? (
                             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                         ) : (
-                            <div className="flex min-h-[3.5rem] items-end overflow-hidden">
-                                <div className="max-w-full whitespace-nowrap text-[clamp(2rem,2.6vw,3rem)] font-bold tracking-tight text-foreground tabular-nums leading-none">
+                            <div className="flex min-h-[2rem] min-w-0 items-center overflow-hidden">
+                                <ExecutiveKpiValue>
                                     {typeof value === 'number' ? (
                                         <AnimatedCounter
                                             value={value}
@@ -178,9 +179,9 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                                             decimals={title.includes('Revenue') ? 2 : 0}
                                         />
                                     ) : (
-                                        <span className="inline-flex items-baseline whitespace-nowrap leading-none">{value}</span>
+                                        <span className="inline-flex max-w-full min-w-0 items-baseline whitespace-nowrap leading-none">{value}</span>
                                     )}
-                                </div>
+                                </ExecutiveKpiValue>
                             </div>
                         )}
                         <div className="flex items-center gap-2">

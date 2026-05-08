@@ -61,6 +61,7 @@ import {
   startOfDay,
   endOfDay,
 } from 'date-fns'
+import ExecutiveKpiValue from './ExecutiveKpiValue'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface OperationsTabProps {
@@ -608,7 +609,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
                       {card.icon}
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{card.value}</div>
+                  <ExecutiveKpiValue>{card.value}</ExecutiveKpiValue>
                   {card.delta.delta > 0 && (
                     <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${isGood ? 'text-emerald-500' : 'text-red-500'}`}>
                       {isGood
