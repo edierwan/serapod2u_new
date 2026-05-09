@@ -2689,7 +2689,20 @@ export default function PremiumLoyaltyTemplate({
 
     // Handle profile update (name and phone)
     const handleSaveProfile = async () => {
-        if (!userId) return
+        let targetUserId = userId
+
+        if (!targetUserId) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user?.id) {
+                targetUserId = user.id
+                setUserId(user.id)
+            }
+        }
+
+        if (!targetUserId) {
+            setProfileSaveError('Please sign in again before saving your profile.')
+            return
+        }
 
         const pendingLaneRetry = pendingProfileCollectLane
         const pendingCollectState = readPendingCollectState()
@@ -2831,7 +2844,7 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId,
+                    userId: targetUserId,
                     ...updateData
                 })
             })
@@ -2867,7 +2880,7 @@ export default function PremiumLoyaltyTemplate({
                 setUserLinkedOrganizationId(updateData.organization_id || null)
             }
 
-            const refreshedProfile = await checkUserOrganization(userId, true) as any
+            const refreshedProfile = await checkUserOrganization(targetUserId, true) as any
             if (refreshedProfile?.success) {
                 setIsShopUser(Boolean(refreshedProfile.isShop))
                 setShopName(refreshedProfile.orgName || '')
