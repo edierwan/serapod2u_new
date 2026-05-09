@@ -85,7 +85,7 @@ import ForgotPasswordModal from '@/components/journey/ForgotPasswordModal'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
-import { hasValidLinkedShop, hasValidReferenceLink } from '@/lib/engagement/profile-completion'
+import { hasValidLinkedShop, hasValidReferenceLink, resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
 
 // Types
@@ -716,6 +716,7 @@ export default function PremiumLoyaltyTemplate({
     const [savingProfile, setSavingProfile] = useState(false)
     const [profileSaveError, setProfileSaveError] = useState('')
     const [profileSaveSuccess, setProfileSaveSuccess] = useState(false)
+    const [profileSaveNotice, setProfileSaveNotice] = useState('')
 
     // Bank Account states
     const [banks, setBanks] = useState<any[]>([])
@@ -2633,6 +2634,42 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
+    const getPendingCollectCompletionNotice = ({
+        missingShop,
+        missingReference,
+        invalidShop,
+        invalidReference,
+        shopChanged,
+        referenceChanged,
+    }: {
+        missingShop: boolean
+        missingReference: boolean
+        invalidShop: boolean
+        invalidReference: boolean
+        shopChanged: boolean
+        referenceChanged: boolean
+    }) => {
+        const savedLabel = shopChanged && !referenceChanged
+            ? 'Shop saved.'
+            : referenceChanged && !shopChanged
+                ? 'Reference saved.'
+                : 'Profile saved.'
+
+        if ((missingShop || invalidShop) && (missingReference || invalidReference)) {
+            return `${savedLabel} Please update your shop and reference before points can be collected.`
+        }
+
+        if (missingShop || invalidShop) {
+            return `${savedLabel} Please update your shop before points can be collected.`
+        }
+
+        if (missingReference || invalidReference) {
+            return `${savedLabel} Please update your reference before points can be collected.`
+        }
+
+        return ''
+    }
+
     // Handle profile update (name and phone)
     const handleSaveProfile = async () => {
         if (!userId) return
@@ -2641,10 +2678,12 @@ export default function PremiumLoyaltyTemplate({
         const pendingCollectState = readPendingCollectState()
         const shouldResumePendingCollect = pendingLaneRetry === 'shop'
             || (pendingCollectState?.intendedAction === 'collect_points' && pendingCollectState.preferredClaimLane === 'shop')
+        let postSaveResumeTask: (() => Promise<void>) | null = null
 
         setSavingProfile(true)
         setProfileSaveError('')
         setProfileSaveSuccess(false)
+        setProfileSaveNotice('')
         setPendingCollectResumeError('')
 
         try {
@@ -2837,9 +2876,24 @@ export default function PremiumLoyaltyTemplate({
             setEditingShopName(false)
             setEditingReferralPhone(false)
 
-            const canResumePendingCollectAfterSave = refreshedProfile?.success
-                ? !refreshedProfile.profileIncomplete && refreshedProfile.invalidShop !== true && refreshedProfile.invalidReference !== true
-                : hasValidShopLaneProfile({
+            const shopChanged = updateData.shop_name !== undefined || updateData.organization_id !== undefined
+            const referenceChanged = referralPhoneChanged
+            const savedProfileCompletion = refreshedProfile?.success
+                ? resolveCollectProfileCompletion({
+                    claimLane: 'shop',
+                    organizationId: refreshedProfile.organizationId || null,
+                    referralPhone: refreshedProfile.referralPhone || null,
+                    isShopLinkValid: refreshedProfile.invalidShop === true ? false : undefined,
+                    isReferenceLinkValid: refreshedProfile.invalidReference === true ? false : undefined,
+                })
+                : resolveCollectProfileCompletion({
+                    claimLane: 'shop',
+                    organizationId: updateData.organization_id !== undefined
+                        ? updateData.organization_id || null
+                        : newLinkedOrganizationId || userLinkedOrganizationId,
+                    referralPhone: referralPhoneChanged
+                        ? newReferralPhone.trim() || null
+                        : newReferralPhone || userReferralPhone,
                     isShopLinkValid: updateData.organization_id !== undefined
                         ? Boolean(updateData.organization_id)
                         : undefined,
@@ -2848,21 +2902,26 @@ export default function PremiumLoyaltyTemplate({
                         : undefined,
                 })
 
-            if (shouldResumePendingCollect && canResumePendingCollectAfterSave) {
-                if (roadtourContext) {
-                    // RoadTour flow: resume via RoadTour claim API, not product QR
-                    await handleRoadtourClaimWithSession()
-                } else {
-                    await resumePendingCollectAfterProfileSave({ collapseProfileInfo: true })
-                }
-            } else if (shouldResumePendingCollect && refreshedProfile?.success) {
-                setPendingCollectResumeError(
-                    refreshedProfile.profileIncompleteMessage
-                    || (refreshedProfile.invalidShop === true
-                        ? INVALID_SHOP_WARNING_MESSAGE
-                        : refreshedProfile.invalidReference === true
-                            ? INVALID_REFERENCE_WARNING_MESSAGE
-                            : 'Profile saved, but your shop or reference details are still incomplete for collection.')
+            if (shouldResumePendingCollect && !savedProfileCompletion.shouldBlockCollect) {
+                postSaveResumeTask = roadtourContext
+                    ? async () => {
+                        await handleRoadtourClaimWithSession()
+                    }
+                    : async () => {
+                        await resumePendingCollectAfterProfileSave({ collapseProfileInfo: true })
+                    }
+            } else if (shouldResumePendingCollect) {
+                setProfileSaveNotice(
+                    getPendingCollectCompletionNotice({
+                        missingShop: savedProfileCompletion.missingShop,
+                        missingReference: savedProfileCompletion.missingReference,
+                        invalidShop: savedProfileCompletion.invalidShop,
+                        invalidReference: savedProfileCompletion.invalidReference,
+                        shopChanged,
+                        referenceChanged,
+                    })
+                    || refreshedProfile?.profileIncompleteMessage
+                    || 'Profile saved. Please complete your remaining shop or reference details before points can be collected.'
                 )
             }
 
@@ -2874,6 +2933,12 @@ export default function PremiumLoyaltyTemplate({
             setProfileSaveError(error.message || 'Failed to save profile')
         } finally {
             setSavingProfile(false)
+        }
+
+        if (postSaveResumeTask) {
+            void postSaveResumeTask().catch((error) => {
+                console.error('Error resuming pending collect after profile save:', error)
+            })
         }
     }
 
@@ -3190,12 +3255,11 @@ export default function PremiumLoyaltyTemplate({
 
         return hasValidLinkedShop({
             organizationId: activeOrganizationId,
-            shopName: activeShopName,
             isShopLinkValid: overrides.isShopLinkValid,
-        }) && hasValidReferenceLink({
+        } as any) && hasValidReferenceLink({
             referralPhone: activeReferralPhone,
             isReferenceLinkValid: overrides.isReferenceLinkValid,
-        })
+        } as any)
     }
 
     const canAutoRetryShopLane = () => {
@@ -6289,6 +6353,12 @@ export default function PremiumLoyaltyTemplate({
                                 </Button>
                             </div>
                         </div>
+                    </div>
+                )}
+                {profileSaveNotice && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-sm text-amber-700">{profileSaveNotice}</p>
                     </div>
                 )}
                 {profileSaveSuccess && (
