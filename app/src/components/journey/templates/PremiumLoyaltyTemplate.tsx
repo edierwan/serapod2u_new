@@ -903,6 +903,7 @@ export default function PremiumLoyaltyTemplate({
     const [registrationBonusInfo, setRegistrationBonusInfo] = useState<{ points: number; awarded: boolean; mode: string | null }>({ points: 0, awarded: false, mode: null })
     const [showShopLinkCelebration, setShowShopLinkCelebration] = useState(false)
     const [shopLinkCelebrationName, setShopLinkCelebrationName] = useState('')
+    const genuineAnimationKeyRef = useRef<string | null>(null)
 
     // Points animation state
     const [showPointsAnimation, setShowPointsAnimation] = useState(false)
@@ -1468,25 +1469,41 @@ export default function PremiumLoyaltyTemplate({
         }
     }, [showFeedbackModal, isAuthenticated])
 
-    // Show genuine product verified animation on page load
+    // Show genuine product verified animation once per QR page/session.
     useEffect(() => {
-        if (isLive && (productInfo?.product_name || roadtourContext)) {
-            // Show animation after a brief delay
-            const timer = setTimeout(() => {
+        const animationKey = roadtourContext?.token
+            ? `roadtour:${roadtourContext.token}`
+            : (qrCode ? `qr:${qrCode}` : null)
+        const shouldShowGenuineAnimation = isLive && Boolean(animationKey)
+        let showTimer: ReturnType<typeof setTimeout> | null = null
+        let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+        if (shouldShowGenuineAnimation) {
+            if (genuineAnimationKeyRef.current === animationKey) {
+                return
+            }
+
+            genuineAnimationKeyRef.current = animationKey
+            setShowPointsAnimation(false)
+            setShowGenuineVerified(false)
+
+            showTimer = setTimeout(() => {
                 setShowGenuineVerified(true)
-                // Auto-hide after 4 seconds
-                setTimeout(() => {
+                hideTimer = setTimeout(() => {
                     setShowGenuineVerified(false)
                     setShowPointsAnimation(true)
                 }, 4000)
             }, 500)
-            return () => clearTimeout(timer)
         } else {
-            // If no genuine animation, show points animation immediately
-            const timer = setTimeout(() => setShowPointsAnimation(true), 500)
-            return () => clearTimeout(timer)
+            setShowGenuineVerified(false)
+            showTimer = setTimeout(() => setShowPointsAnimation(true), 500)
         }
-    }, [isLive, productInfo, roadtourContext])
+
+        return () => {
+            if (showTimer) clearTimeout(showTimer)
+            if (hideTimer) clearTimeout(hideTimer)
+        }
+    }, [isLive, qrCode, roadtourContext?.token])
 
     // Fetch rewards on mount for Featured Rewards section
     useEffect(() => {
@@ -2902,6 +2919,14 @@ export default function PremiumLoyaltyTemplate({
                         : undefined,
                 })
 
+            if (shouldResumePendingCollect) {
+                const resumeEmail = pendingCollectState?.email
+                    || (pendingProfileCollectEmail || userEmail || '').trim()
+                    || null
+                setPendingProfileCollectLane('shop')
+                persistPendingCollectState({ email: resumeEmail })
+            }
+
             if (shouldResumePendingCollect && !savedProfileCompletion.shouldBlockCollect) {
                 postSaveResumeTask = roadtourContext
                     ? async () => {
@@ -3277,7 +3302,20 @@ export default function PremiumLoyaltyTemplate({
     }
 
     const resumePendingCollectAfterProfileSave = async (options: { collapseProfileInfo?: boolean } = {}): Promise<CollectPointsResult> => {
-        const pendingCollectState = readPendingCollectState()
+        let pendingCollectState = readPendingCollectState()
+
+        if (!pendingCollectState && pendingProfileCollectLane === 'shop' && qrCode) {
+            const recoveredEmail = (pendingProfileCollectEmail || userEmail || '').trim() || null
+            pendingCollectState = {
+                intendedAction: 'collect_points',
+                preferredClaimLane: 'shop',
+                qrCode,
+                returnUrl: typeof window !== 'undefined' ? window.location.href : '',
+                startedAt: Date.now(),
+                email: recoveredEmail,
+            }
+            persistPendingCollectState({ email: recoveredEmail })
+        }
 
         if (!pendingCollectState) {
             const expiredMessage = 'Profile saved, but the pending collection request expired. Please reopen the QR page and collect again.'
