@@ -16,6 +16,7 @@ export type NotificationKey =
     | 'lucky_draw_entry'
     | 'redemption_completed'
     | 'user_created'
+    | 'user_created_shop'
     | 'user_activated'
     | 'user_deactivated'
     | 'password_changed'
@@ -561,6 +562,31 @@ export const notificationTemplates: Record<string, Template[]> = {
             channel: 'email',
             subject: 'New User Account — {{user_name}}',
             body: `A new user account has been created.\n\nName: {{user_name}}\nEmail: {{user_email}}\nRole: {{user_role}}\nCreated At: {{created_at}}\n\nRegards,\nSerapod2U System`
+        }
+    ],
+
+    'user_created_shop': [
+        {
+            id: 'ucs_wa_1',
+            name: 'User Created New Shop',
+            description: 'Alert when a user creates a new shop record',
+            channel: 'whatsapp',
+            body: `🏪 *User Created New Shop*\n━━━━━━━━━━━━━━━━━━\n\n*Shop:* {{shop_name}}\n*Branch:* {{shop_branch}}\n*State:* {{shop_state}}\n*Created by:* {{creator_name}}\n*Creator Email:* {{creator_email}}\n*Contact Phone:* {{contact_phone}}\n*Created at:* {{created_at}}\n\nA new shop has been created and is ready for review.`
+        },
+        {
+            id: 'ucs_sms_1',
+            name: 'SMS User Created Shop',
+            description: 'Brief alert for a newly created shop',
+            channel: 'sms',
+            body: `[Serapod2U] New shop created: {{shop_name}} ({{shop_branch}}). Created by {{creator_name}} at {{created_at}}.`
+        },
+        {
+            id: 'ucs_email_1',
+            name: 'User Created Shop Email',
+            description: 'Email alert for a newly created shop',
+            channel: 'email',
+            subject: 'New Shop Created — {{shop_name}}',
+            body: `A user has created a new shop.\n\nShop: {{shop_name}}\nBranch: {{shop_branch}}\nState: {{shop_state}}\nCreated By: {{creator_name}}\nCreator Email: {{creator_email}}\nContact Name: {{contact_name}}\nContact Phone: {{contact_phone}}\nContact Email: {{contact_email}}\nCreated At: {{created_at}}\n\nRegards,\nSerapod2U System`
         }
     ],
 

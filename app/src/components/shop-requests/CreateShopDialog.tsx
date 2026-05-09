@@ -18,6 +18,7 @@ interface CreateShopDialogProps {
     onOpenChange: (open: boolean) => void
     defaultShopName?: string
     onCreated?: (org: { id: string; org_name: string; branch?: string | null }) => void
+    linkUser?: boolean
 }
 
 interface DuplicateShop {
@@ -32,8 +33,10 @@ export function CreateShopDialog({
     onOpenChange,
     defaultShopName = '',
     onCreated,
+    linkUser = false,
 }: CreateShopDialogProps) {
     const supabase = useMemo(() => createClient(), [])
+    const invalidContactPhoneMessage = 'Please enter a valid phone number. Example: +60123456789.'
 
     // Form fields
     const [shopName, setShopName] = useState('')
@@ -118,14 +121,35 @@ export function CreateShopDialog({
     const selectedState = states.find((s) => s.id === selectedStateId) || null
     const selectedDistrict = filteredDistricts.find((d) => d.id === selectedDistrictId) || null
 
+    const normalizeContactPhone = (value: string, options: { requireValue?: boolean; updateInput?: boolean } = {}) => {
+        const trimmedValue = value.trim()
+
+        if (!trimmedValue) {
+            setPhoneError(options.requireValue ? 'Please enter a valid phone number.' : '')
+            return null
+        }
+
+        const result = validatePhoneNumber(trimmedValue)
+        if (!result.isValid || !result.formatted) {
+            setPhoneError(invalidContactPhoneMessage)
+            return null
+        }
+
+        if (options.updateInput) {
+            setContactPhone(result.formatted)
+        }
+
+        setPhoneError('')
+        return result.formatted
+    }
+
     // Validate phone on blur
     const handlePhoneBlur = () => {
         if (!contactPhone.trim()) {
             setPhoneError('')
             return
         }
-        const result = validatePhoneNumber(contactPhone.trim())
-        setPhoneError(result.isValid ? '' : (result.error || 'Invalid Malaysia phone format'))
+        normalizeContactPhone(contactPhone, { updateInput: true })
     }
 
     // Validate email on blur
@@ -148,12 +172,17 @@ export function CreateShopDialog({
             return
         }
 
-        if (contactPhone.trim()) {
-            const phoneResult = validatePhoneNumber(contactPhone.trim())
-            if (!phoneResult.isValid) {
-                setPhoneError(phoneResult.error || 'Invalid Malaysia phone format')
-                return
-            }
+        if (!contactName.trim()) {
+            setError('Please enter the contact name.')
+            return
+        }
+
+        const normalizedContactPhone = normalizeContactPhone(contactPhone, {
+            requireValue: true,
+            updateInput: true,
+        })
+        if (!normalizedContactPhone) {
+            return
         }
 
         if (contactEmail.trim()) {
@@ -175,7 +204,7 @@ export function CreateShopDialog({
                     branch: selectedDistrict?.district_name || null,
                     state: selectedState?.state_name || null,
                     contactName: contactName.trim() || null,
-                    contactPhone: contactPhone.trim() || null,
+                    contactPhone: normalizedContactPhone,
                     contactEmail: contactEmail.trim() || null,
                     address: address.trim() || null,
                     hotFlavourBrands: hotFlavourBrands.trim() || null,
@@ -184,6 +213,7 @@ export function CreateShopDialog({
                     sellsSboxSpecialEdition,
                     notes: notes.trim() || null,
                     confirmCreate,
+                    linkUser,
                 }),
             })
 
@@ -201,7 +231,7 @@ export function CreateShopDialog({
                 throw new Error(result.error || 'Failed to create shop.')
             }
 
-            // Success — shop created and user linked
+            // Success — shop created for the current profile flow
             onCreated?.(result.organization)
             onOpenChange(false)
         } catch (err: any) {
@@ -220,7 +250,9 @@ export function CreateShopDialog({
                         Create New Shop
                     </DialogTitle>
                     <DialogDescription>
-                        Create a new shop directly. This will be linked to your profile immediately.
+                        {linkUser
+                            ? 'Create a new shop directly. This will be linked to your profile immediately.'
+                            : 'Create a new shop, then review it below before saving your profile changes.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -345,9 +377,14 @@ export function CreateShopDialog({
                                 <Label>Contact Phone</Label>
                                 <Input
                                     value={contactPhone}
-                                    onChange={(e) => setContactPhone(e.target.value)}
+                                    onChange={(e) => {
+                                        setContactPhone(e.target.value)
+                                        if (phoneError) setPhoneError('')
+                                    }}
                                     onBlur={handlePhoneBlur}
-                                    placeholder="e.g. 0123456789"
+                                    placeholder="e.g. +60123456789"
+                                    inputMode="tel"
+                                    autoComplete="tel"
                                 />
                                 {phoneError && <p className="text-xs text-red-600">{phoneError}</p>}
                             </div>

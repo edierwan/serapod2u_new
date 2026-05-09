@@ -6821,15 +6821,17 @@ export default function PremiumLoyaltyTemplate({
                                 open={isShopRequestOpen}
                                 onOpenChange={setIsShopRequestOpen}
                                 defaultShopName={pendingShopRequestName}
+                                linkUser={false}
                                 onCreated={async (org) => {
+                                    const displayName = org.org_name + (org.branch ? ` (${org.branch})` : '')
                                     setIsShopRequestOpen(false)
-                                    setNewShopName(org.org_name + (org.branch ? ` (${org.branch})` : ''))
+                                    setPendingShopRequestName('')
+                                    setNewShopName(displayName)
                                     setNewLinkedOrganizationId(org.id)
-                                    setEditingShopName(false)
-                                    // Refresh profile to pick up the new org link
-                                    if (userId) {
-                                        await populateProfileEditor(userId)
-                                    }
+                                    setInvalidShop(false)
+                                    setEditingShopName(true)
+                                    setProfileSaveError('')
+                                    setProfileSaveNotice('New shop created. Please save your changes to continue collecting points.')
                                 }}
                             />
 

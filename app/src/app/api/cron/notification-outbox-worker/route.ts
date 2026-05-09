@@ -22,6 +22,13 @@ function renderTemplate(template: string, payload: Record<string, any>): string 
     return result
 }
 
+function splitConfiguredRecipients(value?: string | null): string[] {
+    return String(value || '')
+        .split(/[\n,;]+/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+}
+
 export async function GET(request: NextRequest) {
     const startTime = Date.now()
     const supabase = createAdminClient()
@@ -91,6 +98,8 @@ export async function GET(request: NextRequest) {
                         templateBody = `📋 *New Order Pending Approval*\n\n*Order:* #{{order_no}}\n*Date:* {{order_date}}\n*Customer:* {{customer_name}}\n*Total:* RM {{amount}}\n\nThis order requires your review and approval.`
                     } else if (event_code === 'order_approved') {
                         templateBody = `✅ Order #{{order_no}} has been approved.\nAmount: RM {{amount}}\nStatus: {{status}}`
+                    } else if (event_code === 'user_created_shop') {
+                        templateBody = `🏪 *User Created New Shop*\n\n*Shop:* {{shop_name}}\n*Branch:* {{shop_branch}}\n*State:* {{shop_state}}\n*Created by:* {{creator_name}}\n*Creator email:* {{creator_email}}\n*Contact phone:* {{contact_phone}}\n*Created at:* {{created_at}}`
                     } else {
                         templateBody = `Update: ${event_code} occurred.\nOrder: {{order_no}}\nStatus: {{status}}`
                     }
@@ -109,7 +118,18 @@ export async function GET(request: NextRequest) {
                 if (!recipientPhone && !recipientEmail) {
                     // Look up recipients from notification_settings (already fetched above)
                     if (notifSetting) {
-                        const phones: string[] = []
+                        const recipients = new Set<string>()
+                        const recipientConfig = notifSetting.recipient_config || {}
+                        const recipientTargets = recipientConfig.recipient_targets || {}
+
+                        const addRecipients = (values: Array<string | null | undefined>) => {
+                            for (const value of values) {
+                                const normalized = String(value || '').trim()
+                                if (normalized) {
+                                    recipients.add(normalized)
+                                }
+                            }
+                        }
 
                         // Check recipient_config.recipient_users (new format from UI drawer)
                         const configUsers = notifSetting.recipient_config?.recipient_users
@@ -124,29 +144,58 @@ export async function GET(request: NextRequest) {
                                 .in('id', userIds)
 
                             if (users) {
-                                for (const u of users) {
-                                    if (channel === 'email' && u.email) phones.push(u.email)
-                                    else if (u.phone) phones.push(u.phone)
-                                }
+                                addRecipients(users.map((u) => channel === 'email' ? u.email : u.phone))
+                            }
+                        }
+
+                        const configuredRoles = Array.isArray(recipientConfig.roles) && recipientConfig.roles.length > 0
+                            ? recipientConfig.roles
+                            : Array.isArray(notifSetting.recipient_roles) && notifSetting.recipient_roles.length > 0
+                                ? notifSetting.recipient_roles
+                                : []
+                        const hasExplicitRecipientTargets = Object.keys(recipientTargets).length > 0
+                        const rolesEnabled = configuredRoles.length > 0 && (
+                            hasExplicitRecipientTargets
+                                ? recipientTargets.roles === true
+                                : recipientConfig.type === 'roles' || Boolean(notifSetting.recipient_roles?.length)
+                        )
+
+                        if (rolesEnabled) {
+                            const { data: roleUsers } = await supabase
+                                .from('users')
+                                .select('phone, email')
+                                .eq('organization_id', org_id)
+                                .in('role_code', configuredRoles)
+
+                            if (roleUsers) {
+                                addRecipients(roleUsers.map((user) => channel === 'email' ? user.email : user.phone))
                             }
                         }
 
                         // Custom phone numbers
                         if (notifSetting.recipient_custom?.length) {
-                            phones.push(...notifSetting.recipient_custom)
+                            addRecipients(notifSetting.recipient_custom)
                         }
 
-                        if (phones.length > 0) {
+                        if (channel === 'email') {
+                            addRecipients(splitConfiguredRecipients(recipientConfig.custom_emails))
+                        } else {
+                            addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
+                        }
+
+                        const recipientList = Array.from(recipients)
+
+                        if (recipientList.length > 0) {
                             if (channel === 'email') {
-                                recipientEmail = phones[0]
+                                recipientEmail = recipientList[0]
                             } else {
-                                recipientPhone = phones[0]
+                                recipientPhone = recipientList[0]
                             }
 
                             // For additional recipients, queue separate messages
-                            for (let i = 1; i < phones.length; i++) {
-                                const additionalPhone = channel !== 'email' ? phones[i] : null
-                                const additionalEmail = channel === 'email' ? phones[i] : null
+                            for (let i = 1; i < recipientList.length; i++) {
+                                const additionalPhone = channel !== 'email' ? recipientList[i] : null
+                                const additionalEmail = channel === 'email' ? recipientList[i] : null
 
                                 await supabase.from('notifications_outbox').insert({
                                     org_id,

@@ -9,6 +9,8 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+const SHOP_CREATED_NOTIFICATION_CHANNELS = ['whatsapp', 'sms', 'email'] as const
+
 /**
  * Resolve default parent distributor for a new shop.
  * Priority: fixed codes DH04/DT004 → user's org chain → any active DIST.
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
 
         const { data: userRow } = await adminClient
             .from('users')
-            .select('id, organization_id')
+            .select('id, organization_id, full_name, phone, email')
             .eq('id', user.id)
             .single()
 
@@ -173,7 +175,7 @@ export async function POST(request: NextRequest) {
         const { data: createdOrg, error: createError } = await adminClient
             .from('organizations')
             .insert(orgInsert)
-            .select('id, org_name, branch')
+            .select('id, org_name')
             .single()
 
         if (createError || !createdOrg) {
@@ -184,13 +186,52 @@ export async function POST(request: NextRequest) {
             }, { status: 500 })
         }
 
+        const createdOrganization = {
+            id: createdOrg.id,
+            org_name: createdOrg.org_name,
+            branch: form.branch || null,
+        }
+
+        try {
+            const payload = {
+                shop_name: createdOrganization.org_name,
+                shop_branch: createdOrganization.branch || '-',
+                shop_state: form.state || '-',
+                contact_name: form.contactName || '-',
+                contact_phone: form.contactPhone || '-',
+                contact_email: form.contactEmail || '-',
+                creator_name: userRow.full_name || user.email || 'User',
+                creator_email: user.email || userRow.email || '-',
+                creator_phone: userRow.phone || '-',
+                created_at: new Date().toLocaleString('en-GB'),
+            }
+
+            for (const channel of SHOP_CREATED_NOTIFICATION_CHANNELS) {
+                await adminClient.from('notifications_outbox').insert({
+                    org_id: parentOrgId,
+                    event_code: 'user_created_shop',
+                    channel,
+                    payload_json: payload,
+                    priority: 'normal',
+                    status: 'queued',
+                    retry_count: 0,
+                    max_retries: 3,
+                    created_at: new Date().toISOString(),
+                })
+            }
+
+            fetch(`${request.nextUrl.origin}/api/cron/notification-outbox-worker`).catch(() => { })
+        } catch (notificationError) {
+            console.warn('Failed to queue shop created notification (non-blocking):', notificationError)
+        }
+
         // --- Link user to the new shop ---
         if (rawBody.linkUser !== false) {
             const { error: linkError } = await adminClient
                 .from('users')
                 .update({
-                    organization_id: createdOrg.id,
-                    shop_name: createdOrg.org_name,
+                    organization_id: createdOrganization.id,
+                    shop_name: createdOrganization.org_name,
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', user.id)
@@ -200,7 +241,7 @@ export async function POST(request: NextRequest) {
                 // Shop was created but linking failed — still return success with warning
                 return NextResponse.json({
                     success: true,
-                    organization: createdOrg,
+                    organization: createdOrganization,
                     linkError: 'Shop created but failed to link to your profile. Please update your shop in Profile.',
                 })
             }
@@ -208,7 +249,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            organization: createdOrg,
+            organization: createdOrganization,
         })
     } catch (err: any) {
         console.error('Shop create error:', err)
