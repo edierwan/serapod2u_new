@@ -318,6 +318,34 @@ const VariantMedia = ({ variant, onClick }: { variant: any, onClick: (v: any) =>
     )
 }
 
+type CollectPointsOptions = {
+    preferredClaimLane?: 'shop'
+    consumerConfirmation?: boolean
+    skipProfileCheck?: boolean
+    qrCodeOverride?: string
+    resumeAfterProfileSave?: boolean
+}
+
+type CollectPointsResult = {
+    success: boolean
+    alreadyCollected?: boolean
+    error?: string
+    requiresProfileUpdate?: boolean
+    requiresLogin?: boolean
+}
+
+type PendingCollectState = {
+    intendedAction: 'collect_points'
+    preferredClaimLane: 'shop'
+    qrCode: string
+    returnUrl: string
+    startedAt: number
+    email: string | null
+}
+
+const PENDING_COLLECT_STORAGE_KEY = 'serapod_pending_collect_v1'
+const PENDING_COLLECT_MAX_AGE_MS = 15 * 60 * 1000
+
 export default function PremiumLoyaltyTemplate({
     config,
     qrCode,
@@ -330,6 +358,7 @@ export default function PremiumLoyaltyTemplate({
     const supabase = createClient()
     const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
+    const previousActiveTabRef = useRef<TabType>('home')
     const [showScanner, setShowScanner] = useState(false)
 
     // Scratch Card State
@@ -538,6 +567,7 @@ export default function PremiumLoyaltyTemplate({
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm'>('login')
     const [pendingProfileCollectLane, setPendingProfileCollectLane] = useState<'shop' | null>(null)
     const [pendingProfileCollectEmail, setPendingProfileCollectEmail] = useState('')
+    const [pendingCollectResumeError, setPendingCollectResumeError] = useState('')
     const [isShopRequestOpen, setIsShopRequestOpen] = useState(false)
     const [pendingShopRequestName, setPendingShopRequestName] = useState('')
     const [consumerClaimConfirmed, setConsumerClaimConfirmed] = useState(false)
@@ -740,13 +770,81 @@ export default function PremiumLoyaltyTemplate({
         return `Hi ${resolvedName}, ${baseMessage.charAt(0).toLowerCase()}${baseMessage.slice(1)}`
     }
 
+    const readPendingCollectState = (): PendingCollectState | null => {
+        if (typeof window === 'undefined') return null
+
+        try {
+            const rawState = sessionStorage.getItem(PENDING_COLLECT_STORAGE_KEY)
+            if (!rawState) return null
+
+            const parsed = JSON.parse(rawState) as Partial<PendingCollectState>
+            const isValidState = parsed?.intendedAction === 'collect_points'
+                && parsed?.preferredClaimLane === 'shop'
+                && typeof parsed?.qrCode === 'string'
+                && parsed.qrCode.trim().length > 0
+                && typeof parsed?.returnUrl === 'string'
+                && typeof parsed?.startedAt === 'number'
+
+            if (!isValidState) {
+                sessionStorage.removeItem(PENDING_COLLECT_STORAGE_KEY)
+                return null
+            }
+
+            if ((Date.now() - parsed.startedAt) > PENDING_COLLECT_MAX_AGE_MS) {
+                sessionStorage.removeItem(PENDING_COLLECT_STORAGE_KEY)
+                return null
+            }
+
+            return {
+                intendedAction: 'collect_points',
+                preferredClaimLane: 'shop',
+                qrCode: parsed.qrCode,
+                returnUrl: parsed.returnUrl,
+                startedAt: parsed.startedAt,
+                email: typeof parsed.email === 'string' && parsed.email.trim().length > 0 ? parsed.email : null,
+            }
+        } catch (error) {
+            console.warn('Unable to read pending collect state:', error)
+            sessionStorage.removeItem(PENDING_COLLECT_STORAGE_KEY)
+            return null
+        }
+    }
+
+    const persistPendingCollectState = (overrides: { email?: string | null } = {}) => {
+        if (typeof window === 'undefined' || !qrCode) return
+
+        const nextState: PendingCollectState = {
+            intendedAction: 'collect_points',
+            preferredClaimLane: 'shop',
+            qrCode,
+            returnUrl: window.location.href,
+            startedAt: Date.now(),
+            email: overrides.email !== undefined
+                ? (overrides.email?.trim() || null)
+                : ((pendingProfileCollectEmail || userEmail || '').trim() || null),
+        }
+
+        sessionStorage.setItem(PENDING_COLLECT_STORAGE_KEY, JSON.stringify(nextState))
+    }
+
+    const clearPendingCollectStorage = () => {
+        if (typeof window === 'undefined') return
+        sessionStorage.removeItem(PENDING_COLLECT_STORAGE_KEY)
+    }
+
+    const resetPendingCollectFlowState = () => {
+        clearPendingCollectStorage()
+        setPendingProfileCollectLane(null)
+        setPendingProfileCollectEmail('')
+        setPendingCollectResumeError('')
+    }
+
     const closeCollectPointsModal = () => {
         setShowPointsLoginModal(false)
         setPointsError('')
         setPointsErrorTitle('')
         setPointsErrorAction(null)
-        setPendingProfileCollectLane(null)
-        setPendingProfileCollectEmail('')
+        resetPendingCollectFlowState()
         setCollectPointsStep('login')
     }
 
@@ -765,6 +863,22 @@ export default function PremiumLoyaltyTemplate({
     useEffect(() => {
         setRoadtourGeolocation(null)
     }, [roadtourContext?.token])
+
+    useEffect(() => {
+        const previousTab = previousActiveTabRef.current
+        const hasPersistedPendingCollect = typeof window !== 'undefined'
+            && Boolean(sessionStorage.getItem(PENDING_COLLECT_STORAGE_KEY))
+        if (
+            previousTab === 'account-settings'
+            && activeTab !== 'account-settings'
+            && (pendingProfileCollectLane === 'shop' || hasPersistedPendingCollect)
+            && !savingProfile
+            && !collectingPoints
+        ) {
+            resetPendingCollectFlowState()
+        }
+        previousActiveTabRef.current = activeTab
+    }, [activeTab, pendingProfileCollectLane, savingProfile, collectingPoints])
 
     useEffect(() => {
         if (!roadtourContext || !shouldRequestRoadtourGeolocation) return
@@ -2522,10 +2636,14 @@ export default function PremiumLoyaltyTemplate({
         if (!userId) return
 
         const pendingLaneRetry = pendingProfileCollectLane
+        const pendingCollectState = readPendingCollectState()
+        const shouldResumePendingCollect = pendingLaneRetry === 'shop'
+            || (pendingCollectState?.intendedAction === 'collect_points' && pendingCollectState.preferredClaimLane === 'shop')
 
         setSavingProfile(true)
         setProfileSaveError('')
         setProfileSaveSuccess(false)
+        setPendingCollectResumeError('')
 
         try {
             // Prepare update data
@@ -2717,16 +2835,12 @@ export default function PremiumLoyaltyTemplate({
             setEditingShopName(false)
             setEditingReferralPhone(false)
 
-            if (pendingLaneRetry === 'shop' && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
-                setShowProfileInfo(false)
-                setPendingProfileCollectLane(null)
+            if (shouldResumePendingCollect && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
                 if (roadtourContext) {
                     // RoadTour flow: resume via RoadTour claim API, not product QR
                     await handleRoadtourClaimWithSession()
-                } else if (isAuthenticated) {
-                    await handleCollectPointsWithSession({ preferredClaimLane: 'shop', skipProfileCheck: true })
                 } else {
-                    await handleCollectPoints({ preferredClaimLane: 'shop', skipProfileCheck: true })
+                    await resumePendingCollectAfterProfileSave({ collapseProfileInfo: true })
                 }
             }
 
@@ -2963,6 +3077,10 @@ export default function PremiumLoyaltyTemplate({
                 }
             }
 
+            if (pendingProfileCollectLane === 'shop') {
+                persistPendingCollectState()
+            }
+
             const targetUserId = userId || (await supabase.auth.getUser()).data.user?.id
             if (targetUserId) {
                 await populateProfileEditor(targetUserId)
@@ -2980,16 +3098,20 @@ export default function PremiumLoyaltyTemplate({
         }
     }
 
-    const openCollectPointsProfilePrompt = (payload?: string | { modalTitle?: string; modalMessage?: string; error?: string; message?: string }) => {
+    const openCollectPointsProfilePrompt = (payload?: string | { modalTitle?: string; modalMessage?: string; error?: string; message?: string; email?: string | null }) => {
         const title = typeof payload === 'string'
             ? 'Complete Your Profile'
             : payload?.modalTitle || 'Complete Your Profile'
         const message = typeof payload === 'string'
             ? payload
             : payload?.modalMessage || payload?.message || payload?.error || 'Please update your profile before collecting points.'
+        const pendingEmail = typeof payload === 'string' ? userEmail : (payload?.email || userEmail)
 
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
+        setPendingProfileCollectEmail(pendingEmail)
+        setPendingCollectResumeError('')
+        persistPendingCollectState({ email: pendingEmail })
         setPointsErrorTitle(title)
         setPointsError(message)
         setPointsErrorAction(null)
@@ -3000,10 +3122,12 @@ export default function PremiumLoyaltyTemplate({
     const openConsumerClaimConfirmationPrompt = (message?: string, email?: string | null) => {
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
+        setPendingCollectResumeError('')
         setPointsErrorTitle('Choose Claim Type')
         setPointsError(message || "You're not linked to any shop yet. Continue collecting points as a consumer?")
         setPointsErrorAction(null)
         setPendingProfileCollectEmail(email || userEmail)
+        persistPendingCollectState({ email: email || userEmail })
         setCollectPointsStep('consumer-confirm')
         setShowPointsLoginModal(true)
     }
@@ -3012,6 +3136,8 @@ export default function PremiumLoyaltyTemplate({
         setCollectingPoints(false)
         setPendingProfileCollectLane('shop')
         setPendingProfileCollectEmail(email || userEmail)
+        setPendingCollectResumeError('')
+        persistPendingCollectState({ email: email || userEmail })
         setPointsErrorTitle('Complete Your Profile')
         setPointsError(message || 'This QR was already claimed by a consumer. Only shop staff can claim it now.')
         setPointsErrorAction('shop-profile-link')
@@ -3050,10 +3176,34 @@ export default function PremiumLoyaltyTemplate({
             })
     }
 
+    const resumePendingCollectAfterProfileSave = async (options: { collapseProfileInfo?: boolean } = {}): Promise<CollectPointsResult> => {
+        const pendingCollectState = readPendingCollectState()
+
+        if (!pendingCollectState) {
+            const expiredMessage = 'Profile saved, but the pending collection request expired. Please reopen the QR page and collect again.'
+            setPendingCollectResumeError(expiredMessage)
+            return { success: false, error: expiredMessage }
+        }
+
+        if (options.collapseProfileInfo) {
+            setShowProfileInfo(false)
+        }
+
+        setPendingCollectResumeError('')
+
+        return handleCollectPointsWithSession({
+            preferredClaimLane: 'shop',
+            skipProfileCheck: true,
+            qrCodeOverride: pendingCollectState.qrCode,
+            resumeAfterProfileSave: true,
+        })
+    }
+
     // Handle points collection
-    const handleCollectPoints = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
+    const handleCollectPoints = async (options: CollectPointsOptions = {}): Promise<CollectPointsResult> => {
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
         const consumerConfirmation = options.consumerConfirmation === true
+        const targetQrCode = options.qrCodeOverride || qrCode
 
         if (!options.skipProfileCheck && profileIncomplete) {
             openCollectPointsProfilePrompt({
@@ -3061,7 +3211,7 @@ export default function PremiumLoyaltyTemplate({
                 modalMessage: profileIncompleteMessage,
                 error: profileIncompleteMessage,
             })
-            return
+            return { success: false, requiresProfileUpdate: true, error: profileIncompleteMessage }
         }
 
         if (!options.skipProfileCheck && normalizedClaimLane === 'shop' && (invalidReference || invalidShop)) {
@@ -3071,17 +3221,17 @@ export default function PremiumLoyaltyTemplate({
                 modalMessage: blockingMessage,
                 error: blockingMessage,
             })
-            return
+            return { success: false, requiresProfileUpdate: true, error: blockingMessage }
         }
 
         if (!shopId || !shopPassword) {
             setPointsError('Please enter your Shop ID and password')
-            return
+            return { success: false, error: 'Please enter your Shop ID and password' }
         }
 
-        if (!qrCode) {
+        if (!targetQrCode) {
             setPointsError('QR code not available')
-            return
+            return { success: false, error: 'QR code not available' }
         }
 
         setCollectingPoints(true)
@@ -3097,7 +3247,7 @@ export default function PremiumLoyaltyTemplate({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    qr_code: qrCode,
+                    qr_code: targetQrCode,
                     shop_id: shopId.trim(),
                     password: shopPassword,
                     preferred_claim_lane: normalizedClaimLane,
@@ -3129,12 +3279,12 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }
                 openCollectPointsProfilePrompt(data)
-                return
+                return { success: false, requiresProfileUpdate: true, error: data.error || data.modalMessage || data.message }
             }
 
             if (data.requiresConsumerConfirmation) {
                 openConsumerClaimConfirmationPrompt(data.error, data.email)
-                return
+                return { success: false, error: data.error || 'Consumer confirmation required' }
             }
 
             if (!response.ok) {
@@ -3142,15 +3292,14 @@ export default function PremiumLoyaltyTemplate({
                     if (data.remaining_lane_available) {
                         if (data.remaining_lane_available === 'shop') {
                             if (normalizedClaimLane !== 'shop' && canAutoRetryShopLane()) {
-                                await handleCollectPoints({ preferredClaimLane: 'shop' })
-                                return
+                                return await handleCollectPoints({ preferredClaimLane: 'shop' })
                             }
                             openShopLaneConflictPrompt(data.error, data.email)
                         } else {
                             setPointsError(data.error || 'This QR code is only available for the other claim lane.')
                             setPointsErrorAction(null)
                         }
-                        return
+                        return { success: false, alreadyCollected: true, error: data.error }
                     }
                     // Points already collected for this QR
                     setPointsEarned(data.points_earned || 0)
@@ -3160,12 +3309,11 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsLoginModal(false)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
-                    setPendingProfileCollectLane(null)
-                    setPendingProfileCollectEmail('')
+                    resetPendingCollectFlowState()
+                    return { success: true, alreadyCollected: true }
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
-                return
             }
 
             // Success - points collected
@@ -3185,11 +3333,9 @@ export default function PremiumLoyaltyTemplate({
             if (roadtourContext && normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
                 setShowShopLinkCelebration(true)
-                setPendingProfileCollectLane(null)
-                setPendingProfileCollectEmail('')
+                resetPendingCollectFlowState()
             } else if (normalizedClaimLane === 'shop' && data.claim_lane === 'shop') {
-                setPendingProfileCollectLane(null)
-                setPendingProfileCollectEmail('')
+                resetPendingCollectFlowState()
             }
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
@@ -3237,18 +3383,23 @@ export default function PremiumLoyaltyTemplate({
             setShopId('')
             setShopPassword('')
 
+            return { success: true }
+
         } catch (error: any) {
             console.error('Error collecting points:', error)
-            setPointsError(error.message || 'Failed to collect points')
+            const errorMessage = error.message || 'Failed to collect points'
+            setPointsError(errorMessage)
+            return { success: false, error: errorMessage }
         } finally {
             setCollectingPoints(false)
         }
     }
 
     // Handle points collection using existing session (for authenticated shop users)
-    const handleCollectPointsWithSession = async (options: { preferredClaimLane?: 'shop', consumerConfirmation?: boolean, skipProfileCheck?: boolean } = {}) => {
+    const handleCollectPointsWithSession = async (options: CollectPointsOptions = {}): Promise<CollectPointsResult> => {
         const preferredClaimLane = options.preferredClaimLane
         const consumerConfirmation = options.consumerConfirmation === true
+        const targetQrCode = options.qrCodeOverride || qrCode
 
         if (!options.skipProfileCheck && profileIncomplete) {
             openCollectPointsProfilePrompt({
@@ -3256,16 +3407,19 @@ export default function PremiumLoyaltyTemplate({
                 modalMessage: profileIncompleteMessage,
                 error: profileIncompleteMessage,
             })
-            return
+            return { success: false, requiresProfileUpdate: true, error: profileIncompleteMessage }
         }
 
-        if (!qrCode) {
+        if (!targetQrCode) {
             setPointsError('QR code not available')
-            return
+            return { success: false, error: 'QR code not available' }
         }
 
         setCollectingPoints(true)
         setPointsError('')
+        if (options.resumeAfterProfileSave) {
+            setPendingCollectResumeError('')
+        }
 
         try {
             const controller = new AbortController()
@@ -3276,7 +3430,7 @@ export default function PremiumLoyaltyTemplate({
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
-                    qr_code: qrCode,
+                    qr_code: targetQrCode,
                     preferred_claim_lane: preferredClaimLane,
                     consumer_confirmation: consumerConfirmation
                 }),
@@ -3290,18 +3444,23 @@ export default function PremiumLoyaltyTemplate({
                 setPointsError('')
                 setCollectPointsStep('login')
                 setShowPointsLoginModal(true)
-                setCollectingPoints(false)
-                return
+                if (options.resumeAfterProfileSave) {
+                    setPendingCollectResumeError('Profile saved, but your session expired before points could be collected. Please sign in and retry collection.')
+                }
+                return { success: false, requiresLogin: true, error: 'Session expired before points could be collected.' }
             }
 
             if (data.requiresProfileUpdate) {
                 openCollectPointsProfilePrompt(data)
-                return
+                if (options.resumeAfterProfileSave) {
+                    setPendingCollectResumeError(data.modalMessage || data.error || 'Profile saved, but your shop or reference details are still incomplete for collection.')
+                }
+                return { success: false, requiresProfileUpdate: true, error: data.error || data.modalMessage || data.message }
             }
 
             if (data.requiresConsumerConfirmation) {
                 openConsumerClaimConfirmationPrompt(data.error, userEmail)
-                return
+                return { success: false, error: data.error || 'Consumer confirmation required' }
             }
 
             if (!response.ok) {
@@ -3309,15 +3468,14 @@ export default function PremiumLoyaltyTemplate({
                     if (data.remaining_lane_available) {
                         if (data.remaining_lane_available === 'shop') {
                             if (preferredClaimLane !== 'shop' && canAutoRetryShopLane()) {
-                                await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
-                                return
+                                return await handleCollectPointsWithSession({ preferredClaimLane: 'shop' })
                             }
                             openShopLaneConflictPrompt(data.error)
                         } else {
                             setPointsError(data.error || 'This QR code is only available for the other claim lane.')
                             setPointsErrorAction(null)
                         }
-                        return
+                        return { success: false, alreadyCollected: true, error: data.error }
                     }
                     // Points already collected for this QR
                     setPointsEarned(data.points_earned || 0)
@@ -3326,12 +3484,11 @@ export default function PremiumLoyaltyTemplate({
                     setPointsCollected(true)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
-                    setPendingProfileCollectLane(null)
-                    setPendingProfileCollectEmail('')
+                    resetPendingCollectFlowState()
+                    return { success: true, alreadyCollected: true }
                 } else {
                     throw new Error(data.error || 'Failed to collect points')
                 }
-                return
             }
 
             // Success - points collected
@@ -3351,11 +3508,9 @@ export default function PremiumLoyaltyTemplate({
             if (roadtourContext && preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
                 setShopLinkCelebrationName(data.shop_name || newShopName || userShopName || shopName || 'kedai anda')
                 setShowShopLinkCelebration(true)
-                setPendingProfileCollectLane(null)
-                setPendingProfileCollectEmail('')
+                resetPendingCollectFlowState()
             } else if (preferredClaimLane === 'shop' && data.claim_lane === 'shop') {
-                setPendingProfileCollectLane(null)
-                setPendingProfileCollectEmail('')
+                resetPendingCollectFlowState()
             }
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
@@ -3364,16 +3519,22 @@ export default function PremiumLoyaltyTemplate({
             setPointsErrorAction(null)
             if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
 
+            return { success: true }
+
         } catch (error: any) {
             console.error('Error collecting points with session:', error)
             const errorMessage = error.message || 'Failed to collect points'
             setPointsError(errorMessage)
+            if (options.resumeAfterProfileSave) {
+                setPendingCollectResumeError(`Profile saved, but points could not be collected automatically. ${errorMessage}`)
+            }
             // Only show login modal if it's an authentication-related error
             // Don't show login modal for QR code errors when user is already authenticated
             if (!isAuthenticated || errorMessage.toLowerCase().includes('not authenticated') || errorMessage.toLowerCase().includes('session expired')) {
                 setShowPointsLoginModal(true)
             }
             // Otherwise, just show the error (will be displayed in the UI)
+            return { success: false, error: errorMessage }
         } finally {
             setCollectingPoints(false)
         }
@@ -6019,6 +6180,33 @@ export default function PremiumLoyaltyTemplate({
 
             <div className="px-5 -mt-4 relative z-20 space-y-4">
                 {/* Success/Error Messages */}
+                {pendingCollectResumeError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                        <div className="flex items-start gap-2">
+                            <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                            <div className="flex-1 space-y-3">
+                                <p className="text-sm text-red-700">{pendingCollectResumeError}</p>
+                                <Button
+                                    onClick={() => {
+                                        void resumePendingCollectAfterProfileSave()
+                                    }}
+                                    disabled={collectingPoints || savingProfile}
+                                    className="w-full h-10 font-semibold"
+                                    style={{ backgroundColor: config.button_color }}
+                                >
+                                    {collectingPoints ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Retrying...
+                                        </>
+                                    ) : (
+                                        'Retry Collection'
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {profileSaveSuccess && (
                     <div className="p-3 bg-green-50 border border-green-200 rounded-xl flex items-center gap-2">
                         <Check className="w-5 h-5 text-green-500" />
