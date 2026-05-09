@@ -324,6 +324,8 @@ type CollectPointsOptions = {
     skipProfileCheck?: boolean
     qrCodeOverride?: string
     resumeAfterProfileSave?: boolean
+    shopIdOverride?: string
+    shopPasswordOverride?: string
 }
 
 type CollectPointsResult = {
@@ -2835,13 +2837,33 @@ export default function PremiumLoyaltyTemplate({
             setEditingShopName(false)
             setEditingReferralPhone(false)
 
-            if (shouldResumePendingCollect && refreshedProfile?.success && !refreshedProfile.profileIncomplete) {
+            const canResumePendingCollectAfterSave = refreshedProfile?.success
+                ? !refreshedProfile.profileIncomplete && refreshedProfile.invalidShop !== true && refreshedProfile.invalidReference !== true
+                : hasValidShopLaneProfile({
+                    isShopLinkValid: updateData.organization_id !== undefined
+                        ? Boolean(updateData.organization_id)
+                        : undefined,
+                    isReferenceLinkValid: referralPhoneChanged
+                        ? Boolean(newReferenceUserId)
+                        : undefined,
+                })
+
+            if (shouldResumePendingCollect && canResumePendingCollectAfterSave) {
                 if (roadtourContext) {
                     // RoadTour flow: resume via RoadTour claim API, not product QR
                     await handleRoadtourClaimWithSession()
                 } else {
                     await resumePendingCollectAfterProfileSave({ collapseProfileInfo: true })
                 }
+            } else if (shouldResumePendingCollect && refreshedProfile?.success) {
+                setPendingCollectResumeError(
+                    refreshedProfile.profileIncompleteMessage
+                    || (refreshedProfile.invalidShop === true
+                        ? INVALID_SHOP_WARNING_MESSAGE
+                        : refreshedProfile.invalidReference === true
+                            ? INVALID_REFERENCE_WARNING_MESSAGE
+                            : 'Profile saved, but your shop or reference details are still incomplete for collection.')
+                )
             }
 
             // Clear success message after 3 seconds
@@ -3155,25 +3177,39 @@ export default function PremiumLoyaltyTemplate({
         setShowPointsLoginModal(true)
     }
 
+    const hasValidShopLaneProfile = (overrides: {
+        organizationId?: string | null
+        shopName?: string
+        referralPhone?: string
+        isShopLinkValid?: boolean
+        isReferenceLinkValid?: boolean
+    } = {}) => {
+        const activeShopName = overrides.shopName ?? newShopName ?? userShopName
+        const activeOrganizationId = overrides.organizationId ?? newLinkedOrganizationId ?? userLinkedOrganizationId
+        const activeReferralPhone = overrides.referralPhone ?? newReferralPhone ?? userReferralPhone
+
+        return hasValidLinkedShop({
+            organizationId: activeOrganizationId,
+            shopName: activeShopName,
+            isShopLinkValid: overrides.isShopLinkValid,
+        }) && hasValidReferenceLink({
+            referralPhone: activeReferralPhone,
+            isReferenceLinkValid: overrides.isReferenceLinkValid,
+        })
+    }
+
     const canAutoRetryShopLane = () => {
-        const activeShopName = newShopName || userShopName
         const activeOrganizationId = newLinkedOrganizationId || userLinkedOrganizationId
         const activeReferralPhone = newReferralPhone || userReferralPhone
 
-        return !isShopUser
-            && hasValidLinkedShop({
-                organizationId: activeOrganizationId,
-                shopName: activeShopName,
-                isShopLinkValid: activeOrganizationId
-                    ? (newLinkedOrganizationId && newLinkedOrganizationId !== userLinkedOrganizationId ? true : !invalidShop)
-                    : undefined,
-            })
-            && hasValidReferenceLink({
-                referralPhone: activeReferralPhone,
-                isReferenceLinkValid: newReferralPhone && newReferralPhone !== userReferralPhone
-                    ? referralCheckStatus === 'valid'
-                    : activeReferralPhone.trim() ? !invalidReference : undefined,
-            })
+        return !isShopUser && hasValidShopLaneProfile({
+            isShopLinkValid: activeOrganizationId
+                ? (newLinkedOrganizationId && newLinkedOrganizationId !== userLinkedOrganizationId ? true : !invalidShop)
+                : undefined,
+            isReferenceLinkValid: newReferralPhone && newReferralPhone !== userReferralPhone
+                ? referralCheckStatus === 'valid'
+                : activeReferralPhone.trim() ? !invalidReference : undefined,
+        })
     }
 
     const resumePendingCollectAfterProfileSave = async (options: { collapseProfileInfo?: boolean } = {}): Promise<CollectPointsResult> => {
@@ -3191,11 +3227,40 @@ export default function PremiumLoyaltyTemplate({
 
         setPendingCollectResumeError('')
 
-        return handleCollectPointsWithSession({
+        const fallbackShopId = (shopId || pendingProfileCollectEmail || pendingCollectState.email || userEmail).trim()
+        const fallbackShopPassword = shopPassword.trim()
+        const canUseCredentialFallback = fallbackShopId.length > 0 && fallbackShopPassword.length > 0
+
+        if (isAuthenticated) {
+            const sessionResult = await handleCollectPointsWithSession({
+                preferredClaimLane: 'shop',
+                skipProfileCheck: true,
+                qrCodeOverride: pendingCollectState.qrCode,
+                resumeAfterProfileSave: true,
+            })
+
+            if (
+                sessionResult.success
+                || sessionResult.requiresProfileUpdate
+                || (!sessionResult.requiresLogin && !canUseCredentialFallback)
+            ) {
+                return sessionResult
+            }
+        }
+
+        if (!canUseCredentialFallback) {
+            const missingCredentialsMessage = 'Profile saved, but the original sign-in details were unavailable for automatic collection. Please collect the QR again.'
+            setPendingCollectResumeError(missingCredentialsMessage)
+            return { success: false, error: missingCredentialsMessage }
+        }
+
+        return handleCollectPoints({
             preferredClaimLane: 'shop',
             skipProfileCheck: true,
             qrCodeOverride: pendingCollectState.qrCode,
             resumeAfterProfileSave: true,
+            shopIdOverride: fallbackShopId,
+            shopPasswordOverride: fallbackShopPassword,
         })
     }
 
@@ -3204,6 +3269,8 @@ export default function PremiumLoyaltyTemplate({
         const normalizedClaimLane = options.preferredClaimLane === 'shop' ? 'shop' : undefined
         const consumerConfirmation = options.consumerConfirmation === true
         const targetQrCode = options.qrCodeOverride || qrCode
+        const credentialShopId = options.shopIdOverride ?? shopId
+        const credentialShopPassword = options.shopPasswordOverride ?? shopPassword
 
         if (!options.skipProfileCheck && profileIncomplete) {
             openCollectPointsProfilePrompt({
@@ -3224,14 +3291,22 @@ export default function PremiumLoyaltyTemplate({
             return { success: false, requiresProfileUpdate: true, error: blockingMessage }
         }
 
-        if (!shopId || !shopPassword) {
-            setPointsError('Please enter your Shop ID and password')
-            return { success: false, error: 'Please enter your Shop ID and password' }
+        if (!credentialShopId || !credentialShopPassword) {
+            const missingCredentialsMessage = 'Please enter your Shop ID and password'
+            setPointsError(missingCredentialsMessage)
+            if (options.resumeAfterProfileSave) {
+                setPendingCollectResumeError(`Profile saved, but points could not be collected automatically. ${missingCredentialsMessage}.`)
+            }
+            return { success: false, error: missingCredentialsMessage }
         }
 
         if (!targetQrCode) {
-            setPointsError('QR code not available')
-            return { success: false, error: 'QR code not available' }
+            const missingQrMessage = 'QR code not available'
+            setPointsError(missingQrMessage)
+            if (options.resumeAfterProfileSave) {
+                setPendingCollectResumeError(`Profile saved, but points could not be collected automatically. ${missingQrMessage}.`)
+            }
+            return { success: false, error: missingQrMessage }
         }
 
         setCollectingPoints(true)
@@ -3248,8 +3323,8 @@ export default function PremiumLoyaltyTemplate({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     qr_code: targetQrCode,
-                    shop_id: shopId.trim(),
-                    password: shopPassword,
+                    shop_id: credentialShopId.trim(),
+                    password: credentialShopPassword,
                     preferred_claim_lane: normalizedClaimLane,
                     consumer_confirmation: consumerConfirmation
                 }),
@@ -3260,11 +3335,11 @@ export default function PremiumLoyaltyTemplate({
 
             if (data.requiresProfileUpdate) {
                 // Establish client-side session so profile page doesn't require re-login
-                if (data.email && shopPassword) {
+                if (data.email && credentialShopPassword) {
                     try {
                         const { error: signInError } = await supabase.auth.signInWithPassword({
                             email: data.email,
-                            password: shopPassword
+                            password: credentialShopPassword
                         })
                         if (!signInError) {
                             console.log('✅ Session established for profile update')
@@ -3279,11 +3354,17 @@ export default function PremiumLoyaltyTemplate({
                     }
                 }
                 openCollectPointsProfilePrompt(data)
+                if (options.resumeAfterProfileSave) {
+                    setPendingCollectResumeError(data.modalMessage || data.error || 'Profile saved, but your shop or reference details are still incomplete for collection.')
+                }
                 return { success: false, requiresProfileUpdate: true, error: data.error || data.modalMessage || data.message }
             }
 
             if (data.requiresConsumerConfirmation) {
                 openConsumerClaimConfirmationPrompt(data.error, data.email)
+                if (options.resumeAfterProfileSave) {
+                    setPendingCollectResumeError(data.error || 'Profile saved, but another confirmation step is still required before points can be collected.')
+                }
                 return { success: false, error: data.error || 'Consumer confirmation required' }
             }
 
@@ -3345,13 +3426,13 @@ export default function PremiumLoyaltyTemplate({
             setPointsErrorAction(null)
 
             // IMPORTANT: Establish client-side session so next time user doesn't need to login again
-            if (data.email && shopPassword) {
+            if (data.email && credentialShopPassword) {
                 console.log('🔐 Establishing persistent session for shop user...')
                 try {
                     // Add timeout for session establishment
                     const signInPromise = supabase.auth.signInWithPassword({
                         email: data.email,
-                        password: shopPassword
+                        password: credentialShopPassword
                     })
                     const timeoutPromise = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error('Session establishment timed out')), 10000)
@@ -3389,6 +3470,9 @@ export default function PremiumLoyaltyTemplate({
             console.error('Error collecting points:', error)
             const errorMessage = error.message || 'Failed to collect points'
             setPointsError(errorMessage)
+            if (options.resumeAfterProfileSave) {
+                setPendingCollectResumeError(`Profile saved, but points could not be collected automatically. ${errorMessage}`)
+            }
             return { success: false, error: errorMessage }
         } finally {
             setCollectingPoints(false)
