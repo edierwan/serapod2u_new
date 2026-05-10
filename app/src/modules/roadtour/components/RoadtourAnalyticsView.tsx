@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -47,13 +46,26 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
   const [scanPage, setScanPage] = useState(0)
   const scansPerPage = 20
 
+  const applyDateRange = useCallback((query: any, column: string, isDateOnly = false) => {
+    let nextQuery = query
+
+    if (dateFrom) {
+      nextQuery = nextQuery.gte(column, isDateOnly ? dateFrom : `${dateFrom}T00:00:00`)
+    }
+
+    if (dateTo) {
+      nextQuery = nextQuery.lte(column, isDateOnly ? dateTo : `${dateTo}T23:59:59.999`)
+    }
+
+    return nextQuery
+  }, [dateFrom, dateTo])
+
   const loadAnalytics = useCallback(async () => {
     try {
       setLoading(true)
 
-      // Run parallel queries
-      const [campaignsRes, managersRes, qrRes, visitsRes, scansRes, surveysRes] = await Promise.all([
-        (supabase as any).from('roadtour_campaigns').select('id, status', { count: 'exact' }).eq('org_id', companyId),
+      const [campaignsRes, managersRes, qrRes] = await Promise.all([
+        (supabase as any).from('roadtour_campaigns').select('id, name, status', { count: 'exact' }).eq('org_id', companyId),
         (supabase as any).from('roadtour_campaign_managers')
           .select('user_id, roadtour_campaigns!inner(org_id)', { count: 'exact' })
           .eq('roadtour_campaigns.org_id', companyId)
@@ -61,22 +73,75 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         (supabase as any).from('roadtour_qr_codes')
           .select('id, roadtour_campaigns!inner(org_id)', { count: 'exact' })
           .eq('roadtour_campaigns.org_id', companyId),
-        (supabase as any).from('roadtour_official_visits')
-          .select('id, campaign_id, account_manager_user_id, shop_id, scan:official_scan_event_id(points_awarded), roadtour_campaigns!inner(org_id, name), users:account_manager_user_id(full_name)')
-          .eq('roadtour_campaigns.org_id', companyId),
-        (supabase as any).from('roadtour_scan_events')
-          .select('id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), scanned_by_user:scanned_by_user_id(full_name), roadtour_qr_codes!inner(campaign_id, roadtour_campaigns!inner(org_id))')
-          .eq('roadtour_qr_codes.roadtour_campaigns.org_id', companyId)
-          .order('scan_time', { ascending: false })
-          .limit(100),
-        (supabase as any).from('roadtour_survey_responses')
-          .select('id, roadtour_scan_events!inner(roadtour_qr_codes!inner(roadtour_campaigns!inner(org_id)))', { count: 'exact' })
-          .eq('roadtour_scan_events.roadtour_qr_codes.roadtour_campaigns.org_id', companyId),
       ])
 
       const campaignsList = campaignsRes.data || []
+      const campaignIds = campaignsList.map((campaign: any) => campaign.id)
+
+      if (campaignIds.length === 0) {
+        setData({
+          totalCampaigns: campaignsList.length,
+          activeCampaigns: campaignsList.filter((campaign: any) => campaign.status === 'active').length,
+          totalManagers: managersRes.count || 0,
+          totalQrCodes: qrRes.count || 0,
+          totalScans: 0,
+          totalVisits: 0,
+          totalSurveys: 0,
+          totalPointsAwarded: 0,
+          uniqueShopsVisited: 0,
+          topManagers: [],
+          topCampaigns: [],
+          recentScans: [],
+        })
+        return
+      }
+
+      const visitsQuery = applyDateRange(
+        (supabase as any)
+          .from('roadtour_official_visits')
+          .select('id, campaign_id, account_manager_user_id, shop_id, scan:official_scan_event_id(points_awarded), roadtour_campaigns:campaign_id(name), users:account_manager_user_id(full_name)')
+          .in('campaign_id', campaignIds),
+        'visit_date',
+        true
+      )
+
+      const scanMetricsQuery = applyDateRange(
+        (supabase as any)
+          .from('roadtour_scan_events')
+          .select('id, campaign_id, points_awarded')
+          .in('campaign_id', campaignIds),
+        'scan_time'
+      )
+
+      const recentScansQuery = applyDateRange(
+        (supabase as any)
+          .from('roadtour_scan_events')
+          .select('id, campaign_id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, organizations:shop_id(org_name), scanned_by_user:scanned_by_user_id(full_name)')
+          .in('campaign_id', campaignIds)
+          .order('scan_time', { ascending: false })
+          .limit(100),
+        'scan_time'
+      )
+
+      const surveysQuery = applyDateRange(
+        (supabase as any)
+          .from('roadtour_survey_responses')
+          .select('id', { count: 'exact', head: true })
+          .in('campaign_id', campaignIds),
+        'submitted_at'
+      )
+
+      const [visitsRes, scanMetricsRes, recentScansRes, surveysRes] = await Promise.all([
+        visitsQuery,
+        scanMetricsQuery,
+        recentScansQuery,
+        surveysQuery,
+      ])
+
       const visitsList = visitsRes.data || []
-      const scansList = scansRes.data || []
+      const scanMetricsList = scanMetricsRes.data || []
+      const scansList = recentScansRes.data || []
+      const campaignNames = new Map<string, string>(campaignsList.map((campaign: any) => [campaign.id, campaign.name || '—']))
 
       // Compute top managers
       const managerMap: Record<string, { full_name: string; visits: number; points: number }> = {}
@@ -91,17 +156,29 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         .sort((a, b) => b.visit_count - a.visit_count)
         .slice(0, 10)
 
-      // Compute top campaigns
-      const campaignMap: Record<string, { name: string; visits: number; scans: number }> = {}
+      const campaignVisitCounts: Record<string, number> = {}
       for (const v of visitsList) {
         const cid = v.campaign_id
-        if (!campaignMap[cid]) campaignMap[cid] = { name: v.roadtour_campaigns?.name || '—', visits: 0, scans: 0 }
-        campaignMap[cid].visits++
-        campaignMap[cid].scans += 1
+        campaignVisitCounts[cid] = (campaignVisitCounts[cid] || 0) + 1
       }
-      const topCampaigns = Object.entries(campaignMap)
-        .map(([cid, c]) => ({ campaign_id: cid, name: c.name, visit_count: c.visits, scan_count: c.scans }))
-        .sort((a, b) => b.visit_count - a.visit_count)
+
+      const campaignScanCounts: Record<string, number> = {}
+      let totalPointsAwarded = 0
+      for (const scan of scanMetricsList) {
+        const cid = scan.campaign_id
+        campaignScanCounts[cid] = (campaignScanCounts[cid] || 0) + 1
+        totalPointsAwarded += scan.points_awarded || 0
+      }
+
+      const topCampaigns = campaignIds
+        .map((campaignId: string) => ({
+          campaign_id: campaignId,
+          name: campaignNames.get(campaignId) || '—',
+          visit_count: campaignVisitCounts[campaignId] || 0,
+          scan_count: campaignScanCounts[campaignId] || 0,
+        }))
+        .filter((campaign) => campaign.visit_count > 0 || campaign.scan_count > 0)
+        .sort((a, b) => b.scan_count - a.scan_count || b.visit_count - a.visit_count)
         .slice(0, 10)
 
       setData({
@@ -109,10 +186,10 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         activeCampaigns: campaignsList.filter((c: any) => c.status === 'active').length,
         totalManagers: managersRes.count || 0,
         totalQrCodes: qrRes.count || 0,
-        totalScans: scansList.length,
+        totalScans: scanMetricsList.length,
         totalVisits: visitsList.length,
         totalSurveys: surveysRes.count || 0,
-        totalPointsAwarded: visitsList.reduce((s: number, v: any) => s + (v.scan?.points_awarded || 0), 0),
+        totalPointsAwarded,
         uniqueShopsVisited: new Set(visitsList.map((v: any) => v.shop_id)).size,
         topManagers,
         topCampaigns,
@@ -131,9 +208,13 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
     } finally {
       setLoading(false)
     }
-  }, [companyId, supabase])
+  }, [applyDateRange, companyId, supabase])
 
   useEffect(() => { loadAnalytics() }, [loadAnalytics])
+
+  useEffect(() => {
+    setScanPage(0)
+  }, [dateFrom, dateTo])
 
   if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
@@ -149,6 +230,29 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       <div>
         <h3 className="text-xl font-semibold flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary" />RoadTour Analytics</h3>
         <p className="text-sm text-muted-foreground mt-1">Monitor campaign performance, visits, and rewards distribution.</p>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-end md:justify-between">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">From</label>
+            <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="w-full sm:w-44" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">To</label>
+            <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="w-full sm:w-44" />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setDateFrom('')
+            setDateTo('')
+          }}
+          className="text-sm text-primary hover:underline self-start md:self-auto"
+        >
+          Clear date filter
+        </button>
       </div>
 
       {/* KPI Cards */}

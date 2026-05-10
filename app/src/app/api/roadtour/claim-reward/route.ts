@@ -87,6 +87,89 @@ function buildRewardErrorPayload(error: any) {
     }
 }
 
+type RoadtourSurveyFieldMeta = {
+    field_key: string
+    field_label: string | null
+    field_type: string | null
+}
+
+type RoadtourSurveyResponseItemInsert = {
+    field_key: string
+    field_label_snapshot: string | null
+    field_type_snapshot: string | null
+    answer_text?: string | null
+    answer_json?: unknown
+    answer_number?: number
+    media_url?: string | null
+}
+
+function buildRoadtourSurveyResponseItem(params: {
+    fieldKey: string
+    field: RoadtourSurveyFieldMeta | undefined
+    rawValue: unknown
+}): RoadtourSurveyResponseItemInsert | null {
+    const { fieldKey, field, rawValue } = params
+    const fieldType = field?.field_type || null
+    const baseItem = {
+        field_key: fieldKey,
+        field_label_snapshot: field?.field_label || null,
+        field_type_snapshot: fieldType,
+    }
+
+    if (rawValue === null || rawValue === undefined) {
+        return null
+    }
+
+    if (Array.isArray(rawValue)) {
+        const values = rawValue.map((value) => String(value).trim()).filter(Boolean)
+        if (values.length === 0) return null
+        return { ...baseItem, answer_json: values }
+    }
+
+    if (typeof rawValue === 'boolean') {
+        return { ...baseItem, answer_json: rawValue }
+    }
+
+    if (typeof rawValue === 'number') {
+        if (!Number.isFinite(rawValue)) return null
+        return { ...baseItem, answer_number: rawValue }
+    }
+
+    if (typeof rawValue === 'object') {
+        const entries = Object.entries(rawValue)
+        if (entries.length === 0) return null
+        return { ...baseItem, answer_json: rawValue }
+    }
+
+    const normalizedText = String(rawValue).trim()
+    if (!normalizedText) {
+        return null
+    }
+
+    if (fieldType === 'number') {
+        const parsedNumber = Number(normalizedText)
+        if (!Number.isNaN(parsedNumber)) {
+            return { ...baseItem, answer_number: parsedNumber }
+        }
+    }
+
+    if (fieldType === 'multi_select') {
+        const values = normalizedText.split(',').map((value) => value.trim()).filter(Boolean)
+        if (values.length === 0) return null
+        return { ...baseItem, answer_json: values }
+    }
+
+    if (fieldType === 'checkbox') {
+        return { ...baseItem, answer_json: normalizedText === 'true' }
+    }
+
+    if (fieldType === 'photo') {
+        return { ...baseItem, media_url: normalizedText }
+    }
+
+    return { ...baseItem, answer_text: normalizedText }
+}
+
 async function calculateRoadtourUserBalance(supabase: any, userId: string | null) {
     if (!userId) return 0
 
@@ -359,6 +442,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        if (reward_mode === 'survey_submit' && !survey_template_id) {
+            return NextResponse.json(
+                { message: 'This RoadTour campaign is missing a survey template. Please contact the administrator.', code: 'SURVEY_TEMPLATE_MISSING' },
+                { status: 500 }
+            )
+        }
+
         // 3. Record scan event with geolocation
         console.log('[RT] inserting scan event:', {
             campaign_id,
@@ -451,14 +541,61 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(buildScanInsertErrorPayload(scanError), { status: 500 })
         }
 
+        const { error: qrUsageError } = await (supabase as any).rpc('record_roadtour_qr_usage', { p_qr_code_id: qr_code_id })
+        if (qrUsageError) {
+            console.warn('[RT] failed to record QR usage:', qrUsageError.message)
+        }
+
+        if (!userId) {
+            return NextResponse.json(
+                { message: 'Please sign in before claiming this RoadTour reward.', code: 'AUTH_REQUIRED' },
+                { status: 401 }
+            )
+        }
+
         // 4. If survey mode, save survey response
         let surveyResponseId: string | null = null
         if (reward_mode === 'survey_submit' && survey_template_id && survey_answers) {
+            const { data: surveyTemplateFields, error: surveyTemplateFieldsError } = await (supabase as any)
+                .from('roadtour_survey_template_fields')
+                .select('field_key, field_label, field_type')
+                .eq('template_id', survey_template_id)
+
+            if (surveyTemplateFieldsError) {
+                return NextResponse.json({ message: 'Failed to load survey template fields.', detail: surveyTemplateFieldsError.message }, { status: 500 })
+            }
+
+            const surveyFieldMap = new Map<string, RoadtourSurveyFieldMeta>(
+                (surveyTemplateFields || []).map((field: RoadtourSurveyFieldMeta) => [field.field_key, field])
+            )
+
+            const pendingSurveyItems = Object.entries(survey_answers)
+                .map(([fieldKey, rawValue]) => buildRoadtourSurveyResponseItem({
+                    fieldKey,
+                    field: surveyFieldMap.get(fieldKey),
+                    rawValue,
+                }))
+                .filter((item): item is RoadtourSurveyResponseItemInsert => Boolean(item))
+
+            if (pendingSurveyItems.length === 0) {
+                return NextResponse.json(
+                    { message: 'Please complete the survey to claim your reward.', code: 'SURVEY_REQUIRED' },
+                    { status: 400 }
+                )
+            }
+
             const { data: surveyResp, error: surveyErr } = await (supabase as any)
                 .from('roadtour_survey_responses')
                 .insert({
+                    campaign_id,
+                    qr_code_id,
+                    account_manager_user_id,
+                    scanned_by_user_id: userId,
+                    shop_id: resolvedRewardShopId,
                     scan_event_id: scanEvent.id,
                     template_id: survey_template_id,
+                    response_status: 'submitted',
+                    submitted_at: new Date().toISOString(),
                 })
                 .select('id')
                 .single()
@@ -469,17 +606,16 @@ export async function POST(request: NextRequest) {
 
             surveyResponseId = surveyResp.id
 
-            // Save individual answers
-            const items = Object.entries(survey_answers).map(([field_key, value]) => ({
+            const items = pendingSurveyItems.map((item) => ({
                 response_id: surveyResp.id,
-                field_key,
-                value: String(value),
+                ...item,
             }))
 
             if (items.length > 0) {
                 const { error: itemsErr } = await (supabase as any).from('roadtour_survey_response_items').insert(items)
                 if (itemsErr) {
-                    console.error('Failed to save survey items:', itemsErr)
+                    await (supabase as any).from('roadtour_survey_responses').delete().eq('id', surveyResp.id)
+                    return NextResponse.json({ message: 'Failed to save survey answers.', detail: itemsErr.message }, { status: 500 })
                 }
             }
         }

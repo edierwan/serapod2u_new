@@ -32,6 +32,7 @@ interface Campaign {
     region_scope: string[] | null
     default_points: number
     reward_mode: string
+    survey_template_id: string | null
     qr_mode: string
     notes: string | null
     created_at: string
@@ -55,6 +56,12 @@ interface ReferenceOption {
     full_name: string
     email: string
     phone: string
+}
+
+interface SurveyTemplateOption {
+    id: string
+    name: string
+    description: string | null
 }
 
 const MALAYSIAN_STATES = [
@@ -93,6 +100,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [formEnd, setFormEnd] = useState('')
     const [formPoints, setFormPoints] = useState(20)
     const [formRewardMode, setFormRewardMode] = useState('survey_submit')
+    const [formSurveyTemplateId, setFormSurveyTemplateId] = useState('')
     const [formQrMode, setFormQrMode] = useState('persistent')
     const [formRegions, setFormRegions] = useState<string[]>([])
     const [formNotes, setFormNotes] = useState('')
@@ -122,6 +130,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [selectedCampaignName, setSelectedCampaignName] = useState('')
     const [managers, setManagers] = useState<AccountManager[]>([])
     const [availableManagers, setAvailableManagers] = useState<{ id: string; full_name: string; email: string; phone: string }[]>([])
+    const [surveyTemplates, setSurveyTemplates] = useState<SurveyTemplateOption[]>([])
     const [managersLoading, setManagersLoading] = useState(false)
     const [managerSearch, setManagerSearch] = useState('')
     const [eligibleReferencesLoading, setEligibleReferencesLoading] = useState(false)
@@ -293,6 +302,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             const { data, error } = await supabase
                 .from('users')
                 .select('id, full_name, email, phone')
+                .eq('organization_id', companyId)
                 .eq('can_be_reference', true)
                 .eq('is_active', true)
                 .order('full_name')
@@ -310,6 +320,22 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             setEligibleReferencesLoading(false)
         }
     }, [supabase])
+
+    const loadSurveyTemplates = useCallback(async () => {
+        const { data, error } = await (supabase as any)
+            .from('roadtour_survey_templates')
+            .select('id, name, description')
+            .eq('org_id', companyId)
+            .eq('is_active', true)
+            .order('name')
+
+        if (error) throw error
+        setSurveyTemplates((data || []).map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            description: row.description || null,
+        })))
+    }, [companyId, supabase])
 
     const loadCampaignReferenceIds = useCallback(async (campaignId: string) => {
         const { data, error } = await (supabase as any)
@@ -388,6 +414,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormEnd('')
         setFormPoints(20)
         setFormRewardMode('survey_submit')
+        setFormSurveyTemplateId('')
         setFormQrMode('persistent')
         setFormRegions([])
         setFormNotes('')
@@ -398,7 +425,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
     const openCreate = async () => {
         resetForm()
-        await loadEligibleReferences()
+        await Promise.all([loadEligibleReferences(), loadSurveyTemplates()])
         setDialogMode('create')
         setDialogOpen(true)
     }
@@ -410,12 +437,13 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormEnd(c.end_date)
         setFormPoints(c.default_points)
         setFormRewardMode(c.reward_mode)
+        setFormSurveyTemplateId(c.survey_template_id || '')
         setFormQrMode(c.qr_mode)
         setFormRegions(c.region_scope || [])
         setFormNotes(c.notes || '')
         setFormReferenceSearch('')
         setEditId(c.id)
-        await loadEligibleReferences()
+        await Promise.all([loadEligibleReferences(), loadSurveyTemplates()])
         try {
             setFormReferenceIds(await loadCampaignReferenceIds(c.id))
         } catch {
@@ -428,6 +456,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const handleSave = async () => {
         if (!formName.trim()) { toast({ title: 'Validation', description: 'Campaign name is required.', variant: 'destructive' }); return }
         if (!formStart || !formEnd) { toast({ title: 'Validation', description: 'Start and end dates are required.', variant: 'destructive' }); return }
+        if (formRewardMode === 'survey_submit' && !formSurveyTemplateId) {
+            toast({ title: 'Validation', description: 'Select a survey template for survey-submit campaigns.', variant: 'destructive' })
+            return
+        }
 
         try {
             setSaving(true)
@@ -439,6 +471,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 end_date: formEnd,
                 default_points: formPoints,
                 reward_mode: formRewardMode,
+                survey_template_id: formRewardMode === 'survey_submit' ? formSurveyTemplateId : null,
                 qr_mode: formQrMode,
                 region_scope: formRegions.length > 0 ? formRegions : null,
                 notes: formNotes.trim() || null,
@@ -765,6 +798,24 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     <SelectContent><SelectItem value="direct_scan">Direct Scan</SelectItem><SelectItem value="survey_submit">Survey Submit</SelectItem></SelectContent></Select>
                             </div>
                         </div>
+                        {formRewardMode === 'survey_submit' && (
+                            <div className="space-y-2">
+                                <Label>Survey Template *</Label>
+                                <Select value={formSurveyTemplateId} onValueChange={setFormSurveyTemplateId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={surveyTemplates.length > 0 ? 'Select survey template' : 'No active survey templates found'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {surveyTemplates.map((template) => (
+                                            <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Survey-submit campaigns only reward after a response is saved.
+                                </p>
+                            </div>
+                        )}
                         <div className="space-y-2">
                             <Label>Region Coverage</Label>
                             <div className="flex flex-wrap gap-2">
