@@ -3414,6 +3414,15 @@ export default function PremiumLoyaltyTemplate({
         setShowPointsLoginModal(true)
     }
 
+    const openRoadtourDuplicatePrompt = (message?: string) => {
+        setCollectingPoints(false)
+        setPointsErrorTitle('Already Claimed')
+        setPointsError(message || 'You have already claimed this RoadTour reward.')
+        setPointsErrorAction(null)
+        setCollectPointsStep('login')
+        setShowPointsLoginModal(false)
+    }
+
     const hasValidShopLaneProfile = (overrides: {
         organizationId?: string | null
         shopName?: string
@@ -3917,8 +3926,8 @@ export default function PremiumLoyaltyTemplate({
             }
             if (!response.ok) {
                 if (data.code === 'DUPLICATE') {
-                    setPointsCollected(true)
-                    setShowPointsLoginModal(false)
+                    openRoadtourDuplicatePrompt(data.message)
+                    return
                 }
                 throw new Error(data.message || 'Failed to claim reward')
             }
@@ -4001,7 +4010,10 @@ export default function PremiumLoyaltyTemplate({
                 return
             }
             if (!response.ok) {
-                if (data.code === 'DUPLICATE') { setPointsCollected(true); setShowPointsLoginModal(false) }
+                if (data.code === 'DUPLICATE') {
+                    openRoadtourDuplicatePrompt(data.message)
+                    return
+                }
                 throw new Error(data.message || 'Failed to claim reward')
             }
             const earned = data.points_awarded || roadtourContext.default_points || 0
@@ -7310,8 +7322,12 @@ export default function PremiumLoyaltyTemplate({
                             <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-red-100">
                                 <XCircle className="w-8 h-8 text-red-500" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900">Unable to Collect Points</h3>
-                            <p className="text-sm text-gray-500 mt-1">There was a problem processing your request</p>
+                            <h3 className="text-xl font-bold text-gray-900">{pointsErrorTitle || 'Unable to Collect Points'}</h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                                {pointsErrorTitle === 'Already Claimed'
+                                    ? 'This RoadTour reward was already claimed by this account'
+                                    : 'There was a problem processing your request'}
+                            </p>
                         </div>
 
                         <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
@@ -7319,7 +7335,10 @@ export default function PremiumLoyaltyTemplate({
                         </div>
 
                         <button
-                            onClick={() => setPointsError('')}
+                            onClick={() => {
+                                setPointsError('')
+                                setPointsErrorTitle('')
+                            }}
                             className="w-full py-3 px-4 rounded-xl font-medium text-white transition-colors"
                             style={{ backgroundColor: config.primary_color }}
                         >

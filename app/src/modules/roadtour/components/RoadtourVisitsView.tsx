@@ -78,6 +78,13 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 const REGION_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#a855f7', '#06b6d4', '#ef4444', '#84cc16', '#f97316']
 
+function formatLocalIsoDate(date: Date): string {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
 // Haversine distance in km between two lat/lng points.
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
     const toRad = (v: number) => (v * Math.PI) / 180
@@ -93,13 +100,13 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 function todayIsoDate(): string {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
-    return d.toISOString().slice(0, 10)
+    return formatLocalIsoDate(d)
 }
 
 function isoDateAddDays(iso: string, days: number): string {
-    const d = new Date(iso + 'T00:00:00')
+    const d = new Date(iso + 'T12:00:00')
     d.setDate(d.getDate() + days)
-    return d.toISOString().slice(0, 10)
+    return formatLocalIsoDate(d)
 }
 
 function formatTrendPct(curr: number, prev: number): { sign: '+' | '-'; value: string } | null {
@@ -270,14 +277,16 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1)
         const prevTo = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1)
         const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (days - 1))
-        const inPrev = (v: OfficialVisit) => v.visit_date >= prevFrom.toISOString().slice(0, 10) && v.visit_date <= prevTo.toISOString().slice(0, 10)
+        const prevFromIso = formatLocalIsoDate(prevFrom)
+        const prevToIso = formatLocalIsoDate(prevTo)
+        const inPrev = (v: OfficialVisit) => v.visit_date >= prevFromIso && v.visit_date <= prevToIso
         // Note: prev window may not be in current `visits` list because the load filter limits to selected window.
         // Trend remains best-effort and may show nothing when prev data is unavailable.
         const prevList = visits.filter(inPrev)
         const trendVisits = formatTrendPct(total, prevList.length)
         const trendShops = formatTrendPct(uniqueShops, new Set(prevList.map((v) => v.shop_id)).size)
 
-        const prevLabel = `${formatShortDate(prevFrom.toISOString().slice(0, 10))} – ${formatShortDate(prevTo.toISOString().slice(0, 10))}`
+        const prevLabel = `${formatShortDate(prevFromIso)} – ${formatShortDate(prevToIso)}`
 
         return {
             total, uniqueShops, completed, completedPct,
@@ -298,7 +307,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             const fromDate = new Date(fromIso + 'T00:00:00')
             const toDate = new Date(toIso + 'T00:00:00')
             for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
-                const iso = d.toISOString().slice(0, 10)
+                const iso = formatLocalIsoDate(d)
                 points.push({ label: formatShortDate(iso), value: counts.get(iso) || 0 })
             }
             return points
@@ -311,7 +320,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             // Monday-start week
             const diffToMon = (dayOfWeek + 6) % 7
             d.setDate(d.getDate() - diffToMon)
-            const key = d.toISOString().slice(0, 10)
+            const key = formatLocalIsoDate(d)
             counts.set(key, (counts.get(key) || 0) + 1)
         }
         return Array.from(counts.entries())

@@ -205,6 +205,57 @@ async function calculateRoadtourUserBalance(supabase: any, userId: string | null
     return 0
 }
 
+async function hasExistingRoadtourReward(params: {
+    supabase: any
+    campaignId: string
+    accountManagerUserId: string
+    scannedByUserId: string | null
+    shopId: string | null
+    duplicateRule: string | null
+}) {
+    const {
+        supabase,
+        campaignId,
+        accountManagerUserId,
+        scannedByUserId,
+        shopId,
+        duplicateRule,
+    } = params
+
+    let query = (supabase as any)
+        .from('roadtour_scan_events')
+        .select('id')
+        .eq('campaign_id', campaignId)
+        .eq('scan_status', 'success')
+        .gt('points_awarded', 0)
+        .limit(1)
+
+    if (duplicateRule === 'one_per_user_per_day') {
+        if (!scannedByUserId) return false
+        const utcDayStart = new Date()
+        utcDayStart.setUTCHours(0, 0, 0, 0)
+        query = query
+            .eq('scanned_by_user_id', scannedByUserId)
+            .gte('scan_time', utcDayStart.toISOString())
+    } else if (duplicateRule === 'one_per_shop_per_am_per_day') {
+        if (!shopId) return false
+        const utcDayStart = new Date()
+        utcDayStart.setUTCHours(0, 0, 0, 0)
+        query = query
+            .eq('account_manager_user_id', accountManagerUserId)
+            .eq('shop_id', shopId)
+            .gte('scan_time', utcDayStart.toISOString())
+    } else {
+        if (!scannedByUserId) return false
+        query = query.eq('scanned_by_user_id', scannedByUserId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    return Array.isArray(data) && data.length > 0
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
@@ -431,6 +482,22 @@ export async function POST(request: NextRequest) {
                     code: 'SHOP_REQUIRED',
                 },
                 { status: 400 }
+            )
+        }
+
+        const alreadyClaimed = await hasExistingRoadtourReward({
+            supabase,
+            campaignId: campaign_id,
+            accountManagerUserId: account_manager_user_id,
+            scannedByUserId: userId,
+            shopId: resolvedRewardShopId,
+            duplicateRule: duplicate_rule_reward || 'one_per_user_per_campaign',
+        })
+
+        if (alreadyClaimed) {
+            return NextResponse.json(
+                { message: duplicateMessage, code: 'DUPLICATE' },
+                { status: 409 }
             )
         }
 
