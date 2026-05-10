@@ -1190,8 +1190,8 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                     <div
                       key={item.variantId}
                       className={`rounded-lg border p-3 ${item.severity === 'red'
-                          ? 'border-red-500/30 bg-red-500/5'
-                          : 'border-amber-500/30 bg-amber-500/5'
+                        ? 'border-red-500/30 bg-red-500/5'
+                        : 'border-amber-500/30 bg-amber-500/5'
                         }`}
                     >
                       <div className="flex items-start justify-between mb-2">
@@ -1202,8 +1202,8 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
                         <Badge
                           variant="secondary"
                           className={`ml-2 flex-shrink-0 text-xs ${item.severity === 'red'
-                              ? 'bg-red-500/20 text-red-600 dark:text-red-400'
-                              : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                            ? 'bg-red-500/20 text-red-600 dark:text-red-400'
+                            : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                             }`}
                         >
                           {item.decline === -100 ? 'No Orders' : `${item.decline}%`}

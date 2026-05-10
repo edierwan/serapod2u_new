@@ -45,17 +45,17 @@ function formatCountdown(scheduledAt: string): { display: string; isFuture: bool
     const now = new Date();
     const scheduled = new Date(scheduledAt);
     const diffSeconds = differenceInSeconds(scheduled, now);
-    
+
     if (diffSeconds <= 0) {
         return { display: '00:00:00', isFuture: false, isOverdue: true };
     }
-    
+
     const hours = Math.floor(diffSeconds / 3600);
     const minutes = Math.floor((diffSeconds % 3600) / 60);
     const seconds = diffSeconds % 60;
-    
+
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return { 
+    return {
         display: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
         isFuture: true,
         isOverdue: false
@@ -82,10 +82,10 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     useEffect(() => {
         const hasScheduled = campaigns.some(c => c.scheduled_at);
         if (!hasScheduled) return;
-        
+
         const interval = setInterval(() => {
             setCountdownTick(t => t + 1);
-            
+
             // Auto-refresh when a campaign's scheduled time just passed (within 5 seconds)
             const justPassed = campaigns.some(c => {
                 if (!c.scheduled_at || c.status !== 'scheduled') return false;
@@ -96,7 +96,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                 setTimeout(() => fetchCampaigns(), 5000);
             }
         }, 1000);
-        
+
         return () => clearInterval(interval);
     }, [campaigns]);
 
@@ -216,7 +216,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
     const handleRunNowConfirmed = async () => {
         const campaign = runNowConfirm.campaign;
         if (!campaign) return;
-        
+
         setRunningNow(true);
         const isRetry = campaign.status === 'launch_failed';
         try {
@@ -228,7 +228,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             if (res.ok) {
                 const data = await res.json();
                 toast({
@@ -413,132 +413,132 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
                                         // Calculate countdown for scheduled campaigns
                                         const countdown = c.scheduled_at ? formatCountdown(c.scheduled_at) : null;
                                         const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'hh:mm:ss a') : null;
-                                        
+
                                         return (
-                                        <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}>
-                                            <TableCell className="text-muted-foreground font-mono text-sm">
-                                                {(currentPage - 1) * pageSize + index + 1}
-                                            </TableCell>
-                                            <TableCell className="font-medium">
-                                                {c.name}
-                                            </TableCell>
-                                            <TableCell>{c.objective}</TableCell>
-                                            <TableCell>{getStatusBadge(c.status)}</TableCell>
-                                            <TableCell>{getRecipientsDisplay(c)}</TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {c.creator?.full_name || '-'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {c.scheduled_at ? (
-                                                    <div className="space-y-1">
-                                                        <div className="font-mono text-sm">
-                                                            {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
+                                            <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}>
+                                                <TableCell className="text-muted-foreground font-mono text-sm">
+                                                    {(currentPage - 1) * pageSize + index + 1}
+                                                </TableCell>
+                                                <TableCell className="font-medium">
+                                                    {c.name}
+                                                </TableCell>
+                                                <TableCell>{c.objective}</TableCell>
+                                                <TableCell>{getStatusBadge(c.status)}</TableCell>
+                                                <TableCell>{getRecipientsDisplay(c)}</TableCell>
+                                                <TableCell className="text-sm text-muted-foreground">
+                                                    {c.creator?.full_name || '-'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {c.scheduled_at ? (
+                                                        <div className="space-y-1">
+                                                            <div className="font-mono text-sm">
+                                                                {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
+                                                            </div>
+                                                            {countdown?.isFuture ? (
+                                                                <div className="flex items-center gap-1 text-xs text-blue-600">
+                                                                    <Clock className="h-3 w-3" />
+                                                                    <span className="font-mono">{countdown.display}</span>
+                                                                    <span className="text-muted-foreground">remaining</span>
+                                                                </div>
+                                                            ) : countdown?.isOverdue && !['completed', 'failed', 'sending', 'archived', 'paused'].includes(c.status) ? (
+                                                                <div className="flex items-center gap-1 text-xs text-amber-600">
+                                                                    <AlertTriangle className="h-3 w-3" />
+                                                                    <span className="font-mono">{countdown.display}</span>
+                                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-400 text-amber-600">Overdue</Badge>
+                                                                </div>
+                                                            ) : null}
                                                         </div>
-                                                        {countdown?.isFuture ? (
-                                                            <div className="flex items-center gap-1 text-xs text-blue-600">
-                                                                <Clock className="h-3 w-3" />
-                                                                <span className="font-mono">{countdown.display}</span>
-                                                                <span className="text-muted-foreground">remaining</span>
-                                                            </div>
-                                                        ) : countdown?.isOverdue && !['completed', 'failed', 'sending', 'archived', 'paused'].includes(c.status) ? (
-                                                            <div className="flex items-center gap-1 text-xs text-amber-600">
-                                                                <AlertTriangle className="h-3 w-3" />
-                                                                <span className="font-mono">{countdown.display}</span>
-                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-400 text-amber-600">Overdue</Badge>
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                ) : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
-                                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                                <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
-                                                            <span className="sr-only">Open menu</span>
-                                                            <MoreHorizontal className="h-4 w-4 text-gray-700" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent
-                                                        align="end"
-                                                        sideOffset={5}
-                                                        className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-50"
-                                                        style={{ zIndex: 9999 }}
-                                                    >
-                                                        {c.status === 'draft' && (
+                                                    ) : '-'}
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
+                                                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                                                    <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
+                                                                <span className="sr-only">Open menu</span>
+                                                                <MoreHorizontal className="h-4 w-4 text-gray-700" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                            align="end"
+                                                            sideOffset={5}
+                                                            className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-50"
+                                                            style={{ zIndex: 9999 }}
+                                                        >
+                                                            {c.status === 'draft' && (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => { setOpenMenuId(null); handleEditCampaign(c); }}
+                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                                >
+                                                                    <Edit className="h-4 w-4 text-gray-600" />
+                                                                    Edit
+                                                                </DropdownMenuItem>
+                                                            )}
                                                             <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); handleEditCampaign(c); }}
+                                                                onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                             >
-                                                                <Edit className="h-4 w-4 text-gray-600" />
-                                                                Edit
+                                                                <Eye className="h-4 w-4 text-gray-600" />
+                                                                View
                                                             </DropdownMenuItem>
-                                                        )}
-                                                        <DropdownMenuItem
-                                                            onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                        >
-                                                            <Eye className="h-4 w-4 text-gray-600" />
-                                                            View
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
-                                                            onClick={() => { setOpenMenuId(null); handleAction('duplicate', c.id); }}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
-                                                        >
-                                                            <Copy className="h-4 w-4 text-gray-600" />
-                                                            Duplicate
-                                                        </DropdownMenuItem>
-                                                        {/* Run Now for scheduled or draft campaigns */}
-                                                        {(c.status === 'scheduled' || c.status === 'draft') && c.scheduled_at && (
                                                             <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
-                                                            >
-                                                                <Rocket className="h-4 w-4 text-green-600" />
-                                                                Run Now
-                                                            </DropdownMenuItem>
-                                                        )}
-                                                        {/* Retry Launch for launch_failed campaigns */}
-                                                        {c.status === 'launch_failed' && (
-                                                            <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-orange-700 hover:bg-orange-50 cursor-pointer focus:bg-orange-50 rounded-md mx-1"
-                                                            >
-                                                                <Rocket className="h-4 w-4 text-orange-600" />
-                                                                Retry Launch
-                                                            </DropdownMenuItem>
-                                                        )}
-                                                        {c.status === 'sending' && (
-                                                            <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
+                                                                onClick={() => { setOpenMenuId(null); handleAction('duplicate', c.id); }}
                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
                                                             >
-                                                                <Pause className="h-4 w-4 text-gray-600" />
-                                                                Pause
+                                                                <Copy className="h-4 w-4 text-gray-600" />
+                                                                Duplicate
                                                             </DropdownMenuItem>
-                                                        )}
-                                                        {c.status === 'paused' && (
+                                                            {/* Run Now for scheduled or draft campaigns */}
+                                                            {(c.status === 'scheduled' || c.status === 'draft') && c.scheduled_at && (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
+                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
+                                                                >
+                                                                    <Rocket className="h-4 w-4 text-green-600" />
+                                                                    Run Now
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            {/* Retry Launch for launch_failed campaigns */}
+                                                            {c.status === 'launch_failed' && (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
+                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-orange-700 hover:bg-orange-50 cursor-pointer focus:bg-orange-50 rounded-md mx-1"
+                                                                >
+                                                                    <Rocket className="h-4 w-4 text-orange-600" />
+                                                                    Retry Launch
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            {c.status === 'sending' && (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
+                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                                >
+                                                                    <Pause className="h-4 w-4 text-gray-600" />
+                                                                    Pause
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            {c.status === 'paused' && (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => { setOpenMenuId(null); handleAction('resume', c.id); }}
+                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                                >
+                                                                    <Play className="h-4 w-4 text-gray-600" />
+                                                                    Resume
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                            <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
                                                             <DropdownMenuItem
-                                                                onClick={() => { setOpenMenuId(null); handleAction('resume', c.id); }}
-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                                onClick={() => { setOpenMenuId(null); handleAction('delete', c.id || ''); }}
+                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
                                                             >
-                                                                <Play className="h-4 w-4 text-gray-600" />
-                                                                Resume
+                                                                <Trash2 className="h-4 w-4 text-red-600" />
+                                                                Delete
                                                             </DropdownMenuItem>
-                                                        )}
-                                                        <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
-                                                        <DropdownMenuItem
-                                                            onClick={() => { setOpenMenuId(null); handleAction('delete', c.id || ''); }}
-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
-                                                        >
-                                                            <Trash2 className="h-4 w-4 text-red-600" />
-                                                            Delete
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
                                     })}
                                 </TableBody>
                             </Table>

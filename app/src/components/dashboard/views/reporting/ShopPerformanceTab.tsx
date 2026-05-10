@@ -184,7 +184,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
               .in('organization_id', batch)
 
             if (userData) {
-              ;(userData as ShopContact[]).forEach((user) => {
+              ; (userData as ShopContact[]).forEach((user) => {
                 if (!user.organization_id) return
                 const existing = contactMap.get(user.organization_id)
                 const existingScore = existing
@@ -211,7 +211,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
               .in('id', batch)
 
             if (userData) {
-              ;(userData as ConsumerProfile[]).forEach((user) => {
+              ; (userData as ConsumerProfile[]).forEach((user) => {
                 profileMap.set(user.id, user)
               })
             }
@@ -305,13 +305,21 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     })
 
     return [...consumerMap.entries()]
-      .map(([consumerId, data]) => ({
-        consumerId,
-        ...data,
-      }))
+      .map(([consumerId, data]) => {
+        const profile = consumerId !== 'anonymous' ? consumerProfiles.get(consumerId) : null
+        const contactLines = formatContactLines(profile?.phone, profile?.email)
+
+        return {
+          consumerId,
+          consumerName: consumerId === 'anonymous' ? 'Anonymous' : (profile?.full_name || 'Unnamed Consumer'),
+          phone: contactLines.phone,
+          email: contactLines.email,
+          ...data,
+        }
+      })
       .sort((a, b) => b.scans - a.scans)
       .slice(0, 20)
-  }, [drillShopId, periodScans])
+  }, [drillShopId, periodScans, consumerProfiles])
 
   // ── Monthly Trend for All Shops ──────────────────────────────────────
   const monthlyTrend = useMemo(() => {
@@ -526,14 +534,14 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
           >
             <CardContent className="pt-5 pb-4 cursor-pointer">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Shops</span>
-              <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <Store className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Shops</span>
+                <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                  <Store className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </div>
               </div>
-            </div>
-            <ExecutiveKpiValue><AnimatedCounter value={kpis.activeShops} /></ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">with scans in period <Eye className="h-3 w-3" /></p>
+              <ExecutiveKpiValue><AnimatedCounter value={kpis.activeShops} /></ExecutiveKpiValue>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">with scans in period <Eye className="h-3 w-3" /></p>
             </CardContent>
           </button>
         </Card>
@@ -556,14 +564,14 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
           >
             <CardContent className="pt-5 pb-4 cursor-pointer">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Consumers</span>
-              <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
-                <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Consumers</span>
+                <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
+                  <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
               </div>
-            </div>
-            <ExecutiveKpiValue><AnimatedCounter value={kpis.uniqueConsumers} /></ExecutiveKpiValue>
-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">unique consumers <Eye className="h-3 w-3" /></p>
+              <ExecutiveKpiValue><AnimatedCounter value={kpis.uniqueConsumers} /></ExecutiveKpiValue>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">unique consumers <Eye className="h-3 w-3" /></p>
             </CardContent>
           </button>
         </Card>
@@ -770,7 +778,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                   <thead className="bg-muted/40 border-b">
                     <tr>
                       <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">#</th>
-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">Consumer ID</th>
+                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">Consumer Name</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Scans</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Points</th>
                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Last Scan</th>
@@ -781,7 +789,15 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                       <tr key={c.consumerId} className="hover:bg-muted/30">
                         <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-2 font-medium">
-                          {c.consumerId === 'anonymous' ? <span className="text-muted-foreground italic">Anonymous</span> : c.consumerId.slice(0, 12) + '…'}
+                          <div>
+                            <div className={c.consumerId === 'anonymous' ? 'text-muted-foreground italic' : ''}>{c.consumerName}</div>
+                            {c.consumerId !== 'anonymous' && (c.phone !== '-' || c.email !== '-') && (
+                              <div className="mt-0.5 text-xs font-normal text-muted-foreground">
+                                <div>{c.phone}</div>
+                                <div>{c.email}</div>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-right font-semibold">{c.scans}</td>
                         <td className="px-3 py-2 text-right">{c.points.toLocaleString()}</td>
