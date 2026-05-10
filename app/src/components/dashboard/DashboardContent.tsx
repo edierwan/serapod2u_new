@@ -42,7 +42,7 @@ import HrLeaveApprovalFlowView from '@/components/hr/modules/HrLeaveApprovalFlow
 import HrPayrollSalaryView from '@/components/hr/modules/HrPayrollSalaryView'
 import HrPayrollAllowancesView from '@/components/hr/modules/HrPayrollAllowancesView'
 import HrPayrollPayslipsView from '@/components/hr/modules/HrPayrollPayslipsView'
-import HrPerformanceKpisView from '@/components/hr/modules/HrPerformanceKpisView'
+import HrKpiModuleView from '@/components/hr/modules/HrKpiModuleView'
 import HrPerformanceAppraisalsView from '@/components/hr/modules/HrPerformanceAppraisalsView'
 import HrPerformanceReviewsView from '@/components/hr/modules/HrPerformanceReviewsView'
 import HrSettingsApprovalRulesView from '@/components/hr/modules/HrSettingsApprovalRulesView'
@@ -615,7 +615,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'hr/payroll/payslips':
         return <HrPayrollPayslipsView userProfile={userProfile} />
       case 'hr/performance/kpis':
-        return <HrPerformanceKpisView />
+        return <HrKpiModuleView />
       case 'hr/performance/appraisals':
         return <HrPerformanceAppraisalsView />
       case 'hr/performance/reviews':
