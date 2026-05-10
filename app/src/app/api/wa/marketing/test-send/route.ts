@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     });
 
     const isSuccess = result?.success ?? result?.ok ?? false;
-    const providerMessageId = result?.message_id || result?.provider_message_id || null;
+    const providerMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null;
 
     if (!isSuccess) {
       return NextResponse.json({

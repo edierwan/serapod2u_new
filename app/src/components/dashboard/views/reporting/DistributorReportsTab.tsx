@@ -1024,9 +1024,9 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                                 <td className="py-2.5 px-2 text-center text-xs">{o.items_count}</td>
                                 <td className="py-2.5 px-2 text-center">
                                   <Badge variant="secondary" className={`text-[10px] ${o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                      : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                          : 'bg-muted text-muted-foreground'
+                                    : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                      : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                        : 'bg-muted text-muted-foreground'
                                     }`}>
                                     {o.status}
                                   </Badge>

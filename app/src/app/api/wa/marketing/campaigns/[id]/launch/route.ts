@@ -471,7 +471,7 @@ async function sendMessagesAsync(
                 waConfig.tenantId
             );
 
-            const providerMessageId = result?.message_id || result?.provider_message_id || null;
+            const providerMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null;
 
             if (result.ok !== false && !result.error) {
                 // Update log with success

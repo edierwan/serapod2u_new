@@ -236,6 +236,12 @@ async function findDailyReportingContext(
 ) {
   const quotedMessageIds = getProviderMessageCandidates(payload)
 
+  logIngest('info', 'session_search_start', {
+    from_phone: senderPhoneE164,
+    quoted_message_ids: quotedMessageIds,
+    has_quoted_ids: quotedMessageIds.length > 0,
+  })
+
   for (const matchedBy of ['provider_message_id', 'last_outbound_message_id'] as const) {
     if (quotedMessageIds.length === 0) break
 
@@ -250,6 +256,12 @@ async function findDailyReportingContext(
       .maybeSingle()
 
     if (matchedSession) {
+      logIngest('info', 'session_matched_by_quoted_id', {
+        from_phone: senderPhoneE164,
+        matched_by: matchedBy,
+        session_id: matchedSession.id,
+        campaign_id: matchedSession.campaign_id,
+      })
       return {
         activeSession: matchedSession,
         latestSession: matchedSession,
@@ -269,6 +281,14 @@ async function findDailyReportingContext(
   const sessions = (phoneSessions || []) as any[]
   const latestSession = sessions[0] || null
   const now = Date.now()
+
+  logIngest('info', 'session_phone_lookup', {
+    from_phone: senderPhoneE164,
+    sessions_found: sessions.length,
+    latest_session_id: latestSession?.id || null,
+    latest_session_status: latestSession?.status || null,
+    latest_session_reply_enabled: latestSession?.reply_enabled ?? null,
+  })
 
   const activeSession = sessions.find((session) => {
     if (session.status !== 'active') return false
@@ -303,6 +323,16 @@ async function sendSessionReply(
     nextPageToPersist?: number | null
   },
 ) {
+  logIngest('info', 'send_session_reply_start', {
+    session_id: session.id,
+    campaign_id: session.campaign_id,
+    org_id: session.org_id,
+    recipient_phone: session.recipient_phone,
+    reply_action: params.replyAction,
+    inbound_text: params.inboundText,
+    matched_by: params.matchedBy,
+  })
+
   const config = await getWhatsAppConfig(supabase as any, session.org_id)
 
   if (!config || !config.baseUrl) {
@@ -352,7 +382,17 @@ async function sendSessionReply(
   )
 
   const success = result?.success ?? result?.ok ?? false
-  const outboundMessageId = result?.message_id || result?.provider_message_id || null
+  const outboundMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null
+
+  logIngest(success ? 'info' : 'error', 'send_session_reply_result', {
+    session_id: session.id,
+    campaign_id: session.campaign_id,
+    recipient_phone: session.recipient_phone,
+    reply_action: params.replyAction,
+    success,
+    outbound_message_id: outboundMessageId,
+    error: success ? null : (result?.error || 'unknown'),
+  })
 
   await (supabase as any).from('marketing_reply_logs').insert({
     session_id: session.id,
@@ -413,6 +453,18 @@ async function handleDailyReportingReply(
 ) {
   const trimmedText = payload.text.trim()
   const { activeSession, latestSession, matchedBy } = await findDailyReportingContext(supabase, senderPhoneE164, payload)
+
+  logIngest('info', 'daily_reporting_session_lookup', {
+    from_phone: senderPhoneE164,
+    text_trimmed: trimmedText,
+    has_active_session: !!activeSession,
+    has_latest_session: !!latestSession,
+    matched_by: matchedBy,
+    active_session_id: activeSession?.id || null,
+    active_session_status: activeSession?.status || null,
+    active_session_reply_enabled: activeSession?.reply_enabled ?? null,
+    quoted_message_id: payload.quotedMessageId || null,
+  })
 
   if (!activeSession) {
     if (!isInteractiveReportCommand(trimmedText) || !latestSession) {
@@ -526,7 +578,26 @@ async function handleDailyReportingReply(
   return { handled: true, success: replyResult.success }
 }
 
+/** Structured log helper for ingest observability */
+function logIngest(
+  level: 'info' | 'warn' | 'error',
+  stage: string,
+  ctx: Record<string, unknown>,
+) {
+  const entry = JSON.stringify({
+    ts: new Date().toISOString(),
+    scope: 'whatsapp_ingest',
+    stage,
+    ...ctx,
+  })
+  if (level === 'error') console.error(entry)
+  else if (level === 'warn') console.warn(entry)
+  else console.log(entry)
+}
+
 export async function POST(request: NextRequest) {
+  const ingestStartedAt = Date.now()
+
   try {
     const rawBody = await request.json()
     const agentKey = request.headers.get('x-agent-key') || request.headers.get('x-api-key') || request.headers.get('x-moltbot-secret')
@@ -534,12 +605,28 @@ export async function POST(request: NextRequest) {
     const configuredApiKeys = await getConfiguredWhatsAppApiKeys(supabase)
     const acceptedKeys = new Set([...AGENT_KEYS, ...configuredApiKeys])
 
+    logIngest('info', 'webhook_received', {
+      has_agent_key: !!agentKey,
+      agent_key_prefix: agentKey ? agentKey.substring(0, 8) + '…' : null,
+      accepted_keys_count: acceptedKeys.size,
+      env_keys_count: AGENT_KEYS.length,
+      db_keys_count: configuredApiKeys.length,
+      source: rawBody?.event ? 'gateway' : 'legacy',
+      event: rawBody?.event || null,
+      from_me: rawBody?.wa?.fromMe ?? null,
+    })
+
     if (acceptedKeys.size === 0) {
-      console.error('[WhatsApp Ingest] webhook auth secret not configured')
+      logIngest('error', 'auth_no_keys', { message: 'No accepted API keys configured (env + DB)' })
       return NextResponse.json({ ok: false, error: 'Server misconfigured' }, { status: 500 })
     }
 
     if (!agentKey || !acceptedKeys.has(agentKey)) {
+      logIngest('warn', 'auth_rejected', {
+        has_agent_key: !!agentKey,
+        agent_key_prefix: agentKey ? agentKey.substring(0, 8) + '…' : null,
+        accepted_key_prefixes: Array.from(acceptedKeys).map(k => k.substring(0, 8) + '…'),
+      })
       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -547,15 +634,31 @@ export async function POST(request: NextRequest) {
     const { from, messageId, chatId, text, metadata, tenantId } = parsedBody
 
     if (!from || !messageId || !text) {
+      logIngest('warn', 'validation_failed', { has_from: !!from, has_messageId: !!messageId, has_text: !!text })
       return NextResponse.json({ ok: false, error: 'Missing required fields: from, messageId, text' }, { status: 400 })
     }
 
     const senderPhoneE164 = normalizePhoneE164(from)
     const chatJid = chatId || `${senderPhoneE164.replace(/\D/g, '')}@s.whatsapp.net`
 
-    console.log(`[WhatsApp Ingest] Processing ${parsedBody.source} message from ${senderPhoneE164}, messageId=${messageId}`)
+    logIngest('info', 'payload_parsed', {
+      source: parsedBody.source,
+      direction_hint: parsedBody.directionHint,
+      from_phone: senderPhoneE164,
+      message_id: messageId,
+      text_preview: text.substring(0, 50),
+      text_length: text.length,
+      quoted_message_id: parsedBody.quotedMessageId || null,
+      tenant_id: tenantId || null,
+    })
 
     if (parsedBody.source === 'gateway' && parsedBody.directionHint === 'outbound') {
+      logIngest('info', 'outbound_echo_ignored', {
+        from_phone: senderPhoneE164,
+        message_id: messageId,
+        gateway_phone: parsedBody.gatewayPhone,
+      })
+
       await logWhatsAppEvent(supabase, {
         tenantId,
         direction: 'outbound',
@@ -797,13 +900,41 @@ export async function POST(request: NextRequest) {
 
     if (direction === 'inbound') {
       try {
-        await handleDailyReportingReply(supabase, senderPhoneE164, parsedBody)
-      } catch (replyError) {
-        console.error('[WhatsApp Ingest] Daily reporting reply error:', replyError)
+        logIngest('info', 'daily_reporting_check', {
+          from_phone: senderPhoneE164,
+          message_id: messageId,
+          text_trimmed: text.trim(),
+          is_interactive: isInteractiveReportCommand(text.trim()),
+          conversation_id: conversationId,
+        })
+
+        const replyResult = await handleDailyReportingReply(supabase, senderPhoneE164, parsedBody)
+
+        logIngest('info', 'daily_reporting_result', {
+          from_phone: senderPhoneE164,
+          message_id: messageId,
+          handled: replyResult.handled,
+          success: replyResult.success ?? null,
+        })
+      } catch (replyError: any) {
+        logIngest('error', 'daily_reporting_error', {
+          from_phone: senderPhoneE164,
+          message_id: messageId,
+          error: replyError.message,
+          stack: replyError.stack?.slice(0, 300),
+        })
       }
     }
 
-    console.log(`[WhatsApp Ingest] Success: convId=${conversationId}, msgId=${newMessage.id}`)
+    logIngest('info', 'ingest_complete', {
+      from_phone: senderPhoneE164,
+      message_id: messageId,
+      conversation_id: conversationId,
+      msg_id: newMessage.id,
+      direction,
+      is_admin: isAdmin,
+      duration_ms: Date.now() - ingestStartedAt,
+    })
 
     return NextResponse.json({
       ok: true,
@@ -812,7 +943,11 @@ export async function POST(request: NextRequest) {
       dedup: false,
     })
   } catch (error: any) {
-    console.error('[WhatsApp Ingest] Error:', error)
+    logIngest('error', 'unhandled_error', {
+      error: error.message,
+      stack: error.stack?.slice(0, 500),
+      duration_ms: Date.now() - ingestStartedAt,
+    })
     return NextResponse.json({ ok: false, error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
