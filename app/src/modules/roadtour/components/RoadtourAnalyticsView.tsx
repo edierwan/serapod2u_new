@@ -2,9 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { normalizePointClaimSettings } from '@/lib/engagement/point-claim-settings'
+import { normalizePhoneE164 } from '@/utils/phone'
 import {
   BarChart3, CheckCircle2, Loader2, Map as MapIcon, MapPin, QrCode, Scan, Star,
   TrendingUp, Users
@@ -19,6 +23,7 @@ interface RoadtourAnalyticsViewProps {
 interface AnalyticsData {
   totalCampaigns: number
   activeCampaigns: number
+  pointValueRm: number
   totalManagers: number
   totalQrCodes: number
   totalScans: number
@@ -28,7 +33,104 @@ interface AnalyticsData {
   uniqueShopsVisited: number
   topManagers: { user_id: string; full_name: string; visit_count: number; points_total: number }[]
   topCampaigns: { campaign_id: string; name: string; visit_count: number; scan_count: number }[]
-  recentScans: { id: string; scanned_at: string; consumer_name: string | null; consumer_phone: string | null; shop_name: string | null; points: number; status: string }[]
+  recentScans: { id: string; scanned_at: string; consumer_name: string | null; consumer_phone: string | null; shop_name: string | null; shop_context_note?: string | null; points: number; status: string }[]
+  recentScansTotal: number
+}
+
+interface RecentScanEventRow {
+  id: string
+  campaign_id: string
+  qr_code_id: string
+  scan_time: string
+  consumer_phone: string | null
+  points_awarded: number
+  scan_status: string
+  shop_id: string | null
+  scanned_by_user_id: string | null
+}
+
+interface OrganizationLookup {
+  id: string
+  org_name: string
+  branch?: string | null
+}
+
+interface UserLookup {
+  id: string
+  full_name?: string | null
+  phone?: string | null
+  organization_id?: string | null
+  referral_phone?: string | null
+  shop_name?: string | null
+}
+
+const SCAN_PAGE_SIZE_OPTIONS = [10, 20, 50]
+
+function formatShopDisplayName(shop?: OrganizationLookup | null) {
+  if (!shop) return null
+  return `${shop.org_name}${shop.branch ? ` (${shop.branch})` : ''}`
+}
+
+function formatRewardCost(totalPointsAwarded: number, pointValueRm: number) {
+  if (totalPointsAwarded <= 0) return 'RM 0.00'
+  if (!(pointValueRm > 0)) return 'Not configured'
+  return `RM ${(totalPointsAwarded * pointValueRm).toFixed(2)}`
+}
+
+function toNormalizedPhone(value?: string | null) {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed) return ''
+  return normalizePhoneE164(trimmed)
+}
+
+function resolveRecentScanConsumer(scan: RecentScanEventRow, usersById: Map<string, UserLookup>, usersByPhone: Map<string, UserLookup>) {
+  const normalizedPhone = toNormalizedPhone(scan.consumer_phone)
+  const userByPhone = normalizedPhone ? usersByPhone.get(normalizedPhone) || null : null
+  const userById = scan.scanned_by_user_id ? usersById.get(scan.scanned_by_user_id) || null : null
+  const resolvedUser = userByPhone || userById
+
+  return {
+    normalizedPhone,
+    resolvedUser,
+    consumerName: resolvedUser?.full_name || userById?.full_name || userByPhone?.full_name || null,
+    consumerPhone: resolvedUser?.phone || normalizedPhone || scan.consumer_phone || null,
+  }
+}
+
+function resolveRecentScanShop(args: {
+  scan: RecentScanEventRow
+  consumerUser: UserLookup | null
+  surveysByScanId: Map<string, { shop_id?: string | null }>
+  qrById: Map<string, { shop_id?: string | null }>
+  shopsById: Map<string, OrganizationLookup>
+  referenceUsersByPhone: Map<string, UserLookup>
+}) {
+  const { scan, consumerUser, surveysByScanId, qrById, shopsById, referenceUsersByPhone } = args
+
+  const directShop = scan.shop_id ? shopsById.get(scan.shop_id) || null : null
+  if (directShop) return { shopName: formatShopDisplayName(directShop), note: null }
+
+  const surveyShopId = surveysByScanId.get(scan.id)?.shop_id || null
+  const surveyShop = surveyShopId ? shopsById.get(surveyShopId) || null : null
+  if (surveyShop) return { shopName: formatShopDisplayName(surveyShop), note: null }
+
+  const qrShopId = qrById.get(scan.qr_code_id)?.shop_id || null
+  const qrShop = qrShopId ? shopsById.get(qrShopId) || null : null
+  if (qrShop) return { shopName: formatShopDisplayName(qrShop), note: null }
+
+  const consumerOrg = consumerUser?.organization_id ? shopsById.get(consumerUser.organization_id) || null : null
+  if (consumerOrg) return { shopName: formatShopDisplayName(consumerOrg), note: null }
+
+  const referencePhone = toNormalizedPhone(consumerUser?.referral_phone)
+  const referenceUser = referencePhone ? referenceUsersByPhone.get(referencePhone) || null : null
+  const referenceOrg = referenceUser?.organization_id ? shopsById.get(referenceUser.organization_id) || null : null
+  if (referenceOrg) return { shopName: formatShopDisplayName(referenceOrg), note: null }
+
+  if (consumerUser?.shop_name?.trim()) {
+    return { shopName: consumerUser.shop_name.trim(), note: 'Linked via user profile' }
+  }
+
+  return { shopName: null, note: 'No linked shop context' }
 }
 
 export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAnalyticsViewProps) {
@@ -37,14 +139,14 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<AnalyticsData>({
-    totalCampaigns: 0, activeCampaigns: 0, totalManagers: 0, totalQrCodes: 0,
+    totalCampaigns: 0, activeCampaigns: 0, pointValueRm: 0, totalManagers: 0, totalQrCodes: 0,
     totalScans: 0, totalVisits: 0, totalSurveys: 0, totalPointsAwarded: 0,
-    uniqueShopsVisited: 0, topManagers: [], topCampaigns: [], recentScans: [],
+    uniqueShopsVisited: 0, topManagers: [], topCampaigns: [], recentScans: [], recentScansTotal: 0,
   })
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [scanPage, setScanPage] = useState(0)
-  const scansPerPage = 20
+  const [scansPerPage, setScansPerPage] = useState(10)
 
   const applyDateRange = useCallback((query: any, column: string, isDateOnly = false) => {
     let nextQuery = query
@@ -69,15 +171,24 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         .select('id, name, status', { count: 'exact' })
         .eq('org_id', companyId)
 
+      const orgSettingsRes = await (supabase as any)
+        .from('organizations')
+        .select('settings')
+        .eq('id', companyId)
+        .single()
+
       if (campaignsRes.error) throw campaignsRes.error
+      if (orgSettingsRes.error) throw orgSettingsRes.error
 
       const campaignsList = campaignsRes.data || []
       const campaignIds = campaignsList.map((campaign: any) => campaign.id)
+      const pointValueRm = normalizePointClaimSettings(orgSettingsRes.data?.settings, 100).pointValueRM
 
       if (campaignIds.length === 0) {
         setData({
           totalCampaigns: campaignsList.length,
           activeCampaigns: campaignsList.filter((campaign: any) => campaign.status === 'active').length,
+          pointValueRm,
           totalManagers: 0,
           totalQrCodes: 0,
           totalScans: 0,
@@ -88,6 +199,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           topManagers: [],
           topCampaigns: [],
           recentScans: [],
+          recentScansTotal: 0,
         })
         return
       }
@@ -120,10 +232,10 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         applyDateRange(
           (supabase as any)
             .from('roadtour_scan_events')
-            .select('id, campaign_id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, scanned_by_user_id')
+            .select('id, campaign_id, qr_code_id, scan_time, consumer_phone, points_awarded, scan_status, shop_id, scanned_by_user_id', { count: 'exact' })
             .in('campaign_id', campaignIds)
             .order('scan_time', { ascending: false })
-            .limit(100),
+            .range(scanPage * scansPerPage, (scanPage + 1) * scansPerPage - 1),
           'scan_time'
         ),
         applyDateRange(
@@ -148,7 +260,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
       const visitsList = visitsRes.data || []
       const scanMetricsList = scanMetricsRes.data || []
-      const scansList = recentScansRes.data || []
+      const scansList = (recentScansRes.data || []) as RecentScanEventRow[]
       const campaignNames = new globalThis.Map<string, string>(campaignsList.map((campaign: any) => [campaign.id, campaign.name || '—']))
 
       const managerUserIds = Array.from(new Set(visitsList.map((visit: any) => visit.account_manager_user_id).filter(Boolean)))
@@ -182,8 +294,82 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
       const managerNames = new globalThis.Map<string, string>((managerUsersRes.data || []).map((user: any) => [user.id, user.full_name || '—']))
       const visitScanPoints = new globalThis.Map<string, number>((visitScanPointsRes.data || []).map((scan: any) => [scan.id, Number(scan.points_awarded || 0)]))
-      const recentScanUserNames = new globalThis.Map<string, string>((recentScanUsersRes.data || []).map((user: any) => [user.id, user.full_name || '—']))
-      const recentScanShopNames = new globalThis.Map<string, string>((recentScanShopsRes.data || []).map((shop: any) => [shop.id, shop.org_name || '—']))
+
+      const scanPhoneFilters = Array.from(new Set(scansList.flatMap((scan) => {
+        const rawPhone = typeof scan.consumer_phone === 'string' ? scan.consumer_phone.trim() : ''
+        const normalizedPhone = toNormalizedPhone(scan.consumer_phone)
+        return [rawPhone, normalizedPhone].filter(Boolean)
+      })))
+
+      const scanQrIds = Array.from(new Set(scansList.map((scan) => scan.qr_code_id).filter(Boolean)))
+      const scanIds = Array.from(new Set(scansList.map((scan) => scan.id)))
+
+      const [recentScanUsersByIdRes, recentScanUsersByPhoneRes, recentScanSurveysRes, recentScanQrRes] = await Promise.all([
+        recentScanUserIds.length > 0
+          ? (supabase as any).from('users').select('id, full_name, phone, organization_id, referral_phone, shop_name').in('id', recentScanUserIds)
+          : Promise.resolve({ data: [], error: null }),
+        scanPhoneFilters.length > 0
+          ? (supabase as any).from('users').select('id, full_name, phone, organization_id, referral_phone, shop_name').in('phone', scanPhoneFilters)
+          : Promise.resolve({ data: [], error: null }),
+        scanIds.length > 0
+          ? (supabase as any).from('roadtour_survey_responses').select('scan_event_id, shop_id').in('scan_event_id', scanIds)
+          : Promise.resolve({ data: [], error: null }),
+        scanQrIds.length > 0
+          ? (supabase as any).from('roadtour_qr_codes').select('id, shop_id').in('id', scanQrIds)
+          : Promise.resolve({ data: [], error: null }),
+      ])
+
+      if (recentScanUsersByIdRes.error || recentScanUsersByPhoneRes.error || recentScanSurveysRes.error || recentScanQrRes.error) {
+        console.warn('[RoadtourAnalytics] recent scan context lookup failed', {
+          recentScanUsersByIdError: recentScanUsersByIdRes.error,
+          recentScanUsersByPhoneError: recentScanUsersByPhoneRes.error,
+          recentScanSurveysError: recentScanSurveysRes.error,
+          recentScanQrError: recentScanQrRes.error,
+        })
+      }
+
+      const consumerUsers = [
+        ...((recentScanUsersByIdRes.data || []) as UserLookup[]),
+        ...((recentScanUsersByPhoneRes.data || []) as UserLookup[]),
+      ]
+
+      const userIdsNeedingOrgLookup = Array.from(new Set(consumerUsers.map((user) => user.organization_id).filter(Boolean)))
+      const referencePhones = Array.from(new Set(consumerUsers.map((user) => toNormalizedPhone(user.referral_phone)).filter(Boolean)))
+
+      const referenceUsersRes = referencePhones.length > 0
+        ? await (supabase as any).from('users').select('id, full_name, phone, organization_id').in('phone', referencePhones)
+        : { data: [], error: null }
+
+      if (referenceUsersRes.error) {
+        console.warn('[RoadtourAnalytics] reference user lookup failed', referenceUsersRes.error)
+      }
+
+      const organizationIds = Array.from(new Set([
+        ...recentScanShopIds,
+        ...(((recentScanSurveysRes.data || []) as Array<{ shop_id?: string | null }>).map((row) => row.shop_id).filter(Boolean) as string[]),
+        ...(((recentScanQrRes.data || []) as Array<{ shop_id?: string | null }>).map((row) => row.shop_id).filter(Boolean) as string[]),
+        ...(userIdsNeedingOrgLookup as string[]),
+        ...(((referenceUsersRes.data || []) as Array<{ organization_id?: string | null }>).map((row) => row.organization_id).filter(Boolean) as string[]),
+      ]))
+
+      const organizationsRes = organizationIds.length > 0
+        ? await (supabase as any).from('organizations').select('id, org_name, branch').in('id', organizationIds)
+        : { data: [], error: null }
+
+      if (organizationsRes.error) {
+        console.warn('[RoadtourAnalytics] organization lookup failed', organizationsRes.error)
+      }
+
+      const usersById = new globalThis.Map<string, UserLookup>(consumerUsers.map((user) => [user.id, user]))
+      const usersByPhone = new globalThis.Map<string, UserLookup>(consumerUsers
+        .filter((user) => typeof user.phone === 'string' && user.phone.trim())
+        .map((user) => [toNormalizedPhone(user.phone), user]))
+      const surveysByScanId = new globalThis.Map<string, { shop_id?: string | null }>(((recentScanSurveysRes.data || []) as Array<{ scan_event_id: string; shop_id?: string | null }>).map((row) => [row.scan_event_id, row]))
+      const qrById = new globalThis.Map<string, { shop_id?: string | null }>(((recentScanQrRes.data || []) as Array<{ id: string; shop_id?: string | null }>).map((row) => [row.id, row]))
+      const shopsById = new globalThis.Map<string, OrganizationLookup>(((organizationsRes.data || []) as OrganizationLookup[]).map((shop) => [shop.id, shop]))
+      const referenceUsersByPhone = new globalThis.Map<string, UserLookup>(((referenceUsersRes.data || []) as UserLookup[])
+        .filter((user) => typeof user.phone === 'string' && user.phone.trim())
+        .map((user) => [toNormalizedPhone(user.phone), user]))
 
       // Compute top managers
       const managerMap: Record<string, { full_name: string; visits: number; points: number }> = {}
@@ -226,6 +412,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       setData({
         totalCampaigns: campaignsList.length,
         activeCampaigns: campaignsList.filter((c: any) => c.status === 'active').length,
+        pointValueRm,
         totalManagers: managersRes.count || 0,
         totalQrCodes: qrRes.count || 0,
         totalScans: scanMetricsList.length,
@@ -235,15 +422,29 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         uniqueShopsVisited: new Set(visitsList.map((v: any) => v.shop_id).filter(Boolean)).size,
         topManagers,
         topCampaigns,
-        recentScans: scansList.map((s: any) => ({
-          id: s.id,
-          scanned_at: s.scan_time,
-          consumer_name: recentScanUserNames.get(s.scanned_by_user_id) || null,
-          consumer_phone: s.consumer_phone,
-          shop_name: recentScanShopNames.get(s.shop_id) || null,
-          points: s.points_awarded,
-          status: s.scan_status,
-        })),
+        recentScans: scansList.map((scan) => {
+          const consumer = resolveRecentScanConsumer(scan, usersById, usersByPhone)
+          const shop = resolveRecentScanShop({
+            scan,
+            consumerUser: consumer.resolvedUser,
+            surveysByScanId,
+            qrById,
+            shopsById,
+            referenceUsersByPhone,
+          })
+
+          return {
+            id: scan.id,
+            scanned_at: scan.scan_time,
+            consumer_name: consumer.consumerName,
+            consumer_phone: consumer.consumerPhone,
+            shop_name: shop.shopName,
+            shop_context_note: shop.note,
+            points: scan.points_awarded,
+            status: scan.scan_status,
+          }
+        }),
+        recentScansTotal: recentScansRes.count || 0,
       })
     } catch (err) {
       console.error('[RoadtourAnalytics] load failed', err)
@@ -251,13 +452,13 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
     } finally {
       setLoading(false)
     }
-  }, [applyDateRange, companyId, supabase])
+  }, [applyDateRange, companyId, scanPage, scansPerPage, supabase])
 
   useEffect(() => { loadAnalytics() }, [loadAnalytics])
 
   useEffect(() => {
     setScanPage(0)
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, scansPerPage])
 
   if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
@@ -266,7 +467,15 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
     rewarded: 'bg-emerald-100 text-emerald-700',
     duplicate: 'bg-gray-100 text-gray-700',
     rejected: 'bg-red-100 text-red-700',
+    success: 'bg-emerald-100 text-emerald-700',
+    invalid: 'bg-red-100 text-red-700',
+    expired: 'bg-gray-100 text-gray-700',
   }
+
+  const estimatedRewardCost = formatRewardCost(data.totalPointsAwarded, data.pointValueRm)
+  const scansFrom = data.recentScansTotal === 0 ? 0 : scanPage * scansPerPage + 1
+  const scansTo = Math.min((scanPage + 1) * scansPerPage, data.recentScansTotal)
+  const totalScanPages = Math.max(1, Math.ceil(data.recentScansTotal / scansPerPage))
 
   return (
     <div className="space-y-6">
@@ -327,7 +536,11 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         <Card>
           <CardContent className="pt-4 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-pink-100"><Star className="h-5 w-5 text-pink-600" /></div>
-            <div><p className="text-2xl font-bold">{data.totalPointsAwarded.toLocaleString()}</p><p className="text-xs text-muted-foreground">Points Awarded</p></div>
+            <div>
+              <p className="text-2xl font-bold">{data.totalPointsAwarded.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Points Awarded</p>
+              <p className="text-[11px] text-muted-foreground">Est. cost: {estimatedRewardCost}</p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -416,17 +629,42 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
       {/* Recent Scans */}
       <Card>
-        <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Scan className="h-4 w-4" />Recent Scans ({data.recentScans.length})</CardTitle></CardHeader>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-sm flex items-center gap-2"><Scan className="h-4 w-4" />Recent Scans ({data.recentScansTotal})</CardTitle>
+              {data.recentScansTotal > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">Showing {scansFrom}-{scansTo} of {data.recentScansTotal} scans</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Rows per page</span>
+              <Select value={String(scansPerPage)} onValueChange={(value) => setScansPerPage(Number(value))}>
+                <SelectTrigger className="h-8 w-20"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SCAN_PAGE_SIZE_OPTIONS.map((size) => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent>
           {data.recentScans.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">No scans yet.</p>
           ) : (
             <div className="space-y-2">
-              {data.recentScans.slice(scanPage * scansPerPage, (scanPage + 1) * scansPerPage).map((s) => (
+              {data.recentScans.map((s) => (
                 <div key={s.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <p className="text-sm font-medium">{s.consumer_name || s.consumer_phone || 'Unknown consumer'}{s.consumer_name && s.consumer_phone ? ` (${s.consumer_phone})` : ''}</p>
-                    <p className="text-xs text-muted-foreground">{s.shop_name || 'Unknown shop'} · {new Date(s.scanned_at).toLocaleDateString()} {new Date(s.scanned_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {s.shop_name || 'Unknown shop'}
+                      {s.shop_name ? '' : s.shop_context_note ? ` · ${s.shop_context_note}` : ''}
+                      {' · '}
+                      {new Date(s.scanned_at).toLocaleDateString()}
+                      {' '}
+                      {new Date(s.scanned_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {s.points > 0 && <span className="text-sm font-medium text-emerald-600">+{s.points} pts</span>}
@@ -434,12 +672,12 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
                   </div>
                 </div>
               ))}
-              {data.recentScans.length > scansPerPage && (
+              {data.recentScansTotal > 0 && (
                 <div className="flex items-center justify-between pt-2">
-                  <p className="text-xs text-muted-foreground">Page {scanPage + 1} of {Math.ceil(data.recentScans.length / scansPerPage)}</p>
+                  <p className="text-xs text-muted-foreground">Page {scanPage + 1} of {totalScanPages}</p>
                   <div className="flex gap-2">
-                    <button disabled={scanPage === 0} onClick={() => setScanPage(p => p - 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Previous</button>
-                    <button disabled={(scanPage + 1) * scansPerPage >= data.recentScans.length} onClick={() => setScanPage(p => p + 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Next</button>
+                    <Button variant="outline" size="sm" disabled={scanPage === 0} onClick={() => setScanPage((page) => page - 1)}>Previous</Button>
+                    <Button variant="outline" size="sm" disabled={scanPage + 1 >= totalScanPages} onClick={() => setScanPage((page) => page + 1)}>Next</Button>
                   </div>
                 </div>
               )}

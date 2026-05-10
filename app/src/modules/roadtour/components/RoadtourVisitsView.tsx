@@ -37,6 +37,8 @@ interface OfficialVisit {
     shop_id: string
     shop_name?: string
     shop_branch?: string | null
+    shop_address?: string | null
+    shop_address_line2?: string | null
     shop_city?: string | null
     shop_state?: string | null
     shop_contact_phone?: string
@@ -47,9 +49,16 @@ interface OfficialVisit {
     created_at: string
     official_scan_event_id?: string | null
     visit_geo_label?: string | null
+    visit_geo_city?: string | null
+    visit_geo_state?: string | null
+    visit_geo_full_address?: string | null
     visit_geolocation?: { lat?: number; lng?: number; accuracy?: number } | null
+    visit_latitude?: number | null
+    visit_longitude?: number | null
+    visit_accuracy_m?: number | null
     visit_location_status?: RoadtourLocationStatus | null
     visit_location_error?: string | null
+    visit_location_captured_at?: string | null
 }
 
 interface ScanEvent {
@@ -129,6 +138,113 @@ const initialsFor = (name: string | undefined | null) =>
 const AVATAR_COLORS = ['bg-blue-100 text-blue-700', 'bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700', 'bg-emerald-100 text-emerald-700', 'bg-purple-100 text-purple-700', 'bg-sky-100 text-sky-700', 'bg-pink-100 text-pink-700']
 const colorFor = (key: string) => AVATAR_COLORS[Math.abs([...key].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length]
 
+function uniqueTextParts(parts: Array<string | null | undefined>) {
+    const seen = new Set<string>()
+    const ordered: string[] = []
+
+    for (const part of parts) {
+        const value = typeof part === 'string' ? part.trim() : ''
+        if (!value) continue
+        const normalized = value.toLowerCase()
+        if (seen.has(normalized)) continue
+        seen.add(normalized)
+        ordered.push(value)
+    }
+
+    return ordered
+}
+
+function getAccuracyBadge(accuracyMeters?: number | null) {
+    if (typeof accuracyMeters !== 'number' || !Number.isFinite(accuracyMeters)) {
+        return {
+            label: 'Not captured',
+            className: 'border-slate-200 bg-slate-50 text-slate-600',
+        }
+    }
+
+    if (accuracyMeters <= 30) {
+        return {
+            label: 'High accuracy',
+            className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        }
+    }
+
+    if (accuracyMeters <= 100) {
+        return {
+            label: 'Medium accuracy',
+            className: 'border-amber-200 bg-amber-50 text-amber-700',
+        }
+    }
+
+    return {
+        label: 'Low accuracy',
+        className: 'border-rose-200 bg-rose-50 text-rose-700',
+    }
+}
+
+function formatMeters(accuracyMeters?: number | null) {
+    return typeof accuracyMeters === 'number' && Number.isFinite(accuracyMeters)
+        ? `${Math.round(accuracyMeters)}m`
+        : null
+}
+
+function getVisitCoordinates(visit: OfficialVisit) {
+    const lat = visit.visit_latitude ?? visit.visit_geolocation?.lat ?? null
+    const lng = visit.visit_longitude ?? visit.visit_geolocation?.lng ?? null
+    const accuracy = visit.visit_accuracy_m ?? visit.visit_geolocation?.accuracy ?? null
+    return {
+        lat: typeof lat === 'number' && Number.isFinite(lat) ? lat : null,
+        lng: typeof lng === 'number' && Number.isFinite(lng) ? lng : null,
+        accuracy: typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : null,
+    }
+}
+
+function formatVisitLocationDisplay(visit: OfficialVisit) {
+    const coordinates = getVisitCoordinates(visit)
+    const hasCoordinates = coordinates.lat !== null && coordinates.lng !== null
+    const accuracyBadge = getAccuracyBadge(coordinates.accuracy)
+
+    const shopSummary = uniqueTextParts([
+        [visit.shop_city, visit.shop_state].filter(Boolean).join(', '),
+        visit.shop_address,
+        visit.shop_address_line2,
+    ])[0] || null
+
+    const reverseGeocodedSummary = uniqueTextParts([
+        [visit.visit_geo_city, visit.visit_geo_state].filter(Boolean).join(', '),
+        visit.visit_geo_full_address,
+    ])[0] || null
+
+    const readableLabel = visit.visit_location_status === 'resolved'
+        ? visit.visit_geo_label?.trim() || null
+        : null
+    const title = readableLabel
+        || shopSummary
+        || reverseGeocodedSummary
+        || (hasCoordinates ? 'Location captured' : 'Location unavailable')
+
+    const metaParts: string[] = []
+    const accuracyLabel = formatMeters(coordinates.accuracy)
+    if (accuracyLabel) metaParts.push(accuracyLabel)
+
+    if (hasCoordinates && !readableLabel && !shopSummary && !reverseGeocodedSummary) {
+        metaParts.unshift('GPS available')
+    }
+
+    if (!hasCoordinates) {
+        metaParts.push(visit.visit_location_error?.trim() || getRoadtourLocationStatusLabel(visit.visit_location_status, false))
+    } else if (visit.visit_location_status && visit.visit_location_status !== 'resolved' && visit.visit_location_status !== 'captured') {
+        metaParts.push(getRoadtourLocationStatusLabel(visit.visit_location_status, true))
+    }
+
+    return {
+        title,
+        accuracyBadge,
+        metaParts: uniqueTextParts(metaParts),
+        coordinates,
+    }
+}
+
 export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const supabase = createClient()
     const companyId = userProfile.organizations.id
@@ -168,7 +284,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             if (isInitial) setLoading(true)
             let q = (supabase as any)
                 .from('roadtour_official_visits')
-                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, branch, contact_phone, city, states:state_id(state_name)), official_scan:official_scan_event_id(geo_label, geolocation, location_status, location_error)')
+                .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone), organizations:shop_id(org_name, branch, address, address_line2, contact_phone, city, states:state_id(state_name)), official_scan:official_scan_event_id(geo_label, geo_city, geo_state, geo_full_address, geolocation, latitude, longitude, accuracy_m, location_status, location_error, location_captured_at)')
                 .eq('roadtour_campaigns.org_id', companyId)
                 .order('visit_date', { ascending: false })
                 .order('created_at', { ascending: false })
@@ -189,13 +305,22 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 user_phone: v.users?.phone || '',
                 shop_name: v.organizations?.org_name || '—',
                 shop_branch: v.organizations?.branch || null,
+                shop_address: v.organizations?.address || null,
+                shop_address_line2: v.organizations?.address_line2 || null,
                 shop_city: v.organizations?.city || null,
                 shop_state: v.organizations?.states?.state_name || null,
                 shop_contact_phone: v.organizations?.contact_phone || '',
                 visit_geo_label: v.official_scan?.geo_label || null,
+                visit_geo_city: v.official_scan?.geo_city || null,
+                visit_geo_state: v.official_scan?.geo_state || null,
+                visit_geo_full_address: v.official_scan?.geo_full_address || null,
                 visit_geolocation: v.official_scan?.geolocation || null,
+                visit_latitude: v.official_scan?.latitude ?? null,
+                visit_longitude: v.official_scan?.longitude ?? null,
+                visit_accuracy_m: v.official_scan?.accuracy_m ?? null,
                 visit_location_status: v.official_scan?.location_status || null,
                 visit_location_error: v.official_scan?.location_error || null,
+                visit_location_captured_at: v.official_scan?.location_captured_at || null,
             }))
             setVisits(normalized)
             setLastUpdated(new Date())
@@ -430,12 +555,13 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         const headers = ['Date/Time', 'Reference', 'Shop', 'Campaign', 'Location', 'Distance (km)', 'Outcome', 'Status']
         const rows = filtered.map((v) => {
             const dist = distanceByVisitId.get(v.id)
+            const locationDisplay = formatVisitLocationDisplay(v)
             return [
                 `${v.visit_date} ${new Date(v.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
                 v.user_name || '',
                 `${v.shop_name}${v.shop_branch ? ' - ' + v.shop_branch : ''}`,
                 v.campaign_name || '',
-                v.visit_geo_label || (v.visit_geolocation?.lat != null ? `${v.visit_geolocation.lat.toFixed(4)}, ${v.visit_geolocation.lng?.toFixed(4)}` : ''),
+                [locationDisplay.title, locationDisplay.accuracyBadge.label, ...locationDisplay.metaParts].filter(Boolean).join(' · '),
                 dist ? dist.km.toFixed(1) : '',
                 v.visit_outcome || (v.visit_status === 'official' ? 'Completed' : v.visit_status),
                 v.visit_status,
@@ -716,6 +842,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                             {pageItems.map((v) => {
                                 const dist = distanceByVisitId.get(v.id)
                                 const outcome = visitOutcomeForRow(v)
+                                const locationDisplay = formatVisitLocationDisplay(v)
                                 const time = new Date(v.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
                                 const visitDate = (() => { try { return new Date(v.visit_date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) } catch { return v.visit_date } })()
                                 const locColor = v.visit_location_status === 'resolved' ? 'text-emerald-600'
@@ -749,14 +876,19 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                         </TableCell>
                                         <TableCell className="text-sm">{v.campaign_name}</TableCell>
                                         <TableCell className="text-xs">
-                                            <div className={`flex items-center gap-1 ${locColor}`}>
-                                                <MapPin className="h-3 w-3" />
-                                                {v.visit_geolocation?.lat != null && v.visit_geolocation?.lng != null
-                                                    ? `${v.visit_geolocation.lat.toFixed(4)}, ${v.visit_geolocation.lng.toFixed(4)}`
-                                                    : getVisitGeoSummary(v)}
-                                            </div>
-                                            <div className="text-[11px] text-muted-foreground capitalize">
-                                                {v.visit_location_status === 'resolved' ? 'High' : v.visit_location_status ? String(v.visit_location_status) : '—'}
+                                            <div className="space-y-1">
+                                                <div className={`flex items-center gap-1 ${locColor}`}>
+                                                    <MapPin className="h-3 w-3" />
+                                                    <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                                                    <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
+                                                        {locationDisplay.accuracyBadge.label}
+                                                    </Badge>
+                                                    {locationDisplay.metaParts.map((part) => (
+                                                        <span key={part}>{part}</span>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className={`text-sm ${distColor}`}>
@@ -820,6 +952,45 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     </DialogHeader>
                     {detailVisit && (
                         <div className="space-y-4">
+                            {(() => {
+                                const locationDisplay = formatVisitLocationDisplay(detailVisit)
+                                return (
+                                    <div className="rounded-lg border p-4">
+                                        <Label className="text-sm font-semibold">Location</Label>
+                                        <div className="mt-2 space-y-2 text-sm">
+                                            <p className="font-medium">{locationDisplay.title}</p>
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
+                                                    {locationDisplay.accuracyBadge.label}
+                                                </Badge>
+                                                {locationDisplay.metaParts.map((part) => (
+                                                    <span key={part}>{part}</span>
+                                                ))}
+                                            </div>
+                                            {(locationDisplay.coordinates.lat != null && locationDisplay.coordinates.lng != null) && (
+                                                <div className="grid grid-cols-2 gap-3 pt-2 text-xs text-muted-foreground">
+                                                    <div>
+                                                        <p className="font-medium text-foreground">Latitude</p>
+                                                        <p>{locationDisplay.coordinates.lat.toFixed(6)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-foreground">Longitude</p>
+                                                        <p>{locationDisplay.coordinates.lng.toFixed(6)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-foreground">Accuracy</p>
+                                                        <p>{formatMeters(locationDisplay.coordinates.accuracy) || 'Not captured'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-foreground">Captured at</p>
+                                                        <p>{detailVisit.visit_location_captured_at ? new Date(detailVisit.visit_location_captured_at).toLocaleString() : '—'}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })()}
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div><Label className="text-muted-foreground">Date</Label><p className="font-medium">{detailVisit.visit_date}</p></div>
                                 <div><Label className="text-muted-foreground">Campaign</Label><p className="font-medium">{detailVisit.campaign_name}</p></div>
