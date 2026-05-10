@@ -4,21 +4,32 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
-    AlertCircle, CheckCircle2, Coins, Gift, Info, Loader2, Map, Save,
-    Settings, ShieldCheck, Sparkles, QrCode, ClipboardList
+    AlertCircle, CheckCircle2, Info, Loader2, Lock, MessageCircle, Save,
+    Settings, ShieldCheck, MapPin, Send, ClipboardList
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 
 interface RoadtourSettingsViewProps {
     userProfile: any
+}
+
+// Locked operational defaults — system-managed and not user-editable for first
+// production rollout. Mirrors values enforced server-side on save and in the
+// claim/scan validation pipeline.
+export const ROADTOUR_LOCKED_DEFAULTS = {
+    qr_mode: 'persistent' as const,
+    duplicate_rule_reward: 'one_per_user_per_campaign' as const,
+    official_visit_rule: 'one_per_shop_per_am_per_day' as const,
+    require_login: true,
+    require_shop_context: true,
+    require_geolocation: true,
+    whatsapp_send_enabled: true,
 }
 
 interface SettingsRow {
@@ -28,21 +39,16 @@ interface SettingsRow {
     default_points: number
     reward_mode: 'direct_scan' | 'survey_submit'
     survey_template_id: string | null
-    qr_mode: 'persistent' | 'time_limited' | 'one_time'
-    duplicate_rule_reward: string
-    official_visit_rule: string
-    require_login: boolean
-    require_shop_context: boolean
-    require_geolocation: boolean
     qr_expiry_hours: number | null
     point_value_rm_snapshot: number | null
-    whatsapp_send_enabled: boolean
-    claim_whatsapp_enabled: boolean
-    claim_whatsapp_recipient_mode: 'manual' | 'hq_org'
-    claim_whatsapp_manual_numbers: string[]
+    claim_whatsapp_enabled: boolean | null
+    claim_whatsapp_recipient_mode: 'manual' | 'hq_org' | null
+    claim_whatsapp_manual_numbers: string[] | null
     claim_whatsapp_success_template: string | null
     claim_whatsapp_failure_template: string | null
 }
+
+type WhatsappStatus = 'ready' | 'not_configured' | 'session_issue' | 'unknown'
 
 export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps) {
     const supabase = createClient()
@@ -53,55 +59,44 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
     const [settingsId, setSettingsId] = useState<string | null>(null)
 
     const [isEnabled, setIsEnabled] = useState(true)
-    const [defaultPoints, setDefaultPoints] = useState(20)
-    const [rewardMode, setRewardMode] = useState<'direct_scan' | 'survey_submit'>('survey_submit')
-    const [surveyTemplateId, setSurveyTemplateId] = useState<string | null>(null)
-    const [qrMode, setQrMode] = useState<'persistent' | 'time_limited' | 'one_time'>('persistent')
-    const [duplicateRule, setDuplicateRule] = useState('one_per_user_per_campaign')
-    const [officialVisitRule, setOfficialVisitRule] = useState('one_per_shop_per_am_per_day')
-    const [requireLogin, setRequireLogin] = useState(true)
-    const [requireShopContext, setRequireShopContext] = useState(true)
-    const [requireGeolocation, setRequireGeolocation] = useState(false)
-    const [qrExpiryHours, setQrExpiryHours] = useState<number | null>(null)
     const [pointValueRm, setPointValueRm] = useState(0.10)
-    const [whatsappSendEnabled, setWhatsappSendEnabled] = useState(true)
+
+    // Operator-editable: claim WhatsApp alerts
     const [claimWhatsappEnabled, setClaimWhatsappEnabled] = useState(false)
     const [claimWhatsappRecipientMode, setClaimWhatsappRecipientMode] = useState<'manual' | 'hq_org'>('manual')
     const [claimWhatsappManualNumbers, setClaimWhatsappManualNumbers] = useState('')
-    const [claimWhatsappSuccessTemplate, setClaimWhatsappSuccessTemplate] = useState('RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}')
-    const [claimWhatsappFailureTemplate, setClaimWhatsappFailureTemplate] = useState('RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nReason: {message}')
+    const [claimWhatsappSuccessTemplate, setClaimWhatsappSuccessTemplate] = useState(
+        'RoadTour claim success\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nPoints: {points_awarded}\nBalance: {balance_after}\nStatus: {status}'
+    )
+    const [claimWhatsappFailureTemplate, setClaimWhatsappFailureTemplate] = useState(
+        'RoadTour claim {status}\nCampaign: {campaign_name}\nShop: {shop_name}\nReference: {reference_name}\nConsumer: {consumer_name}\nGeoLoc: {geo_label}\nReason: {message}'
+    )
     const [testSending, setTestSending] = useState<'success' | 'failed' | null>(null)
 
-    const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string }[]>([])
+    // Read-only WhatsApp gateway readiness
+    const [whatsappStatus, setWhatsappStatus] = useState<WhatsappStatus>('unknown')
+
+    // Survey templates needed for default linking
+    const [defaultPoints, setDefaultPoints] = useState(20)
+    const [rewardMode, setRewardMode] = useState<'direct_scan' | 'survey_submit'>('survey_submit')
+    const [surveyTemplateId, setSurveyTemplateId] = useState<string | null>(null)
+    const [qrExpiryHours, setQrExpiryHours] = useState<number | null>(null)
 
     useEffect(() => {
         async function load() {
             try {
                 setLoading(true)
 
-                // Load org point value
                 const { data: orgData } = await supabase
                     .from('organizations')
                     .select('settings')
                     .eq('id', companyId)
                     .single()
-
                 const orgSettings = (orgData?.settings as any) || {}
                 if (typeof orgSettings.point_value_rm === 'number') {
                     setPointValueRm(orgSettings.point_value_rm)
                 }
 
-                // Load survey templates
-                const { data: templates } = await (supabase as any)
-                    .from('roadtour_survey_templates')
-                    .select('id, name')
-                    .eq('org_id', companyId)
-                    .eq('is_active', true)
-                    .order('name')
-
-                setSurveyTemplates(templates || [])
-
-                // Load settings
                 const { data, error } = await (supabase as any)
                     .from('roadtour_settings')
                     .select('*')
@@ -117,15 +112,8 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                     setDefaultPoints(s.default_points)
                     setRewardMode(s.reward_mode)
                     setSurveyTemplateId(s.survey_template_id)
-                    setQrMode(s.qr_mode)
-                    setDuplicateRule(s.duplicate_rule_reward)
-                    setOfficialVisitRule(s.official_visit_rule)
-                    setRequireLogin(s.require_login)
-                    setRequireShopContext(s.require_shop_context)
-                    setRequireGeolocation(s.require_geolocation)
                     setQrExpiryHours(s.qr_expiry_hours)
                     if (s.point_value_rm_snapshot != null) setPointValueRm(s.point_value_rm_snapshot)
-                    setWhatsappSendEnabled(s.whatsapp_send_enabled)
                     setClaimWhatsappEnabled(Boolean(s.claim_whatsapp_enabled))
                     setClaimWhatsappRecipientMode(s.claim_whatsapp_recipient_mode || 'manual')
                     setClaimWhatsappManualNumbers((s.claim_whatsapp_manual_numbers || []).join('\n'))
@@ -134,52 +122,66 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                 }
             } catch (err: any) {
                 console.error('Error loading RoadTour settings:', err)
-                toast({ title: 'Error', description: 'Failed to load RoadTour settings. Make sure the SQL migration has been applied.', variant: 'destructive' })
+                toast({ title: 'Error', description: 'Failed to load RoadTour settings.', variant: 'destructive' })
             } finally {
                 setLoading(false)
             }
         }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/roadtour/settings-status', { cache: 'no-store' })
+                if (!res.ok) {
+                    setWhatsappStatus('unknown')
+                    return
+                }
+                const json = await res.json()
+                setWhatsappStatus(json?.whatsapp?.status || 'unknown')
+            } catch {
+                setWhatsappStatus('unknown')
+            }
+        }
+
         load()
+        loadStatus()
     }, [companyId, supabase])
 
-    const estimatedCost = useMemo(() => defaultPoints * pointValueRm, [defaultPoints, pointValueRm])
-
-    const summary = useMemo(() => {
-        const parts: string[] = []
-        parts.push(`Each successful RoadTour reward grants ${defaultPoints} points.`)
-        parts.push(`Estimated cost per successful reward: RM ${estimatedCost.toFixed(2)}.`)
-        parts.push(`Official visits are limited to ${officialVisitRule === 'one_per_shop_per_am_per_day' ? 'one per shop per account manager per day' : 'one per shop per campaign'}.`)
-        if (rewardMode === 'survey_submit') parts.push('Reward will only be granted after survey submission.')
-        else parts.push('Reward will be granted directly after valid QR scan.')
-        return parts
-    }, [defaultPoints, estimatedCost, officialVisitRule, rewardMode])
+    const whatsappLabel = useMemo(() => {
+        switch (whatsappStatus) {
+            case 'ready': return { label: 'Ready', tone: 'emerald' }
+            case 'not_configured': return { label: 'Not configured', tone: 'amber' }
+            case 'session_issue': return { label: 'Session issue', tone: 'red' }
+            default: return { label: 'Checking…', tone: 'slate' }
+        }
+    }, [whatsappStatus])
 
     const handleSave = async () => {
         try {
             setSaving(true)
-            if (defaultPoints < 1) {
-                toast({ title: 'Validation Error', description: 'Default reward points must be at least 1.', variant: 'destructive' })
-                return
-            }
 
+            // Always enforce locked operational defaults regardless of what the
+            // hidden UI may carry from earlier states or stale rows.
             const payload = {
                 org_id: companyId,
                 is_enabled: isEnabled,
                 default_points: defaultPoints,
                 reward_mode: rewardMode,
                 survey_template_id: rewardMode === 'survey_submit' ? surveyTemplateId : null,
-                qr_mode: qrMode,
-                duplicate_rule_reward: duplicateRule,
-                official_visit_rule: officialVisitRule,
-                require_login: requireLogin,
-                require_shop_context: requireShopContext,
-                require_geolocation: requireGeolocation,
+                qr_mode: ROADTOUR_LOCKED_DEFAULTS.qr_mode,
+                duplicate_rule_reward: ROADTOUR_LOCKED_DEFAULTS.duplicate_rule_reward,
+                official_visit_rule: ROADTOUR_LOCKED_DEFAULTS.official_visit_rule,
+                require_login: ROADTOUR_LOCKED_DEFAULTS.require_login,
+                require_shop_context: ROADTOUR_LOCKED_DEFAULTS.require_shop_context,
+                require_geolocation: ROADTOUR_LOCKED_DEFAULTS.require_geolocation,
                 qr_expiry_hours: qrExpiryHours,
                 point_value_rm_snapshot: pointValueRm,
-                whatsapp_send_enabled: whatsappSendEnabled,
+                whatsapp_send_enabled: ROADTOUR_LOCKED_DEFAULTS.whatsapp_send_enabled,
                 claim_whatsapp_enabled: claimWhatsappEnabled,
                 claim_whatsapp_recipient_mode: claimWhatsappRecipientMode,
-                claim_whatsapp_manual_numbers: claimWhatsappManualNumbers.split(/[\n,]/).map((value) => value.trim()).filter(Boolean),
+                claim_whatsapp_manual_numbers: claimWhatsappManualNumbers
+                    .split(/[\n,]/)
+                    .map((value) => value.trim())
+                    .filter(Boolean),
                 claim_whatsapp_success_template: claimWhatsappSuccessTemplate,
                 claim_whatsapp_failure_template: claimWhatsappFailureTemplate,
                 is_active: true,
@@ -191,7 +193,11 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                 const { error } = await (supabase as any).from('roadtour_settings').update(payload).eq('id', settingsId)
                 if (error) throw error
             } else {
-                const { data, error } = await (supabase as any).from('roadtour_settings').insert({ ...payload, created_by: userProfile.id }).select('id').single()
+                const { data, error } = await (supabase as any)
+                    .from('roadtour_settings')
+                    .insert({ ...payload, created_by: userProfile.id })
+                    .select('id')
+                    .single()
                 if (error) throw error
                 setSettingsId(data.id)
             }
@@ -213,12 +219,8 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status }),
             })
-
             const result = await response.json().catch(() => ({}))
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to send test alert.')
-            }
-
+            if (!response.ok) throw new Error(result.error || 'Failed to send test alert.')
             toast({ title: 'Test Sent', description: `RoadTour ${status} alert test has been sent.` })
         } catch (error: any) {
             toast({ title: 'Test Failed', description: error.message || 'Failed to send test alert.', variant: 'destructive' })
@@ -229,6 +231,15 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
 
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
+    const toneClass = (tone: string) => {
+        switch (tone) {
+            case 'emerald': return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+            case 'amber': return 'bg-amber-100 text-amber-700 border-amber-200'
+            case 'red': return 'bg-red-100 text-red-700 border-red-200'
+            default: return 'bg-slate-100 text-slate-700 border-slate-200'
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div>
@@ -236,10 +247,12 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                     <Settings className="h-5 w-5 text-primary" />
                     RoadTour Settings
                 </h3>
-                <p className="text-sm text-muted-foreground mt-1">Configure RoadTour operational rules. Point-related reward settings are now managed under Point Catalog Management → Settings.</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                    RoadTour operational rules are managed by system defaults to keep campaigns and reporting consistent.
+                </p>
             </div>
 
-            {/* Enable Toggle */}
+            {/* Enable toggle */}
             <Card className={isEnabled ? 'border-emerald-200 bg-emerald-50/30' : 'border-muted'}>
                 <CardContent className="pt-6">
                     <div className="flex items-center justify-between gap-6">
@@ -253,89 +266,70 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                 </CardContent>
             </Card>
 
-            {/* QR & Duplicate Rules */}
+            {/* System Status (locked defaults shown as read-only) */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base"><QrCode className="h-5 w-5 text-indigo-500" />QR & Duplicate Rules</CardTitle>
-                    <CardDescription>Control how QR codes are generated and how duplicates are handled.</CardDescription>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <ShieldCheck className="h-5 w-5 text-emerald-500" />
+                        System Status
+                    </CardTitle>
+                    <CardDescription>
+                        Operational rules below are locked to safe defaults to keep RoadTour reporting consistent.
+                    </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label>QR Mode</Label>
-                            <Select value={qrMode} onValueChange={(v) => setQrMode(v as any)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="persistent">Persistent QR per Account Manager per Campaign</SelectItem>
-                                    <SelectItem value="time_limited">Time-Limited QR</SelectItem>
-                                    <SelectItem value="one_time">One-Time QR per Shop Visit</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        {qrMode === 'time_limited' && (
-                            <div className="space-y-2">
-                                <Label>QR Expiry (Hours)</Label>
-                                <Input type="number" min={1} value={qrExpiryHours ?? ''} onChange={(e) => setQrExpiryHours(e.target.value ? parseInt(e.target.value, 10) : null)} placeholder="e.g. 24" />
-                            </div>
-                        )}
-                    </div>
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label>Duplicate Reward Rule</Label>
-                            <Select value={duplicateRule} onValueChange={setDuplicateRule}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="one_per_user_per_campaign">One reward per user per campaign</SelectItem>
-                                    <SelectItem value="one_per_user_per_day">One reward per user per day</SelectItem>
-                                    <SelectItem value="one_per_shop_per_am_per_day">One reward per shop per account manager per day</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Official Visit Rule</Label>
-                            <Select value={officialVisitRule} onValueChange={setOfficialVisitRule}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="one_per_shop_per_am_per_day">One visit per shop per AM per day</SelectItem>
-                                    <SelectItem value="one_per_shop_per_campaign">One visit per shop per campaign</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
+                <CardContent className="grid gap-3 md:grid-cols-2">
+                    <StatusRow
+                        icon={<Settings className="h-4 w-4 text-emerald-600" />}
+                        label="RoadTour Program"
+                        value={isEnabled ? 'Active' : 'Inactive'}
+                        toneClass={toneClass(isEnabled ? 'emerald' : 'amber')}
+                    />
+                    <StatusRow
+                        icon={<Lock className="h-4 w-4 text-slate-600" />}
+                        label="System Defaults"
+                        value="Enabled"
+                        toneClass={toneClass('emerald')}
+                    />
+                    <StatusRow
+                        icon={<MessageCircle className="h-4 w-4 text-emerald-600" />}
+                        label="WhatsApp Delivery"
+                        value={whatsappLabel.label}
+                        toneClass={toneClass(whatsappLabel.tone)}
+                    />
+                    <StatusRow
+                        icon={<MapPin className="h-4 w-4 text-blue-600" />}
+                        label="Geolocation Capture"
+                        value="Enabled"
+                        toneClass={toneClass('emerald')}
+                    />
+                    <StatusRow
+                        icon={<ShieldCheck className="h-4 w-4 text-indigo-600" />}
+                        label="Secure Claim Mode"
+                        value="Login + Shop Context Required"
+                        toneClass={toneClass('emerald')}
+                        wide
+                    />
                 </CardContent>
             </Card>
 
-            {/* Validation & Delivery */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-5 w-5 text-emerald-500" />Validation & Delivery</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div><Label className="font-medium">Require Logged-In User</Label><p className="text-xs text-muted-foreground mt-1">User must be authenticated to claim reward.</p></div>
-                            <Switch checked={requireLogin} onCheckedChange={setRequireLogin} />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div><Label className="font-medium">Require Shop Context</Label><p className="text-xs text-muted-foreground mt-1">User must have a linked shop to claim reward.</p></div>
-                            <Switch checked={requireShopContext} onCheckedChange={setRequireShopContext} />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div><Label className="font-medium">Capture Geolocation</Label><p className="text-xs text-muted-foreground mt-1">Record GPS internally and store a readable GeoLoc label for visits and alerts.</p></div>
-                            <Switch checked={requireGeolocation} onCheckedChange={setRequireGeolocation} />
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border p-4">
-                            <div><Label className="font-medium">WhatsApp QR Delivery</Label><p className="text-xs text-muted-foreground mt-1">Allow sending generated QR codes via WhatsApp.</p></div>
-                            <Switch checked={whatsappSendEnabled} onCheckedChange={setWhatsappSendEnabled} />
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+            <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 flex items-start gap-3">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-blue-900">
+                    QR mode, duplicate reward rules, and official visit rules are now system-locked for the first production rollout.
+                    Reach out to the platform team if your campaign needs a different policy.
+                </div>
+            </div>
 
+            {/* Claim WhatsApp Alerts (operator-editable) */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base"><ClipboardList className="h-5 w-5 text-sky-600" />Claim WhatsApp Alerts</CardTitle>
-                    <CardDescription>Send HQ or manual WhatsApp notifications whenever a RoadTour claim succeeds, duplicates, or fails.</CardDescription>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <ClipboardList className="h-5 w-5 text-sky-600" />
+                        Claim WhatsApp Alerts
+                    </CardTitle>
+                    <CardDescription>
+                        Send HQ or manual WhatsApp notifications whenever a RoadTour claim succeeds, duplicates, or fails.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="flex items-center justify-between rounded-lg border p-4">
@@ -361,11 +355,11 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                             <Label>Test Send</Label>
                             <div className="flex gap-2">
                                 <Button type="button" variant="outline" onClick={() => handleTestClaimAlert('success')} disabled={testSending !== null}>
-                                    {testSending === 'success' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                    {testSending === 'success' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                                     Test Success
                                 </Button>
                                 <Button type="button" variant="outline" onClick={() => handleTestClaimAlert('failed')} disabled={testSending !== null}>
-                                    {testSending === 'failed' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                                    {testSending === 'failed' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                                     Test Failure
                                 </Button>
                             </div>
@@ -395,17 +389,9 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                             <Textarea value={claimWhatsappFailureTemplate} onChange={(event) => setClaimWhatsappFailureTemplate(event.target.value)} rows={8} />
                         </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">Available variables: {'{campaign_name}'}, {'{shop_name}'}, {'{reference_name}'}, {'{consumer_name}'}, {'{geo_label}'}, {'{points_awarded}'}, {'{balance_after}'}, {'{status}'}, {'{message}'}, {'{short_link}'}.</p>
-                </CardContent>
-            </Card>
-
-            {/* Summary */}
-            <Card className="border-amber-200 bg-amber-50/40">
-                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-5 w-5 text-amber-600" />Preview Summary</CardTitle></CardHeader>
-                <CardContent>
-                    <ul className="space-y-1">
-                        {summary.map((s, i) => <li key={i} className="text-sm text-amber-900">• {s}</li>)}
-                    </ul>
+                    <p className="text-xs text-muted-foreground">
+                        Available variables: {'{campaign_name}'}, {'{shop_name}'}, {'{reference_name}'}, {'{consumer_name}'}, {'{geo_label}'}, {'{points_awarded}'}, {'{balance_after}'}, {'{status}'}, {'{message}'}, {'{short_link}'}.
+                    </p>
                 </CardContent>
             </Card>
 
@@ -415,6 +401,18 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                     {saving ? 'Saving...' : 'Save RoadTour Settings'}
                 </Button>
             </div>
+        </div>
+    )
+}
+
+function StatusRow({ icon, label, value, toneClass, wide }: { icon: React.ReactNode; label: string; value: string; toneClass: string; wide?: boolean }) {
+    return (
+        <div className={`flex items-center justify-between rounded-lg border p-3 ${wide ? 'md:col-span-2' : ''}`}>
+            <div className="flex items-center gap-2">
+                {icon}
+                <span className="text-sm font-medium text-foreground">{label}</span>
+            </div>
+            <Badge variant="outline" className={`text-xs ${toneClass}`}>{value}</Badge>
         </div>
     )
 }

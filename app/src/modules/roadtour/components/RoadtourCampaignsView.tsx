@@ -13,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea'
 import {
     AlertCircle, Calendar, CheckCircle2, Edit, Loader2, Map as MapIcon, MapPin, Plus,
-    Search, Store, Trash2, Users, Eye, Play, Pause, Archive
+    Search, Store, Trash2, Users, Eye, Play, Pause, Archive, X, ClipboardList,
+    Coins, Gift, Globe, ShieldCheck, Sparkles, FileText
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 
@@ -765,144 +766,322 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
             {/* Create/Edit Dialog */}
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>{dialogMode === 'create' ? 'Create Campaign' : 'Edit Campaign'}</DialogTitle>
+                <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-hidden p-0">
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b">
+                        <DialogTitle className="text-xl">{dialogMode === 'create' ? 'Create RoadTour Campaign' : 'Edit RoadTour Campaign'}</DialogTitle>
                         <DialogDescription>Define a RoadTour campaign for your field activities.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <div className="space-y-2"><Label>Campaign Name *</Label><Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Northern Region April 2026" /></div>
-                        <div className="space-y-2"><Label>Description</Label><Textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Optional description..." rows={2} /></div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2"><Label>Start Date *</Label><Input type="date" value={formStart} onChange={(e) => setFormStart(e.target.value)} /></div>
-                            <div className="space-y-2"><Label>End Date *</Label><Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} /></div>
-                        </div>
-                        {formStart && formEnd && (
-                            <p className="text-xs text-muted-foreground -mt-2">
-                                📅 {calcWorkingDays(formStart, formEnd)} working days (excl. weekends)
-                            </p>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Reward Points</Label>
-                                <Input type="number" min={1} value={formPoints} onChange={(e) => setFormPoints(parseInt(e.target.value || '20', 10) || 20)} />
-                                {formPoints > 0 && (
-                                    <p className="text-xs text-muted-foreground">
-                                        💰 Estimated cost: <span className="font-semibold text-amber-700">RM {(formPoints * pointValueRm).toFixed(2)}</span> per reward
-                                    </p>
-                                )}
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Reward Mode</Label>
-                                <Select value={formRewardMode} onValueChange={setFormRewardMode}><SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="direct_scan">Direct Scan</SelectItem><SelectItem value="survey_submit">Survey Submit</SelectItem></SelectContent></Select>
-                            </div>
-                        </div>
-                        {formRewardMode === 'survey_submit' && (
-                            <div className="space-y-2">
-                                <Label>Survey Template *</Label>
-                                <Select value={formSurveyTemplateId} onValueChange={setFormSurveyTemplateId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder={surveyTemplates.length > 0 ? 'Select survey template' : 'No active survey templates found'} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {surveyTemplates.map((template) => (
-                                            <SelectItem key={template.id} value={template.id}>{template.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    Survey-submit campaigns only reward after a response is saved.
-                                </p>
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <Label>Region Coverage</Label>
-                            <div className="flex flex-wrap gap-2">
-                                {MALAYSIAN_STATES.map((s) => (
-                                    <Badge key={s} variant={formRegions.includes(s) ? 'default' : 'outline'}
-                                        className="cursor-pointer" onClick={() => setFormRegions((prev) => prev.includes(s) ? prev.filter((r) => r !== s) : [...prev, s])}>
-                                        {s}
-                                        {shopCountByState[s] ? <span className="ml-1 opacity-70">({shopCountByState[s]})</span> : null}
-                                    </Badge>
-                                ))}
-                            </div>
-                            {formRegions.length > 0 && (
-                                <p className="text-xs text-muted-foreground">
-                                    🏪 <button type="button" className="font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer" onClick={() => {
-                                        setRegionDialogState(formRegions.join(', '))
-                                        setRegionDialogOpen(true)
-                                        setRegionShopsLoading(true)
-                                            ; (async () => {
-                                                try {
-                                                    const { data: stateRows } = await (supabase as any).from('states').select('id').in('state_name', formRegions)
-                                                    const stateIds = (stateRows || []).map((s: any) => s.id)
-                                                    if (stateIds.length === 0) { setRegionShops([]); setRegionShopsLoading(false); return }
-                                                    const { data } = await (supabase as any).from('organizations').select('id, org_name, branch').eq('org_type_code', 'SHOP').eq('is_active', true).in('state_id', stateIds).order('org_name')
-                                                    setRegionShops((data || []).map((r: any) => ({ id: r.id, org_name: r.org_name, branch_name: r.branch ?? null })))
-                                                } catch { setRegionShops([]) } finally { setRegionShopsLoading(false) }
-                                            })()
-                                    }}>{formRegions.reduce((sum, s) => sum + (shopCountByState[s] || 0), 0)} shops</button> in selected regions
-                                </p>
-                            )}
-                        </div>
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between gap-2">
-                                <div>
-                                    <Label>References</Label>
-                                    <p className="text-xs text-muted-foreground mt-1">Attach at least one reference here so the campaign can be activated immediately after save.</p>
-                                </div>
-                                <Badge variant="outline">{formReferenceIds.length} selected</Badge>
-                            </div>
-                            <Input
-                                placeholder="Search reference by name, email, or phone"
-                                value={formReferenceSearch}
-                                onChange={(e) => setFormReferenceSearch(e.target.value)}
-                            />
-                            <div className="rounded-lg border">
-                                {eligibleReferencesLoading ? (
-                                    <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin" /></div>
-                                ) : filteredFormReferences.length === 0 && selectedFormReferences.length === 0 ? (
-                                    <p className="px-3 py-6 text-sm text-center text-muted-foreground">No eligible references found.</p>
-                                ) : (
-                                    <div className="max-h-48 overflow-y-auto divide-y">
-                                        {selectedFormReferences.map((reference) => (
-                                            <button
-                                                key={reference.id}
-                                                type="button"
-                                                onClick={() => toggleFormReference(reference.id)}
-                                                className="flex w-full items-center justify-between px-3 py-3 text-left bg-emerald-50 hover:bg-emerald-100/70"
-                                            >
-                                                <div>
-                                                    <p className="text-sm font-medium">{reference.full_name}</p>
-                                                    <p className="text-xs text-muted-foreground">{reference.email} · {reference.phone}</p>
-                                                </div>
-                                                <Badge className="bg-emerald-100 text-emerald-700">Selected</Badge>
-                                            </button>
-                                        ))}
-                                        {filteredFormReferences.slice(0, 25).map((reference) => (
-                                            <button
-                                                key={reference.id}
-                                                type="button"
-                                                onClick={() => toggleFormReference(reference.id)}
-                                                className="flex w-full items-center justify-between px-3 py-3 text-left hover:bg-muted/50"
-                                            >
-                                                <div>
-                                                    <p className="text-sm font-medium">{reference.full_name}</p>
-                                                    <p className="text-xs text-muted-foreground">{reference.email} · {reference.phone}</p>
-                                                </div>
-                                                <Plus className="h-4 w-4 text-primary" />
-                                            </button>
-                                        ))}
+
+                    <div className="grid gap-6 px-6 py-6 overflow-y-auto max-h-[70vh] lg:grid-cols-12">
+                        {/* COLUMN 1: Campaign Details + Targeting */}
+                        <div className="space-y-6 lg:col-span-4">
+                            {/* Section 1 — Campaign Details */}
+                            <Card className="border-blue-100">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="flex items-center gap-2 text-sm">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">1</span>
+                                        Campaign Details
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs">Campaign Name *</Label>
+                                        <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Northern Region April 2026" />
                                     </div>
-                                )}
-                            </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs">Description</Label>
+                                        <Textarea
+                                            value={formDesc}
+                                            onChange={(e) => setFormDesc(e.target.value.slice(0, 250))}
+                                            placeholder="Optional description..."
+                                            rows={3}
+                                            maxLength={250}
+                                        />
+                                        <p className="text-[11px] text-muted-foreground text-right">{formDesc.length} / 250</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs">Start Date *</Label>
+                                            <Input type="date" value={formStart} onChange={(e) => setFormStart(e.target.value)} />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs">End Date *</Label>
+                                            <Input type="date" value={formEnd} onChange={(e) => setFormEnd(e.target.value)} />
+                                        </div>
+                                    </div>
+                                    {formStart && formEnd && (
+                                        <p className="text-[11px] text-muted-foreground -mt-2">
+                                            📅 {calcWorkingDays(formStart, formEnd)} working days (excl. weekends)
+                                        </p>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs">Reward Points *</Label>
+                                            <Input type="number" min={1} value={formPoints} onChange={(e) => setFormPoints(parseInt(e.target.value || '20', 10) || 20)} />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs">Reward Mode *</Label>
+                                            <Select value={formRewardMode} onValueChange={setFormRewardMode}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="direct_scan">Direct Scan</SelectItem>
+                                                    <SelectItem value="survey_submit">Survey Submit</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs">Survey Template {formRewardMode === 'survey_submit' ? '*' : ''}</Label>
+                                        <Select value={formSurveyTemplateId} onValueChange={setFormSurveyTemplateId} disabled={formRewardMode !== 'survey_submit'}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={surveyTemplates.length > 0 ? 'Select survey template' : 'No active survey templates'} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {surveyTemplates.map((t) => (
+                                                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {formRewardMode === 'survey_submit'
+                                                ? 'Rewards are issued after a survey response is saved.'
+                                                : 'Rewards are issued directly on valid QR scan.'}
+                                        </p>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Section 2 — Targeting */}
+                            <Card className="border-blue-100">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="flex items-center gap-2 text-sm">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">2</span>
+                                        Targeting
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <Label className="text-xs">Select Regions *</Label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {MALAYSIAN_STATES.map((s) => {
+                                            const selected = formRegions.includes(s)
+                                            return (
+                                                <button
+                                                    key={s}
+                                                    type="button"
+                                                    onClick={() => setFormRegions((prev) => prev.includes(s) ? prev.filter((r) => r !== s) : [...prev, s])}
+                                                    className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${selected
+                                                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                                        : 'border-border bg-background hover:bg-muted'
+                                                        }`}
+                                                >
+                                                    {s}
+                                                    {selected ? <X className="h-3 w-3" /> : null}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                    <div className="flex items-center justify-between pt-1">
+                                        <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            {formRegions.length} region{formRegions.length === 1 ? '' : 's'} selected
+                                        </span>
+                                        {formRegions.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormRegions([])}
+                                                className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                                            >
+                                                Clear all
+                                            </button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
-                        <div className="space-y-2"><Label>Notes</Label><Textarea value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={2} /></div>
+
+                        {/* COLUMN 2: References + Notes */}
+                        <div className="space-y-6 lg:col-span-5">
+                            <Card className="border-blue-100">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="flex items-center justify-between text-sm">
+                                        <span className="flex items-center gap-2">
+                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">3</span>
+                                            References
+                                        </span>
+                                        <Badge variant="outline" className="text-[11px]">{formReferenceIds.length} selected</Badge>
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Search by name, email, or phone"
+                                            value={formReferenceSearch}
+                                            onChange={(e) => setFormReferenceSearch(e.target.value)}
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                    <div className="rounded-lg border">
+                                        {eligibleReferencesLoading ? (
+                                            <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
+                                        ) : filteredFormReferences.length === 0 && selectedFormReferences.length === 0 ? (
+                                            <p className="px-3 py-8 text-sm text-center text-muted-foreground">No eligible references found.</p>
+                                        ) : (
+                                            <div className="max-h-72 overflow-y-auto divide-y">
+                                                {selectedFormReferences.map((ref) => {
+                                                    const initials = (ref.full_name || '?').split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+                                                    return (
+                                                        <button
+                                                            key={ref.id}
+                                                            type="button"
+                                                            onClick={() => toggleFormReference(ref.id)}
+                                                            className="flex w-full items-center gap-3 px-3 py-3 text-left bg-blue-50/40 hover:bg-blue-50"
+                                                        >
+                                                            <div className="flex h-4 w-4 items-center justify-center rounded border-2 border-blue-600 bg-blue-600">
+                                                                <CheckCircle2 className="h-3 w-3 text-white" />
+                                                            </div>
+                                                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">{initials}</div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-medium truncate">{ref.full_name}</p>
+                                                                <p className="text-xs text-muted-foreground truncate">{ref.email}{ref.phone ? ` · ${ref.phone}` : ''}</p>
+                                                            </div>
+                                                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                        </button>
+                                                    )
+                                                })}
+                                                {filteredFormReferences.slice(0, 50).map((ref) => {
+                                                    const initials = (ref.full_name || '?').split(' ').map((p) => p[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+                                                    return (
+                                                        <button
+                                                            key={ref.id}
+                                                            type="button"
+                                                            onClick={() => toggleFormReference(ref.id)}
+                                                            className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-muted/40"
+                                                        >
+                                                            <div className="h-4 w-4 rounded border-2 border-muted-foreground/40" />
+                                                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">{initials}</div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-medium truncate">{ref.full_name}</p>
+                                                                <p className="text-xs text-muted-foreground truncate">{ref.email}{ref.phone ? ` · ${ref.phone}` : ''}</p>
+                                                            </div>
+                                                            <Plus className="h-4 w-4 text-muted-foreground" />
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Attach at least one reference so the campaign can be activated immediately after save.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-blue-100">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="flex items-center gap-2 text-sm">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">4</span>
+                                        Notes
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <Textarea
+                                        value={formNotes}
+                                        onChange={(e) => setFormNotes(e.target.value.slice(0, 250))}
+                                        rows={4}
+                                        placeholder="Internal notes for this campaign..."
+                                        maxLength={250}
+                                    />
+                                    <p className="text-[11px] text-muted-foreground text-right mt-1">{formNotes.length} / 250</p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* COLUMN 3: Campaign Summary */}
+                        <div className="lg:col-span-3">
+                            <Card className="sticky top-0 border-slate-200 bg-slate-50/60">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-sm">Campaign Summary</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-5">
+                                    <div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Coins className="h-3.5 w-3.5 text-amber-500" />
+                                            Estimated Reward Cost
+                                        </div>
+                                        <p className="mt-1 text-2xl font-bold text-amber-700">RM {(formPoints * pointValueRm).toFixed(2)}</p>
+                                        <p className="text-[11px] text-muted-foreground">per reward</p>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Gift className="h-3.5 w-3.5 text-blue-500" />
+                                            Reward Mode
+                                        </div>
+                                        <p className="mt-1 text-sm font-semibold">{formRewardMode === 'survey_submit' ? 'Survey Submit' : 'Direct Scan'}</p>
+                                    </div>
+
+                                    {formRewardMode === 'survey_submit' && (
+                                        <div>
+                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                <ClipboardList className="h-3.5 w-3.5 text-sky-500" />
+                                                Survey Template
+                                            </div>
+                                            <p className="mt-1 text-sm font-semibold">
+                                                {surveyTemplates.find((t) => t.id === formSurveyTemplateId)?.name || <span className="text-muted-foreground font-normal">Not selected</span>}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Globe className="h-3.5 w-3.5 text-indigo-500" />
+                                            Regions
+                                        </div>
+                                        <p className="mt-1 text-2xl font-bold">{formRegions.length} <span className="text-sm font-normal text-muted-foreground">selected</span></p>
+                                        {formRegions.length > 0 && (
+                                            <p className="text-[11px] text-muted-foreground">{formRegions.slice(0, 5).join(', ')}{formRegions.length > 5 ? '…' : ''}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Users className="h-3.5 w-3.5 text-rose-500" />
+                                            References
+                                        </div>
+                                        <p className="mt-1 text-2xl font-bold">{formReferenceIds.length} <span className="text-sm font-normal text-muted-foreground">selected</span></p>
+                                    </div>
+
+                                    {(() => {
+                                        const ready = Boolean(formName.trim()) && Boolean(formStart) && Boolean(formEnd) &&
+                                            (formRewardMode !== 'survey_submit' || Boolean(formSurveyTemplateId)) &&
+                                            formRegions.length > 0 && formReferenceIds.length > 0
+                                        return (
+                                            <div className={`rounded-lg border p-3 ${ready ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'}`}>
+                                                <div className="flex items-center gap-2 text-xs">
+                                                    <ShieldCheck className={`h-3.5 w-3.5 ${ready ? 'text-emerald-600' : 'text-amber-600'}`} />
+                                                    <span className="text-muted-foreground">Activation Readiness</span>
+                                                </div>
+                                                <p className={`mt-1 text-sm font-semibold ${ready ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                                    {ready ? 'Ready to activate' : 'Needs more details'}
+                                                </p>
+                                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                                    {ready ? 'All required fields are filled.' : 'Fill required fields to activate.'}
+                                                </p>
+                                            </div>
+                                        )
+                                    })()}
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
-                    <DialogFooter>
+
+                    <DialogFooter className="px-6 py-4 border-t bg-slate-50/40">
                         <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleSave} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}{dialogMode === 'create' ? 'Create' : 'Update'}</Button>
+                        <Button onClick={handleSave} disabled={saving}>
+                            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            {dialogMode === 'create' ? 'Create Campaign' : 'Update Campaign'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
