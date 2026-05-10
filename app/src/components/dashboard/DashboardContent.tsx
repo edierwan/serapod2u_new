@@ -146,7 +146,7 @@ import StoreOrdersView from '@/modules/ecommerce/components/StoreOrdersView'
 import { RoadtourLandingView } from '@/modules/roadtour/components/RoadtourLandingView'
 import { RoadtourCampaignsView } from '@/modules/roadtour/components/RoadtourCampaignsView'
 import { RoadtourQrManagementView } from '@/modules/roadtour/components/RoadtourQrManagementView'
-import { RoadtourSurveyBuilderView } from '@/modules/roadtour/components/RoadtourSurveyBuilderView'
+import { RoadtourSurveyHubView } from '@/modules/roadtour/components/RoadtourSurveyHubView'
 import { RoadtourVisitsView } from '@/modules/roadtour/components/RoadtourVisitsView'
 import { RoadtourAnalyticsView } from '@/modules/roadtour/components/RoadtourAnalyticsView'
 import { RoadtourSettingsView } from '@/modules/roadtour/components/RoadtourSettingsView'
@@ -434,7 +434,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'roadtour-qr':
         return <RoadtourQrManagementView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-surveys':
-        return <RoadtourSurveyBuilderView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <RoadtourSurveyHubView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-visits':
         return <RoadtourVisitsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-analytics':

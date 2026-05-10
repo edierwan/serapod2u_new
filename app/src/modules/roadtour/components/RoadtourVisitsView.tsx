@@ -139,7 +139,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [referenceFilter, setReferenceFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchTerm, setSearchTerm] = useState('')
-    const [dateFrom, setDateFrom] = useState(isoDateAddDays(todayIsoDate(), -9))
+    const [dateFrom, setDateFrom] = useState(isoDateAddDays(todayIsoDate(), -29))
     const [dateTo, setDateTo] = useState(todayIsoDate())
 
     // Visits Over Time toggle
