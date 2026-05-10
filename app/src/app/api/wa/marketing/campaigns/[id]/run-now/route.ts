@@ -42,8 +42,8 @@ export async function POST(
 
         // Server-side validation: Only "scheduled", "draft", or "launch_failed" campaigns can be run now
         if (!['scheduled', 'draft', 'launch_failed'].includes(campaign.status)) {
-            return NextResponse.json({ 
-                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled, draft, or launch_failed campaigns can be run immediately.` 
+            return NextResponse.json({
+                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled, draft, or launch_failed campaigns can be run immediately.`
             }, { status: 400 });
         }
 
@@ -52,8 +52,8 @@ export async function POST(
 
         // Additional validation: Campaign must have a scheduled_at time (unless retrying)
         if (!campaign.scheduled_at && !isRetry) {
-            return NextResponse.json({ 
-                error: 'Campaign has no scheduled time. Cannot run now.' 
+            return NextResponse.json({
+                error: 'Campaign has no scheduled time. Cannot run now.'
             }, { status: 400 });
         }
 
@@ -96,14 +96,14 @@ export async function POST(
                 .from('marketing_campaigns')
                 .update(restorePayload)
                 .eq('id', campaignId);
-            
-            return NextResponse.json({ 
-                error: error.error || 'Failed to launch campaign' 
+
+            return NextResponse.json({
+                error: error.error || 'Failed to launch campaign'
             }, { status: launchRes.status });
         }
 
         const launchData = await launchRes.json();
-        
+
         return NextResponse.json({
             success: true,
             message: 'Campaign started immediately',

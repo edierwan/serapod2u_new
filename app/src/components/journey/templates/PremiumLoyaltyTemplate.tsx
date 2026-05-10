@@ -7382,7 +7382,7 @@ export default function PremiumLoyaltyTemplate({
                                         ? 'Confirm Consumer Lane'
                                         : collectPointsStep === 'roadtour-survey'
                                             ? 'Quick Survey'
-                                        : 'Collect Points'}
+                                            : 'Collect Points'}
                             </h3>
                             <p className="text-sm text-gray-500 mt-1">
                                 {collectPointsStep === 'complete-profile'
@@ -7391,7 +7391,7 @@ export default function PremiumLoyaltyTemplate({
                                         ? 'Choose whether to continue as a consumer or link to a shop first'
                                         : collectPointsStep === 'roadtour-survey'
                                             ? 'Complete the survey to claim your RoadTour reward'
-                                        : 'Enter your credentials to collect points'}
+                                            : 'Enter your credentials to collect points'}
                             </p>
                         </div>
 
