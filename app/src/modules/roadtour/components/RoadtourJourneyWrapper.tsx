@@ -8,6 +8,8 @@ interface RoadtourContext {
     account_manager_name: string
     default_points: number
     org_id: string
+    reward_mode?: string | null
+    survey_template_id?: string | null
     require_geolocation?: boolean
 }
 
