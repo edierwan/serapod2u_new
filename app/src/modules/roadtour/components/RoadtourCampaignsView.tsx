@@ -55,6 +55,7 @@ interface AccountManager {
 interface ReferenceOption {
     id: string
     full_name: string
+    call_name?: string | null
     email: string
     phone: string
 }
@@ -302,8 +303,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             setEligibleReferencesLoading(true)
             const { data, error } = await supabase
                 .from('users')
-                .select('id, full_name, email, phone')
-                .eq('organization_id', companyId)
+                .select('id, full_name, call_name, email, phone')
                 .eq('can_be_reference', true)
                 .eq('is_active', true)
                 .order('full_name')
@@ -312,6 +312,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             setAvailableManagers((data || []).map((row: any) => ({
                 id: row.id,
                 full_name: row.full_name || '',
+                call_name: row.call_name || '',
                 email: row.email || '',
                 phone: row.phone || '',
             })))
@@ -454,11 +455,44 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setDialogOpen(true)
     }
 
+    const getMissingCampaignSelections = () => {
+        const missingFields: string[] = []
+
+        if (formRewardMode === 'survey_submit' && !formSurveyTemplateId) {
+            missingFields.push('survey template')
+        }
+        if (formRegions.length === 0) {
+            missingFields.push('region')
+        }
+        if (formReferenceIds.length === 0) {
+            missingFields.push('reference')
+        }
+
+        return missingFields
+    }
+
+    const formatMissingFieldsMessage = (missingFields: string[]) => {
+        if (missingFields.length === 1) {
+            return `Please select ${missingFields[0]}.`
+        }
+
+        if (missingFields.length === 2) {
+            return `Please select ${missingFields[0]} and ${missingFields[1]}.`
+        }
+
+        return `Please select ${missingFields.slice(0, -1).join(', ')}, and ${missingFields[missingFields.length - 1]}.`
+    }
+
     const handleSave = async () => {
         if (!formName.trim()) { toast({ title: 'Validation', description: 'Campaign name is required.', variant: 'destructive' }); return }
         if (!formStart || !formEnd) { toast({ title: 'Validation', description: 'Start and end dates are required.', variant: 'destructive' }); return }
-        if (formRewardMode === 'survey_submit' && !formSurveyTemplateId) {
-            toast({ title: 'Validation', description: 'Select a survey template for survey-submit campaigns.', variant: 'destructive' })
+        const missingSelections = getMissingCampaignSelections()
+        if (missingSelections.length > 0) {
+            toast({
+                title: 'Missing required details',
+                description: formatMissingFieldsMessage(missingSelections),
+                variant: 'destructive'
+            })
             return
         }
 
@@ -541,6 +575,32 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         }
     }
 
+    const deleteDraftCampaign = async (campaignId: string, campaignName: string) => {
+        if (!window.confirm(`Delete draft campaign "${campaignName}"? This will remove it completely.`)) {
+            return
+        }
+
+        try {
+            const { data, error } = await (supabase as any)
+                .from('roadtour_campaigns')
+                .delete()
+                .eq('id', campaignId)
+                .eq('status', 'draft')
+                .select('id')
+                .maybeSingle()
+
+            if (error) throw error
+            if (!data) {
+                throw new Error('Only draft campaigns can be deleted.')
+            }
+
+            toast({ title: 'Campaign Deleted', description: `"${campaignName}" has been deleted.` })
+            loadCampaigns()
+        } catch (err: any) {
+            toast({ title: 'Error', description: err.message || 'Failed to delete campaign.', variant: 'destructive' })
+        }
+    }
+
     // Account Manager Assignment
     const openManagers = async (campaignId: string, campaignName: string) => {
         setSelectedCampaignId(campaignId)
@@ -585,7 +645,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         return availableManagers.filter((reference) => {
             if (formReferenceIds.includes(reference.id)) return false
             if (!query) return true
-            return [reference.full_name, reference.email, reference.phone].some((value) => value?.toLowerCase().includes(query))
+            return [reference.full_name, reference.call_name, reference.email, reference.phone].some((value) => value?.toLowerCase().includes(query))
         })
     }, [availableManagers, formReferenceIds, formReferenceSearch])
 
@@ -750,6 +810,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                             <div className="flex gap-1 justify-end">
                                                 <Button size="sm" variant="ghost" onClick={() => openManagers(c.id, c.name)} title="Manage references"><Users className="h-4 w-4" /></Button>
                                                 <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit"><Edit className="h-4 w-4" /></Button>
+                                                {c.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => deleteDraftCampaign(c.id, c.name)} title="Delete draft"><Trash2 className="h-4 w-4 text-red-600" /></Button>}
                                                 {c.status === 'draft' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Activate"><Play className="h-4 w-4 text-emerald-600" /></Button>}
                                                 {c.status === 'active' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'paused')} title="Pause"><Pause className="h-4 w-4 text-amber-600" /></Button>}
                                                 {c.status === 'paused' && <Button size="sm" variant="ghost" onClick={() => updateStatus(c.id, 'active')} title="Resume"><Play className="h-4 w-4 text-emerald-600" /></Button>}
