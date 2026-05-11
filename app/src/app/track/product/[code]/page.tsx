@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import PublicJourneyView from '@/components/journey/PublicJourneyView'
+import { resolveQrProductContext } from '@/lib/qr-product-resolution'
 
 export const metadata: Metadata = {
   title: 'Track Product | Serapod2U',
@@ -26,6 +27,7 @@ async function getJourneyData(code: string) {
         id,
         code,
         order_id,
+        order_item_id,
         product_id,
         variant_id,
         points_value,
@@ -47,6 +49,7 @@ async function getJourneyData(code: string) {
           id,
           code,
           order_id,
+          order_item_id,
           product_id,
           variant_id,
           points_value,
@@ -126,53 +129,12 @@ async function getJourneyData(code: string) {
       }
     }
 
-    let variant = null
-    let product = null
-
-    if (qrCode.variant_id) {
-      const { data: v, error: vError } = await supabase
-        .from('product_variants')
-        .select(`
-          id,
-          variant_name,
-          image_url,
-          products(
-            id,
-            product_name,
-            brands(brand_name),
-            product_images(image_url, is_primary)
-          )
-        `)
-        .eq('id', qrCode.variant_id)
-        .maybeSingle()
-      
-      if (v) {
-        variant = v
-        product = v.products
-      } else if (vError) {
-        console.error('❌ Variant query error:', vError)
-      }
-    }
-
-    // Fallback: If no variant found but product_id exists, fetch product directly
-    if (!product && qrCode.product_id) {
-      const { data: p, error: pError } = await supabase
-        .from('products')
-        .select(`
-          id,
-          product_name,
-          brands(brand_name),
-          product_images(image_url, is_primary)
-        `)
-        .eq('id', qrCode.product_id)
-        .maybeSingle()
-      
-      if (p) {
-        product = p
-      } else if (pError) {
-        console.error('❌ Product query error:', pError)
-      }
-    }
+    const { product, variant } = await resolveQrProductContext(supabase, {
+      code: qrCode.code,
+      product_id: qrCode.product_id,
+      variant_id: qrCode.variant_id,
+      order_item_id: qrCode.order_item_id,
+    })
 
     let order = null
     if (qrCode.order_id) {

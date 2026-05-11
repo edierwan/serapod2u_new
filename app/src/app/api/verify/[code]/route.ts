@@ -3,6 +3,7 @@ import { parseQRCode } from '@/lib/qr-code-utils'
 import { Database } from '@/types/database'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validateQRCodeSecurity, getBaseCode, extractQRCodeParts } from '@/lib/security/qr-hash'
+import { resolveQrProductContext } from '@/lib/qr-product-resolution'
 
 type SupabaseAdminClient = ReturnType<typeof createAdminClient>
 
@@ -32,11 +33,12 @@ type OrderInfo = {
 type QRCodeRow = {
   id: string
   order_id?: string | null
+  order_item_id?: string | null
+  product_id?: string | null
+  variant_id?: string | null
   status: string | null
   is_active: boolean | null
   order: OrderInfo | null
-  product?: { product_name?: string | null } | null
-  variant?: { variant_name?: string | null } | null
 }
 
 type MasterCodeRow = {
@@ -337,8 +339,9 @@ async function handleProductCodeVerification(
         status,
         is_active,
         order_id,
-        product:products!qr_codes_product_id_fkey ( product_name ),
-        variant:product_variants!qr_codes_variant_id_fkey ( variant_name, image_url ),
+        order_item_id,
+        product_id,
+        variant_id,
         order:orders!qr_codes_order_id_fkey (
           id,
           order_no,
@@ -370,8 +373,9 @@ async function handleProductCodeVerification(
             status,
             is_active,
             order_id,
-            product:products!qr_codes_product_id_fkey ( product_name ),
-            variant:product_variants!qr_codes_variant_id_fkey ( variant_name, image_url ),
+            order_item_id,
+            product_id,
+            variant_id,
             order:orders!qr_codes_order_id_fkey (
               id,
               order_no,
@@ -527,6 +531,13 @@ async function handleProductCodeVerification(
   const masterBannerConfig = await fetchMasterBannerConfig(supabaseAdmin, order.company_id)
 
   const journeyConfig = normalizeJourneyConfig(journey, order, masterBannerConfig)
+  const { product, variant } = await resolveQrProductContext(supabaseAdmin, {
+    code: qrCode.code,
+    product_id: qrCode.product_id,
+    variant_id: qrCode.variant_id,
+    order_item_id: qrCode.order_item_id,
+  })
+  const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
 
   return NextResponse.json({
     success: true,
@@ -536,11 +547,12 @@ async function handleProductCodeVerification(
       status,
       journey_config: {
         ...journeyConfig,
-        variant_image_url: (qrCode.variant as any)?.image_url ?? null
+        variant_image_url: variant?.image_url ?? null
       },
       product_info: {
-        product_name: qrCode.product?.product_name ?? undefined,
-        variant_name: qrCode.variant?.variant_name ?? undefined
+        product_name: product?.product_name ?? undefined,
+        variant_name: variant?.variant_name ?? undefined,
+        brand_name: brand?.brand_name ?? undefined,
       },
       order_info: {
         order_no: order.order_no
