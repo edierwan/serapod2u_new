@@ -148,13 +148,10 @@ vite.config.ts.timestamp-*
 # SQL files (Keep local only)
 *.sql
 !supabase/migrations/**/*.sql
-!supabase/schemas/current_schema.sql
-!docs/roadtourmodules/**/*.sql
 
 # Markdown files (Keep local only)
 *.md
 !supabase/migrations/**/*.md
-!docs/roadtourmodules/**/*.md
 
 # Data files
 *.csv
