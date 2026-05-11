@@ -212,6 +212,7 @@ async function hasExistingRoadtourReward(params: {
     scannedByUserId: string | null
     shopId: string | null
     duplicateRule: string | null
+    roadtourRunId: string | null
 }) {
     const {
         supabase,
@@ -220,7 +221,39 @@ async function hasExistingRoadtourReward(params: {
         scannedByUserId,
         shopId,
         duplicateRule,
+        roadtourRunId,
     } = params
+
+    // NEW: per RoadTour Event duplicate policy
+    // Any prior official visit for the same shop under the same run blocks new rewards.
+    if (duplicateRule === 'per_run' && roadtourRunId && shopId) {
+        const { data, error } = await (supabase as any)
+            .from('roadtour_official_visits')
+            .select('id')
+            .eq('roadtour_run_id', roadtourRunId)
+            .eq('shop_id', shopId)
+            .eq('visit_status', 'official')
+            .limit(1)
+        if (error) throw error
+        return Array.isArray(data) && data.length > 0
+    }
+
+    if (duplicateRule === 'per_day' && roadtourRunId && shopId) {
+        const utcDayStart = new Date()
+        utcDayStart.setUTCHours(0, 0, 0, 0)
+        const { data, error } = await (supabase as any)
+            .from('roadtour_official_visits')
+            .select('id')
+            .eq('roadtour_run_id', roadtourRunId)
+            .eq('shop_id', shopId)
+            .eq('visit_status', 'official')
+            .gte('created_at', utcDayStart.toISOString())
+            .limit(1)
+        if (error) throw error
+        return Array.isArray(data) && data.length > 0
+    }
+
+    if (duplicateRule === 'none') return false
 
     let query = (supabase as any)
         .from('roadtour_scan_events')
@@ -245,6 +278,9 @@ async function hasExistingRoadtourReward(params: {
             .eq('account_manager_user_id', accountManagerUserId)
             .eq('shop_id', shopId)
             .gte('scan_time', utcDayStart.toISOString())
+    } else if (duplicateRule === 'per_campaign') {
+        if (!shopId) return false
+        query = query.eq('shop_id', shopId)
     } else {
         if (!scannedByUserId) return false
         query = query.eq('scanned_by_user_id', scannedByUserId)
@@ -307,6 +343,33 @@ export async function POST(request: NextRequest) {
             default_points, reward_mode, survey_template_id, org_id,
             duplicate_rule_reward
         } = validation as any
+
+        // Resolve RoadTour Event (roadtour_runs) for this campaign so we can apply
+        // per-event duplicate protection and snapshot the run id on downstream rows.
+        let roadtour_run_id: string | null = null
+        let runDuplicatePolicy: string | null = null
+        let roadtourRunName: string | null = null
+        try {
+            const { data: campaignRow } = await (supabase as any)
+                .from('roadtour_campaigns')
+                .select('roadtour_run_id, roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(id,name,duplicate_policy)')
+                .eq('id', campaign_id)
+                .maybeSingle()
+            if (campaignRow) {
+                roadtour_run_id = campaignRow.roadtour_run_id || null
+                const runRel: any = (campaignRow as any).roadtour_runs
+                if (runRel) {
+                    runDuplicatePolicy = runRel.duplicate_policy || null
+                    roadtourRunName = runRel.name || null
+                }
+            }
+        } catch (runLookupError) {
+            console.warn('[RT] roadtour_run lookup skipped:', (runLookupError as any)?.message)
+        }
+
+        // Effective duplicate rule: prefer the RoadTour Event policy when available,
+        // otherwise keep legacy QR/settings rule.
+        const effectiveDuplicateRule = runDuplicatePolicy || duplicate_rule_reward || 'one_per_user_per_campaign'
         const { data: orgSettingsRow } = await (supabase as any)
             .from('organizations')
             .select('settings')
@@ -491,12 +554,17 @@ export async function POST(request: NextRequest) {
             accountManagerUserId: account_manager_user_id,
             scannedByUserId: userId,
             shopId: resolvedRewardShopId,
-            duplicateRule: duplicate_rule_reward || 'one_per_user_per_campaign',
+            duplicateRule: effectiveDuplicateRule,
+            roadtourRunId: roadtour_run_id,
         })
 
         if (alreadyClaimed) {
+            const eventLabel = roadtourRunName ? ` (${roadtourRunName})` : ''
+            const perRunMessage = effectiveDuplicateRule === 'per_run'
+                ? `This shop has already participated in this RoadTour Event${eventLabel}.`
+                : duplicateMessage
             return NextResponse.json(
-                { message: duplicateMessage, code: 'DUPLICATE' },
+                { message: perRunMessage, code: 'DUPLICATE' },
                 { status: 409 }
             )
         }

@@ -167,6 +167,16 @@ local_test/
 sql_backup/
 experimental/
 tmp/
+.tmp/
+
+# Local secret/backups artifacts
+*.dump
+*.backup
+*.bak
+*.tar
+*.tar.gz
+*.tgz
+*.zip
 temp/
 z_*
 
@@ -175,6 +185,14 @@ z_*
 /docs/
 *.sh
 *.py
+
+# Reporting data coverage audit docs are intentionally tracked
+!/docs/
+!/docs/reporting-data-coverage-audit/
+!/docs/reporting-data-coverage-audit/**
+
+# Local reporting audit exports stay private
+/exports/reporting-audit/
 
 # Test files
 *.test.ts

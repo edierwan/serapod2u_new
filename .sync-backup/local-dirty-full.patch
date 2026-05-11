@@ -1,0 +1,914 @@
+diff --git a/.gitignore b/.gitignore
+index e46a2e6..6933853 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -176,6 +176,14 @@ z_*
+ *.sh
+ *.py
+ 
++# Reporting data coverage audit docs are intentionally tracked
++!/docs/
++!/docs/reporting-data-coverage-audit/
++!/docs/reporting-data-coverage-audit/**
++
++# Local reporting audit exports stay private
++/exports/reporting-audit/
++
+ # Test files
+ *.test.ts
+ *.test.js
+diff --git a/app/src/app/api/support/whatsapp/ingest/route.ts b/app/src/app/api/support/whatsapp/ingest/route.ts
+index 968a8a6..80ae0c1 100644
+--- a/app/src/app/api/support/whatsapp/ingest/route.ts
++++ b/app/src/app/api/support/whatsapp/ingest/route.ts
+@@ -236,6 +236,12 @@ async function findDailyReportingContext(
+ ) {
+   const quotedMessageIds = getProviderMessageCandidates(payload)
+ 
++  logIngest('info', 'session_search_start', {
++    from_phone: senderPhoneE164,
++    quoted_message_ids: quotedMessageIds,
++    has_quoted_ids: quotedMessageIds.length > 0,
++  })
++
+   for (const matchedBy of ['provider_message_id', 'last_outbound_message_id'] as const) {
+     if (quotedMessageIds.length === 0) break
+ 
+@@ -250,6 +256,12 @@ async function findDailyReportingContext(
+       .maybeSingle()
+ 
+     if (matchedSession) {
++      logIngest('info', 'session_matched_by_quoted_id', {
++        from_phone: senderPhoneE164,
++        matched_by: matchedBy,
++        session_id: matchedSession.id,
++        campaign_id: matchedSession.campaign_id,
++      })
+       return {
+         activeSession: matchedSession,
+         latestSession: matchedSession,
+@@ -270,6 +282,14 @@ async function findDailyReportingContext(
+   const latestSession = sessions[0] || null
+   const now = Date.now()
+ 
++  logIngest('info', 'session_phone_lookup', {
++    from_phone: senderPhoneE164,
++    sessions_found: sessions.length,
++    latest_session_id: latestSession?.id || null,
++    latest_session_status: latestSession?.status || null,
++    latest_session_reply_enabled: latestSession?.reply_enabled ?? null,
++  })
++
+   const activeSession = sessions.find((session) => {
+     if (session.status !== 'active') return false
+ 
+@@ -303,6 +323,16 @@ async function sendSessionReply(
+     nextPageToPersist?: number | null
+   },
+ ) {
++  logIngest('info', 'send_session_reply_start', {
++    session_id: session.id,
++    campaign_id: session.campaign_id,
++    org_id: session.org_id,
++    recipient_phone: session.recipient_phone,
++    reply_action: params.replyAction,
++    inbound_text: params.inboundText,
++    matched_by: params.matchedBy,
++  })
++
+   const config = await getWhatsAppConfig(supabase as any, session.org_id)
+ 
+   if (!config || !config.baseUrl) {
+@@ -352,7 +382,17 @@ async function sendSessionReply(
+   )
+ 
+   const success = result?.success ?? result?.ok ?? false
+-  const outboundMessageId = result?.message_id || result?.provider_message_id || null
++  const outboundMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null
++
++  logIngest(success ? 'info' : 'error', 'send_session_reply_result', {
++    session_id: session.id,
++    campaign_id: session.campaign_id,
++    recipient_phone: session.recipient_phone,
++    reply_action: params.replyAction,
++    success,
++    outbound_message_id: outboundMessageId,
++    error: success ? null : (result?.error || 'unknown'),
++  })
+ 
+   await (supabase as any).from('marketing_reply_logs').insert({
+     session_id: session.id,
+@@ -414,6 +454,18 @@ async function handleDailyReportingReply(
+   const trimmedText = payload.text.trim()
+   const { activeSession, latestSession, matchedBy } = await findDailyReportingContext(supabase, senderPhoneE164, payload)
+ 
++  logIngest('info', 'daily_reporting_session_lookup', {
++    from_phone: senderPhoneE164,
++    text_trimmed: trimmedText,
++    has_active_session: !!activeSession,
++    has_latest_session: !!latestSession,
++    matched_by: matchedBy,
++    active_session_id: activeSession?.id || null,
++    active_session_status: activeSession?.status || null,
++    active_session_reply_enabled: activeSession?.reply_enabled ?? null,
++    quoted_message_id: payload.quotedMessageId || null,
++  })
++
+   if (!activeSession) {
+     if (!isInteractiveReportCommand(trimmedText) || !latestSession) {
+       return { handled: false }
+@@ -526,7 +578,26 @@ async function handleDailyReportingReply(
+   return { handled: true, success: replyResult.success }
+ }
+ 
++/** Structured log helper for ingest observability */
++function logIngest(
++  level: 'info' | 'warn' | 'error',
++  stage: string,
++  ctx: Record<string, unknown>,
++) {
++  const entry = JSON.stringify({
++    ts: new Date().toISOString(),
++    scope: 'whatsapp_ingest',
++    stage,
++    ...ctx,
++  })
++  if (level === 'error') console.error(entry)
++  else if (level === 'warn') console.warn(entry)
++  else console.log(entry)
++}
++
+ export async function POST(request: NextRequest) {
++  const ingestStartedAt = Date.now()
++
+   try {
+     const rawBody = await request.json()
+     const agentKey = request.headers.get('x-agent-key') || request.headers.get('x-api-key') || request.headers.get('x-moltbot-secret')
+@@ -534,12 +605,28 @@ export async function POST(request: NextRequest) {
+     const configuredApiKeys = await getConfiguredWhatsAppApiKeys(supabase)
+     const acceptedKeys = new Set([...AGENT_KEYS, ...configuredApiKeys])
+ 
++    logIngest('info', 'webhook_received', {
++      has_agent_key: !!agentKey,
++      agent_key_prefix: agentKey ? agentKey.substring(0, 8) + '…' : null,
++      accepted_keys_count: acceptedKeys.size,
++      env_keys_count: AGENT_KEYS.length,
++      db_keys_count: configuredApiKeys.length,
++      source: rawBody?.event ? 'gateway' : 'legacy',
++      event: rawBody?.event || null,
++      from_me: rawBody?.wa?.fromMe ?? null,
++    })
++
+     if (acceptedKeys.size === 0) {
+-      console.error('[WhatsApp Ingest] webhook auth secret not configured')
++      logIngest('error', 'auth_no_keys', { message: 'No accepted API keys configured (env + DB)' })
+       return NextResponse.json({ ok: false, error: 'Server misconfigured' }, { status: 500 })
+     }
+ 
+     if (!agentKey || !acceptedKeys.has(agentKey)) {
++      logIngest('warn', 'auth_rejected', {
++        has_agent_key: !!agentKey,
++        agent_key_prefix: agentKey ? agentKey.substring(0, 8) + '…' : null,
++        accepted_key_prefixes: Array.from(acceptedKeys).map(k => k.substring(0, 8) + '…'),
++      })
+       return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
+     }
+ 
+@@ -547,15 +634,31 @@ export async function POST(request: NextRequest) {
+     const { from, messageId, chatId, text, metadata, tenantId } = parsedBody
+ 
+     if (!from || !messageId || !text) {
++      logIngest('warn', 'validation_failed', { has_from: !!from, has_messageId: !!messageId, has_text: !!text })
+       return NextResponse.json({ ok: false, error: 'Missing required fields: from, messageId, text' }, { status: 400 })
+     }
+ 
+     const senderPhoneE164 = normalizePhoneE164(from)
+     const chatJid = chatId || `${senderPhoneE164.replace(/\D/g, '')}@s.whatsapp.net`
+ 
+-    console.log(`[WhatsApp Ingest] Processing ${parsedBody.source} message from ${senderPhoneE164}, messageId=${messageId}`)
++    logIngest('info', 'payload_parsed', {
++      source: parsedBody.source,
++      direction_hint: parsedBody.directionHint,
++      from_phone: senderPhoneE164,
++      message_id: messageId,
++      text_preview: text.substring(0, 50),
++      text_length: text.length,
++      quoted_message_id: parsedBody.quotedMessageId || null,
++      tenant_id: tenantId || null,
++    })
+ 
+     if (parsedBody.source === 'gateway' && parsedBody.directionHint === 'outbound') {
++      logIngest('info', 'outbound_echo_ignored', {
++        from_phone: senderPhoneE164,
++        message_id: messageId,
++        gateway_phone: parsedBody.gatewayPhone,
++      })
++
+       await logWhatsAppEvent(supabase, {
+         tenantId,
+         direction: 'outbound',
+@@ -797,13 +900,41 @@ export async function POST(request: NextRequest) {
+ 
+     if (direction === 'inbound') {
+       try {
+-        await handleDailyReportingReply(supabase, senderPhoneE164, parsedBody)
+-      } catch (replyError) {
+-        console.error('[WhatsApp Ingest] Daily reporting reply error:', replyError)
++        logIngest('info', 'daily_reporting_check', {
++          from_phone: senderPhoneE164,
++          message_id: messageId,
++          text_trimmed: text.trim(),
++          is_interactive: isInteractiveReportCommand(text.trim()),
++          conversation_id: conversationId,
++        })
++
++        const replyResult = await handleDailyReportingReply(supabase, senderPhoneE164, parsedBody)
++
++        logIngest('info', 'daily_reporting_result', {
++          from_phone: senderPhoneE164,
++          message_id: messageId,
++          handled: replyResult.handled,
++          success: replyResult.success ?? null,
++        })
++      } catch (replyError: any) {
++        logIngest('error', 'daily_reporting_error', {
++          from_phone: senderPhoneE164,
++          message_id: messageId,
++          error: replyError.message,
++          stack: replyError.stack?.slice(0, 300),
++        })
+       }
+     }
+ 
+-    console.log(`[WhatsApp Ingest] Success: convId=${conversationId}, msgId=${newMessage.id}`)
++    logIngest('info', 'ingest_complete', {
++      from_phone: senderPhoneE164,
++      message_id: messageId,
++      conversation_id: conversationId,
++      msg_id: newMessage.id,
++      direction,
++      is_admin: isAdmin,
++      duration_ms: Date.now() - ingestStartedAt,
++    })
+ 
+     return NextResponse.json({
+       ok: true,
+@@ -812,7 +943,11 @@ export async function POST(request: NextRequest) {
+       dedup: false,
+     })
+   } catch (error: any) {
+-    console.error('[WhatsApp Ingest] Error:', error)
++    logIngest('error', 'unhandled_error', {
++      error: error.message,
++      stack: error.stack?.slice(0, 500),
++      duration_ms: Date.now() - ingestStartedAt,
++    })
+     return NextResponse.json({ ok: false, error: error.message || 'Internal server error' }, { status: 500 })
+   }
+ }
+diff --git a/app/src/app/api/wa/marketing/campaigns/[id]/launch/route.ts b/app/src/app/api/wa/marketing/campaigns/[id]/launch/route.ts
+index 1623aab..a77d750 100644
+--- a/app/src/app/api/wa/marketing/campaigns/[id]/launch/route.ts
++++ b/app/src/app/api/wa/marketing/campaigns/[id]/launch/route.ts
+@@ -471,7 +471,7 @@ async function sendMessagesAsync(
+                 waConfig.tenantId
+             );
+ 
+-            const providerMessageId = result?.message_id || result?.provider_message_id || null;
++            const providerMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null;
+ 
+             if (result.ok !== false && !result.error) {
+                 // Update log with success
+diff --git a/app/src/app/api/wa/marketing/campaigns/[id]/run-now/route.ts b/app/src/app/api/wa/marketing/campaigns/[id]/run-now/route.ts
+index 5d9a993..b21af1f 100644
+--- a/app/src/app/api/wa/marketing/campaigns/[id]/run-now/route.ts
++++ b/app/src/app/api/wa/marketing/campaigns/[id]/run-now/route.ts
+@@ -42,8 +42,8 @@ export async function POST(
+ 
+         // Server-side validation: Only "scheduled", "draft", or "launch_failed" campaigns can be run now
+         if (!['scheduled', 'draft', 'launch_failed'].includes(campaign.status)) {
+-            return NextResponse.json({ 
+-                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled, draft, or launch_failed campaigns can be run immediately.` 
++            return NextResponse.json({
++                error: `Campaign cannot be run now. Current status: ${campaign.status}. Only scheduled, draft, or launch_failed campaigns can be run immediately.`
+             }, { status: 400 });
+         }
+ 
+@@ -52,8 +52,8 @@ export async function POST(
+ 
+         // Additional validation: Campaign must have a scheduled_at time (unless retrying)
+         if (!campaign.scheduled_at && !isRetry) {
+-            return NextResponse.json({ 
+-                error: 'Campaign has no scheduled time. Cannot run now.' 
++            return NextResponse.json({
++                error: 'Campaign has no scheduled time. Cannot run now.'
+             }, { status: 400 });
+         }
+ 
+@@ -96,14 +96,14 @@ export async function POST(
+                 .from('marketing_campaigns')
+                 .update(restorePayload)
+                 .eq('id', campaignId);
+-            
+-            return NextResponse.json({ 
+-                error: error.error || 'Failed to launch campaign' 
++
++            return NextResponse.json({
++                error: error.error || 'Failed to launch campaign'
+             }, { status: launchRes.status });
+         }
+ 
+         const launchData = await launchRes.json();
+-        
++
+         return NextResponse.json({
+             success: true,
+             message: 'Campaign started immediately',
+diff --git a/app/src/app/api/wa/marketing/test-send/route.ts b/app/src/app/api/wa/marketing/test-send/route.ts
+index 3ee553c..6ecb6dd 100644
+--- a/app/src/app/api/wa/marketing/test-send/route.ts
++++ b/app/src/app/api/wa/marketing/test-send/route.ts
+@@ -205,7 +205,7 @@ export async function POST(request: Request) {
+     });
+ 
+     const isSuccess = result?.success ?? result?.ok ?? false;
+-    const providerMessageId = result?.message_id || result?.provider_message_id || null;
++    const providerMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null;
+ 
+     if (!isSuccess) {
+       return NextResponse.json({
+diff --git a/app/src/app/loyalty/marketing/_components/CampaignsList.tsx b/app/src/app/loyalty/marketing/_components/CampaignsList.tsx
+index 71a7a75..e5e3b53 100644
+--- a/app/src/app/loyalty/marketing/_components/CampaignsList.tsx
++++ b/app/src/app/loyalty/marketing/_components/CampaignsList.tsx
+@@ -45,17 +45,17 @@ function formatCountdown(scheduledAt: string): { display: string; isFuture: bool
+     const now = new Date();
+     const scheduled = new Date(scheduledAt);
+     const diffSeconds = differenceInSeconds(scheduled, now);
+-    
++
+     if (diffSeconds <= 0) {
+         return { display: '00:00:00', isFuture: false, isOverdue: true };
+     }
+-    
++
+     const hours = Math.floor(diffSeconds / 3600);
+     const minutes = Math.floor((diffSeconds % 3600) / 60);
+     const seconds = diffSeconds % 60;
+-    
++
+     const pad = (n: number) => n.toString().padStart(2, '0');
+-    return { 
++    return {
+         display: `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`,
+         isFuture: true,
+         isOverdue: false
+@@ -82,10 +82,10 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+     useEffect(() => {
+         const hasScheduled = campaigns.some(c => c.scheduled_at);
+         if (!hasScheduled) return;
+-        
++
+         const interval = setInterval(() => {
+             setCountdownTick(t => t + 1);
+-            
++
+             // Auto-refresh when a campaign's scheduled time just passed (within 5 seconds)
+             const justPassed = campaigns.some(c => {
+                 if (!c.scheduled_at || c.status !== 'scheduled') return false;
+@@ -96,7 +96,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+                 setTimeout(() => fetchCampaigns(), 5000);
+             }
+         }, 1000);
+-        
++
+         return () => clearInterval(interval);
+     }, [campaigns]);
+ 
+@@ -216,7 +216,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+     const handleRunNowConfirmed = async () => {
+         const campaign = runNowConfirm.campaign;
+         if (!campaign) return;
+-        
++
+         setRunningNow(true);
+         const isRetry = campaign.status === 'launch_failed';
+         try {
+@@ -228,7 +228,7 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' }
+             });
+-            
++
+             if (res.ok) {
+                 const data = await res.json();
+                 toast({
+@@ -413,132 +413,132 @@ export function CampaignsList({ onNew, onEdit }: CampaignsListProps) {
+                                         // Calculate countdown for scheduled campaigns
+                                         const countdown = c.scheduled_at ? formatCountdown(c.scheduled_at) : null;
+                                         const scheduledTime = c.scheduled_at ? format(new Date(c.scheduled_at), 'hh:mm:ss a') : null;
+-                                        
++
+                                         return (
+-                                        <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}>
+-                                            <TableCell className="text-muted-foreground font-mono text-sm">
+-                                                {(currentPage - 1) * pageSize + index + 1}
+-                                            </TableCell>
+-                                            <TableCell className="font-medium">
+-                                                {c.name}
+-                                            </TableCell>
+-                                            <TableCell>{c.objective}</TableCell>
+-                                            <TableCell>{getStatusBadge(c.status)}</TableCell>
+-                                            <TableCell>{getRecipientsDisplay(c)}</TableCell>
+-                                            <TableCell className="text-sm text-muted-foreground">
+-                                                {c.creator?.full_name || '-'}
+-                                            </TableCell>
+-                                            <TableCell>
+-                                                {c.scheduled_at ? (
+-                                                    <div className="space-y-1">
+-                                                        <div className="font-mono text-sm">
+-                                                            {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
+-                                                        </div>
+-                                                        {countdown?.isFuture ? (
+-                                                            <div className="flex items-center gap-1 text-xs text-blue-600">
+-                                                                <Clock className="h-3 w-3" />
+-                                                                <span className="font-mono">{countdown.display}</span>
+-                                                                <span className="text-muted-foreground">remaining</span>
+-                                                            </div>
+-                                                        ) : countdown?.isOverdue && !['completed', 'failed', 'sending', 'archived', 'paused'].includes(c.status) ? (
+-                                                            <div className="flex items-center gap-1 text-xs text-amber-600">
+-                                                                <AlertTriangle className="h-3 w-3" />
+-                                                                <span className="font-mono">{countdown.display}</span>
+-                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-400 text-amber-600">Overdue</Badge>
++                                            <TableRow key={c.id} className="cursor-pointer hover:bg-gray-50/50" onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}>
++                                                <TableCell className="text-muted-foreground font-mono text-sm">
++                                                    {(currentPage - 1) * pageSize + index + 1}
++                                                </TableCell>
++                                                <TableCell className="font-medium">
++                                                    {c.name}
++                                                </TableCell>
++                                                <TableCell>{c.objective}</TableCell>
++                                                <TableCell>{getStatusBadge(c.status)}</TableCell>
++                                                <TableCell>{getRecipientsDisplay(c)}</TableCell>
++                                                <TableCell className="text-sm text-muted-foreground">
++                                                    {c.creator?.full_name || '-'}
++                                                </TableCell>
++                                                <TableCell>
++                                                    {c.scheduled_at ? (
++                                                        <div className="space-y-1">
++                                                            <div className="font-mono text-sm">
++                                                                {format(new Date(c.scheduled_at), 'MMM d')} @ {scheduledTime}
+                                                             </div>
+-                                                        ) : null}
+-                                                    </div>
+-                                                ) : '-'}
+-                                            </TableCell>
+-                                            <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
+-                                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+-                                                <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}>
+-                                                    <DropdownMenuTrigger asChild>
+-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
+-                                                            <span className="sr-only">Open menu</span>
+-                                                            <MoreHorizontal className="h-4 w-4 text-gray-700" />
+-                                                        </Button>
+-                                                    </DropdownMenuTrigger>
+-                                                    <DropdownMenuContent
+-                                                        align="end"
+-                                                        sideOffset={5}
+-                                                        className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-50"
+-                                                        style={{ zIndex: 9999 }}
+-                                                    >
+-                                                        {c.status === 'draft' && (
+-                                                            <DropdownMenuItem
+-                                                                onClick={() => { setOpenMenuId(null); handleEditCampaign(c); }}
+-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+-                                                            >
+-                                                                <Edit className="h-4 w-4 text-gray-600" />
+-                                                                Edit
+-                                                            </DropdownMenuItem>
+-                                                        )}
+-                                                        <DropdownMenuItem
+-                                                            onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}
+-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+-                                                        >
+-                                                            <Eye className="h-4 w-4 text-gray-600" />
+-                                                            View
+-                                                        </DropdownMenuItem>
+-                                                        <DropdownMenuItem
+-                                                            onClick={() => { setOpenMenuId(null); handleAction('duplicate', c.id); }}
+-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
++                                                            {countdown?.isFuture ? (
++                                                                <div className="flex items-center gap-1 text-xs text-blue-600">
++                                                                    <Clock className="h-3 w-3" />
++                                                                    <span className="font-mono">{countdown.display}</span>
++                                                                    <span className="text-muted-foreground">remaining</span>
++                                                                </div>
++                                                            ) : countdown?.isOverdue && !['completed', 'failed', 'sending', 'archived', 'paused'].includes(c.status) ? (
++                                                                <div className="flex items-center gap-1 text-xs text-amber-600">
++                                                                    <AlertTriangle className="h-3 w-3" />
++                                                                    <span className="font-mono">{countdown.display}</span>
++                                                                    <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 border-amber-400 text-amber-600">Overdue</Badge>
++                                                                </div>
++                                                            ) : null}
++                                                        </div>
++                                                    ) : '-'}
++                                                </TableCell>
++                                                <TableCell className="text-muted-foreground text-xs">{format(new Date(c.updated_at), 'MMM d')}</TableCell>
++                                                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
++                                                    <DropdownMenu open={openMenuId === c.id} onOpenChange={(open) => setOpenMenuId(open ? c.id : null)}>
++                                                        <DropdownMenuTrigger asChild>
++                                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-md transition-colors">
++                                                                <span className="sr-only">Open menu</span>
++                                                                <MoreHorizontal className="h-4 w-4 text-gray-700" />
++                                                            </Button>
++                                                        </DropdownMenuTrigger>
++                                                        <DropdownMenuContent
++                                                            align="end"
++                                                            sideOffset={5}
++                                                            className="w-40 bg-white rounded-lg shadow-xl border border-gray-100 py-1.5 z-50"
++                                                            style={{ zIndex: 9999 }}
+                                                         >
+-                                                            <Copy className="h-4 w-4 text-gray-600" />
+-                                                            Duplicate
+-                                                        </DropdownMenuItem>
+-                                                        {/* Run Now for scheduled or draft campaigns */}
+-                                                        {(c.status === 'scheduled' || c.status === 'draft') && c.scheduled_at && (
++                                                            {c.status === 'draft' && (
++                                                                <DropdownMenuItem
++                                                                    onClick={() => { setOpenMenuId(null); handleEditCampaign(c); }}
++                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
++                                                                >
++                                                                    <Edit className="h-4 w-4 text-gray-600" />
++                                                                    Edit
++                                                                </DropdownMenuItem>
++                                                            )}
+                                                             <DropdownMenuItem
+-                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
+-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
+-                                                            >
+-                                                                <Rocket className="h-4 w-4 text-green-600" />
+-                                                                Run Now
+-                                                            </DropdownMenuItem>
+-                                                        )}
+-                                                        {/* Retry Launch for launch_failed campaigns */}
+-                                                        {c.status === 'launch_failed' && (
+-                                                            <DropdownMenuItem
+-                                                                onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
+-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-orange-700 hover:bg-orange-50 cursor-pointer focus:bg-orange-50 rounded-md mx-1"
++                                                                onClick={() => { setOpenMenuId(null); setSelectedCampaign(c); }}
++                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                             >
+-                                                                <Rocket className="h-4 w-4 text-orange-600" />
+-                                                                Retry Launch
++                                                                <Eye className="h-4 w-4 text-gray-600" />
++                                                                View
+                                                             </DropdownMenuItem>
+-                                                        )}
+-                                                        {c.status === 'sending' && (
+                                                             <DropdownMenuItem
+-                                                                onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
++                                                                onClick={() => { setOpenMenuId(null); handleAction('duplicate', c.id); }}
+                                                                 className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
+                                                             >
+-                                                                <Pause className="h-4 w-4 text-gray-600" />
+-                                                                Pause
++                                                                <Copy className="h-4 w-4 text-gray-600" />
++                                                                Duplicate
+                                                             </DropdownMenuItem>
+-                                                        )}
+-                                                        {c.status === 'paused' && (
++                                                            {/* Run Now for scheduled or draft campaigns */}
++                                                            {(c.status === 'scheduled' || c.status === 'draft') && c.scheduled_at && (
++                                                                <DropdownMenuItem
++                                                                    onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
++                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-green-700 hover:bg-green-50 cursor-pointer focus:bg-green-50 rounded-md mx-1"
++                                                                >
++                                                                    <Rocket className="h-4 w-4 text-green-600" />
++                                                                    Run Now
++                                                                </DropdownMenuItem>
++                                                            )}
++                                                            {/* Retry Launch for launch_failed campaigns */}
++                                                            {c.status === 'launch_failed' && (
++                                                                <DropdownMenuItem
++                                                                    onClick={() => { setOpenMenuId(null); showRunNowConfirm(c); }}
++                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-orange-700 hover:bg-orange-50 cursor-pointer focus:bg-orange-50 rounded-md mx-1"
++                                                                >
++                                                                    <Rocket className="h-4 w-4 text-orange-600" />
++                                                                    Retry Launch
++                                                                </DropdownMenuItem>
++                                                            )}
++                                                            {c.status === 'sending' && (
++                                                                <DropdownMenuItem
++                                                                    onClick={() => { setOpenMenuId(null); handleAction('pause', c.id); }}
++                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
++                                                                >
++                                                                    <Pause className="h-4 w-4 text-gray-600" />
++                                                                    Pause
++                                                                </DropdownMenuItem>
++                                                            )}
++                                                            {c.status === 'paused' && (
++                                                                <DropdownMenuItem
++                                                                    onClick={() => { setOpenMenuId(null); handleAction('resume', c.id); }}
++                                                                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
++                                                                >
++                                                                    <Play className="h-4 w-4 text-gray-600" />
++                                                                    Resume
++                                                                </DropdownMenuItem>
++                                                            )}
++                                                            <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
+                                                             <DropdownMenuItem
+-                                                                onClick={() => { setOpenMenuId(null); handleAction('resume', c.id); }}
+-                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-gray-700 hover:bg-gray-50 cursor-pointer focus:bg-gray-50 rounded-md mx-1"
++                                                                onClick={() => { setOpenMenuId(null); handleAction('delete', c.id || ''); }}
++                                                                className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
+                                                             >
+-                                                                <Play className="h-4 w-4 text-gray-600" />
+-                                                                Resume
++                                                                <Trash2 className="h-4 w-4 text-red-600" />
++                                                                Delete
+                                                             </DropdownMenuItem>
+-                                                        )}
+-                                                        <DropdownMenuSeparator className="my-1.5 bg-gray-100" />
+-                                                        <DropdownMenuItem
+-                                                            onClick={() => { setOpenMenuId(null); handleAction('delete', c.id || ''); }}
+-                                                            className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50 cursor-pointer focus:bg-red-50 rounded-md mx-1"
+-                                                        >
+-                                                            <Trash2 className="h-4 w-4 text-red-600" />
+-                                                            Delete
+-                                                        </DropdownMenuItem>
+-                                                    </DropdownMenuContent>
+-                                                </DropdownMenu>
+-                                            </TableCell>
+-                                        </TableRow>
+-                                    );
++                                                        </DropdownMenuContent>
++                                                    </DropdownMenu>
++                                                </TableCell>
++                                            </TableRow>
++                                        );
+                                     })}
+                                 </TableBody>
+                             </Table>
+diff --git a/app/src/components/dashboard/views/reporting/DistributorReportsTab.tsx b/app/src/components/dashboard/views/reporting/DistributorReportsTab.tsx
+index 4ef046b..45500ac 100644
+--- a/app/src/components/dashboard/views/reporting/DistributorReportsTab.tsx
++++ b/app/src/components/dashboard/views/reporting/DistributorReportsTab.tsx
+@@ -1024,9 +1024,9 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
+                                 <td className="py-2.5 px-2 text-center text-xs">{o.items_count}</td>
+                                 <td className="py-2.5 px-2 text-center">
+                                   <Badge variant="secondary" className={`text-[10px] ${o.status === 'approved' || o.status === 'closed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+-                                      : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+-                                        : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+-                                          : 'bg-muted text-muted-foreground'
++                                    : o.status === 'submitted' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
++                                      : o.status === 'shipped_distributor' || o.status === 'warehouse_packed' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
++                                        : 'bg-muted text-muted-foreground'
+                                     }`}>
+                                     {o.status}
+                                   </Badge>
+diff --git a/app/src/components/dashboard/views/reporting/ExecutiveKpiValue.tsx b/app/src/components/dashboard/views/reporting/ExecutiveKpiValue.tsx
+index 588aa9d..424af05 100644
+--- a/app/src/components/dashboard/views/reporting/ExecutiveKpiValue.tsx
++++ b/app/src/components/dashboard/views/reporting/ExecutiveKpiValue.tsx
+@@ -1,18 +1,18 @@
+ import type { ReactNode } from 'react'
+ 
+ interface ExecutiveKpiValueProps {
+-  children: ReactNode
+-  className?: string
++    children: ReactNode
++    className?: string
+ }
+ 
+ export const executiveKpiValueClassName = 'inline-flex max-w-full min-w-0 items-baseline whitespace-nowrap text-2xl font-bold leading-none text-foreground tabular-nums'
+ 
+ export default function ExecutiveKpiValue({ children, className = '' }: ExecutiveKpiValueProps) {
+-  return (
+-    <div className="min-w-0 overflow-hidden">
+-      <div className={`${executiveKpiValueClassName} ${className}`.trim()}>
+-        {children}
+-      </div>
+-    </div>
+-  )
++    return (
++        <div className="min-w-0 overflow-hidden">
++            <div className={`${executiveKpiValueClassName} ${className}`.trim()}>
++                {children}
++            </div>
++        </div>
++    )
+ }
+\ No newline at end of file
+diff --git a/app/src/components/dashboard/views/reporting/ProductsTab.tsx b/app/src/components/dashboard/views/reporting/ProductsTab.tsx
+index d0de0e4..96e0a55 100644
+--- a/app/src/components/dashboard/views/reporting/ProductsTab.tsx
++++ b/app/src/components/dashboard/views/reporting/ProductsTab.tsx
+@@ -1190,8 +1190,8 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
+                     <div
+                       key={item.variantId}
+                       className={`rounded-lg border p-3 ${item.severity === 'red'
+-                          ? 'border-red-500/30 bg-red-500/5'
+-                          : 'border-amber-500/30 bg-amber-500/5'
++                        ? 'border-red-500/30 bg-red-500/5'
++                        : 'border-amber-500/30 bg-amber-500/5'
+                         }`}
+                     >
+                       <div className="flex items-start justify-between mb-2">
+@@ -1202,8 +1202,8 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
+                         <Badge
+                           variant="secondary"
+                           className={`ml-2 flex-shrink-0 text-xs ${item.severity === 'red'
+-                              ? 'bg-red-500/20 text-red-600 dark:text-red-400'
+-                              : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
++                            ? 'bg-red-500/20 text-red-600 dark:text-red-400'
++                            : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                             }`}
+                         >
+                           {item.decline === -100 ? 'No Orders' : `${item.decline}%`}
+diff --git a/app/src/components/dashboard/views/reporting/ShopPerformanceTab.tsx b/app/src/components/dashboard/views/reporting/ShopPerformanceTab.tsx
+index 899d0ad..6c422c1 100644
+--- a/app/src/components/dashboard/views/reporting/ShopPerformanceTab.tsx
++++ b/app/src/components/dashboard/views/reporting/ShopPerformanceTab.tsx
+@@ -184,7 +184,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+               .in('organization_id', batch)
+ 
+             if (userData) {
+-              ;(userData as ShopContact[]).forEach((user) => {
++              ; (userData as ShopContact[]).forEach((user) => {
+                 if (!user.organization_id) return
+                 const existing = contactMap.get(user.organization_id)
+                 const existingScore = existing
+@@ -211,7 +211,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+               .in('id', batch)
+ 
+             if (userData) {
+-              ;(userData as ConsumerProfile[]).forEach((user) => {
++              ; (userData as ConsumerProfile[]).forEach((user) => {
+                 profileMap.set(user.id, user)
+               })
+             }
+@@ -305,13 +305,21 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+     })
+ 
+     return [...consumerMap.entries()]
+-      .map(([consumerId, data]) => ({
+-        consumerId,
+-        ...data,
+-      }))
++      .map(([consumerId, data]) => {
++        const profile = consumerId !== 'anonymous' ? consumerProfiles.get(consumerId) : null
++        const contactLines = formatContactLines(profile?.phone, profile?.email)
++
++        return {
++          consumerId,
++          consumerName: consumerId === 'anonymous' ? 'Anonymous' : (profile?.full_name || 'Unnamed Consumer'),
++          phone: contactLines.phone,
++          email: contactLines.email,
++          ...data,
++        }
++      })
+       .sort((a, b) => b.scans - a.scans)
+       .slice(0, 20)
+-  }, [drillShopId, periodScans])
++  }, [drillShopId, periodScans, consumerProfiles])
+ 
+   // ── Monthly Trend for All Shops ──────────────────────────────────────
+   const monthlyTrend = useMemo(() => {
+@@ -526,14 +534,14 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+             className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+           >
+             <CardContent className="pt-5 pb-4 cursor-pointer">
+-            <div className="flex items-center justify-between mb-2">
+-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Shops</span>
+-              <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+-                <Store className="h-4 w-4 text-purple-600 dark:text-purple-400" />
++              <div className="flex items-center justify-between mb-2">
++                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Shops</span>
++                <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/30">
++                  <Store className="h-4 w-4 text-purple-600 dark:text-purple-400" />
++                </div>
+               </div>
+-            </div>
+-            <ExecutiveKpiValue><AnimatedCounter value={kpis.activeShops} /></ExecutiveKpiValue>
+-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">with scans in period <Eye className="h-3 w-3" /></p>
++              <ExecutiveKpiValue><AnimatedCounter value={kpis.activeShops} /></ExecutiveKpiValue>
++              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">with scans in period <Eye className="h-3 w-3" /></p>
+             </CardContent>
+           </button>
+         </Card>
+@@ -556,14 +564,14 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+             className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+           >
+             <CardContent className="pt-5 pb-4 cursor-pointer">
+-            <div className="flex items-center justify-between mb-2">
+-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Consumers</span>
+-              <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
+-                <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
++              <div className="flex items-center justify-between mb-2">
++                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Consumers</span>
++                <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30">
++                  <Users className="h-4 w-4 text-green-600 dark:text-green-400" />
++                </div>
+               </div>
+-            </div>
+-            <ExecutiveKpiValue><AnimatedCounter value={kpis.uniqueConsumers} /></ExecutiveKpiValue>
+-            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">unique consumers <Eye className="h-3 w-3" /></p>
++              <ExecutiveKpiValue><AnimatedCounter value={kpis.uniqueConsumers} /></ExecutiveKpiValue>
++              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">unique consumers <Eye className="h-3 w-3" /></p>
+             </CardContent>
+           </button>
+         </Card>
+@@ -770,7 +778,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+                   <thead className="bg-muted/40 border-b">
+                     <tr>
+                       <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">#</th>
+-                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">Consumer ID</th>
++                      <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase text-muted-foreground">Consumer Name</th>
+                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Scans</th>
+                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Points</th>
+                       <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase text-muted-foreground">Last Scan</th>
+@@ -781,7 +789,15 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
+                       <tr key={c.consumerId} className="hover:bg-muted/30">
+                         <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
+                         <td className="px-3 py-2 font-medium">
+-                          {c.consumerId === 'anonymous' ? <span className="text-muted-foreground italic">Anonymous</span> : c.consumerId.slice(0, 12) + '…'}
++                          <div>
++                            <div className={c.consumerId === 'anonymous' ? 'text-muted-foreground italic' : ''}>{c.consumerName}</div>
++                            {c.consumerId !== 'anonymous' && (c.phone !== '-' || c.email !== '-') && (
++                              <div className="mt-0.5 text-xs font-normal text-muted-foreground">
++                                <div>{c.phone}</div>
++                                <div>{c.email}</div>
++                              </div>
++                            )}
++                          </div>
+                         </td>
+                         <td className="px-3 py-2 text-right font-semibold">{c.scans}</td>
+                         <td className="px-3 py-2 text-right">{c.points.toLocaleString()}</td>
+diff --git a/app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx b/app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx
+index be632b0..941003b 100644
+--- a/app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx
++++ b/app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx
+@@ -7382,7 +7382,7 @@ export default function PremiumLoyaltyTemplate({
+                                         ? 'Confirm Consumer Lane'
+                                         : collectPointsStep === 'roadtour-survey'
+                                             ? 'Quick Survey'
+-                                        : 'Collect Points'}
++                                            : 'Collect Points'}
+                             </h3>
+                             <p className="text-sm text-gray-500 mt-1">
+                                 {collectPointsStep === 'complete-profile'
+@@ -7391,7 +7391,7 @@ export default function PremiumLoyaltyTemplate({
+                                         ? 'Choose whether to continue as a consumer or link to a shop first'
+                                         : collectPointsStep === 'roadtour-survey'
+                                             ? 'Complete the survey to claim your RoadTour reward'
+-                                        : 'Enter your credentials to collect points'}
++                                            : 'Enter your credentials to collect points'}
+                             </p>
+                         </div>
+ 
+diff --git a/baileys-gateway/ecosystem.config.cjs b/baileys-gateway/ecosystem.config.cjs
+index ca9d0a6..97e9f8c 100644
+--- a/baileys-gateway/ecosystem.config.cjs
++++ b/baileys-gateway/ecosystem.config.cjs
+@@ -37,9 +37,12 @@ module.exports = {
+ 
+         // Serapod app ingest endpoint (Daily Reporting replies, support inbox)
+         // Set to the app's ingest URL so the gateway forwards inbound messages there too
+-        SERAPOD_INGEST_URL: 'https://stg.serapod2u.com/api/support/whatsapp/ingest',
+-        // Uses MOLTBOT_WEBHOOK_SECRET by default if not set
+-        // SERAPOD_INGEST_SECRET: '',
++        // IMPORTANT: Must point to PRODUCTION, not staging.
++        SERAPOD_INGEST_URL: 'https://serapod2u.com/api/support/whatsapp/ingest',
++        // Auth secret sent as x-agent-key / x-api-key to the ingest endpoint.
++        // Must match one of WHATSAPP_AGENT_KEY / AGENT_API_KEY / MOLTBOT_WEBHOOK_SECRET / BAILEYS_API_KEY
++        // on the receiving Next.js app, OR a configured provider api_key in the DB.
++        SERAPOD_INGEST_SECRET: process.env.SERAPOD_INGEST_SECRET || '',
+ 
+         // Logging
+         LOG_LEVEL: 'info',
+diff --git a/baileys-gateway/src/services/webhook.service.ts b/baileys-gateway/src/services/webhook.service.ts
+index dc1468f..6445033 100644
+--- a/baileys-gateway/src/services/webhook.service.ts
++++ b/baileys-gateway/src/services/webhook.service.ts
+@@ -59,6 +59,10 @@ class WebhookService {
+             hasSecret: !!this.config.moltbotSecret,
+             serapodIngestEnabled: this.config.serapodIngestEnabled,
+             serapodIngestUrl: this.config.serapodIngestUrl || '(not set)',
++            hasSerapodIngestSecret: !!this.config.serapodIngestSecret,
++            serapodIngestSecretPrefix: this.config.serapodIngestSecret
++                ? this.config.serapodIngestSecret.substring(0, 8) + '…'
++                : '(empty)',
+         }, 'WebhookService initialized');
+     }
+ 
+@@ -174,6 +178,10 @@ class WebhookService {
+             return false;
+         }
+ 
++        if (!this.config.serapodIngestSecret) {
++            logger.warn({ tenantId }, 'Serapod ingest secret is empty — forwarding will likely be rejected (401)');
++        }
++
+         // Extract message text
+         const text = message.message?.conversation ||
+             message.message?.extendedTextMessage?.text || '';

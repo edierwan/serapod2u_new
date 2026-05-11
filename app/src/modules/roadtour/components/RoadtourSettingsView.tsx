@@ -320,6 +320,13 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                 </div>
             </div>
 
+            <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-4 flex items-start gap-3">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-emerald-900">
+                    <strong>Duplicate Protection now lives on the RoadTour Event.</strong> Each event has its own duplicate policy (e.g. <em>per_run</em> blocks the same shop from being awarded twice in the same event). Manage it from the RoadTour Campaigns page when creating or editing an event.
+                </div>
+            </div>
+
             {/* Claim WhatsApp Alerts (operator-editable) */}
             <Card>
                 <CardHeader>

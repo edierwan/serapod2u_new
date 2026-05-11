@@ -15,8 +15,8 @@ interface PageProps {
 
 async function getJourneyData(code: string) {
   try {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = await createClient()
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
 
     console.log('🔍 getJourneyData - Verifying code:', code)
 
@@ -162,7 +162,7 @@ async function getJourneyData(code: string) {
         .limit(1)
         .maybeSingle()
 
-        if (links?.campaign_id) {
+      if (links?.campaign_id) {
         const { data: campaign } = await supabase
           .from('lucky_draw_campaigns')
           .select('campaign_name, campaign_image_url, status, start_date, end_date, prizes_json')
@@ -171,7 +171,7 @@ async function getJourneyData(code: string) {
           .lte('start_date', new Date().toISOString())
           .gte('end_date', new Date().toISOString())
           .maybeSingle()
-        
+
         if (campaign) {
           luckyDrawCampaign = campaign
         }
@@ -235,20 +235,20 @@ async function getJourneyData(code: string) {
           skip_security_code_for_lucky_draw: (journeyConfig as any).skip_security_code_for_lucky_draw || false,
           skip_security_code_for_redemption: (journeyConfig as any).skip_security_code_for_redemption || false,
           skip_security_code_for_scratch_card: (journeyConfig as any).skip_security_code_for_scratch_card || false,
-          
+
           // Feature Customization
           points_title: (journeyConfig as any).points_title,
           points_description: (journeyConfig as any).points_description,
           points_icon: (journeyConfig as any).points_icon,
-          
+
           lucky_draw_title: (journeyConfig as any).lucky_draw_title,
           lucky_draw_description: (journeyConfig as any).lucky_draw_description,
           lucky_draw_icon: (journeyConfig as any).lucky_draw_icon,
-          
+
           redemption_title: (journeyConfig as any).redemption_title,
           redemption_description: (journeyConfig as any).redemption_description,
           redemption_icon: (journeyConfig as any).redemption_icon,
-          
+
           scratch_card_title: (journeyConfig as any).scratch_card_title,
           scratch_card_description: (journeyConfig as any).scratch_card_description,
           scratch_card_icon: (journeyConfig as any).scratch_card_icon,
@@ -297,7 +297,7 @@ export default async function TrackProductPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <PublicJourneyView 
+      <PublicJourneyView
         code={resolvedCode}
         verificationResult={result as any}
       />

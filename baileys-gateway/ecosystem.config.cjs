@@ -37,9 +37,12 @@ module.exports = {
 
         // Serapod app ingest endpoint (Daily Reporting replies, support inbox)
         // Set to the app's ingest URL so the gateway forwards inbound messages there too
-        SERAPOD_INGEST_URL: 'https://stg.serapod2u.com/api/support/whatsapp/ingest',
-        // Uses MOLTBOT_WEBHOOK_SECRET by default if not set
-        // SERAPOD_INGEST_SECRET: '',
+        // IMPORTANT: Must point to PRODUCTION, not staging.
+        SERAPOD_INGEST_URL: 'https://serapod2u.com/api/support/whatsapp/ingest',
+        // Auth secret sent as x-agent-key / x-api-key to the ingest endpoint.
+        // Must match one of WHATSAPP_AGENT_KEY / AGENT_API_KEY / MOLTBOT_WEBHOOK_SECRET / BAILEYS_API_KEY
+        // on the receiving Next.js app, OR a configured provider api_key in the DB.
+        SERAPOD_INGEST_SECRET: process.env.SERAPOD_INGEST_SECRET || '',
 
         // Logging
         LOG_LEVEL: 'info',

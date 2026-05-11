@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
 import { buildRoadTourUrl } from '@/lib/roadtour/url'
+import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 
 interface RoadtourQrManagementViewProps {
     userProfile: any
@@ -25,6 +26,7 @@ interface Campaign {
     id: string
     name: string
     status: string
+    roadtour_run_id?: string | null
 }
 
 interface QrCode {
@@ -65,6 +67,8 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const [loading, setLoading] = useState(true)
     const [qrCodes, setQrCodes] = useState<QrCode[]>([])
     const [campaigns, setCampaigns] = useState<Campaign[]>([])
+    const [runs, setRuns] = useState<RoadtourRun[]>([])
+    const [runFilter, setRunFilter] = useState('all')
     const [campaignFilter, setCampaignFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchTerm, setSearchTerm] = useState('')
@@ -87,19 +91,21 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         try {
             setLoading(true)
 
-            const [campaignRes, qrRes] = await Promise.all([
-                (supabase as any).from('roadtour_campaigns').select('id, name, status').eq('org_id', companyId).order('name'),
+            const [campaignRes, qrRes, runsRes] = await Promise.all([
+                (supabase as any).from('roadtour_campaigns').select('id, name, status, roadtour_run_id').eq('org_id', companyId).order('name'),
                 (supabase as any).from('roadtour_qr_codes')
-                    .select('*, roadtour_campaigns!inner(name, org_id), users:account_manager_user_id(full_name, phone)')
+                    .select('*, roadtour_campaigns!inner(name, org_id, roadtour_run_id), users:account_manager_user_id(full_name, phone)')
                     .eq('roadtour_campaigns.org_id', companyId)
                     .order('created_at', { ascending: false })
                     .limit(500),
+                fetchRoadtourRuns(supabase, companyId).catch(() => [] as RoadtourRun[]),
             ])
 
             if (campaignRes.error) throw campaignRes.error
             if (qrRes.error) throw qrRes.error
 
             setCampaigns(campaignRes.data || [])
+            setRuns(runsRes || [])
             setQrCodes((qrRes.data || []).map((row: any) => ({
                 ...row,
                 campaign_name: row.roadtour_campaigns?.name || '—',
@@ -292,6 +298,10 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
     const groupedRows = Array.from(groupedMap.values())
         .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
         .filter((group) => {
+            if (runFilter !== 'all') {
+                const campaign = campaigns.find((c) => c.id === group.campaign_id)
+                if (!campaign || campaign.roadtour_run_id !== runFilter) return false
+            }
             if (campaignFilter !== 'all' && group.campaign_id !== campaignFilter) return false
             if (statusFilter !== 'all' && group.status !== statusFilter) return false
             if (!searchTerm) return true
@@ -323,11 +333,20 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input placeholder="Search by reference or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                 </div>
+                <Select value={runFilter} onValueChange={setRunFilter}>
+                    <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="All RoadTour Events" /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All RoadTour Events</SelectItem>
+                        {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                    </SelectContent>
+                </Select>
                 <Select value={campaignFilter} onValueChange={setCampaignFilter}>
                     <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="All Campaigns" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Campaigns</SelectItem>
-                        {campaigns.map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}
+                        {campaigns
+                            .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
+                            .map((campaign) => <SelectItem key={campaign.id} value={campaign.id}>{campaign.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>

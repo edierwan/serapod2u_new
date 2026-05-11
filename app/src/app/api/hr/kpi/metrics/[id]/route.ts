@@ -14,9 +14,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const body = await req.json().catch(() => ({}))
     const allowed: any = {}
     for (const k of [
-        'name','description','category','perspective','unit','measurement_direction',
-        'calculation_type','formula_description','formula_config','data_source_status',
-        'owner_user_id','status','is_active',
+        'name', 'description', 'category', 'perspective', 'unit', 'measurement_direction',
+        'calculation_type', 'formula_description', 'formula_config', 'data_source_status',
+        'owner_user_id', 'status', 'is_active',
     ]) {
         if (body[k] !== undefined) allowed[k] = body[k]
     }

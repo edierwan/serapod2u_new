@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
     const body = await req.json().catch(() => ({}))
     const allowed: any = {}
-    for (const k of ['owner_user_id','status','department_id','position_id','employee_user_id']) {
+    for (const k of ['owner_user_id', 'status', 'department_id', 'position_id', 'employee_user_id']) {
         if (body[k] !== undefined) allowed[k] = body[k]
     }
     if (!Object.keys(allowed).length) return NextResponse.json({ success: false, error: 'Nothing to update' }, { status: 400 })

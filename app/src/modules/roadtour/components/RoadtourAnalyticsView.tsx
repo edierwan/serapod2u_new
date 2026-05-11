@@ -14,6 +14,7 @@ import {
   TrendingUp, Users
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
+import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 
 interface RoadtourAnalyticsViewProps {
   userProfile: any
@@ -145,6 +146,8 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
   })
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [runs, setRuns] = useState<RoadtourRun[]>([])
+  const [runFilter, setRunFilter] = useState('all')
   const [scanPage, setScanPage] = useState(0)
   const [scansPerPage, setScansPerPage] = useState(10)
 
@@ -168,7 +171,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
 
       const campaignsRes = await (supabase as any)
         .from('roadtour_campaigns')
-        .select('id, name, status', { count: 'exact' })
+        .select('id, name, status, roadtour_run_id', { count: 'exact' })
         .eq('org_id', companyId)
 
       const orgSettingsRes = await (supabase as any)
@@ -180,7 +183,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       if (campaignsRes.error) throw campaignsRes.error
       if (orgSettingsRes.error) throw orgSettingsRes.error
 
-      const campaignsList = campaignsRes.data || []
+      const campaignsList = (campaignsRes.data || []).filter((campaign: any) => runFilter === 'all' || campaign.roadtour_run_id === runFilter)
       const campaignIds = campaignsList.map((campaign: any) => campaign.id)
       const pointValueRm = normalizePointClaimSettings(orgSettingsRes.data?.settings, 100).pointValueRM
 
@@ -452,9 +455,13 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
     } finally {
       setLoading(false)
     }
-  }, [applyDateRange, companyId, scanPage, scansPerPage, supabase])
+  }, [applyDateRange, companyId, scanPage, scansPerPage, supabase, runFilter])
 
   useEffect(() => { loadAnalytics() }, [loadAnalytics])
+
+  useEffect(() => {
+    fetchRoadtourRuns(supabase, companyId).then(setRuns).catch(() => setRuns([]))
+  }, [supabase, companyId])
 
   useEffect(() => {
     setScanPage(0)
@@ -485,7 +492,17 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       </div>
 
       <div className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-end md:justify-between">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">RoadTour Event</label>
+            <Select value={runFilter} onValueChange={setRunFilter}>
+              <SelectTrigger className="w-full sm:w-56"><SelectValue placeholder="All Events" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Events</SelectItem>
+                {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">From</label>
             <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="w-full sm:w-44" />
@@ -500,10 +517,11 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
           onClick={() => {
             setDateFrom('')
             setDateTo('')
+            setRunFilter('all')
           }}
           className="text-sm text-primary hover:underline self-start md:self-auto"
         >
-          Clear date filter
+          Clear filters
         </button>
       </div>
 

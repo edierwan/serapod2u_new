@@ -21,6 +21,7 @@ import {
     PieChart, Pie, Cell, Legend
 } from 'recharts'
 import { toast } from '@/components/ui/use-toast'
+import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 
 interface RoadtourVisitsViewProps {
     userProfile: any
@@ -254,10 +255,12 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
     const [visits, setVisits] = useState<OfficialVisit[]>([])
-    const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([])
+    const [campaigns, setCampaigns] = useState<{ id: string; name: string; roadtour_run_id?: string | null }[]>([])
     const [references, setReferences] = useState<{ id: string; full_name: string }[]>([])
+    const [runs, setRuns] = useState<RoadtourRun[]>([])
 
     // Filters
+    const [runFilter, setRunFilter] = useState('all')
     const [campaignFilter, setCampaignFilter] = useState('all')
     const [referenceFilter, setReferenceFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('all')
@@ -291,6 +294,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 .limit(500)
 
             if (campaignFilter !== 'all') q = q.eq('campaign_id', campaignFilter)
+            else if (runFilter !== 'all') q = q.eq('roadtour_run_id', runFilter)
             if (referenceFilter !== 'all') q = q.eq('account_manager_user_id', referenceFilter)
             if (dateFrom) q = q.gte('visit_date', dateFrom)
             if (dateTo) q = q.lte('visit_date', dateTo)
@@ -327,10 +331,17 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
 
             const { data: cData } = await (supabase as any)
                 .from('roadtour_campaigns')
-                .select('id, name')
+                .select('id, name, roadtour_run_id')
                 .eq('org_id', companyId)
                 .order('name')
             setCampaigns(cData || [])
+
+            try {
+                const runsData = await fetchRoadtourRuns(supabase, companyId)
+                setRuns(runsData)
+            } catch (runErr) {
+                console.warn('[RoadtourVisits] runs load skipped', runErr)
+            }
 
             // References = users who appear in any visit; fall back to org members eligible.
             const refMap = new Map<string, string>()
@@ -345,7 +356,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             setLoading(false)
             setRefreshing(false)
         }
-    }, [companyId, supabase, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing])
+    }, [companyId, supabase, runFilter, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing])
 
     useEffect(() => { loadVisits() }, [loadVisits])
 
@@ -516,7 +527,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const pageStart = (safePage - 1) * pageSize
     const pageItems = filtered.slice(pageStart, pageStart + pageSize)
 
-    useEffect(() => { setPage(1) }, [pageSize, statusFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo])
+    useEffect(() => { setPage(1) }, [pageSize, statusFilter, runFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo])
 
     const openDetail = async (visit: OfficialVisit) => {
         setDetailVisit(visit)
@@ -655,11 +666,22 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     <Input placeholder="Search by reference, shop, or campaign..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                 </div>
                 <div className="md:col-span-2">
+                    <Select value={runFilter} onValueChange={(v) => { setRunFilter(v); setCampaignFilter('all') }}>
+                        <SelectTrigger><SelectValue placeholder="All Events" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Events</SelectItem>
+                            {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="md:col-span-2">
                     <Select value={campaignFilter} onValueChange={setCampaignFilter}>
                         <SelectTrigger><SelectValue placeholder="All Campaigns" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Campaigns</SelectItem>
-                            {campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            {campaigns
+                                .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
+                                .map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                         </SelectContent>
                     </Select>
                 </div>

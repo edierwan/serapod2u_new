@@ -59,6 +59,10 @@ class WebhookService {
             hasSecret: !!this.config.moltbotSecret,
             serapodIngestEnabled: this.config.serapodIngestEnabled,
             serapodIngestUrl: this.config.serapodIngestUrl || '(not set)',
+            hasSerapodIngestSecret: !!this.config.serapodIngestSecret,
+            serapodIngestSecretPrefix: this.config.serapodIngestSecret
+                ? this.config.serapodIngestSecret.substring(0, 8) + '…'
+                : '(empty)',
         }, 'WebhookService initialized');
     }
 
@@ -172,6 +176,10 @@ class WebhookService {
         if (!this.config.serapodIngestEnabled || !this.config.serapodIngestUrl) {
             logger.debug({ tenantId }, 'Serapod ingest disabled or not configured, skipping');
             return false;
+        }
+
+        if (!this.config.serapodIngestSecret) {
+            logger.warn({ tenantId }, 'Serapod ingest secret is empty — forwarding will likely be rejected (401)');
         }
 
         // Extract message text

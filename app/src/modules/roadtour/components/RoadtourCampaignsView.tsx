@@ -12,11 +12,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
-    AlertCircle, Calendar, CheckCircle2, Edit, Loader2, Map as MapIcon, MapPin, Plus,
-    Search, Store, Trash2, Users, Eye, Play, Pause, Archive, X, ClipboardList,
+    AlertCircle, Calendar, CheckCircle2, Edit, Info, Loader2, Map as MapIcon, MapPin, Plus,
+    Search, ShieldAlert, Store, Trash2, Users, Eye, Play, Pause, Archive, X, ClipboardList,
     Coins, Gift, Globe, ShieldCheck, Sparkles, FileText
 } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
+import {
+    DUPLICATE_POLICY_LABEL,
+    fetchRoadtourRuns,
+    type RoadtourRun,
+} from '@/lib/roadtour/events'
+import { CreateRoadtourEventDialog } from './CreateRoadtourEventDialog'
 
 interface RoadtourCampaignsViewProps {
     userProfile: any
@@ -37,6 +43,7 @@ interface Campaign {
     qr_mode: string
     notes: string | null
     created_at: string
+    roadtour_run_id: string | null
     _manager_count?: number
     _visit_count?: number
     _scan_count?: number
@@ -88,6 +95,13 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [campaigns, setCampaigns] = useState<Campaign[]>([])
     const [searchTerm, setSearchTerm] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
+
+    // RoadTour Event state
+    const [runs, setRuns] = useState<RoadtourRun[]>([])
+    const [runsLoading, setRunsLoading] = useState(true)
+    const [selectedRunId, setSelectedRunId] = useState<string>('')
+    const [createEventOpen, setCreateEventOpen] = useState(false)
+    const [formRunId, setFormRunId] = useState<string>('')
 
     // Dialog state
     const [dialogOpen, setDialogOpen] = useState(false)
@@ -409,6 +423,31 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
     useEffect(() => { loadCampaigns() }, [loadCampaigns])
 
+    const loadRuns = useCallback(async () => {
+        try {
+            setRunsLoading(true)
+            const rows = await fetchRoadtourRuns(supabase, companyId)
+            setRuns(rows)
+            // Auto-select: active first, then draft, then most recent
+            const active = rows.filter((r) => r.status === 'active')
+            const draft = rows.filter((r) => r.status === 'draft')
+            const eligible = [...active, ...draft]
+            if (eligible.length > 0) {
+                setSelectedRunId((prev) => prev && eligible.find((r) => r.id === prev) ? prev : eligible[0]!.id)
+            } else {
+                setSelectedRunId('')
+            }
+        } catch (err) {
+            // table missing in older envs — fail silently to keep page usable
+            setRuns([])
+            setSelectedRunId('')
+        } finally {
+            setRunsLoading(false)
+        }
+    }, [supabase, companyId])
+
+    useEffect(() => { loadRuns() }, [loadRuns])
+
     const resetForm = () => {
         setFormName('')
         setFormDesc('')
@@ -422,10 +461,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormNotes('')
         setFormReferenceIds([])
         setFormReferenceSearch('')
+        setFormRunId(selectedRunId || '')
         setEditId(null)
     }
 
     const openCreate = async () => {
+        if (runs.length === 0) {
+            toast({
+                title: 'Create a RoadTour Event first',
+                description: 'Campaigns must belong to an event so duplicate scan protection can work correctly.',
+                variant: 'destructive',
+            })
+            setCreateEventOpen(true)
+            return
+        }
         resetForm()
         await Promise.all([loadEligibleReferences(), loadSurveyTemplates()])
         setDialogMode('create')
@@ -444,6 +493,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         setFormRegions(c.region_scope || [])
         setFormNotes(c.notes || '')
         setFormReferenceSearch('')
+        setFormRunId(c.roadtour_run_id || selectedRunId || '')
         setEditId(c.id)
         await Promise.all([loadEligibleReferences(), loadSurveyTemplates()])
         try {
@@ -486,6 +536,14 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const handleSave = async () => {
         if (!formName.trim()) { toast({ title: 'Validation', description: 'Campaign name is required.', variant: 'destructive' }); return }
         if (!formStart || !formEnd) { toast({ title: 'Validation', description: 'Start and end dates are required.', variant: 'destructive' }); return }
+        if (!formRunId) {
+            toast({
+                title: 'RoadTour Event required',
+                description: 'Select or create a RoadTour Event for this campaign.',
+                variant: 'destructive',
+            })
+            return
+        }
         const missingSelections = getMissingCampaignSelections()
         if (missingSelections.length > 0) {
             toast({
@@ -500,6 +558,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             setSaving(true)
             const payload = {
                 org_id: companyId,
+                roadtour_run_id: formRunId,
                 name: formName.trim(),
                 description: formDesc.trim() || null,
                 start_date: formStart,
@@ -708,10 +767,18 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     }
 
     const filtered = campaigns.filter((c) => {
+        if (selectedRunId && c.roadtour_run_id !== selectedRunId) return false
         if (statusFilter !== 'all' && c.status !== statusFilter) return false
         if (searchTerm && !c.name.toLowerCase().includes(searchTerm.toLowerCase())) return false
         return true
     })
+
+    const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) || null, [runs, selectedRunId])
+    const runById = useMemo(() => {
+        const map = new Map<string, RoadtourRun>()
+        for (const r of runs) map.set(r.id, r)
+        return map
+    }, [runs])
 
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
@@ -722,8 +789,72 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                     <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><MapIcon className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
                     <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign references to road tour campaigns.</p>
                 </div>
-                <Button onClick={openCreate} className="gap-2 w-full sm:w-auto"><Plus className="h-4 w-4" />Create Campaign</Button>
+                <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => setCreateEventOpen(true)} className="gap-2">
+                        <MapIcon className="h-4 w-4" />Create RoadTour Event
+                    </Button>
+                    <Button onClick={openCreate} className="gap-2" disabled={runs.length === 0}>
+                        <Plus className="h-4 w-4" />Create Campaign
+                    </Button>
+                </div>
             </div>
+
+            {/* RoadTour Event selector / empty state */}
+            {runsLoading ? (
+                <Card><CardContent className="py-8 flex justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></CardContent></Card>
+            ) : runs.length === 0 ? (
+                <Card className="border-dashed border-2 border-amber-200 bg-amber-50/40">
+                    <CardContent className="flex flex-col items-center text-center py-10 gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                            <MapIcon className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <p className="text-base font-semibold">No RoadTour Event yet</p>
+                            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                                Create a RoadTour Event first before creating campaigns. Campaigns must belong to an event so duplicate scan protection can work correctly.
+                            </p>
+                        </div>
+                        <Button onClick={() => setCreateEventOpen(true)} className="gap-2">
+                            <Plus className="h-4 w-4" />Create RoadTour Event
+                        </Button>
+                    </CardContent>
+                </Card>
+            ) : (
+                <Card className="border-blue-100 bg-blue-50/30">
+                    <CardContent className="py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                                <MapIcon className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-[220px]">
+                                <Label className="text-[11px] text-muted-foreground">RoadTour Event</Label>
+                                <Select value={selectedRunId} onValueChange={setSelectedRunId}>
+                                    <SelectTrigger className="min-w-[220px]"><SelectValue placeholder="Select event" /></SelectTrigger>
+                                    <SelectContent>
+                                        {runs.map((r) => (
+                                            <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {selectedRun && (
+                                <>
+                                    <Badge className={statusColors[selectedRun.status] || ''}>{selectedRun.status}</Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                        {selectedRun.start_date} — {selectedRun.end_date}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        {selectedRun && (
+                            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                Duplicate protection: {DUPLICATE_POLICY_LABEL[selectedRun.duplicate_policy]}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Filters */}
             <div className="flex gap-3 flex-wrap">
@@ -751,6 +882,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Campaign</TableHead>
+                                <TableHead className="hidden xl:table-cell">Event</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="hidden md:table-cell">Period</TableHead>
                                 <TableHead className="hidden md:table-cell">Days</TableHead>
@@ -762,11 +894,12 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         </TableHeader>
                         <TableBody>
                             {filtered.length === 0 && (
-                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No campaigns found.</TableCell></TableRow>
                             )}
                             {filtered.map((c) => {
                                 const workDays = calcWorkingDays(c.start_date, c.end_date)
                                 const costPerReward = c.default_points * pointValueRm
+                                const eventRun = c.roadtour_run_id ? runById.get(c.roadtour_run_id) : null
                                 return (
                                     <TableRow key={c.id}>
                                         <TableCell>
@@ -775,6 +908,13 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                                 {c.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{c.description}</p>}
                                                 <p className="text-xs text-muted-foreground md:hidden">{c.start_date} — {c.end_date}</p>
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="hidden xl:table-cell">
+                                            {eventRun ? (
+                                                <Badge variant="outline" className="text-xs gap-1"><MapIcon className="h-3 w-3" />{eventRun.name}</Badge>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">—</span>
+                                            )}
                                         </TableCell>
                                         <TableCell><Badge className={statusColors[c.status] || ''}>{c.status}</Badge></TableCell>
                                         <TableCell className="text-sm hidden md:table-cell">{c.start_date} — {c.end_date}</TableCell>
@@ -834,8 +974,43 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                     </DialogHeader>
 
                     <div className="grid gap-6 px-6 py-6 overflow-y-auto max-h-[70vh] lg:grid-cols-12">
-                        {/* COLUMN 1: Campaign Details + Targeting */}
+                        {/* COLUMN 1: Event + Campaign Details */}
                         <div className="space-y-6 lg:col-span-4">
+                            {/* Section 0 — RoadTour Event */}
+                            <Card className="border-blue-200 bg-blue-50/30">
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="flex items-center gap-2 text-sm">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700"><MapIcon className="h-3.5 w-3.5" /></span>
+                                        RoadTour Event
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs">RoadTour Event *</Label>
+                                        <div className="flex gap-2">
+                                            <Select value={formRunId} onValueChange={setFormRunId}>
+                                                <SelectTrigger className="flex-1"><SelectValue placeholder="Select event" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {runs.map((r) => (
+                                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => setCreateEventOpen(true)} className="gap-1">
+                                                <Plus className="h-3.5 w-3.5" />Create Event
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-700">
+                                        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                        <span>If only one active event exists, it will be auto-selected.</span>
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        All campaigns must belong to an event. This is the key grouping for duplicate scan protection.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
                             {/* Section 1 — Campaign Details */}
                             <Card className="border-blue-100">
                                 <CardHeader className="pb-3">
@@ -1076,6 +1251,16 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                                     <div>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <MapIcon className="h-3.5 w-3.5 text-blue-500" />
+                                            RoadTour Event
+                                        </div>
+                                        <p className="mt-1 text-sm font-semibold">
+                                            {runs.find((r) => r.id === formRunId)?.name || <span className="text-muted-foreground font-normal">Not selected</span>}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                             <Gift className="h-3.5 w-3.5 text-blue-500" />
                                             Reward Mode
                                         </div>
@@ -1115,6 +1300,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                                     {(() => {
                                         const ready = Boolean(formName.trim()) && Boolean(formStart) && Boolean(formEnd) &&
+                                            Boolean(formRunId) &&
                                             (formRewardMode !== 'survey_submit' || Boolean(formSurveyTemplateId)) &&
                                             formRegions.length > 0 && formReferenceIds.length > 0
                                         return (
@@ -1129,6 +1315,22 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                                 <p className="text-[11px] text-muted-foreground mt-0.5">
                                                     {ready ? 'All required fields are filled.' : 'Fill required fields to activate.'}
                                                 </p>
+                                            </div>
+                                        )
+                                    })()}
+
+                                    {/* Duplicate protection summary */}
+                                    {(() => {
+                                        const run = runs.find((r) => r.id === formRunId)
+                                        if (!run) return null
+                                        return (
+                                            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs">
+                                                <div className="flex items-center gap-2 text-emerald-700 font-semibold">
+                                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                                    Duplicate Protection
+                                                </div>
+                                                <p className="mt-1">{DUPLICATE_POLICY_LABEL[run.duplicate_policy]}</p>
+                                                <p className="text-[11px] text-muted-foreground mt-0.5">Each shop can scan only once in <strong>{run.name}</strong>.</p>
                                             </div>
                                         )
                                     })()}
@@ -1243,6 +1445,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Create RoadTour Event Dialog */}
+            <CreateRoadtourEventDialog
+                open={createEventOpen}
+                onOpenChange={setCreateEventOpen}
+                supabase={supabase}
+                orgId={companyId}
+                createdBy={userProfile.id}
+                onCreated={async (run) => {
+                    await loadRuns()
+                    setSelectedRunId(run.id)
+                    setFormRunId(run.id)
+                }}
+            />
         </div>
     )
 }
