@@ -15,8 +15,8 @@ interface PageProps {
 
 async function getJourneyData(code: string) {
   try {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = await createClient()
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
 
     console.log('🔍 getJourneyData - Verifying code:', code)
 
