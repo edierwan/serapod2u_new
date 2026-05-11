@@ -27,6 +27,10 @@ export function GenuineProductAnimation({
     subtitle,
 }: GenuineProductAnimationProps) {
     const [showCheckmark, setShowCheckmark] = useState(false)
+    const resolvedTitle = title || '✓ Genuine Product'
+    const resolvedSubtitle = subtitle || (productInfo?.product_name
+        ? `${productInfo.product_name} is verified authentic`
+        : 'This product is verified authentic')
 
     useEffect(() => {
         if (isVisible) {
@@ -125,7 +129,7 @@ export function GenuineProductAnimation({
                                 transition={{ delay: 0.3 }}
                                 className="text-2xl font-bold text-center mb-2"
                             >
-                                {title || '✓ Genuine Product'}
+                                {resolvedTitle}
                             </motion.h2>
 
                             <motion.p
@@ -134,7 +138,7 @@ export function GenuineProductAnimation({
                                 transition={{ delay: 0.4 }}
                                 className="text-white/80 text-center text-sm mb-4"
                             >
-                                {subtitle || 'This product is verified authentic'}
+                                {resolvedSubtitle}
                             </motion.p>
 
                             {/* Product Info */}
