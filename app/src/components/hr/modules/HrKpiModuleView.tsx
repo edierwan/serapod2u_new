@@ -19,7 +19,12 @@ import { toast } from '@/components/ui/use-toast'
 import {
     Target, Plus, Loader2, Activity, Layers, Database, ClipboardList,
     LineChart, FileBarChart2, RefreshCw, CheckCircle2, AlertTriangle, XCircle, MinusCircle,
+    Calendar, BookOpen, ListChecks,
 } from 'lucide-react'
+import { KPIDashboardTab } from '@/components/hr/kpi/tabs/DashboardTab'
+import { KPIPeriodsTab } from '@/components/hr/kpi/tabs/PeriodsTab'
+import { KPIObjectivesTab } from '@/components/hr/kpi/tabs/ObjectivesTab'
+import { KPILibraryTab } from '@/components/hr/kpi/tabs/LibraryTab'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Period { id: string; name: string; period_type: string; start_date: string; end_date: string; status: string }
@@ -119,27 +124,43 @@ export default function HrKpiModuleView() {
 
     useEffect(() => { loadPeriods() }, [loadPeriods])
 
+    const selectedPeriod = useMemo(() => periods.find(p => p.id === periodId) ?? null, [periods, periodId])
+
     return (
-        <div className="space-y-4 p-4 md:p-6">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                        <Target className="h-6 w-6 text-primary" />
+        <div className="space-y-5 p-4 md:p-6 bg-slate-50/30 min-h-full">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-start gap-3">
+                    <div className="p-2.5 rounded-lg bg-slate-900 text-white shadow-sm">
+                        <Target className="h-5 w-5" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">KPI &amp; Performance Management</h1>
-                        <p className="text-sm text-muted-foreground">Plan, cascade, measure and review organisational KPIs.</p>
+                        <h1 className="text-xl md:text-2xl font-bold text-slate-900 leading-tight">
+                            KPI &amp; Performance Management
+                        </h1>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                            Plan, cascade, measure and review organisational KPIs.
+                        </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Label className="text-sm">Period</Label>
+                    <Label className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Period</Label>
                     <Select value={periodId ?? ''} onValueChange={setPeriodId}>
-                        <SelectTrigger className="w-[220px]">
+                        <SelectTrigger className="w-[240px] h-9 bg-white border-slate-200 shadow-sm">
+                            <Calendar className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
                             <SelectValue placeholder="Select period" />
                         </SelectTrigger>
                         <SelectContent>
+                            {periods.length === 0 && (
+                                <div className="px-2 py-3 text-xs text-slate-500">No periods yet</div>
+                            )}
                             {periods.map(p => (
-                                <SelectItem key={p.id} value={p.id}>{p.name} · {p.status}</SelectItem>
+                                <SelectItem key={p.id} value={p.id}>
+                                    <span className="inline-flex items-center gap-2">
+                                        <span>{p.name}</span>
+                                        <span className="text-[10px] text-slate-400 capitalize">· {p.status}</span>
+                                    </span>
+                                </SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
@@ -147,22 +168,39 @@ export default function HrKpiModuleView() {
             </div>
 
             <Tabs value={tab} onValueChange={setTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 md:grid-cols-9 h-auto">
-                    <TabsTrigger value="dashboard"><Activity className="h-4 w-4 mr-1" />Dashboard</TabsTrigger>
-                    <TabsTrigger value="periods">Periods</TabsTrigger>
-                    <TabsTrigger value="objectives">Objectives</TabsTrigger>
-                    <TabsTrigger value="library">Library</TabsTrigger>
-                    <TabsTrigger value="cascading"><Layers className="h-4 w-4 mr-1" />Cascade</TabsTrigger>
-                    <TabsTrigger value="targets">Targets</TabsTrigger>
-                    <TabsTrigger value="data"><Database className="h-4 w-4 mr-1" />Data</TabsTrigger>
-                    <TabsTrigger value="scorecards"><ClipboardList className="h-4 w-4 mr-1" />Scorecards</TabsTrigger>
-                    <TabsTrigger value="reports"><FileBarChart2 className="h-4 w-4 mr-1" />Reports</TabsTrigger>
-                </TabsList>
+                <div className="border-b border-slate-200">
+                    <TabsList className="bg-transparent p-0 h-auto gap-1 w-full justify-start overflow-x-auto flex-nowrap rounded-none">
+                        <KpiTabTrigger value="dashboard" icon={<Activity className="h-3.5 w-3.5" />} label="Dashboard" />
+                        <KpiTabTrigger value="periods" icon={<Calendar className="h-3.5 w-3.5" />} label="Periods" />
+                        <KpiTabTrigger value="objectives" icon={<Target className="h-3.5 w-3.5" />} label="Objectives" />
+                        <KpiTabTrigger value="library" icon={<BookOpen className="h-3.5 w-3.5" />} label="Library" />
+                        <KpiTabTrigger value="cascading" icon={<Layers className="h-3.5 w-3.5" />} label="Cascade" />
+                        <KpiTabTrigger value="targets" icon={<ListChecks className="h-3.5 w-3.5" />} label="Targets" />
+                        <KpiTabTrigger value="data" icon={<Database className="h-3.5 w-3.5" />} label="Data" />
+                        <KpiTabTrigger value="scorecards" icon={<ClipboardList className="h-3.5 w-3.5" />} label="Scorecards" />
+                        <KpiTabTrigger value="reports" icon={<FileBarChart2 className="h-3.5 w-3.5" />} label="Reports" />
+                    </TabsList>
+                </div>
 
-                <TabsContent value="dashboard"><DashboardTab periodId={periodId} /></TabsContent>
-                <TabsContent value="periods"><PeriodsTab periods={periods} reload={loadPeriods} /></TabsContent>
-                <TabsContent value="objectives"><ObjectivesTab periodId={periodId} /></TabsContent>
-                <TabsContent value="library"><LibraryTab /></TabsContent>
+                <TabsContent value="dashboard" className="mt-0">
+                    <KPIDashboardTab periodId={periodId} periods={periods} onSwitchTab={setTab} />
+                </TabsContent>
+                <TabsContent value="periods" className="mt-0">
+                    <KPIPeriodsTab
+                        periods={periods}
+                        reload={loadPeriods}
+                        onPeriodSelect={setPeriodId}
+                        currentPeriodId={periodId}
+                    />
+                </TabsContent>
+                <TabsContent value="objectives" className="mt-0">
+                    <KPIObjectivesTab periodId={periodId} />
+                </TabsContent>
+                <TabsContent value="library" className="mt-0">
+                    <KPILibraryTab />
+                </TabsContent>
+
+                {/* Legacy tabs (untouched in this redesign) */}
                 <TabsContent value="cascading"><CascadingTab periodId={periodId} /></TabsContent>
                 <TabsContent value="targets"><TargetsTab periodId={periodId} /></TabsContent>
                 <TabsContent value="data"><DataMappingsTab /></TabsContent>
@@ -170,6 +208,23 @@ export default function HrKpiModuleView() {
                 <TabsContent value="reports"><ReportsTab periodId={periodId} /></TabsContent>
             </Tabs>
         </div>
+    )
+}
+
+function KpiTabTrigger({ value, icon, label }: { value: string; icon: React.ReactNode; label: string }) {
+    return (
+        <TabsTrigger
+            value={value}
+            className="
+                relative rounded-none border-b-2 border-transparent
+                data-[state=active]:border-blue-600 data-[state=active]:text-blue-600
+                data-[state=active]:bg-transparent data-[state=active]:shadow-none
+                text-slate-600 hover:text-slate-900 px-3 py-2.5 text-sm font-medium
+                bg-transparent shadow-none transition-colors whitespace-nowrap
+            "
+        >
+            <span className="inline-flex items-center gap-1.5">{icon}{label}</span>
+        </TabsTrigger>
     )
 }
 
