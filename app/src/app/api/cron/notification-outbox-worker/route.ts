@@ -183,6 +183,14 @@ export async function GET(request: NextRequest) {
                             addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
                         }
 
+                        // Manual WhatsApp numbers (digits-only normalized form, no plus sign)
+                        if (channel === 'whatsapp' && Array.isArray(recipientConfig.manual_whatsapp_numbers)) {
+                            // Re-validate & dedupe server-side as a safety net
+                            const { normalizeAndDedupeManualPhones } = await import('@/lib/notifications/manualPhoneNumbers')
+                            const cleaned = normalizeAndDedupeManualPhones(recipientConfig.manual_whatsapp_numbers)
+                            addRecipients(cleaned)
+                        }
+
                         const recipientList = Array.from(recipients)
 
                         if (recipientList.length > 0) {

@@ -53,6 +53,7 @@ interface NotificationSetting {
     recipient_users?: string[]
     custom_emails?: string
     custom_phones?: string
+    manual_whatsapp_numbers?: string[]
     dynamic_target?: string // e.g. 'manufacturer', 'distributor'
     include_consumer?: boolean
     recipient_targets?: {

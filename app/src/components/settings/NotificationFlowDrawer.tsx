@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
     Sheet,
     SheetContent,
@@ -21,12 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Badge } from "../ui/badge"
 import {
     GitBranch, Users, MessageSquare, TestTube, History,
-    ArrowRight, CheckCircle2, AlertCircle, Loader2, Play
+    ArrowRight, CheckCircle2, AlertCircle, Loader2, Play,
+    User as UserIcon, Building2, MessageCircle, Copy, RefreshCw, Trash2, Info
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
 import { UserMultiSelect } from "./recipients/UserMultiSelect"
 import { RecipientsPreviewPopover } from "./recipients/RecipientsPreviewPopover"
 import { getTemplatesForEvent, Template } from "../../config/notificationTemplates"
+import { parseManualPhoneInput, normalizeAndDedupeManualPhones, type ManualPhoneCountry } from "@/lib/notifications/manualPhoneNumbers"
 
 interface NotificationFlowDrawerProps {
     open: boolean
@@ -64,6 +66,11 @@ export default function NotificationFlowDrawer({
     // Logs
     const [logs, setLogs] = useState<any[]>([])
     const [loadingLogs, setLoadingLogs] = useState(false)
+
+    // Manual WhatsApp Numbers (raw textarea input + active recipient source focus)
+    const [manualRawInput, setManualRawInput] = useState<string>('')
+    const [activeSource, setActiveSource] = useState<'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'roles'>('consumer')
+    const [saveError, setSaveError] = useState<string | null>(null)
 
     useEffect(() => {
         // Init & Migration Logic
@@ -105,7 +112,37 @@ export default function NotificationFlowDrawer({
         setResolvedRecipients([])
         setSampleId('')
         setTestResult(null)
+
+        // Hydrate manual whatsapp numbers from saved config
+        const existingManual: string[] = Array.isArray(existingConfig.manual_whatsapp_numbers)
+            ? existingConfig.manual_whatsapp_numbers
+            : []
+        setManualRawInput(existingManual.join('\n'))
+        setSaveError(null)
+
+        // Pick first enabled source as active for the right-side panel
+        if (targets.consumer) setActiveSource('consumer')
+        else if (targets.dynamic_org) setActiveSource('dynamic_org')
+        else if (targets.users) setActiveSource('users')
+        else if (existingManual.length > 0) setActiveSource('manual_whatsapp')
+        else setActiveSource('consumer')
     }, [setting, open])
+
+    // Live parse manual whatsapp numbers for the right-side panel
+    const manualParse = useMemo(() => parseManualPhoneInput(manualRawInput), [manualRawInput])
+    const manualEnabled = manualParse.valid.length > 0 || manualRawInput.trim().length > 0
+
+    // Sync valid normalized numbers into recipient_config whenever they change
+    useEffect(() => {
+        const normalized = manualParse.valid.map((v) => v.normalized)
+        const current: string[] = localSetting?.recipient_config?.manual_whatsapp_numbers || []
+        // Only update when set changed (avoid loop)
+        const same = current.length === normalized.length && current.every((v, i) => v === normalized[i])
+        if (!same) {
+            updateRecipientConfig({ manual_whatsapp_numbers: normalized })
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [manualParse])
 
     useEffect(() => {
         if (activeTab === 'logs' && open) {
@@ -300,13 +337,30 @@ export default function NotificationFlowDrawer({
     }
 
     const handleSave = () => {
-        onSave(localSetting)
+        // Block save when manual whatsapp numbers section has invalid entries
+        if (manualParse.invalid.length > 0) {
+            setSaveError(`There are ${manualParse.invalid.length} invalid WhatsApp number(s). Fix or remove them before saving.`)
+            setActiveTab('recipients')
+            setActiveSource('manual_whatsapp')
+            return
+        }
+        setSaveError(null)
+        // Persist normalized & deduped manual numbers
+        const cleanManual = normalizeAndDedupeManualPhones(manualParse.valid.map((v) => v.normalized))
+        const finalSetting = {
+            ...localSetting,
+            recipient_config: {
+                ...localSetting.recipient_config,
+                manual_whatsapp_numbers: cleanManual,
+            },
+        }
+        onSave(finalSetting)
         onOpenChange(false)
     }
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent side="right" className="w-[90vw] sm:max-w-xl overflow-y-auto sm:p-0">
+            <SheetContent side="right" className="w-[95vw] sm:max-w-4xl overflow-y-auto sm:p-0">
                 <div className="flex flex-col h-full">
                     {/* Header */}
                     <div className="p-6 border-b bg-gray-50/50">
@@ -421,137 +475,226 @@ export default function NotificationFlowDrawer({
                                 </div>
                             </TabsContent>
 
-                            {/* Recipients Configuration */}
+                            {/* Recipients Configuration — Redesigned (two-column with Manual WhatsApp source) */}
                             <TabsContent value="recipients" className="mt-0 space-y-6">
 
-                                {/* Recipients Summary Header */}
-                                <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h4 className="text-xs font-semibold uppercase text-blue-900">Recipients Summary</h4>
+                                {(() => null)()}
 
-                                        {(localSetting.recipient_config?.recipient_targets?.consumer ||
-                                            localSetting.recipient_config?.recipient_targets?.roles ||
-                                            localSetting.recipient_config?.recipient_targets?.dynamic_org ||
-                                            localSetting.recipient_config?.recipient_targets?.users) && (
-                                                <Button variant="ghost" size="sm" className="h-4 p-0 text-xs text-blue-600 hover:text-blue-800" onClick={() => {
-                                                    updateRecipientConfig({
-                                                        recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
-                                                        include_consumer: false
-                                                    })
-                                                }}>
-                                                    Clear All
-                                                </Button>
-                                            )}
+                                {/* Header banner: source count + clear all */}
+                                <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex justify-between items-start">
+                                    <div>
+                                        <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-900">Recipients Summary</h4>
+                                        <p className="text-xs text-blue-700/80 mt-0.5">
+                                            {(() => {
+                                                const t = localSetting.recipient_config?.recipient_targets || {}
+                                                const enabledSources = [t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp'].filter(Boolean) as string[]
+                                                if (enabledSources.length === 0) return 'No recipients selected'
+                                                return enabledSources.join(' • ')
+                                            })()}
+                                        </p>
                                     </div>
-
-                                    <div className="flex flex-wrap gap-2 text-sm">
-                                        {!localSetting.recipient_config?.recipient_targets?.consumer &&
-                                            !localSetting.recipient_config?.recipient_targets?.roles &&
-                                            !localSetting.recipient_config?.recipient_targets?.dynamic_org &&
-                                            !localSetting.recipient_config?.recipient_targets?.users ? (
-                                            <span className="text-gray-400 italic text-xs">No recipients selected</span>
-                                        ) : (
-                                            <>
-                                                {localSetting.recipient_config?.recipient_targets?.consumer && (
-                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">Consumer</Badge>
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.roles && (localSetting.recipient_config?.roles?.length || 0) > 0 && (
-                                                    <RecipientsPreviewPopover
-                                                        label={`Roles: ${localSetting.recipient_config?.roles?.length || 0}`}
-                                                        queryParams={{ roles: (localSetting.recipient_config?.roles || []).join(',') }}
-                                                        variant="roles"
-                                                    />
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.roles && !(localSetting.recipient_config?.roles?.length) && (
-                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Roles: 0
-                                                    </Badge>
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && localSetting.recipient_config?.dynamic_target && (
-                                                    <RecipientsPreviewPopover
-                                                        label={`Dynamic: ${localSetting.recipient_config.dynamic_target.charAt(0).toUpperCase() + localSetting.recipient_config.dynamic_target.slice(1)}`}
-                                                        queryParams={{ dynamicTarget: localSetting.recipient_config.dynamic_target }}
-                                                        variant="dynamic"
-                                                    />
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && !localSetting.recipient_config?.dynamic_target && (
-                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Dynamic: None
-                                                    </Badge>
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.users && (localSetting.recipient_config?.recipient_users?.length || 0) > 0 && (
-                                                    <RecipientsPreviewPopover
-                                                        label={`Users: ${localSetting.recipient_config?.recipient_users?.length || 0}`}
-                                                        queryParams={{ userIds: (localSetting.recipient_config?.recipient_users || []).join(',') }}
-                                                        variant="users"
-                                                    />
-                                                )}
-                                                {localSetting.recipient_config?.recipient_targets?.users && !(localSetting.recipient_config?.recipient_users?.length) && (
-                                                    <Badge variant="secondary" className="bg-white border-blue-200 text-blue-700 hover:bg-white">
-                                                        Users: 0
-                                                    </Badge>
-                                                )}
-                                            </>
+                                    {(localSetting.recipient_config?.recipient_targets?.consumer ||
+                                        localSetting.recipient_config?.recipient_targets?.roles ||
+                                        localSetting.recipient_config?.recipient_targets?.dynamic_org ||
+                                        localSetting.recipient_config?.recipient_targets?.users ||
+                                        manualParse.valid.length > 0) && (
+                                            <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-800" onClick={() => {
+                                                updateRecipientConfig({
+                                                    recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
+                                                    include_consumer: false,
+                                                    manual_whatsapp_numbers: [],
+                                                })
+                                                setManualRawInput('')
+                                            }}>
+                                                Clear All
+                                            </Button>
                                         )}
-                                    </div>
-                                    {/* Show selected user details with phone numbers */}
-                                    {localSetting.recipient_config?.recipient_targets?.users && selectedUserDetails.length > 0 && (
-                                        <div className="mt-2 space-y-1">
-                                            {selectedUserDetails.map(u => (
-                                                <div key={u.id} className="text-xs text-blue-800 flex items-center gap-1.5">
-                                                    <span className="font-medium">{u.full_name}</span>
-                                                    {u.phone ? (
-                                                        <span className="text-blue-600">({u.phone})</span>
-                                                    ) : (
-                                                        <span className="text-amber-600 italic">(no phone)</span>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
 
-                                {/* Rule Configuration */}
-                                <Card>
-                                    <CardContent className="pt-6 space-y-6">
+                                {saveError && (
+                                    <div className="bg-red-50 text-red-800 text-xs p-3 rounded border border-red-200 flex items-center gap-2">
+                                        <AlertCircle className="w-3 h-3" />
+                                        <span>{saveError}</span>
+                                    </div>
+                                )}
 
-                                        <div className="space-y-3">
-                                            <h4 className="font-medium text-sm text-gray-900">Consumer Settings</h4>
-                                            <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
-                                                <Checkbox
-                                                    checked={!!localSetting.recipient_config?.recipient_targets?.consumer}
-                                                    onCheckedChange={(c) => updateRecipientConfig({
-                                                        recipient_targets: {
-                                                            ...localSetting.recipient_config.recipient_targets,
-                                                            consumer: c
-                                                        },
-                                                        include_consumer: c
-                                                    })}
-                                                />
-                                                <span className="text-sm font-medium">Send to relevant Consumer</span>
-                                            </label>
+                                {/* Two-column layout */}
+                                <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
+                                    {/* LEFT: Recipient source cards */}
+                                    <div className="space-y-3">
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recipient Sources</div>
+                                        <div className="text-[11px] text-gray-400 -mt-2">Choose one or more sources</div>
+
+                                        {([
+                                            {
+                                                key: 'consumer',
+                                                icon: <UserIcon className="w-4 h-4 text-blue-600" />,
+                                                title: 'Consumer',
+                                                subtitle: 'Send to relevant Consumer',
+                                                enabled: !!localSetting.recipient_config?.recipient_targets?.consumer,
+                                                onToggle: (c: boolean) => updateRecipientConfig({
+                                                    recipient_targets: { ...localSetting.recipient_config.recipient_targets, consumer: c },
+                                                    include_consumer: c,
+                                                }),
+                                            },
+                                            {
+                                                key: 'dynamic_org',
+                                                icon: <Building2 className="w-4 h-4 text-purple-600" />,
+                                                title: 'Related Organization',
+                                                subtitle: 'Dynamic (Related Organization)',
+                                                enabled: !!localSetting.recipient_config?.recipient_targets?.dynamic_org,
+                                                onToggle: (c: boolean) => updateRecipientConfig({
+                                                    recipient_targets: { ...localSetting.recipient_config.recipient_targets, dynamic_org: c },
+                                                }),
+                                            },
+                                            {
+                                                key: 'users',
+                                                icon: <Users className="w-4 h-4 text-emerald-600" />,
+                                                title: 'Specific Users',
+                                                subtitle: 'Send to specific internal users',
+                                                enabled: !!localSetting.recipient_config?.recipient_targets?.users,
+                                                onToggle: (c: boolean) => updateRecipientConfig({
+                                                    recipient_targets: { ...localSetting.recipient_config.recipient_targets, users: c },
+                                                }),
+                                            },
+                                            {
+                                                key: 'manual_whatsapp',
+                                                icon: <MessageCircle className="w-4 h-4 text-green-600" />,
+                                                title: 'Manual WhatsApp Numbers',
+                                                subtitle: 'Add external WhatsApp numbers manually',
+                                                enabled: manualParse.valid.length > 0 || manualRawInput.trim().length > 0,
+                                                onToggle: (c: boolean) => {
+                                                    if (!c) {
+                                                        setManualRawInput('')
+                                                        updateRecipientConfig({ manual_whatsapp_numbers: [] })
+                                                    } else {
+                                                        setActiveSource('manual_whatsapp')
+                                                    }
+                                                },
+                                            },
+                                        ] as const).map((src) => {
+                                            const isActive = activeSource === src.key
+                                            return (
+                                                <button
+                                                    key={src.key}
+                                                    type="button"
+                                                    onClick={() => setActiveSource(src.key as any)}
+                                                    className={`w-full text-left rounded-lg border p-3 transition-all ${isActive ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="w-8 h-8 rounded-md bg-gray-50 flex items-center justify-center shrink-0">
+                                                            {src.icon}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="text-sm font-medium text-gray-900">{src.title}</span>
+                                                                {src.key === 'users' ? (
+                                                                    <span
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        onClick={(e) => { e.stopPropagation(); src.onToggle(!src.enabled); setActiveSource('users') }}
+                                                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); src.onToggle(!src.enabled); setActiveSource('users') } }}
+                                                                        className={`text-[11px] px-2 py-0.5 rounded border ${src.enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50'}`}
+                                                                    >
+                                                                        {src.enabled ? 'Selected' : 'Select'}
+                                                                    </span>
+                                                                ) : (
+                                                                    <Checkbox
+                                                                        checked={src.enabled}
+                                                                        onClick={(e: any) => e.stopPropagation()}
+                                                                        onCheckedChange={(c) => src.onToggle(!!c)}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs text-gray-500 mt-0.5 truncate">{src.subtitle}</p>
+                                                            {src.enabled && (
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-500 mt-1 inline-block" />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            )
+                                        })}
+
+                                        <div className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-md p-2 mt-2 flex items-start gap-1.5">
+                                            <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                                            <span>All selected sources will be combined. Duplicates will be removed before sending.</span>
                                         </div>
+                                    </div>
 
-                                        <div className="pt-4 border-t space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <h4 className="font-medium text-sm text-gray-900">Staff & Organization Recipients</h4>
-                                                <span className="text-xs text-gray-500">Combine multiple sources</span>
+                                    {/* RIGHT: Active source configuration */}
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4 min-h-[380px]">
+                                        {activeSource === 'consumer' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <UserIcon className="w-4 h-4 text-blue-600" />
+                                                    <h4 className="text-sm font-semibold text-gray-900">Consumer</h4>
+                                                </div>
+                                                <p className="text-xs text-gray-500">Send the notification to the consumer related to the triggering event (e.g. the consumer that placed the order or scanned a QR).</p>
+                                                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
+                                                    <Checkbox
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.consumer}
+                                                        onCheckedChange={(c) => updateRecipientConfig({
+                                                            recipient_targets: {
+                                                                ...localSetting.recipient_config.recipient_targets,
+                                                                consumer: c
+                                                            },
+                                                            include_consumer: c
+                                                        })}
+                                                    />
+                                                    <span className="text-sm font-medium">Send to relevant Consumer</span>
+                                                </label>
                                             </div>
+                                        )}
 
-                                            <div className="space-y-5">
-                                                {/* Roles */}
-                                                <div className="space-y-3">
-                                                    <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
+                                        {activeSource === 'dynamic_org' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Building2 className="w-4 h-4 text-purple-600" />
+                                                    <h4 className="text-sm font-semibold text-gray-900">Related Organization</h4>
+                                                </div>
+                                                <p className="text-xs text-gray-500">Resolve recipients dynamically based on the organization associated with the triggering event (manufacturer, distributor, warehouse).</p>
+                                                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
+                                                    <Checkbox
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.dynamic_org}
+                                                        onCheckedChange={(c) => updateRecipientConfig({
+                                                            recipient_targets: { ...localSetting.recipient_config.recipient_targets, dynamic_org: c }
+                                                        })}
+                                                    />
+                                                    <span className="text-sm font-medium">Enable Related Organization recipients</span>
+                                                </label>
+                                                {localSetting.recipient_config?.recipient_targets?.dynamic_org && (
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs">Target organization role</Label>
+                                                        <Select
+                                                            value={localSetting.recipient_config?.dynamic_target || ''}
+                                                            onValueChange={(val) => updateRecipientConfig({ dynamic_target: val })}
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select target..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="manufacturer">Manufacturer (Product Owner)</SelectItem>
+                                                                <SelectItem value="distributor">Distributor (Seller)</SelectItem>
+                                                                <SelectItem value="warehouse">Warehouse</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
+
+                                                {/* Optional: roles control kept available here */}
+                                                <div className="pt-3 border-t space-y-2">
+                                                    <label className="flex items-center gap-2 font-medium text-xs cursor-pointer text-gray-700">
                                                         <Checkbox
                                                             checked={!!localSetting.recipient_config?.recipient_targets?.roles}
                                                             onCheckedChange={(c) => updateRecipientConfig({
                                                                 recipient_targets: { ...localSetting.recipient_config.recipient_targets, roles: c }
                                                             })}
                                                         />
-                                                        Send to specific roles
+                                                        Also send to specific roles (within related org)
                                                     </label>
                                                     {localSetting.recipient_config?.recipient_targets?.roles && (
-                                                        <div className="ml-6 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded text-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                                                        <div className="ml-6 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded text-sm">
                                                             {([
                                                                 { code: 'SUPER', label: 'Super Admin' },
                                                                 { code: 'HQ_ADMIN', label: 'Admin' },
@@ -576,66 +719,219 @@ export default function NotificationFlowDrawer({
                                                         </div>
                                                     )}
                                                 </div>
-
-                                                {/* Dynamic */}
-                                                <div className="space-y-3">
-                                                    <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
-                                                        <Checkbox
-                                                            checked={!!localSetting.recipient_config?.recipient_targets?.dynamic_org}
-                                                            onCheckedChange={(c) => updateRecipientConfig({
-                                                                recipient_targets: { ...localSetting.recipient_config.recipient_targets, dynamic_org: c }
-                                                            })}
-                                                        />
-                                                        Dynamic (Related Organization)
-                                                    </label>
-                                                    {localSetting.recipient_config?.recipient_targets?.dynamic_org && (
-                                                        <div className="ml-6 p-3 bg-gray-50 rounded animate-in fade-in slide-in-from-top-1 duration-200">
-                                                            <Select
-                                                                value={localSetting.recipient_config?.dynamic_target || ''}
-                                                                onValueChange={(val) => updateRecipientConfig({ dynamic_target: val })}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Select target..." />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="manufacturer">Manufacturer (Product Owner)</SelectItem>
-                                                                    <SelectItem value="distributor">Distributor (Seller)</SelectItem>
-                                                                    <SelectItem value="warehouse">Warehouse</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Specific Users */}
-                                                <div className="space-y-3">
-                                                    <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
-                                                        <Checkbox
-                                                            checked={!!localSetting.recipient_config?.recipient_targets?.users}
-                                                            onCheckedChange={(c) => updateRecipientConfig({
-                                                                recipient_targets: { ...localSetting.recipient_config.recipient_targets, users: c }
-                                                            })}
-                                                        />
-                                                        Specific Users
-                                                    </label>
-                                                    {localSetting.recipient_config?.recipient_targets?.users && (
-                                                        <div className="ml-6 p-3 bg-gray-50 rounded space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                                                            <Label className="text-xs text-gray-500">Search and select users to receive this notification</Label>
-                                                            <UserMultiSelect
-                                                                selectedUserIds={localSetting.recipient_config?.recipient_users || []}
-                                                                onSelectionChange={(ids) => updateRecipientConfig({ recipient_users: ids })}
-                                                                onUsersLoaded={(users) => setSelectedUserDetails(users)}
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
                                             </div>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                        )}
 
-                                {/* Preview Section */}
-                                <div className="space-y-3">
+                                        {activeSource === 'users' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <Users className="w-4 h-4 text-emerald-600" />
+                                                    <h4 className="text-sm font-semibold text-gray-900">Specific Users</h4>
+                                                </div>
+                                                <p className="text-xs text-gray-500">Send to a curated list of internal users.</p>
+                                                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
+                                                    <Checkbox
+                                                        checked={!!localSetting.recipient_config?.recipient_targets?.users}
+                                                        onCheckedChange={(c) => updateRecipientConfig({
+                                                            recipient_targets: { ...localSetting.recipient_config.recipient_targets, users: c }
+                                                        })}
+                                                    />
+                                                    <span className="text-sm font-medium">Enable Specific Users</span>
+                                                </label>
+                                                {localSetting.recipient_config?.recipient_targets?.users && (
+                                                    <div className="space-y-2">
+                                                        <Label className="text-xs text-gray-500">Search and select users to receive this notification</Label>
+                                                        <UserMultiSelect
+                                                            selectedUserIds={localSetting.recipient_config?.recipient_users || []}
+                                                            onSelectionChange={(ids) => updateRecipientConfig({ recipient_users: ids })}
+                                                            onUsersLoaded={(users) => setSelectedUserDetails(users)}
+                                                        />
+                                                        {selectedUserDetails.length > 0 && (
+                                                            <div className="mt-2 space-y-1 max-h-48 overflow-y-auto border rounded p-2 bg-gray-50/40">
+                                                                {selectedUserDetails.map(u => (
+                                                                    <div key={u.id} className="text-xs flex items-center justify-between">
+                                                                        <span className="font-medium">{u.full_name}</span>
+                                                                        {u.phone ? (
+                                                                            <span className="text-gray-500">{u.phone}</span>
+                                                                        ) : (
+                                                                            <span className="text-amber-600 italic">no phone</span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {activeSource === 'manual_whatsapp' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <MessageCircle className="w-4 h-4 text-green-600" />
+                                                    <h4 className="text-sm font-semibold text-gray-900">Manual WhatsApp Numbers</h4>
+                                                </div>
+                                                <p className="text-xs text-gray-500">
+                                                    Enter WhatsApp numbers in international format.<br />
+                                                    Example: <code className="bg-gray-100 px-1 rounded">60123456789, 8613812345678</code>
+                                                </p>
+
+                                                <div className="space-y-2">
+                                                    <Textarea
+                                                        placeholder="Type or paste numbers here (comma, space or new line separated)"
+                                                        className="min-h-[100px] font-mono text-xs"
+                                                        value={manualRawInput}
+                                                        onChange={(e) => setManualRawInput(e.target.value)}
+                                                    />
+                                                    <div className="flex justify-between items-center text-[11px] text-gray-500">
+                                                        <span>Malaysia 0XX → auto-prefixed with 60. Plus signs are stripped.</span>
+                                                        <span>{manualParse.totalEntered}/500</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            // Re-normalize: replace input with canonical valid + raw invalid lines
+                                                            const validLines = manualParse.valid.map((v) => v.normalized)
+                                                            const invalidLines = manualParse.invalid.map((i) => i.original)
+                                                            setManualRawInput([...validLines, ...invalidLines].join('\n'))
+                                                        }}
+                                                    >
+                                                        <RefreshCw className="w-3 h-3 mr-1" />
+                                                        Normalize & Validate
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setManualRawInput('')}
+                                                    >
+                                                        <Trash2 className="w-3 h-3 mr-1" />
+                                                        Clear All
+                                                    </Button>
+                                                </div>
+
+                                                {/* Valid numbers */}
+                                                {manualParse.valid.length > 0 && (
+                                                    <div className="border border-emerald-200 rounded-md overflow-hidden">
+                                                        <div className="bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> Valid Numbers ({manualParse.valid.length})</span>
+                                                        </div>
+                                                        <div className="divide-y max-h-[180px] overflow-y-auto">
+                                                            {manualParse.valid.map((v, i) => (
+                                                                <div key={i} className="px-3 py-1.5 text-xs flex items-center justify-between hover:bg-gray-50">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono">{v.normalized}</span>
+                                                                        <Badge variant="outline" className="text-[10px]">{v.country}</Badge>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        title="Copy"
+                                                                        onClick={() => { try { navigator.clipboard?.writeText(v.normalized) } catch { } }}
+                                                                        className="text-gray-400 hover:text-gray-700"
+                                                                    >
+                                                                        <Copy className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Invalid numbers */}
+                                                {manualParse.invalid.length > 0 && (
+                                                    <div className="border border-red-200 rounded-md overflow-hidden">
+                                                        <div className="bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 flex items-center justify-between">
+                                                            <span className="flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> Invalid Numbers ({manualParse.invalid.length})</span>
+                                                        </div>
+                                                        <div className="divide-y max-h-[140px] overflow-y-auto">
+                                                            {manualParse.invalid.map((iv, i) => (
+                                                                <div key={i} className="px-3 py-1.5 text-xs flex items-center justify-between hover:bg-gray-50">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono">{iv.original}</span>
+                                                                        <span className="text-red-600">{iv.reason}</span>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            // Remove this exact original from the textarea
+                                                                            const tokens = manualRawInput.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
+                                                                            const idx = tokens.findIndex((t) => t === iv.original)
+                                                                            if (idx >= 0) tokens.splice(idx, 1)
+                                                                            setManualRawInput(tokens.join('\n'))
+                                                                        }}
+                                                                        className="text-red-500 hover:text-red-700 text-[11px] underline"
+                                                                    >
+                                                                        Remove
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Summary */}
+                                                {(manualParse.totalEntered > 0) && (
+                                                    <div className="bg-gray-50 border border-gray-200 rounded-md p-3 flex items-center justify-between text-xs">
+                                                        <div className="space-y-0.5">
+                                                            <div className="font-semibold">{manualParse.valid.length} Valid manual numbers</div>
+                                                            <div className="text-gray-500">
+                                                                {manualParse.invalid.length} invalid · {manualParse.duplicatesRemoved} duplicate removed
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right text-gray-500">
+                                                            These numbers will be included<br />in the final recipient list.
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Final Recipient Preview */}
+                                {(() => {
+                                    const t = localSetting.recipient_config?.recipient_targets || {}
+                                    const usersCount = t.users ? (localSetting.recipient_config?.recipient_users?.length || 0) : 0
+                                    const manualCount = manualParse.valid.length
+                                    const consumersCount = t.consumer ? 1 : 0 // estimated (resolved at runtime)
+                                    const orgsCount = t.dynamic_org ? 1 : 0 // estimated
+                                    const totalUnique = usersCount + manualCount + consumersCount + orgsCount
+                                    return (
+                                        <div className="border-t pt-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Final Recipient Preview</div>
+                                            <p className="text-[11px] text-gray-400 mb-3">Estimated unique recipients (real counts resolved per-event at send time)</p>
+                                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                                {[
+                                                    { label: 'Consumers', value: consumersCount, icon: <UserIcon className="w-3 h-3" />, accent: 'text-blue-600' },
+                                                    { label: 'Organizations', value: orgsCount, icon: <Building2 className="w-3 h-3" />, accent: 'text-purple-600' },
+                                                    { label: 'Users', value: usersCount, icon: <Users className="w-3 h-3" />, accent: 'text-emerald-600' },
+                                                    { label: 'Manual WhatsApp', value: manualCount, icon: <MessageCircle className="w-3 h-3" />, accent: 'text-green-600' },
+                                                    { label: 'Total Unique Recipients', value: totalUnique, icon: <CheckCircle2 className="w-3 h-3" />, accent: 'text-indigo-700', highlight: true },
+                                                ].map((c) => (
+                                                    <div key={c.label} className={`rounded-md border p-2.5 ${c.highlight ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200'}`}>
+                                                        <div className={`flex items-center gap-1 text-[10px] uppercase tracking-wide ${c.accent}`}>
+                                                            {c.icon}<span>{c.label}</span>
+                                                        </div>
+                                                        <div className="text-lg font-bold text-gray-900 mt-1">{c.value}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {localSetting.channels_enabled?.includes('whatsapp') && (
+                                                <p className="text-xs text-gray-500 mt-3">
+                                                    {totalUnique} recipient{totalUnique === 1 ? '' : 's'} will receive this WhatsApp notification.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )
+                                })()}
+
+                                {/* Preview Resolution (kept) */}
+                                <div className="space-y-3 pt-2 border-t">
                                     <h4 className="font-semibold text-sm">Preview Resolution</h4>
                                     <div className="flex gap-2">
                                         <Input
@@ -654,21 +950,17 @@ export default function NotificationFlowDrawer({
 
                                     {resolvedRecipients.length > 0 && (
                                         <div className="space-y-3">
-                                            {/* Breakdown Stats */}
                                             <div className="flex gap-4 text-xs font-medium text-gray-600 bg-gray-100/50 p-2 rounded">
                                                 <span>Total: {resolvedRecipients.length}</span>
                                                 <span>Consumer: {resolvedRecipients.filter(r => r.type === 'Consumer').length}</span>
                                                 <span>Staff: {resolvedRecipients.filter(r => r.type !== 'Consumer').length}</span>
                                             </div>
-
-                                            {/* Warnings */}
                                             {resolvedRecipients.some(r => !r.phone && localSetting.channels_enabled.includes('whatsapp')) && (
                                                 <div className="bg-amber-50 text-amber-800 text-xs p-2 rounded border border-amber-200 flex items-center gap-2">
                                                     <AlertCircle className="w-3 h-3" />
                                                     <span>{resolvedRecipients.filter(r => !r.phone).length} recipients missing phone (WhatsApp/SMS unavailable)</span>
                                                 </div>
                                             )}
-
                                             <div className="border rounded-md divide-y max-h-[200px] overflow-y-auto">
                                                 {resolvedRecipients.map((r, i) => (
                                                     <div key={i} className="p-2 text-sm flex justify-between items-center bg-gray-50 hover:bg-gray-100">
