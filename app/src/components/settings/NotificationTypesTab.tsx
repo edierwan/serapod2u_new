@@ -236,6 +236,59 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     setSettings(newSettings)
   }
 
+  const buildSettingRecord = (setting: NotificationSetting) => ({
+    id: setting.id || crypto.randomUUID(),
+    org_id: setting.org_id,
+    event_code: setting.event_code,
+    enabled: setting.enabled,
+    channels_enabled: setting.channels_enabled,
+    priority: setting.priority,
+    recipient_roles: setting.recipient_config?.roles || null,
+    recipient_users: null,
+    recipient_custom: setting.recipient_config?.custom_emails ? [setting.recipient_config.custom_emails] : null,
+    template_code: null,
+    templates: setting.templates,
+    recipient_config: setting.recipient_config,
+    retry_enabled: true,
+    max_retries: 3
+  })
+
+  const saveSingleSetting = async (setting: NotificationSetting) => {
+    if (!isReady) return
+
+    const newSettings = new Map(settings)
+    newSettings.set(setting.event_code, setting)
+    setSettings(newSettings)
+
+    setSaving(true)
+    setSaveStatus('idle')
+
+    const { data: upserted, error } = await (supabase as any)
+      .from('notification_settings')
+      .upsert(buildSettingRecord(setting), {
+        onConflict: 'org_id,event_code'
+      })
+      .select('id')
+
+    if (error) {
+      setSaveStatus('error')
+      setSaving(false)
+      throw new Error(error.message || 'Failed to save notification setting')
+    }
+
+    if (!upserted || upserted.length === 0) {
+      setSaveStatus('error')
+      setSaving(false)
+      throw new Error('Setting was not saved — check your permissions (HQ Admin required)')
+    }
+
+    setSaveStatus('success')
+    setSaving(false)
+    setTimeout(() => setSaveStatus('idle'), 3000)
+
+    await loadNotificationTypes()
+  }
+
   const handleSaveSettings = async () => {
     if (!isReady) return
 
@@ -244,26 +297,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       setSaveStatus('idle')
 
       // Prepare settings for upsert
-      const settingsArray = Array.from(settings.values()).map(setting => {
-        const record: any = {
-          id: setting.id || crypto.randomUUID(),
-          org_id: setting.org_id,
-          event_code: setting.event_code,
-          enabled: setting.enabled,
-          channels_enabled: setting.channels_enabled,
-          priority: setting.priority,
-          recipient_roles: setting.recipient_config?.roles || null,
-          recipient_users: null,
-          recipient_custom: setting.recipient_config?.custom_emails ? [setting.recipient_config.custom_emails] : null,
-          template_code: null, // We use templates jsonb now
-          templates: setting.templates,
-          recipient_config: setting.recipient_config,
-          retry_enabled: true,
-          max_retries: 3
-        }
-
-        return record
-      })
+      const settingsArray = Array.from(settings.values()).map(buildSettingRecord)
 
       // Upsert all settings
       const { data: upserted, error } = await (supabase as any)
@@ -488,10 +522,8 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         onOpenChange={(open) => !open && setEditingSetting(null)}
         setting={currentSetting}
         type={currentType}
-        onSave={(updatedSetting) => {
-          const newSettings = new Map(settings)
-          newSettings.set(currentCode, updatedSetting)
-          setSettings(newSettings)
+        onSave={async (updatedSetting) => {
+          await saveSingleSetting(updatedSetting)
         }}
       />
     )

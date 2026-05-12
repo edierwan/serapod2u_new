@@ -260,11 +260,11 @@ export async function GET(request: NextRequest) {
                             config.tenantId
                         )
 
-                        if (gwResult.ok || gwResult.jid) {
+                        if (gwResult.ok || gwResult.success || gwResult.jid || gwResult.messageId) {
                             await supabase.rpc('log_notification_attempt', {
                                 p_outbox_id: id,
                                 p_status: 'sent',
-                                p_provider_message_id: gwResult.jid || null,
+                                p_provider_message_id: gwResult.jid || gwResult.messageId || null,
                                 p_provider_response: gwResult
                             })
                             sent++

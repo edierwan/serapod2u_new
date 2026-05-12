@@ -35,7 +35,7 @@ interface NotificationFlowDrawerProps {
     onOpenChange: (open: boolean) => void
     setting: any
     type: any
-    onSave: (updates: any) => void
+    onSave: (updates: any) => Promise<void> | void
 }
 
 export default function NotificationFlowDrawer({
@@ -71,6 +71,7 @@ export default function NotificationFlowDrawer({
     const [manualRawInput, setManualRawInput] = useState<string>('')
     const [activeSource, setActiveSource] = useState<'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'roles'>('consumer')
     const [saveError, setSaveError] = useState<string | null>(null)
+    const [savingChanges, setSavingChanges] = useState(false)
 
     useEffect(() => {
         // Init & Migration Logic
@@ -336,7 +337,7 @@ export default function NotificationFlowDrawer({
         }
     }
 
-    const handleSave = () => {
+    const handleSave = async () => {
         // Block save when manual whatsapp numbers section has invalid entries
         if (manualParse.invalid.length > 0) {
             setSaveError(`There are ${manualParse.invalid.length} invalid WhatsApp number(s). Fix or remove them before saving.`)
@@ -354,8 +355,16 @@ export default function NotificationFlowDrawer({
                 manual_whatsapp_numbers: cleanManual,
             },
         }
-        onSave(finalSetting)
-        onOpenChange(false)
+
+        try {
+            setSavingChanges(true)
+            await onSave(finalSetting)
+            onOpenChange(false)
+        } catch (error: any) {
+            setSaveError(error?.message || 'Failed to save notification changes.')
+        } finally {
+            setSavingChanges(false)
+        }
     }
 
     return (
@@ -1307,7 +1316,10 @@ export default function NotificationFlowDrawer({
                     <div className="p-6 border-t bg-white mt-auto">
                         <div className="flex justify-end gap-3">
                             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                            <Button onClick={handleSave}>Save Changes</Button>
+                            <Button onClick={handleSave} disabled={savingChanges}>
+                                {savingChanges ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                <span className={savingChanges ? 'ml-2' : ''}>{savingChanges ? 'Saving...' : 'Save Changes'}</span>
+                            </Button>
                         </div>
                     </div>
                 </div>
