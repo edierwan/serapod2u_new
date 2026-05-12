@@ -20,8 +20,80 @@ interface WhatsAppActivityTabProps {
   userProfile: UserProfileWithRelations
 }
 
+type ActivityRecord = {
+  id: string
+  createdAt: string
+  recipientPhone: string
+  eventType: string
+  purpose: string
+  status: string
+  provider: string
+  errorMessage: string
+}
+
+const PURPOSE_LABELS: Record<string, string> = {
+  password_reset: "Password Reset",
+  registration_verification: "Registration",
+  phone_verification: "Phone Verification",
+  order_notification: "Order Notification",
+  document_workflow: "Document Workflow",
+  inventory_stock: "Inventory & Stock",
+  qr_consumer: "QR & Consumer",
+  user_account: "User Account",
+  system: "System",
+}
+
+const PURPOSE_BY_CATEGORY: Record<string, string> = {
+  order: "order_notification",
+  document: "document_workflow",
+  inventory: "inventory_stock",
+  qr: "qr_consumer",
+  user: "user_account",
+}
+
+function normalizePhoneForSearch(value: string) {
+  return String(value || "").replace(/\D/g, "")
+}
+
+function parseProviderResponse(value: unknown): Record<string, any> | null {
+  if (!value) return null
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, any>
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Record<string, any>
+        : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function resolveLogRecipientPhone(recipientValue: unknown, providerResponse: unknown) {
+  const directValue = String(recipientValue || "").trim()
+  if (directValue && directValue.toLowerCase() !== "unknown") {
+    return directValue
+  }
+
+  const response = parseProviderResponse(providerResponse)
+  const gatewayRecipient = String(response?.to || response?.jid || "").trim()
+  if (!gatewayRecipient) return ""
+
+  return gatewayRecipient
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/^\+/, "")
+}
+
+function formatPurposeLabel(value: string) {
+  return PURPOSE_LABELS[value] || value.replace(/_/g, " ")
+}
+
 export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
-  const [events, setEvents] = useState<any[]>([])
+  const [events, setEvents] = useState<ActivityRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -35,24 +107,75 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
   async function loadActivity() {
     setLoading(true)
     try {
-      let query = (supabase as any)
-        .from("notification_events")
-        .select("*", { count: "exact" })
-        .eq("channel", "whatsapp")
-        .order("created_at", { ascending: false })
-        .range((page - 1) * pageSize, page * pageSize - 1)
+      const orgId = (userProfile as any)?.organization_id || (userProfile as any)?.organizations?.id || null
 
-      if (filterPurpose !== "all") query = query.eq("purpose", filterPurpose)
-      if (filterStatus !== "all") query = query.eq("status", filterStatus)
-      if (filterPhone.trim()) query = query.ilike("recipient_phone", `%${filterPhone.trim()}%`)
+      const [eventsResult, logsResult, typesResult] = await Promise.all([
+        (supabase as any)
+          .from("notification_events")
+          .select("id, created_at, status, recipient_phone, event_type, purpose, provider, error_message")
+          .eq("channel", "whatsapp")
+          .order("created_at", { ascending: false })
+          .limit(200),
+        orgId
+          ? (supabase as any)
+              .from("notification_logs")
+              .select("id, created_at, sent_at, delivered_at, failed_at, status, recipient_value, event_code, provider_name, error_message, provider_response")
+              .eq("channel", "whatsapp")
+              .eq("org_id", orgId)
+              .order("created_at", { ascending: false })
+              .limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        (supabase as any)
+          .from("notification_types")
+          .select("event_code, category")
+      ])
 
-      const { data, count, error } = await query
-      if (error) {
-        console.error("Error loading WhatsApp activity:", error)
+      if (eventsResult.error || logsResult.error || typesResult.error) {
+        console.error("Error loading WhatsApp activity:", eventsResult.error || logsResult.error || typesResult.error)
         return
       }
-      setEvents(data || [])
-      setTotal(count || 0)
+
+      const categoryByEventCode = new Map<string, string>(
+        (typesResult.data || []).map((type: any) => [type.event_code, type.category])
+      )
+
+      const notificationEvents: ActivityRecord[] = (eventsResult.data || []).map((event: any) => ({
+        id: `event-${event.id}`,
+        createdAt: event.created_at,
+        recipientPhone: String(event.recipient_phone || "").trim(),
+        eventType: String(event.event_type || ""),
+        purpose: String(event.purpose || "system"),
+        status: String(event.status || "unknown"),
+        provider: String(event.provider || ""),
+        errorMessage: String(event.error_message || ""),
+      }))
+
+      const notificationLogs: ActivityRecord[] = (logsResult.data || []).map((log: any) => ({
+        id: `log-${log.id}`,
+        createdAt: log.sent_at || log.delivered_at || log.failed_at || log.created_at,
+        recipientPhone: resolveLogRecipientPhone(log.recipient_value, log.provider_response),
+        eventType: String(log.event_code || ""),
+        purpose: PURPOSE_BY_CATEGORY[categoryByEventCode.get(String(log.event_code || "")) || ""] || "system",
+        status: String(log.status || "unknown"),
+        provider: String(log.provider_name || ""),
+        errorMessage: String(log.error_message || ""),
+      }))
+
+      const normalizedPhoneFilter = normalizePhoneForSearch(filterPhone)
+      const merged = [...notificationLogs, ...notificationEvents]
+        .filter((event) => {
+          if (filterPurpose !== "all" && event.purpose !== filterPurpose) return false
+          if (filterStatus !== "all" && event.status !== filterStatus) return false
+          if (normalizedPhoneFilter && !normalizePhoneForSearch(event.recipientPhone).includes(normalizedPhoneFilter)) {
+            return false
+          }
+          return true
+        })
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+
+      const paginated = merged.slice((page - 1) * pageSize, page * pageSize)
+      setEvents(paginated)
+      setTotal(merged.length)
     } catch (err) {
       console.error("Error loading WhatsApp activity:", err)
     } finally {
@@ -89,6 +212,10 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
                 <SelectItem value="registration_verification">Registration</SelectItem>
                 <SelectItem value="phone_verification">Phone Verification</SelectItem>
                 <SelectItem value="order_notification">Order Notification</SelectItem>
+                <SelectItem value="document_workflow">Document Workflow</SelectItem>
+                <SelectItem value="inventory_stock">Inventory & Stock</SelectItem>
+                <SelectItem value="qr_consumer">QR & Consumer</SelectItem>
+                <SelectItem value="user_account">User Account</SelectItem>
                 <SelectItem value="system">System</SelectItem>
               </SelectContent>
             </Select>
@@ -99,6 +226,7 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="queued">Queued</SelectItem>
                 <SelectItem value="sent">Sent</SelectItem>
                 <SelectItem value="delivered">Delivered</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
@@ -140,17 +268,17 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
                     {events.map((evt: any) => (
                       <tr key={evt.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
-                          {new Date(evt.created_at).toLocaleString()}
+                          {new Date(evt.createdAt).toLocaleString()}
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-900 font-mono">
-                          {evt.recipient_phone || "-"}
+                          {evt.recipientPhone || "-"}
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-700">
-                          {(evt.event_type || "").replace(/_/g, " ")}
+                          {(evt.eventType || "").replace(/_/g, " ")}
                         </td>
                         <td className="px-3 py-2">
                           <Badge variant="outline" className="text-[10px]">
-                            {(evt.purpose || "").replace(/_/g, " ")}
+                            {formatPurposeLabel(evt.purpose || "")}
                           </Badge>
                         </td>
                         <td className="px-3 py-2">
@@ -167,8 +295,8 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-500">{evt.provider || "-"}</td>
-                        <td className="px-3 py-2 text-xs text-red-600 max-w-[200px] truncate" title={evt.error_message || ""}>
-                          {evt.error_message || "-"}
+                        <td className="px-3 py-2 text-xs text-red-600 max-w-[200px] truncate" title={evt.errorMessage || ""}>
+                          {evt.errorMessage || "-"}
                         </td>
                       </tr>
                     ))}

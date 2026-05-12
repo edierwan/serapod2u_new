@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
 
 /**
  * CRON: /api/cron/notification-outbox-worker
@@ -153,6 +154,7 @@ export async function GET(request: NextRequest) {
                             : Array.isArray(notifSetting.recipient_roles) && notifSetting.recipient_roles.length > 0
                                 ? notifSetting.recipient_roles
                                 : []
+                        const resolvedRoleCodes = expandNotificationRoleCodes(configuredRoles)
                         const hasExplicitRecipientTargets = Object.keys(recipientTargets).length > 0
                         const rolesEnabled = configuredRoles.length > 0 && (
                             hasExplicitRecipientTargets
@@ -160,12 +162,12 @@ export async function GET(request: NextRequest) {
                                 : recipientConfig.type === 'roles' || Boolean(notifSetting.recipient_roles?.length)
                         )
 
-                        if (rolesEnabled) {
+                        if (rolesEnabled && resolvedRoleCodes.length > 0) {
                             const { data: roleUsers } = await supabase
                                 .from('users')
                                 .select('phone, email')
                                 .eq('organization_id', org_id)
-                                .in('role_code', configuredRoles)
+                                .in('role_code', resolvedRoleCodes)
 
                             if (roleUsers) {
                                 addRecipients(roleUsers.map((user) => channel === 'email' ? user.email : user.phone))
@@ -221,6 +223,28 @@ export async function GET(request: NextRequest) {
                                     created_at: new Date().toISOString()
                                 })
                             }
+                        }
+                    }
+                }
+
+                if ((recipientPhone || recipientEmail) && (recipientPhone !== to_phone || recipientEmail !== to_email)) {
+                    const recipientUpdate: Record<string, string | null> = {}
+
+                    if (recipientPhone !== to_phone) {
+                        recipientUpdate.to_phone = recipientPhone || null
+                    }
+                    if (recipientEmail !== to_email) {
+                        recipientUpdate.to_email = recipientEmail || null
+                    }
+
+                    if (Object.keys(recipientUpdate).length > 0) {
+                        const { error: recipientUpdateError } = await supabase
+                            .from('notifications_outbox')
+                            .update(recipientUpdate)
+                            .eq('id', id)
+
+                        if (recipientUpdateError) {
+                            console.warn(`[NotifWorker] Failed to persist resolved recipient for ${id}: ${recipientUpdateError.message}`)
                         }
                     }
                 }

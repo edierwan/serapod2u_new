@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
 
 /**
  * GET /api/notifications/recipients/preview
@@ -55,18 +56,11 @@ export async function GET(request: NextRequest) {
 
     try {
         // 1. Resolve by roles — search system-wide (not restricted to one org)
-        //    Role codes match DB: SUPER, HQ_ADMIN, DIST_ADMIN, WH_MANAGER, USER, etc.
-        //    Also handle legacy lowercase codes from old saved configs.
+        //    Saved notification configs can contain legacy aliases, so expand them
+        //    to the live role_code variants used across different environments.
         if (rolesParam) {
             const rawRoles = rolesParam.split(',').map(r => r.trim()).filter(Boolean)
-            // Normalise: map any legacy lowercase UI codes to real DB codes
-            const LEGACY_MAP: Record<string, string> = {
-                super_admin: 'SUPER',
-                admin: 'HQ_ADMIN',
-                distributor: 'DIST_ADMIN',
-                warehouse: 'WH_MANAGER',
-            }
-            const roles = rawRoles.map(r => LEGACY_MAP[r.toLowerCase()] || r)
+            const roles = expandNotificationRoleCodes(rawRoles)
             if (roles.length > 0) {
                 const { data: users } = await supabase
                     .from('users')

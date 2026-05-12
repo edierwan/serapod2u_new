@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
+import { DEFAULT_NOTIFICATION_ADMIN_ROLE } from '@/lib/notifications/recipientRoleCodes'
 import {
   Save,
   Bell,
@@ -79,6 +80,41 @@ interface NotificationTypesTabProps {
   }
 }
 
+const DEFAULT_RECIPIENT_TARGETS = {
+  roles: true,
+  dynamic_org: false,
+  users: false,
+  consumer: false,
+}
+
+function normalizeRecipientConfig(
+  recipientConfig: NotificationSetting['recipient_config'] | null | undefined,
+  fallbackRoles: string[] = [DEFAULT_NOTIFICATION_ADMIN_ROLE]
+): NonNullable<NotificationSetting['recipient_config']> {
+  const rawConfig = recipientConfig && typeof recipientConfig === 'object' ? recipientConfig : {}
+  const roles = Array.isArray(rawConfig.roles) && rawConfig.roles.length > 0
+    ? rawConfig.roles
+    : fallbackRoles
+  const hasRecipientSources = Boolean(
+    rawConfig.recipient_targets ||
+    (Array.isArray(rawConfig.manual_whatsapp_numbers) && rawConfig.manual_whatsapp_numbers.length > 0) ||
+    (Array.isArray(rawConfig.recipient_users) && rawConfig.recipient_users.length > 0) ||
+    String(rawConfig.custom_emails || '').trim() ||
+    String(rawConfig.custom_phones || '').trim() ||
+    rawConfig.dynamic_target
+  )
+
+  return {
+    type: rawConfig.type || 'roles',
+    include_consumer: rawConfig.include_consumer ?? true,
+    ...rawConfig,
+    roles,
+    recipient_targets: rawConfig.recipient_targets || (hasRecipientSources
+      ? { roles: false, dynamic_org: false, users: false, consumer: false }
+      : DEFAULT_RECIPIENT_TARGETS),
+  }
+}
+
 export default function NotificationTypesTab({ userProfile }: NotificationTypesTabProps) {
   const { supabase, isReady } = useSupabaseAuth()
   const [loading, setLoading] = useState(true)
@@ -136,16 +172,16 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           channels_enabled: type.default_enabled ? type.available_channels : [],
           priority: 'normal',
           templates: {},
-          recipient_config: {
-            type: 'roles',
-            roles: ['super_admin'],
-            include_consumer: true
-          }
+          recipient_config: normalizeRecipientConfig(undefined)
         })
       })
 
       // Override with existing settings
       existingSettings?.forEach((setting: any) => {
+        const fallbackRoles = Array.isArray(setting.recipient_roles) && setting.recipient_roles.length > 0
+          ? setting.recipient_roles
+          : [DEFAULT_NOTIFICATION_ADMIN_ROLE]
+
         settingsMap.set(setting.event_code, {
           id: setting.id,
           org_id: setting.org_id,
@@ -154,11 +190,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           channels_enabled: setting.channels_enabled || [],
           priority: setting.priority || 'normal',
           templates: setting.templates || {},
-          recipient_config: setting.recipient_config || {
-            type: 'roles',
-            roles: setting.recipient_roles || [], // Fallback for migration
-            include_consumer: true
-          }
+          recipient_config: normalizeRecipientConfig(setting.recipient_config, fallbackRoles)
         })
       })
 
@@ -180,6 +212,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       if (!enabled) {
         setting.channels_enabled = []
       } else {
+        setting.recipient_config = normalizeRecipientConfig(setting.recipient_config)
         // If enabling, use default channels from type
         const type = notificationTypes.find(t => t.event_code === eventCode)
         if (type) {
@@ -243,12 +276,12 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     enabled: setting.enabled,
     channels_enabled: setting.channels_enabled,
     priority: setting.priority,
-    recipient_roles: setting.recipient_config?.roles || null,
+    recipient_roles: normalizeRecipientConfig(setting.recipient_config).roles || null,
     recipient_users: null,
-    recipient_custom: setting.recipient_config?.custom_emails ? [setting.recipient_config.custom_emails] : null,
+    recipient_custom: normalizeRecipientConfig(setting.recipient_config).custom_emails ? [normalizeRecipientConfig(setting.recipient_config).custom_emails as string] : null,
     template_code: null,
     templates: setting.templates,
-    recipient_config: setting.recipient_config,
+    recipient_config: normalizeRecipientConfig(setting.recipient_config),
     retry_enabled: true,
     max_retries: 3
   })
