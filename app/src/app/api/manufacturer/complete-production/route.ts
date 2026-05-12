@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { NextRequest, NextResponse } from 'next/server'
 
 /**
@@ -291,23 +292,16 @@ export async function POST(request: NextRequest) {
         completed_by: user.email || 'Manufacturer',
         customer_name: customerName,
         balance_document_no: balanceDocumentNo || 'N/A',
-        order_url: 'https://app.serapod2u.com/supply-chain'
+        order_url: `${request.nextUrl.origin}/supply-chain`
       }
 
-      for (const channel of ['whatsapp', 'sms', 'email']) {
-        await adminSupabase.from('notifications_outbox').insert({
-          org_id: orderDetail?.company_id || orderDetail?.buyer_org_id,
-          event_code: 'manufacturer_scan_complete',
-          channel,
-          payload_json: payload,
-          priority: 'normal',
-          status: 'queued',
-          retry_count: 0,
-          max_retries: 3,
-          created_at: new Date().toISOString()
-        })
-      }
-      console.log('📨 Manufacturer scan complete notification queued')
+      const queueResult = await queueNotificationEvent(adminSupabase, {
+        orgId: orderDetail?.buyer_org_id || orderDetail?.company_id,
+        eventCode: 'manufacturer_scan_complete',
+        payload,
+        dedupePayload: { order_no: displayOrderNo },
+      })
+      console.log('📨 Manufacturer scan complete notification queued', queueResult)
     } catch (notifErr) {
       console.warn('⚠️ Failed to queue notification (non-blocking):', notifErr)
     }

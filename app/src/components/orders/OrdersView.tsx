@@ -414,6 +414,14 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         description: `Order ${newDisplayNo} has been approved successfully. PO document has been generated.`,
       })
 
+      await fetch('/api/notifications/order-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, eventCode: 'order_approved' })
+      }).catch((queueError) => {
+        console.warn('Failed to queue order_approved notification:', queueError)
+      })
+
       // Fire-and-forget: trigger notification outbox worker
       fetch('/api/cron/notification-outbox-worker').catch(() => { })
 
@@ -474,6 +482,14 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         .eq('id', orderId)
 
       if (error) throw error
+
+      await fetch('/api/notifications/order-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, eventCode: 'order_rejected' })
+      }).catch((queueError) => {
+        console.warn('Failed to queue order_rejected notification:', queueError)
+      })
 
       toast({
         title: 'Order Cancelled',

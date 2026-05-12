@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { generateQRBatch } from '@/lib/qr-generator'
 import { generateQRExcel, generateQRExcelFilename } from '@/lib/excel-generator'
 
@@ -306,22 +307,15 @@ export async function GET(request: NextRequest) {
             total_master_codes: qrBatch.totalMasterCodes.toString(),
             total_unique_codes: qrBatch.totalUniqueCodes.toString(),
             generated_at: new Date().toLocaleString('en-GB'),
-            order_url: 'https://app.serapod2u.com/supply-chain'
+            order_url: `${request.nextUrl.origin}/supply-chain`
           }
-          for (const channel of ['whatsapp', 'sms', 'email']) {
-            await supabase.from('notifications_outbox').insert({
-              org_id: order.company_id || order.buyer_org_id,
-              event_code: 'qr_batch_generated',
-              channel,
-              payload_json: notifPayload,
-              priority: 'normal',
-              status: 'queued',
-              retry_count: 0,
-              max_retries: 3,
-              created_at: new Date().toISOString()
-            })
-          }
-          console.log('📨 QR batch generated notification queued')
+          const queueResult = await queueNotificationEvent(supabase, {
+            orgId: order.buyer_org_id || order.company_id,
+            eventCode: 'qr_batch_generated',
+            payload: notifPayload,
+            dedupePayload: { order_no: displayOrderNo },
+          })
+          console.log('📨 QR batch generated notification queued:', queueResult)
         } catch (notifErr) {
           console.warn('⚠️ Failed to queue QR batch notification (non-blocking):', notifErr)
         }

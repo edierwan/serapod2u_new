@@ -1207,6 +1207,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             throw new Error(`Failed to submit order: ${statusUpdateError.message}`)
           }
 
+          await fetch('/api/notifications/order-event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: editingOrderId, eventCode: 'order_submitted' })
+          }).catch((error) => {
+            console.warn('Failed to queue order_submitted notification:', error)
+          })
+
           // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
           fetch('/api/cron/notification-outbox-worker').catch(() => { })
         }
@@ -1356,6 +1364,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           console.error('Error updating order status:', updateError)
           throw new Error(`Failed to submit order: ${updateError.message}`)
         }
+
+        await fetch('/api/notifications/order-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: order.id, eventCode: 'order_submitted' })
+        }).catch((error) => {
+          console.warn('Failed to queue order_submitted notification:', error)
+        })
 
         // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
         fetch('/api/cron/notification-outbox-worker').catch(() => { })

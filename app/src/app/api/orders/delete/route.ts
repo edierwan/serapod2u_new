@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { assertDestructiveOpsAllowed } from '@/lib/server/destructive-ops-guard'
+import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,23 +53,15 @@ export async function POST(request: NextRequest) {
         status: order.status || 'deleted',
         deleted_by: deleterProfile?.full_name || guard.userEmail || 'Super Admin',
         deleted_at: new Date().toLocaleString('en-GB'),
-        order_url: 'https://app.serapod2u.com/supply-chain'
+        order_url: `${request.nextUrl.origin}/supply-chain`
       }
 
-      // Queue for each channel
-      for (const channel of ['whatsapp', 'sms', 'email']) {
-        await adminSupabase.from('notifications_outbox').insert({
-          org_id: order.company_id,
-          event_code: 'order_deleted',
-          channel,
-          payload_json: payload,
-          priority: 'normal',
-          status: 'queued',
-          retry_count: 0,
-          max_retries: 3,
-          created_at: new Date().toISOString()
-        })
-      }
+      await queueNotificationEvent(adminSupabase, {
+        orgId: order.buyer_org_id || order.company_id,
+        eventCode: 'order_deleted',
+        payload,
+        dedupePayload: { order_no: displayOrderNo },
+      })
     } catch (notifErr) {
       console.warn('⚠️ Failed to queue delete notification (non-blocking):', notifErr)
     }
