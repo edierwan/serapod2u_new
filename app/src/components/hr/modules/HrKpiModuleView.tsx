@@ -25,6 +25,11 @@ import { KPIDashboardTab } from '@/components/hr/kpi/tabs/DashboardTab'
 import { KPIPeriodsTab } from '@/components/hr/kpi/tabs/PeriodsTab'
 import { KPIObjectivesTab } from '@/components/hr/kpi/tabs/ObjectivesTab'
 import { KPILibraryTab } from '@/components/hr/kpi/tabs/LibraryTab'
+import { KPICascadeTab } from '@/components/hr/kpi/tabs/CascadeTab'
+import { KPITargetsTab } from '@/components/hr/kpi/tabs/TargetsTab'
+import { KPIDataTab } from '@/components/hr/kpi/tabs/DataTab'
+import { KPIScorecardsTab } from '@/components/hr/kpi/tabs/ScorecardsTab'
+import { KPIReportsTab } from '@/components/hr/kpi/tabs/ReportsTab'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Period { id: string; name: string; period_type: string; start_date: string; end_date: string; status: string }
@@ -200,12 +205,21 @@ export default function HrKpiModuleView() {
                     <KPILibraryTab />
                 </TabsContent>
 
-                {/* Legacy tabs (untouched in this redesign) */}
-                <TabsContent value="cascading"><CascadingTab periodId={periodId} /></TabsContent>
-                <TabsContent value="targets"><TargetsTab periodId={periodId} /></TabsContent>
-                <TabsContent value="data"><DataMappingsTab /></TabsContent>
-                <TabsContent value="scorecards"><ScorecardsTab periodId={periodId} /></TabsContent>
-                <TabsContent value="reports"><ReportsTab periodId={periodId} /></TabsContent>
+                <TabsContent value="cascading" className="mt-0">
+                    <KPICascadeTab periodId={periodId} periodName={selectedPeriod?.name} />
+                </TabsContent>
+                <TabsContent value="targets" className="mt-0">
+                    <KPITargetsTab periodId={periodId} periodName={selectedPeriod?.name} />
+                </TabsContent>
+                <TabsContent value="data" className="mt-0">
+                    <KPIDataTab periodId={periodId} />
+                </TabsContent>
+                <TabsContent value="scorecards" className="mt-0">
+                    <KPIScorecardsTab periodId={periodId} periodName={selectedPeriod?.name} />
+                </TabsContent>
+                <TabsContent value="reports" className="mt-0">
+                    <KPIReportsTab periodId={periodId} periodName={selectedPeriod?.name} periods={periods} />
+                </TabsContent>
             </Tabs>
         </div>
     )
