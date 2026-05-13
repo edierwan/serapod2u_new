@@ -55,7 +55,7 @@ export async function GET(_req: NextRequest) {
             .select('id', { count: 'exact', head: true })
             .eq('channel', 'whatsapp')
             .in('purpose', RECOVERY_PURPOSES)
-            .eq('status', 'sent')
+            .in('status', ['sent', 'recovery_sent'])
             .gte('created_at', last24Iso)
 
         // Delivered — events status = 'delivered'
@@ -105,7 +105,7 @@ export async function GET(_req: NextRequest) {
             const status = String((r as any).status || '')
             const purpose = String((r as any).purpose || '')
             if (status === 'failed' || status === 'send_failed') b.failed++
-            if (RECOVERY_PURPOSES.includes(purpose) && status === 'sent') b.recoverySent++
+            if (RECOVERY_PURPOSES.includes(purpose) && (status === 'sent' || status === 'recovery_sent')) b.recoverySent++
             if (status === 'delivered') b.delivered++
             if (status === 'read') b.read++
         }

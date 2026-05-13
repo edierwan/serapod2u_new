@@ -28,11 +28,17 @@
  * Security: Admin only. Goes through existing server-side baileys gateway.
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+
 import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { resolveRecoveryContacts } from '@/lib/wa-recovery/contact-resolver'
+import { loadRecoveryTemplates, pickRecoveryTemplate } from '@/lib/wa-recovery/template-store'
 import {
-    RECOVERY_TEMPLATES, getTemplateByKey, inferRecoveryTemplate, renderTemplate,
+    buildRecoveryMessageVariables,
+    renderTemplate,
 } from '@/lib/wa-recovery/templates'
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,8 +50,66 @@ interface SendResult {
     error?: string
 }
 
-function normalizePhone(p: string): string {
-    return String(p || '').replace(/\D/g, '')
+interface SendTarget {
+    sourceType?: string | null
+    sourceRecordId?: string | null
+    sourceKey?: string | null
+    phone: string
+    failedPurpose?: string | null
+    failedAt?: string | null
+    provider?: string | null
+    userId?: string | null
+    resolvedName?: string | null
+    resolvedSource?: string | null
+}
+
+const RECOVERY_PURPOSES = [
+    'recovery_notice',
+    'password_reset_recovery',
+    'registration_recovery',
+    'qr_claim_recovery',
+]
+
+function normalizePhone(phone: string): string {
+    return normalizePhoneE164(phone)
+}
+
+function makeSourceKey(target: SendTarget, fallbackIndex: number) {
+    return String(target.sourceKey || `${target.sourceType || 'bulk'}:${target.sourceRecordId || fallbackIndex}`)
+}
+
+function mapBodyTargets(body: any): SendTarget[] {
+    if (Array.isArray(body.records) && body.records.length > 0) {
+        return body.records.map((record: any) => ({
+            sourceType: record.sourceType,
+            sourceRecordId: record.sourceRecordId,
+            sourceKey: record.sourceKey,
+            phone: String(record.phone || record.recipientPhone || ''),
+            failedPurpose: record.failedPurpose || record.purpose,
+            failedAt: record.failedAt || record.createdAt || null,
+            provider: record.provider || null,
+            userId: record.userId || record.resolvedUserId || null,
+            resolvedName: record.resolvedName || record.contactName || null,
+            resolvedSource: record.resolvedSource || record.contactSource || null,
+        }))
+    }
+
+    if (body.record) {
+        return mapBodyTargets({ records: [body.record] })
+    }
+
+    if (Array.isArray(body.phones)) {
+        return body.phones.map((phone: string) => ({
+            phone,
+            failedPurpose: body.filterPurpose || body.failedPurpose || null,
+        }))
+    }
+
+    if (body.phone) {
+        return [{ phone: body.phone, failedPurpose: body.failedPurpose || null }]
+    }
+
+    return []
 }
 
 export async function POST(request: NextRequest) {
@@ -57,12 +121,13 @@ export async function POST(request: NextRequest) {
         const admin = await isAdminUser(supabase, user.id)
         if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-        const { data: profile } = await supabase
+        const supabaseAdmin = createAdminClient()
+        const { data: profile } = await (supabaseAdmin as any)
             .from('users').select('organization_id').eq('id', user.id).single()
         const orgId = profile?.organization_id
         if (!orgId) return NextResponse.json({ error: 'No organization' }, { status: 400 })
 
-        const config = await getWhatsAppConfig(supabase, orgId)
+        const config = await getWhatsAppConfig(supabaseAdmin as any, orgId)
         if (!config?.baseUrl || !config?.apiKey) {
             return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
         }
@@ -71,99 +136,147 @@ export async function POST(request: NextRequest) {
         const mode: 'single' | 'bulk' = body.mode === 'bulk' ? 'bulk' : 'single'
         const dedupeWindowHours = Number(body.dedupeWindowHours ?? 24)
         const dedupeCutoff = new Date(Date.now() - dedupeWindowHours * 3600_000).toISOString()
-
-        // Resolve message body + template key
-        function resolveMessage(failedPurpose?: string, templateKey?: string, customMessage?: string) {
-            if (customMessage && customMessage.trim().length > 0) {
-                return { body: customMessage.trim(), templateKey: 'custom' }
-            }
-            const tpl = templateKey
-                ? (getTemplateByKey(templateKey) || inferRecoveryTemplate(failedPurpose))
-                : inferRecoveryTemplate(failedPurpose)
-            return { body: renderTemplate(tpl.body), templateKey: tpl.key }
+        const allowResend = body.allowResend === true
+        const customMessage = String(body.customMessage || '').trim()
+        const targets = mapBodyTargets(body)
+        if (targets.length === 0) {
+            return NextResponse.json({ error: mode === 'bulk' ? 'records[] or phones[] required' : 'record or phone required' }, { status: 400 })
         }
 
-        const targets: { phone: string; failedPurpose?: string }[] = []
-        if (mode === 'single') {
-            if (!body.phone) return NextResponse.json({ error: 'phone required' }, { status: 400 })
-            targets.push({ phone: body.phone, failedPurpose: body.failedPurpose })
-        } else {
-            if (!Array.isArray(body.phones)) {
-                return NextResponse.json({ error: 'phones[] required' }, { status: 400 })
-            }
-            const seen = new Set<string>()
-            for (const p of body.phones) {
-                const n = normalizePhone(p)
-                if (!n || seen.has(n)) continue
-                seen.add(n)
-                targets.push({ phone: n, failedPurpose: body.filterPurpose })
-            }
-        }
+        const templates = await loadRecoveryTemplates(supabaseAdmin as any, orgId)
+        const contactResolutions = await resolveRecoveryContacts(
+            supabaseAdmin as any,
+            targets.map((target, index) => ({
+                key: makeSourceKey(target, index),
+                phone: target.phone,
+                userId: target.userId,
+            })),
+        )
 
-        // Dedupe — check notification_events for recent recovery sends to these phones
         const skipPhones = new Set<string>()
-        if (targets.length > 0 && mode === 'bulk' && dedupeWindowHours > 0) {
-            const phoneList = targets.map(t => normalizePhone(t.phone))
-            const { data: recent } = await supabase
+        const skipSourceKeys = new Set<string>()
+        if (targets.length > 0 && dedupeWindowHours > 0) {
+            const phoneList = Array.from(new Set(targets.map(target => normalizePhone(target.phone)).filter(Boolean)))
+            const { data: recent } = await (supabaseAdmin as any)
                 .from('notification_events')
-                .select('recipient_phone, purpose')
+                .select('recipient_phone, purpose, status, meta, created_at')
                 .eq('channel', 'whatsapp')
-                .in('purpose', ['recovery_notice', 'password_reset_recovery', 'registration_recovery', 'qr_claim_recovery'])
+                .in('purpose', RECOVERY_PURPOSES)
                 .gte('created_at', dedupeCutoff)
                 .in('recipient_phone', phoneList)
-            for (const r of recent || []) {
-                skipPhones.add(normalizePhone((r as any).recipient_phone))
+            for (const row of recent || []) {
+                const meta = typeof (row as any).meta === 'object' && (row as any).meta !== null ? (row as any).meta : {}
+                const normalizedPhone = normalizePhone((row as any).recipient_phone)
+                if (normalizedPhone) skipPhones.add(normalizedPhone)
+                const sourceKey = String((meta as any).source_key || '').trim()
+                if (sourceKey) skipSourceKeys.add(sourceKey)
             }
         }
 
         const results: SendResult[] = []
         let sent = 0, failed = 0, skipped = 0
-        for (const t of targets) {
-            const phone = normalizePhone(t.phone)
-            if (!phone) { results.push({ phone: t.phone, status: 'invalid' }); failed++; continue }
-            if (skipPhones.has(phone)) {
-                results.push({ phone, status: 'skipped_dedupe' }); skipped++; continue
+        for (const [index, target] of targets.entries()) {
+            const phone = normalizePhone(target.phone)
+            const sourceKey = makeSourceKey(target, index)
+            if (!phone) {
+                results.push({ phone: target.phone, status: 'invalid' })
+                failed++
+                continue
             }
 
-            const { body: msg, templateKey } = resolveMessage(t.failedPurpose, body.templateKey, body.customMessage)
+            if (!allowResend && (skipSourceKeys.has(sourceKey) || (mode === 'bulk' && skipPhones.has(phone)))) {
+                results.push({ phone, status: 'skipped_dedupe' })
+                skipped++
+                continue
+            }
+
+            const resolution = contactResolutions[sourceKey]
+            const template = pickRecoveryTemplate(templates, target.failedPurpose, body.templateKey)
+            const messageBody = customMessage || renderTemplate(
+                template.body,
+                buildRecoveryMessageVariables({
+                    failedPurpose: target.failedPurpose,
+                    failedAt: target.failedAt,
+                    recipientName: resolution?.displayName === 'Unknown contact' ? null : (target.resolvedName || resolution?.displayName || null),
+                }),
+            )
+            const providerPhone = toProviderPhone(phone)
+            if (!providerPhone) {
+                results.push({ phone, status: 'invalid', templateKey: template.key, error: 'Invalid phone number' })
+                failed++
+                continue
+            }
 
             try {
                 const result = await callGateway(
                     config.baseUrl, config.apiKey, 'POST', '/messages/send',
-                    { to: phone, text: msg }, config.tenantId,
+                    { to: providerPhone, text: messageBody }, config.tenantId,
                 )
                 const messageId = result?.key?.id || result?.messageId || null
-                results.push({ phone, status: 'sent', templateKey, messageId })
+                results.push({ phone, status: 'sent', templateKey: template.key, messageId })
                 sent++
 
-                // Log to notification_events for audit + dedupe
-                await supabase.from('notification_events').insert({
+                await (supabaseAdmin as any).from('notification_events').insert({
                     channel: 'whatsapp',
                     provider: 'baileys',
-                    event_type: `${templateKey}_sent`,
-                    purpose: templateKey === 'custom' ? 'recovery_notice' : templateKey,
+                    event_type: `${template.key}_sent`,
+                    purpose: template.key,
                     recipient_phone: phone,
-                    user_id: null,
-                    status: 'sent',
+                    user_id: resolution?.userId || target.userId || null,
+                    related_entity_type: target.sourceType || null,
+                    related_entity_id: target.sourceRecordId || null,
+                    message_template: customMessage ? 'custom' : template.key,
+                    message_body: messageBody,
+                    status: 'recovery_sent',
                     provider_message_id: messageId,
-                    meta: { mode, template_key: templateKey, triggered_by: user.id },
+                    meta: {
+                        mode,
+                        template_key: template.key,
+                        resolved_name: target.resolvedName || resolution?.displayName || null,
+                        resolved_source: target.resolvedSource || resolution?.sourceLabel || 'Unknown',
+                        source_key: sourceKey,
+                        source_record_id: target.sourceRecordId || null,
+                        source_type: target.sourceType || null,
+                        failed_purpose: target.failedPurpose || null,
+                        failed_at: target.failedAt || null,
+                        original_provider: target.provider || null,
+                        triggered_by: user.id,
+                        allow_resend: allowResend,
+                    },
                     requested_at: new Date().toISOString(),
                     sent_at: new Date().toISOString(),
                 })
             } catch (e: any) {
-                results.push({ phone, status: 'failed', templateKey, error: e?.message || 'send failed' })
+                results.push({ phone, status: 'failed', templateKey: template.key, error: e?.message || 'send failed' })
                 failed++
                 try {
-                    await supabase.from('notification_events').insert({
+                    await (supabaseAdmin as any).from('notification_events').insert({
                         channel: 'whatsapp',
                         provider: 'baileys',
-                        event_type: `${templateKey}_failed`,
-                        purpose: templateKey === 'custom' ? 'recovery_notice' : templateKey,
+                        event_type: `${template.key}_failed`,
+                        purpose: template.key,
                         recipient_phone: phone,
-                        user_id: null,
+                        user_id: resolution?.userId || target.userId || null,
+                        related_entity_type: target.sourceType || null,
+                        related_entity_id: target.sourceRecordId || null,
+                        message_template: customMessage ? 'custom' : template.key,
+                        message_body: messageBody,
                         status: 'failed',
                         error_message: e?.message || 'send failed',
-                        meta: { mode, template_key: templateKey, triggered_by: user.id },
+                        meta: {
+                            mode,
+                            template_key: template.key,
+                            resolved_name: target.resolvedName || resolution?.displayName || null,
+                            resolved_source: target.resolvedSource || resolution?.sourceLabel || 'Unknown',
+                            source_key: sourceKey,
+                            source_record_id: target.sourceRecordId || null,
+                            source_type: target.sourceType || null,
+                            failed_purpose: target.failedPurpose || null,
+                            failed_at: target.failedAt || null,
+                            original_provider: target.provider || null,
+                            triggered_by: user.id,
+                            allow_resend: allowResend,
+                        },
                         requested_at: new Date().toISOString(),
                         failed_at: new Date().toISOString(),
                     })
@@ -179,6 +292,29 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-    // Expose templates for the UI
-    return NextResponse.json({ templates: RECOVERY_TEMPLATES })
+    try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+        const adminAllowed = await isAdminUser(supabase as any, user.id)
+        if (!adminAllowed) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+        const admin = createAdminClient()
+        const { data: profile } = await (admin as any)
+            .from('users')
+            .select('organization_id')
+            .eq('id', user.id)
+            .single()
+
+        if (!profile?.organization_id) {
+            return NextResponse.json({ error: 'No organization' }, { status: 400 })
+        }
+
+        const templates = await loadRecoveryTemplates(admin as any, profile.organization_id)
+        return NextResponse.json({ templates })
+    } catch (error: any) {
+        console.error('[wa-recovery/send:get]', error)
+        return NextResponse.json({ error: error?.message || 'Server error' }, { status: 500 })
+    }
 }
