@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import ScanIssuesTab from '@/components/dashboard/views/consumer-engagement/ScanIssuesTab'
 import {
   Dialog,
   DialogContent,
@@ -44,7 +45,7 @@ interface ConsumerActivationsViewProps {
 
 export default function ConsumerActivationsView({ userProfile, onViewChange }: ConsumerActivationsViewProps) {
   const organizationId = userProfile.organization_id
-  const [activeTab, setActiveTab] = useState<'activations' | 'feedback' | 'whatsapp'>('activations')
+  const [activeTab, setActiveTab] = useState<'activations' | 'feedback' | 'whatsapp' | 'scan_issues'>('activations')
   const [activations, setActivations] = useState<any[]>([])
   const [orders, setOrders] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
@@ -756,6 +757,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             <MessageSquare className="h-4 w-4" />
             Consumer Feedback
           </TabsTrigger>
+          <TabsTrigger value="scan_issues" className="flex items-center gap-2">
+            ⚠️ Scan Issues
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="activations">
@@ -1097,6 +1101,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Scan Issues Tab */}
+        <TabsContent value="scan_issues">
+          <ScanIssuesTab />
         </TabsContent>
 
         {/* WhatsApp Activity Tab */}
