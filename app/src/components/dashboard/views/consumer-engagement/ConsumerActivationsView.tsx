@@ -223,6 +223,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           is_redeemed,
           is_lucky_draw_entered,
           is_points_collected,
+          is_shop_points_collected,
+          is_consumer_points_collected,
           points_value,
           product_id,
           order_id,
@@ -362,6 +364,12 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
           consumerName = qr.consumer_name;
         } else if (fallbackIdentifier) {
           consumerName = `User: ${fallbackIdentifier}`;
+        } else if (qr.is_shop_points_collected) {
+          // Shop-lane claim: shop staff scanned on behalf of walk-in customer.
+          // Points were credited via the shop's authority; no consumer login was required.
+          const shopLabel = lastScan?.organizations?.org_name
+            || (lastScan?.shop_id ? `Shop ${lastScan.shop_id.substring(0, 6)}` : 'Shop')
+          consumerName = `Walk-in @ ${shopLabel}`;
         } else if (lastScan?.shop_id) {
           // Points collected by shop but consumer unknown
           consumerName = 'Shop Collected';

@@ -114,6 +114,53 @@ export async function logScanIssue(
       }
     }
 
+    // Auto-snapshot from related tables when caller didn't pass values.
+    let orderNoSnap = input.orderNoSnapshot ?? null
+    let displayDocNoSnap = input.displayDocNoSnapshot ?? null
+    let productNameSnap = input.productNameSnapshot ?? null
+    let productCodeSnap = input.productCodeSnapshot ?? null
+    let shopNameSnap = input.shopNameSnapshot ?? null
+    let masterCodeSnap = input.masterCodeSnapshot ?? null
+
+    if (input.orderId && (!orderNoSnap || !displayDocNoSnap)) {
+      const { data: ord } = await supabaseAdmin
+        .from('orders')
+        .select('order_no, display_doc_no')
+        .eq('id', input.orderId)
+        .maybeSingle()
+      if (ord) {
+        orderNoSnap = orderNoSnap || ord.order_no || null
+        displayDocNoSnap = displayDocNoSnap || ord.display_doc_no || null
+      }
+    }
+    if (input.productId && (!productNameSnap || !productCodeSnap)) {
+      const { data: prod } = await supabaseAdmin
+        .from('products')
+        .select('product_name, product_code')
+        .eq('id', input.productId)
+        .maybeSingle()
+      if (prod) {
+        productNameSnap = productNameSnap || prod.product_name || null
+        productCodeSnap = productCodeSnap || prod.product_code || null
+      }
+    }
+    if (input.shopId && !shopNameSnap) {
+      const { data: shop } = await supabaseAdmin
+        .from('organizations')
+        .select('org_name')
+        .eq('id', input.shopId)
+        .maybeSingle()
+      if (shop) shopNameSnap = shop.org_name || null
+    }
+    if (input.masterCodeId && !masterCodeSnap) {
+      const { data: mc } = await supabaseAdmin
+        .from('qr_master_codes')
+        .select('master_code')
+        .eq('id', input.masterCodeId)
+        .maybeSingle()
+      if (mc) masterCodeSnap = (mc as any).master_code || null
+    }
+
     const row = {
       qr_code_text: input.qrCodeText,
       qr_code_id: input.qrCodeId ?? null,
@@ -123,12 +170,12 @@ export async function logScanIssue(
       shop_id: input.shopId ?? null,
       consumer_user_id: input.consumerUserId ?? null,
       org_id: input.orgId ?? null,
-      order_no_snapshot: input.orderNoSnapshot ?? null,
-      display_doc_no_snapshot: input.displayDocNoSnapshot ?? null,
-      master_code_snapshot: input.masterCodeSnapshot ?? null,
-      product_code_snapshot: input.productCodeSnapshot ?? null,
-      product_name_snapshot: input.productNameSnapshot ?? null,
-      shop_name_snapshot: input.shopNameSnapshot ?? null,
+      order_no_snapshot: orderNoSnap,
+      display_doc_no_snapshot: displayDocNoSnap,
+      master_code_snapshot: masterCodeSnap,
+      product_code_snapshot: productCodeSnap,
+      product_name_snapshot: productNameSnap,
+      shop_name_snapshot: shopNameSnap,
       consumer_name_snapshot: input.consumerNameSnapshot ?? null,
       consumer_phone_snapshot: input.consumerPhoneSnapshot ?? null,
       consumer_email_snapshot: input.consumerEmailSnapshot ?? null,

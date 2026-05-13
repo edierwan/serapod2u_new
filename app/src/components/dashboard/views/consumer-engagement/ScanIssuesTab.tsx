@@ -375,8 +375,8 @@ export default function ScanIssuesTab() {
         </CardContent>
       </Card>
 
-      {/* Layout: table + side drawer */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
+      {/* Layout: table (full width). Drawer is a slide-over panel on top. */}
+      <div>
         <Card>
           <CardContent className="pt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -401,11 +401,12 @@ export default function ScanIssuesTab() {
                   <tr><td colSpan={10} className="text-center py-6 text-gray-500">No scan issues yet</td></tr>
                 ) : issues.map((r) => {
                   const t = ISSUE_TYPE_BADGE[r.issue_type] || { label: r.issue_type, className: 'bg-gray-100 text-gray-700' }
+                  const isSelected = selected?.id === r.id
                   return (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <Td><button className="text-blue-600 hover:underline" onClick={() => setSelected(r)}>{r.issue_no}</button></Td>
+                    <tr key={r.id} className={`hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`} onClick={() => setSelected(r)}>
+                      <Td><button className="text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); setSelected(r) }}>{r.issue_no}</button></Td>
                       <Td><Badge className={t.className}>{t.label}</Badge></Td>
-                      <Td className="truncate max-w-[180px]" title={r.qr_code_text}>{r.qr_code_text}</Td>
+                      <Td className="truncate max-w-[180px] font-mono text-[11px]" title={r.qr_code_text}>{r.qr_code_text}</Td>
                       <Td>{r.display_doc_no_snapshot || r.order_no_snapshot || '-'}</Td>
                       <Td>{maskPhone(r.consumer_phone_snapshot)}</Td>
                       <Td>{fmtDateTime(r.scan_attempted_at)}</Td>
@@ -413,7 +414,7 @@ export default function ScanIssuesTab() {
                       <Td><Badge className={PRIORITY_BADGE[r.priority] || ''}>{r.priority}</Badge></Td>
                       <Td>{r.consumer_notification_status === 'sent' ? fmtDateTime(r.consumer_notification_sent_at) : r.consumer_notification_status}</Td>
                       <Td>
-                        <Button size="sm" variant="ghost" onClick={() => setSelected(r)}>
+                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelected(r) }}>
                           <Eye className="h-4 w-4" />
                         </Button>
                       </Td>
@@ -434,69 +435,92 @@ export default function ScanIssuesTab() {
           </CardContent>
         </Card>
 
-        {/* Right drawer */}
+        {/* Right slide-over drawer */}
         {selected && (
-          <Card className="self-start">
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                Issue Details
-                <Badge className={STATUS_BADGE[selected.status] || ''}>{selected.status}</Badge>
-              </CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => setSelected(null)}><X className="h-4 w-4" /></Button>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <div className="text-blue-600 font-semibold">{selected.issue_no}</div>
-                <div className="text-xs text-gray-500">Reported: {fmtDateTime(selected.scan_attempted_at)}</div>
-              </div>
-              <Section title="Consumer & Contact">
-                <KV k="Phone (WhatsApp)" v={selected.consumer_whatsapp_number ? '+' + selected.consumer_whatsapp_number : (selected.consumer_phone_snapshot || '-')} />
-                <KV k="Email" v={selected.consumer_email_snapshot || '-'} />
-                <KV k="Name" v={selected.consumer_name_snapshot || '-'} />
-              </Section>
-              <Section title="QR & Order Details">
-                <KV k="QR Code" v={<span className="break-all">{selected.qr_code_text}</span>} />
-                <KV k="Order No" v={selected.display_doc_no_snapshot || selected.order_no_snapshot || '-'} />
-                <KV k="Product" v={selected.product_name_snapshot || '-'} />
-                <KV k="Shop" v={selected.shop_name_snapshot || '-'} />
-              </Section>
-              <Section title="Issue">
-                <KV k="Type" v={selected.issue_type} />
-                <KV k="Error" v={selected.error_message} />
-                <KV k="Priority" v={selected.priority} />
-                <KV k="Attempts" v={String(selected.attempt_count)} />
-              </Section>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Button size="sm" variant="outline" onClick={async () => {
-                  const updated = await updateIssue(selected.id, { status: 'in_progress' })
-                  if (updated) { setSelected(updated); loadIssues() }
-                }}>Mark In Progress</Button>
-                <Button size="sm" onClick={async () => {
-                  const updated = await updateIssue(selected.id, { status: 'resolved', mark_rectified: true })
-                  if (updated) { setSelected(updated); loadIssues() }
-                }}>Mark Resolved</Button>
+          <>
+            <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setSelected(null)} aria-hidden />
+            <aside
+              role="dialog"
+              aria-label="Issue details"
+              className="fixed top-0 right-0 z-50 h-full w-full sm:w-[480px] lg:w-[520px] max-w-[95vw] bg-white shadow-2xl border-l flex flex-col"
+            >
+              <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-base font-semibold truncate">Issue Details</h3>
+                  <Badge className={STATUS_BADGE[selected.status] || ''}>{selected.status}</Badge>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(null)} aria-label="Close"><X className="h-4 w-4" /></Button>
               </div>
 
-              <Section title="Send WhatsApp">
-                <Button size="sm" className="w-full" onClick={() => sendNotification(selected.id, 'issue_acknowledgement', 'consumer')}>
-                  <Send className="h-3 w-3 mr-1" /> Send Acknowledgement
-                </Button>
-                <Button size="sm" className="w-full" variant="outline" onClick={() => sendNotification(selected.id, 'issue_resolved_rescan', 'consumer')}>
-                  <Send className="h-3 w-3 mr-1" /> Send Rescan Notification
-                </Button>
-                <Button size="sm" className="w-full" variant="ghost" onClick={() => sendNotification(selected.id, 'admin_new_issue_alert', 'admin')}>
-                  <Send className="h-3 w-3 mr-1" /> Send Admin Alert
-                </Button>
-              </Section>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
+                <div>
+                  <div className="text-blue-600 font-semibold text-base">{selected.issue_no}</div>
+                  <div className="text-xs text-gray-500">Reported: {fmtDateTime(selected.scan_attempted_at)}</div>
+                </div>
 
-              <Section title="Notification History">
-                <KV k="Consumer" v={`${selected.consumer_notification_status}${selected.consumer_notification_sent_at ? ' • ' + fmtDateTime(selected.consumer_notification_sent_at) : ''}`} />
-                <KV k="Admin" v={`${selected.admin_notification_status}${selected.admin_notification_sent_at ? ' • ' + fmtDateTime(selected.admin_notification_sent_at) : ''}`} />
-                <KV k="Rescan" v={`${selected.rescan_notification_status}${selected.rescan_notification_sent_at ? ' • ' + fmtDateTime(selected.rescan_notification_sent_at) : ''}`} />
-              </Section>
-            </CardContent>
-          </Card>
+                <Section title="Consumer & Contact">
+                  <KV k="Phone (WhatsApp)" v={selected.consumer_whatsapp_number ? '+' + selected.consumer_whatsapp_number : (selected.consumer_phone_snapshot || '-')} />
+                  <KV k="Email" v={selected.consumer_email_snapshot || '-'} />
+                  <KV k="Name" v={selected.consumer_name_snapshot || '-'} />
+                </Section>
+
+                <Section title="QR & Order Details">
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-[11px] text-gray-500 mb-1">QR Code</div>
+                      <div className="bg-gray-50 border rounded p-2 font-mono text-[11px] break-all whitespace-pre-wrap">{selected.qr_code_text}</div>
+                    </div>
+                    <KV k="Order No" v={selected.display_doc_no_snapshot || selected.order_no_snapshot || '-'} />
+                    <KV k="Product" v={selected.product_name_snapshot || '-'} />
+                    <KV k="Shop" v={selected.shop_name_snapshot || '-'} />
+                  </div>
+                </Section>
+
+                <Section title="Issue">
+                  <KV k="Type" v={<Badge className={(ISSUE_TYPE_BADGE[selected.issue_type]?.className) || ''}>{ISSUE_TYPE_BADGE[selected.issue_type]?.label || selected.issue_type}</Badge>} />
+                  <div>
+                    <div className="text-[11px] text-gray-500 mb-1">Error</div>
+                    <div className="bg-red-50 border border-red-100 rounded p-2 text-[12px] text-red-700 break-words whitespace-pre-wrap">{selected.error_message}</div>
+                  </div>
+                  <KV k="Priority" v={<Badge className={PRIORITY_BADGE[selected.priority] || ''}>{selected.priority}</Badge>} />
+                  <KV k="Attempts" v={String(selected.attempt_count)} />
+                </Section>
+
+                <Section title="Actions">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      const updated = await updateIssue(selected.id, { status: 'in_progress' })
+                      if (updated) { setSelected(updated); loadIssues() }
+                    }}>Mark In Progress</Button>
+                    <Button size="sm" onClick={async () => {
+                      const updated = await updateIssue(selected.id, { status: 'resolved', mark_rectified: true })
+                      if (updated) { setSelected(updated); loadIssues() }
+                    }}>Mark Resolved</Button>
+                  </div>
+                </Section>
+
+                <Section title="Send WhatsApp">
+                  <div className="space-y-2">
+                    <Button size="sm" className="w-full justify-start" onClick={() => sendNotification(selected.id, 'issue_acknowledgement', 'consumer')}>
+                      <Send className="h-3 w-3 mr-2" /> Send Acknowledgement
+                    </Button>
+                    <Button size="sm" className="w-full justify-start" variant="outline" onClick={() => sendNotification(selected.id, 'issue_resolved_rescan', 'consumer')}>
+                      <Send className="h-3 w-3 mr-2" /> Send Rescan Notification
+                    </Button>
+                    <Button size="sm" className="w-full justify-start" variant="ghost" onClick={() => sendNotification(selected.id, 'admin_new_issue_alert', 'admin')}>
+                      <Send className="h-3 w-3 mr-2" /> Send Admin Alert
+                    </Button>
+                  </div>
+                </Section>
+
+                <Section title="Notification History">
+                  <KV k="Consumer" v={`${selected.consumer_notification_status}${selected.consumer_notification_sent_at ? ' • ' + fmtDateTime(selected.consumer_notification_sent_at) : ''}`} />
+                  <KV k="Admin" v={`${selected.admin_notification_status}${selected.admin_notification_sent_at ? ' • ' + fmtDateTime(selected.admin_notification_sent_at) : ''}`} />
+                  <KV k="Rescan" v={`${selected.rescan_notification_status}${selected.rescan_notification_sent_at ? ' • ' + fmtDateTime(selected.rescan_notification_sent_at) : ''}`} />
+                </Section>
+              </div>
+            </aside>
+          </>
         )}
       </div>
 
