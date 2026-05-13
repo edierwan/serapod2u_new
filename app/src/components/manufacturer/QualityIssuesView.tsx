@@ -21,14 +21,15 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
     AlertCircle, Clock, CheckCircle2, CheckCheck, XCircle, Package,
     Search, Filter, Download, Plus, RefreshCw, MoreHorizontal, Loader2,
-    Calendar, Image as ImageIcon, ExternalLink, ChevronRight,
+    Calendar, Image as ImageIcon, ExternalLink, ChevronRight, Upload, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogTrigger, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 
 interface UserProfile { id: string; organization_id?: string; role_code?: string }
 
@@ -36,9 +37,16 @@ interface AdjustmentItem {
     id: string
     variant_id: string | null
     adjustment_quantity: number
+    unit_cost?: number | null
+    system_quantity?: number | null
+    physical_quantity?: number | null
     product_name?: string | null
     sku?: string | null
+    variant_name?: string | null
+    product_image?: string | null
 }
+
+interface OrgRef { id: string; org_name: string; org_type_code?: string | null }
 
 interface Adjustment {
     id: string
@@ -57,7 +65,9 @@ interface Adjustment {
     manufacturer_assigned_at?: string | null
     stock_adjustment_items: AdjustmentItem[] | null
     stock_adjustment_reasons: { reason_code: string; reason_name: string } | null
-    created_by_user: { full_name: string } | null
+    created_by_user: { full_name: string; email?: string } | null
+    reporter_org?: OrgRef | null
+    manufacturer_org?: OrgRef | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -98,10 +108,10 @@ function statusBadge(value: string | null | undefined) {
     if (!value) return null
     const tone =
         value === 'resolved' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200' :
-        value === 'acknowledged' ? 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200' :
-        value === 'rejected' ? 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200' :
-        value === 'pending' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200' :
-        'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200'
+            value === 'acknowledged' ? 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200' :
+                value === 'rejected' ? 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200' :
+                    value === 'pending' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200' :
+                        'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200'
     return (
         <span className={cn(
             'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize whitespace-nowrap',
@@ -154,6 +164,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
     const [selectedId, setSelectedId] = useState<string | null>(null)
     const [ackLoadingId, setAckLoadingId] = useState<string | null>(null)
     const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null)
+    const [createOpen, setCreateOpen] = useState(false)
 
     const [search, setSearch] = useState('')
     const [typeFilter, setTypeFilter] = useState('all')
@@ -299,11 +310,19 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                         {loading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
                         Refresh
                     </Button>
-                    <Button size="sm" disabled title="Manual issue logging not available yet" className="bg-orange-600 hover:bg-orange-700 text-white">
-                        <Plus className="h-3.5 w-3.5 mr-1.5" />Log Manual Issue
+                    <Button size="sm" onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                        <Plus className="h-3.5 w-3.5 mr-1.5" />Create Issue
                     </Button>
                 </div>
             </div>
+
+            {/* Create Issue Modal */}
+            <CreateIssueModal
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                userProfile={userProfile}
+                onCreated={() => { setCreateOpen(false); load() }}
+            />
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -390,7 +409,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                             <Button variant="outline" size="sm" className="mt-3" onClick={load}>Retry</Button>
                         </div>
                     ) : items.length === 0 ? (
-                        <EmptyState forSA={isSA} />
+                        <EmptyState forSA={isSA} onCreate={() => setCreateOpen(true)} />
                     ) : filtered.length === 0 ? (
                         <div className="py-12 px-6 text-center">
                             <h3 className="text-sm font-semibold text-slate-900">No matching issues</h3>
@@ -422,8 +441,8 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                         const extraCount = (r.stock_adjustment_items?.length ?? 0) - 1
                                         const finalStatus = r.status === 'resolved' ? 'resolved'
                                             : r.status === 'rejected' || r.manufacturer_status === 'rejected' ? 'rejected'
-                                            : r.manufacturer_status === 'acknowledged' ? 'acknowledged'
-                                            : 'pending'
+                                                : r.manufacturer_status === 'acknowledged' ? 'acknowledged'
+                                                    : 'pending'
                                         return (
                                             <TableRow
                                                 key={r.id}
@@ -474,7 +493,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
 }
 
 // ── Empty state ──────────────────────────────────────────────────
-function EmptyState({ forSA }: { forSA: boolean }) {
+function EmptyState({ forSA, onCreate }: { forSA: boolean; onCreate: () => void }) {
     if (forSA) {
         return (
             <div className="py-14 px-6 flex flex-col items-center text-center">
@@ -486,8 +505,8 @@ function EmptyState({ forSA }: { forSA: boolean }) {
                     Issues will appear here when inventory movements are reported as Quality Issue or Return to Supplier.
                 </p>
                 <div className="mt-4 flex items-center gap-2">
-                    <Button size="sm" disabled title="Manual issue logging not available yet">
-                        <Plus className="h-3.5 w-3.5 mr-1.5" />Log Manual Issue
+                    <Button size="sm" onClick={onCreate}>
+                        <Plus className="h-3.5 w-3.5 mr-1.5" />Create Issue
                     </Button>
                     <a
                         href="/inventory/stock-movements"
@@ -538,8 +557,8 @@ function IssueDetailPanel({
     const type = reasonTypeLabel(issue.stock_adjustment_reasons?.reason_code)
     const finalStatus = issue.status === 'resolved' ? 'resolved'
         : issue.status === 'rejected' || issue.manufacturer_status === 'rejected' ? 'rejected'
-        : issue.manufacturer_status === 'acknowledged' ? 'acknowledged'
-        : 'pending'
+            : issue.manufacturer_status === 'acknowledged' ? 'acknowledged'
+                : 'pending'
     const canAck = isManufacturerScope(issue, profile) && issue.manufacturer_status === 'pending'
 
     return (
@@ -571,15 +590,33 @@ function IssueDetailPanel({
                 <div>
                     <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide mb-1.5">Inventory Impact</p>
                     {issue.stock_adjustment_items && issue.stock_adjustment_items.length > 0 ? (
-                        <ul className="space-y-1.5">
-                            {issue.stock_adjustment_items.map(it => (
-                                <li key={it.id} className="flex items-center justify-between text-sm rounded-md border border-slate-100 bg-slate-50/40 px-2.5 py-1.5">
-                                    <span className="font-mono text-xs text-slate-700 truncate max-w-[200px]">
-                                        {it.product_name ?? it.sku ?? shortId(it.variant_id)}
-                                    </span>
-                                    <span className="tabular-nums text-sm font-medium text-slate-900">{it.adjustment_quantity}</span>
-                                </li>
-                            ))}
+                        <ul className="space-y-2">
+                            {issue.stock_adjustment_items.map(it => {
+                                const affected = Math.abs(it.adjustment_quantity ?? 0)
+                                const cost = it.unit_cost ?? null
+                                const estImpact = cost != null ? cost * affected : null
+                                return (
+                                    <li key={it.id} className="flex items-start gap-3 rounded-md border border-slate-100 bg-slate-50/40 p-2.5">
+                                        <div className="flex-shrink-0 h-14 w-14 rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                                            {it.product_image ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={it.product_image} alt={it.product_name ?? 'product'} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <Package className="h-5 w-5 text-slate-300" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-slate-900 truncate">{it.product_name ?? it.sku ?? shortId(it.variant_id)}</p>
+                                            {it.variant_name && <p className="text-[11px] text-slate-500 truncate">{it.variant_name}</p>}
+                                            <div className="mt-1 grid grid-cols-3 gap-2 text-[11px]">
+                                                <div><span className="text-slate-400">Affected</span><div className="text-slate-900 font-medium tabular-nums">{affected}</div></div>
+                                                <div><span className="text-slate-400">Unit Cost</span><div className="text-slate-900 tabular-nums">{cost != null ? cost.toFixed(2) : '—'}</div></div>
+                                                <div><span className="text-slate-400">Est. Impact</span><div className="text-slate-900 font-semibold tabular-nums">{estImpact != null ? estImpact.toFixed(2) : '—'}</div></div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                )
+                            })}
                         </ul>
                     ) : (
                         <p className="text-xs text-slate-400">No item lines recorded.</p>
@@ -591,10 +628,11 @@ function IssueDetailPanel({
                     <div>
                         <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">Reported By</p>
                         <p className="mt-1 text-slate-800">{issue.created_by_user?.full_name ?? '—'}</p>
+                        {issue.reporter_org?.org_name && <p className="text-[11px] text-slate-500">{issue.reporter_org.org_name}</p>}
                     </div>
                     <div>
                         <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">Manufacturer</p>
-                        <p className="mt-1 font-mono text-xs text-slate-700">{shortId(issue.target_manufacturer_org_id)}</p>
+                        <p className="mt-1 text-slate-800">{issue.manufacturer_org?.org_name ?? <span className="font-mono text-xs text-slate-700">{shortId(issue.target_manufacturer_org_id)}</span>}</p>
                     </div>
                 </div>
 
@@ -707,3 +745,290 @@ function TimelineEvent({ label, date, tone }: { label: string; date: string | nu
         </li>
     )
 }
+
+// ─────────────────────── Create Issue Modal ───────────────────────
+interface VariantOption {
+    id: string
+    sku: string
+    variant_name: string | null
+    product_id: string | null
+    product_name: string | null
+    manufacturer_id: string | null
+    manufacturer_name?: string | null
+    image_url: string | null
+}
+
+function CreateIssueModal({
+    open, onOpenChange, userProfile, onCreated,
+}: {
+    open: boolean
+    onOpenChange: (v: boolean) => void
+    userProfile: UserProfile
+    onCreated: () => void
+}) {
+    const supabase = createClient()
+    const [reasonCode, setReasonCode] = useState<'quality_issue' | 'return_to_supplier' | 'damaged_goods'>('quality_issue')
+    const [variantSearch, setVariantSearch] = useState('')
+    const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
+    const [selectedVariant, setSelectedVariant] = useState<VariantOption | null>(null)
+    const [quantity, setQuantity] = useState<string>('1')
+    const [unitCost, setUnitCost] = useState<string>('')
+    const [notes, setNotes] = useState('')
+    const [files, setFiles] = useState<File[]>([])
+    const [submitting, setSubmitting] = useState(false)
+    const [searching, setSearching] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    // Reset on close
+    useEffect(() => {
+        if (!open) {
+            setReasonCode('quality_issue'); setVariantSearch(''); setVariantOptions([])
+            setSelectedVariant(null); setQuantity('1'); setUnitCost(''); setNotes('')
+            setFiles([]); setError(null); setSubmitting(false)
+        }
+    }, [open])
+
+    // Search variants (debounced)
+    useEffect(() => {
+        if (!open) return
+        if (selectedVariant) return
+        if (variantSearch.trim().length < 2) { setVariantOptions([]); return }
+        let cancelled = false
+        const t = setTimeout(async () => {
+            setSearching(true)
+            try {
+                const term = `%${variantSearch.trim()}%`
+                const { data, error } = await (supabase as any)
+                    .from('product_variants')
+                    .select('id, sku, variant_name, product_id, products(id, name, manufacturer_id)')
+                    .or(`sku.ilike.${term},variant_name.ilike.${term}`)
+                    .limit(20)
+                if (cancelled) return
+                if (error) { setError(error.message); setVariantOptions([]); return }
+                const productIds = Array.from(new Set((data || []).map((v: any) => v.products?.id).filter(Boolean))) as string[]
+                let imagesByProduct: Record<string, string> = {}
+                let mfrByProduct: Record<string, string> = {}
+                if (productIds.length) {
+                    const [{ data: imgs }, { data: mfrs }] = await Promise.all([
+                        (supabase as any).from('product_images').select('product_id, image_url, is_primary, sort_order').in('product_id', productIds).eq('is_active', true).order('is_primary', { ascending: false }).order('sort_order', { ascending: true }),
+                        (() => {
+                            const mfrIds = Array.from(new Set((data || []).map((v: any) => v.products?.manufacturer_id).filter(Boolean))) as string[]
+                            return mfrIds.length ? (supabase as any).from('organizations').select('id, org_name').in('id', mfrIds) : Promise.resolve({ data: [] })
+                        })(),
+                    ])
+                    if (imgs) for (const im of imgs as any[]) { if (!imagesByProduct[im.product_id]) imagesByProduct[im.product_id] = im.image_url }
+                    if (mfrs) for (const m of mfrs as any[]) mfrByProduct[m.id] = m.org_name
+                }
+                const opts: VariantOption[] = (data || []).map((v: any) => ({
+                    id: v.id,
+                    sku: v.sku,
+                    variant_name: v.variant_name,
+                    product_id: v.products?.id || null,
+                    product_name: v.products?.name || null,
+                    manufacturer_id: v.products?.manufacturer_id || null,
+                    manufacturer_name: v.products?.manufacturer_id ? mfrByProduct[v.products.manufacturer_id] || null : null,
+                    image_url: v.products?.id ? imagesByProduct[v.products.id] || null : null,
+                }))
+                setVariantOptions(opts)
+            } catch (e: any) { if (!cancelled) setError(e?.message || 'Search failed') }
+            finally { if (!cancelled) setSearching(false) }
+        }, 250)
+        return () => { cancelled = true; clearTimeout(t) }
+    }, [open, variantSearch, selectedVariant, supabase])
+
+    function addFiles(list: FileList | null) {
+        if (!list) return
+        const arr: File[] = []
+        for (let i = 0; i < list.length; i++) arr.push(list.item(i)!)
+        setFiles(prev => [...prev, ...arr])
+    }
+    function removeFile(idx: number) { setFiles(prev => prev.filter((_, i) => i !== idx)) }
+
+    async function uploadEvidence(): Promise<string[]> {
+        if (files.length === 0) return []
+        const urls: string[] = []
+        for (const f of files) {
+            const ext = f.name.split('.').pop() || 'bin'
+            const fileName = `${userProfile.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+            const path = `quality_issues/${fileName}`
+            const { error: upErr } = await supabase.storage.from('documents').upload(path, f, { cacheControl: '3600', upsert: false })
+            if (upErr) throw upErr
+            const { data } = supabase.storage.from('documents').getPublicUrl(path)
+            urls.push(data.publicUrl)
+        }
+        return urls
+    }
+
+    async function submit() {
+        setError(null)
+        if (!selectedVariant) { setError('Please select a product variant'); return }
+        const qty = Number(quantity)
+        if (!qty || qty <= 0) { setError('Quantity affected must be greater than 0'); return }
+        if (!notes.trim()) { setError('Please describe the issue'); return }
+        setSubmitting(true)
+        try {
+            const proofImages = await uploadEvidence()
+            const resp = await fetch('/api/manufacturer/adjustments/create', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    reason_code: reasonCode,
+                    variant_id: selectedVariant.id,
+                    target_manufacturer_org_id: selectedVariant.manufacturer_id,
+                    quantity_affected: qty,
+                    unit_cost: unitCost ? Number(unitCost) : null,
+                    notes: notes.trim(),
+                    proof_images: proofImages,
+                }),
+            })
+            const json = await resp.json()
+            if (!resp.ok) { setError(json.error || 'Failed to create issue'); return }
+            onCreated()
+        } catch (e: any) {
+            setError(e?.message || 'Failed to create issue')
+        } finally { setSubmitting(false) }
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Create Issue</DialogTitle>
+                    <DialogDescription>
+                        Log a new quality or return-to-supplier case. The manufacturer will be notified to acknowledge.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                    {/* Issue type */}
+                    <div>
+                        <label className="text-xs font-medium text-slate-700">Issue Type</label>
+                        <Select value={reasonCode} onValueChange={(v: any) => setReasonCode(v)}>
+                            <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="quality_issue">Quality Issue</SelectItem>
+                                <SelectItem value="return_to_supplier">Return to Supplier</SelectItem>
+                                <SelectItem value="damaged_goods">Damaged Goods</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Product picker */}
+                    <div>
+                        <label className="text-xs font-medium text-slate-700">Product / Variant *</label>
+                        {selectedVariant ? (
+                            <div className="mt-1 flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
+                                <div className="h-14 w-14 rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                                    {selectedVariant.image_url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={selectedVariant.image_url} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <Package className="h-5 w-5 text-slate-300" />
+                                    )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-900 truncate">{selectedVariant.product_name || selectedVariant.sku}</p>
+                                    <p className="text-[11px] text-slate-500 truncate">SKU {selectedVariant.sku}{selectedVariant.variant_name ? ` · ${selectedVariant.variant_name}` : ''}</p>
+                                    {selectedVariant.manufacturer_name && <p className="text-[11px] text-slate-500">Manufacturer: {selectedVariant.manufacturer_name}</p>}
+                                </div>
+                                <Button variant="ghost" size="sm" onClick={() => { setSelectedVariant(null); setVariantSearch('') }}>
+                                    <X className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="relative mt-1">
+                                <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <Input
+                                    placeholder="Search by SKU or variant name…"
+                                    value={variantSearch}
+                                    onChange={e => setVariantSearch(e.target.value)}
+                                    className="pl-8 h-9"
+                                />
+                                {variantSearch.length >= 2 && (
+                                    <div className="mt-1 border border-slate-200 rounded-md bg-white max-h-60 overflow-y-auto">
+                                        {searching ? (
+                                            <div className="p-3 text-xs text-slate-500 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Searching…</div>
+                                        ) : variantOptions.length === 0 ? (
+                                            <div className="p-3 text-xs text-slate-400">No matches</div>
+                                        ) : variantOptions.map(opt => (
+                                            <button key={opt.id} onClick={() => setSelectedVariant(opt)} className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-50 text-left">
+                                                <div className="h-9 w-9 rounded overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
+                                                    {opt.image_url ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img src={opt.image_url} alt="" className="h-full w-full object-cover" />
+                                                    ) : <Package className="h-3.5 w-3.5 text-slate-300" />}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-medium text-slate-900 truncate">{opt.product_name || opt.sku}</p>
+                                                    <p className="text-[10px] text-slate-500 truncate">SKU {opt.sku}{opt.variant_name ? ` · ${opt.variant_name}` : ''}</p>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs font-medium text-slate-700">Quantity Affected *</label>
+                            <Input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} className="mt-1 h-9" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-slate-700">Unit Cost (optional)</label>
+                            <Input type="number" step="0.01" min={0} value={unitCost} onChange={e => setUnitCost(e.target.value)} placeholder="0.00" className="mt-1 h-9" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-medium text-slate-700">Description / Notes *</label>
+                        <textarea
+                            value={notes}
+                            onChange={e => setNotes(e.target.value)}
+                            placeholder="Describe the defect or reason for return…"
+                            className="mt-1 w-full h-24 rounded-md border border-slate-200 p-2 text-sm"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-medium text-slate-700">Evidence Attachments</label>
+                        <div className="mt-1 flex items-center gap-2">
+                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 cursor-pointer text-xs font-medium text-slate-700">
+                                <Upload className="h-3.5 w-3.5" />Upload
+                                <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={e => addFiles(e.target.files)} />
+                            </label>
+                            <span className="text-[11px] text-slate-500">{files.length} file{files.length === 1 ? '' : 's'} attached</span>
+                        </div>
+                        {files.length > 0 && (
+                            <ul className="mt-2 grid grid-cols-3 gap-2">
+                                {files.map((f, i) => (
+                                    <li key={i} className="relative rounded-md border border-slate-200 p-1.5 text-[10px] text-slate-700 truncate">
+                                        <button onClick={() => removeFile(i)} className="absolute top-0.5 right-0.5 rounded-full bg-slate-900/70 text-white h-4 w-4 flex items-center justify-center">
+                                            <X className="h-2.5 w-2.5" />
+                                        </button>
+                                        <div className="truncate pr-4">{f.name}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+
+                    {error && (
+                        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-start gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />{error}
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
+                    <Button onClick={submit} disabled={submitting} className="bg-orange-600 hover:bg-orange-700 text-white">
+                        {submitting ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
+                        Create Issue
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
