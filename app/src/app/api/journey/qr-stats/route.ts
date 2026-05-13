@@ -70,7 +70,9 @@ export async function GET(request: NextRequest) {
           lucky_draw_entries: 0,
           redemptions: 0,
           points_collected: 0,
-          scratch_card_plays: 0
+          scratch_card_plays: 0,
+          failed_scans: 0,
+          last_scan_at: null
         }
       })
     }
@@ -117,7 +119,9 @@ export async function GET(request: NextRequest) {
           lucky_draw_entries: 0,
           redemptions: 0,
           points_collected: 0,
-          scratch_card_plays: 0
+          scratch_card_plays: 0,
+          failed_scans: 0,
+          last_scan_at: null
         }
       })
     }
@@ -172,6 +176,25 @@ export async function GET(request: NextRequest) {
       console.error('Exception fetching scratch card plays:', e)
     }
 
+    let lastScanAt: string | null = null
+    try {
+      const { data: lastScan, error: lastScanError } = await supabase
+        .from('consumer_qr_scans')
+        .select('scanned_at, qr_codes!inner(order_id)')
+        .eq('qr_codes.order_id', orderId)
+        .order('scanned_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (lastScanError) {
+        console.error('Error fetching last scan timestamp:', lastScanError)
+      } else {
+        lastScanAt = (lastScan as any)?.scanned_at || null
+      }
+    } catch (e) {
+      console.error('Exception fetching last scan timestamp:', e)
+    }
+
     console.log(`📊 Stats for order ${orderId}:`, {
       total_qr_codes: statsData?.total_qr_codes || 0,
       unique_consumer_scans: statsData?.unique_consumer_scans || 0,
@@ -192,7 +215,9 @@ export async function GET(request: NextRequest) {
         lucky_draw_entries: Number(statsData?.lucky_draw_entries || 0),
         redemptions: Number(statsData?.redemptions || 0),
         points_collected: Number(statsData?.points_collected_count || 0),
-        scratch_card_plays: scratchCardPlaysCount
+        scratch_card_plays: scratchCardPlaysCount,
+        failed_scans: 0,
+        last_scan_at: lastScanAt
       }
     })
 

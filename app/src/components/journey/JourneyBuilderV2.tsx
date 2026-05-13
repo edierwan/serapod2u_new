@@ -120,8 +120,9 @@ function JourneyOverviewDonut({ points, luckyDraw, freeGift }: { points: number;
         { name: 'Free Gift', value: freeGift, color: '#10b981' },
     ]
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">Journey Overview</h3>
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">Journey Overview</h3>
+            <p className="mb-3 text-[11px] text-slate-500">Distribution by active journey feature</p>
             <div className="flex items-center gap-3">
                 <div className="relative w-24 h-24 flex-shrink-0">
                     {total > 0 ? (
@@ -162,7 +163,7 @@ function JourneyOverviewDonut({ points, luckyDraw, freeGift }: { points: number;
 // ───────────────────────────── Live Activity ─────────────────────────────
 function LiveActivityFeed({ items }: { items: DashboardSummary['recentActivity'] }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-900">Live Activity Feed</h3>
                 <button className="text-xs text-blue-600 hover:text-blue-700">View All</button>
@@ -195,7 +196,7 @@ function LiveActivityFeed({ items }: { items: DashboardSummary['recentActivity']
 // ─────────────────────────── Top Performing ──────────────────────────────
 function TopPerformingCard({ top }: { top: DashboardSummary['topPerforming'] }) {
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-900">Top Performing Journey</h3>
                 <Select defaultValue="week">
@@ -244,12 +245,12 @@ function TopPerformingCard({ top }: { top: DashboardSummary['topPerforming'] }) 
 function EngagementTrendChart({ data, metric }: { data: DashboardSummary['trend']; metric: 'scans' | 'redeemed' | 'failed' }) {
     const hasData = data.some(d => (d as any)[metric] > 0)
     return (
-        <div className="h-[260px]">
+        <div className={`${hasData ? 'h-[260px]' : 'h-[220px]'} max-h-[300px]`}>
             {!hasData ? (
-                <div className="h-full flex flex-col items-center justify-center text-center text-slate-400">
-                    <BarChart3 className="h-8 w-8 mb-2" />
-                    <p className="text-sm font-medium">No engagement data yet</p>
-                    <p className="text-xs mt-0.5">Once consumers scan your QR codes, trends will appear here.</p>
+                <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/80 px-6 text-center text-slate-400">
+                    <BarChart3 className="mb-2 h-8 w-8" />
+                    <p className="text-sm font-semibold text-slate-600">No engagement data yet</p>
+                    <p className="mt-0.5 max-w-sm text-xs">Once consumers scan QR codes, the trend chart will expand with live engagement signals.</p>
                 </div>
             ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -461,7 +462,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
             </div>
 
             {/* Main grid: content + sidebar */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="space-y-5 min-w-0">
                     {/* KPIs */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -565,7 +566,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
                             {/* List/Cards */}
                             {loading ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                                     {[0, 1, 2].map(i => (
                                         <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 animate-pulse">
                                             <div className="h-4 w-2/3 bg-slate-100 rounded mb-2" />
@@ -595,7 +596,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                                     </CardContent>
                                 </Card>
                             ) : viewMode === 'card' ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                                     {visibleJourneys.map((journey) => (
                                         <JourneyCardWithStats
                                             key={journey.id}
@@ -626,28 +627,50 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
                             {/* Pagination row */}
                             {filtered.length > 0 && (
-                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                                    <p className="text-xs text-slate-500">
-                                        Showing {Math.min(visibleCount, filtered.length)} of {filtered.length} journeys
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                        {hasMore && (
-                                            <>
-                                                <Button variant="outline" size="sm" onClick={() => setVisibleCount(c => c + DEFAULT_PAGE_SIZE)}>
-                                                    <ChevronDown className="w-3.5 h-3.5 mr-1.5" />
-                                                    Load Next {Math.min(DEFAULT_PAGE_SIZE, filtered.length - visibleCount)} Journeys
+                                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                    <div className="flex flex-col items-center justify-between gap-3 text-center sm:flex-row sm:text-left">
+                                        <p className="text-xs font-medium text-slate-500">
+                                            Showing 1 to {Math.min(visibleCount, filtered.length)} of {filtered.length} journeys
+                                        </p>
+                                        <div className="flex flex-wrap items-center justify-center gap-2">
+                                            <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                                                <Button variant="ghost" size="sm" disabled className="h-8 px-3 text-xs">Prev</Button>
+                                                <span className="grid h-8 min-w-8 place-items-center rounded-md bg-white px-2 text-xs font-semibold text-slate-900 shadow-sm">1</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    disabled={!hasMore}
+                                                    onClick={() => setVisibleCount(c => c + DEFAULT_PAGE_SIZE)}
+                                                    className="h-8 px-3 text-xs"
+                                                >
+                                                    Next
                                                 </Button>
-                                                <span className="text-xs text-slate-400">or</span>
-                                                <Button variant="ghost" size="sm" onClick={() => setVisibleCount(filtered.length)}>
-                                                    View All Journeys
-                                                </Button>
-                                            </>
-                                        )}
-                                        {!hasMore && visibleCount > DEFAULT_PAGE_SIZE && (
-                                            <Button variant="ghost" size="sm" onClick={() => setVisibleCount(DEFAULT_PAGE_SIZE)}>
-                                                Show less
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={!hasMore}
+                                                onClick={() => setVisibleCount(c => c + DEFAULT_PAGE_SIZE)}
+                                                className="h-9"
+                                            >
+                                                <ChevronDown className="mr-1.5 h-3.5 w-3.5" />
+                                                Load Next {hasMore ? Math.min(DEFAULT_PAGE_SIZE, filtered.length - visibleCount) : DEFAULT_PAGE_SIZE} Journeys
                                             </Button>
-                                        )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                disabled={!hasMore}
+                                                onClick={() => setVisibleCount(filtered.length)}
+                                                className="h-9 text-slate-600"
+                                            >
+                                                View All Journeys
+                                            </Button>
+                                            {!hasMore && visibleCount > DEFAULT_PAGE_SIZE && (
+                                                <Button variant="ghost" size="sm" onClick={() => setVisibleCount(DEFAULT_PAGE_SIZE)} className="h-9 text-slate-600">
+                                                    Show less
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -664,7 +687,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                 </div>
 
                 {/* Right Sidebar */}
-                <aside className="space-y-4 lg:sticky lg:top-4 self-start">
+                <aside className="space-y-4 self-start lg:sticky lg:top-4">
                     <JourneyOverviewDonut
                         points={summary?.typeCounts.points ?? 0}
                         luckyDraw={summary?.typeCounts.luckyDraw ?? 0}
