@@ -52,18 +52,23 @@ export async function GET() {
             if (!config?.baseUrl || !config?.apiKey) {
                 whatsappStatus = 'not_configured'
             } else {
-                // Best-effort health probe; do not fail the request on probe error.
+                // Best-effort session probe; do not fail the request on probe error.
                 try {
                     const result: any = await callGateway(
                         config.baseUrl,
                         config.apiKey,
                         'GET',
-                        '/health',
+                        '/status',
                         undefined,
                         config.tenantId,
                     )
-                    const ok = result?.ok === true || result?.status === 'ok' || result?.connected === true
-                    whatsappStatus = ok ? 'ready' : 'session_issue'
+
+                    const isGetouchGateway = result?.state !== undefined
+                    const connected = isGetouchGateway
+                        ? result?.state === 'open' && result?.authenticated === true
+                        : result?.connected === true || result?.pairing_state === 'connected'
+
+                    whatsappStatus = connected ? 'ready' : 'session_issue'
                 } catch (probeErr: any) {
                     whatsappStatus = 'session_issue'
                     whatsappError = probeErr?.message || 'Unable to reach WhatsApp gateway'
