@@ -18,10 +18,12 @@
  *   - More Filters
  */
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
     AlertCircle, Clock, CheckCircle2, CheckCheck, XCircle, Package,
     Search, Filter, Download, Plus, RefreshCw, MoreHorizontal, Loader2,
     Calendar, Image as ImageIcon, ExternalLink, ChevronRight, Upload, X,
+    Send, Pencil, Trash2, Phone, FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +32,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useToast } from '@/components/ui/use-toast'
+import {
+    getEvidenceFileName,
+    getIssueDisplayStatus,
+    isImageEvidenceUrl,
+    normalizeManufacturerWorkflowStatus,
+} from '@/lib/quality-issues'
+import { formatPhoneDisplay } from '@/utils/phone'
 
 interface UserProfile { id: string; organization_id?: string; role_code?: string }
 
@@ -41,12 +51,28 @@ interface AdjustmentItem {
     system_quantity?: number | null
     physical_quantity?: number | null
     product_name?: string | null
+    product_code?: string | null
     sku?: string | null
     variant_name?: string | null
     product_image?: string | null
 }
 
-interface OrgRef { id: string; org_name: string; org_type_code?: string | null }
+interface OrgRef {
+    id: string
+    org_name: string
+    org_type_code?: string | null
+    contact_phone?: string | null
+}
+
+interface AdjustmentAction {
+    id: string
+    adjustment_id: string
+    manufacturer_org_id: string | null
+    action_type: string
+    notes: string | null
+    created_by: string | null
+    created_at: string
+}
 
 interface AttachmentPreview {
     file: File
@@ -74,6 +100,17 @@ interface Adjustment {
     created_by_user: { full_name: string; email?: string } | null
     reporter_org?: OrgRef | null
     manufacturer_org?: OrgRef | null
+    workflow_status?: string | null
+    manufacturer_actions?: AdjustmentAction[] | null
+}
+
+interface SendPreviewData {
+    issueCode: string
+    manufacturerName: string
+    manufacturerPhone: string
+    templateBody: string
+    text: string
+    issueLink: string
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -91,8 +128,16 @@ function totalUnits(a: Adjustment) {
     return (a.stock_adjustment_items ?? []).reduce((sum, it) => sum + Math.abs(it.adjustment_quantity ?? 0), 0)
 }
 
+function firstIssueItem(issue: Adjustment | null | undefined) {
+    return issue?.stock_adjustment_items?.[0] ?? null
+}
+
 function isManufacturerScope(a: Adjustment, profile: UserProfile) {
     return profile.role_code === 'SA' || profile.organization_id === a.target_manufacturer_org_id
+}
+
+function canManageDraftIssue(issue: Adjustment, profile: UserProfile) {
+    return getIssueDisplayStatus(issue) === 'draft' && (profile.role_code === 'SA' || profile.organization_id === issue.organization_id)
 }
 
 function formatDate(iso?: string | null, withTime = true) {
@@ -114,6 +159,8 @@ function reasonTypeLabel(code?: string | null) {
 function statusBadge(value: string | null | undefined) {
     if (!value) return null
     const tone =
+        value === 'draft' ? 'bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200' :
+            value === 'pending_manufacturer' ? 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200' :
         value === 'resolved' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200' :
             value === 'acknowledged' ? 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200' :
                 value === 'rejected' ? 'bg-red-50 text-red-700 ring-1 ring-inset ring-red-200' :
@@ -165,6 +212,8 @@ function StatCard({
 
 // ── Main ─────────────────────────────────────────────────────────
 export default function QualityIssuesView({ userProfile }: { userProfile: UserProfile }) {
+    const searchParams = useSearchParams()
+    const { toast } = useToast()
     const [items, setItems] = useState<Adjustment[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -172,6 +221,12 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
     const [ackLoadingId, setAckLoadingId] = useState<string | null>(null)
     const [statusLoadingId, setStatusLoadingId] = useState<string | null>(null)
     const [createOpen, setCreateOpen] = useState(false)
+    const [editingIssue, setEditingIssue] = useState<Adjustment | null>(null)
+    const [sendPreviewIssue, setSendPreviewIssue] = useState<Adjustment | null>(null)
+    const [sendPreview, setSendPreview] = useState<SendPreviewData | null>(null)
+    const [sendLoadingId, setSendLoadingId] = useState<string | null>(null)
+    const [sendSubmittingId, setSendSubmittingId] = useState<string | null>(null)
+    const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null)
 
     const [search, setSearch] = useState('')
     const [typeFilter, setTypeFilter] = useState('all')
@@ -204,11 +259,11 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
 
     const stats = useMemo(() => {
         return {
-            open: items.filter(i => (i.status ?? 'pending') === 'pending').length,
-            pendingMfr: items.filter(i => (i.manufacturer_status ?? 'pending') === 'pending').length,
-            acknowledged: items.filter(i => i.manufacturer_status === 'acknowledged').length,
+            draft: items.filter(i => getIssueDisplayStatus(i) === 'draft').length,
+            pendingMfr: items.filter(i => getIssueDisplayStatus(i) === 'pending_manufacturer').length,
+            acknowledged: items.filter(i => getIssueDisplayStatus(i) === 'acknowledged').length,
             resolved: items.filter(i => i.status === 'resolved').length,
-            rejected: items.filter(i => i.status === 'rejected' || i.manufacturer_status === 'rejected').length,
+            rejected: items.filter(i => getIssueDisplayStatus(i) === 'rejected').length,
             units: items.reduce((sum, i) => sum + totalUnits(i), 0),
         }
     }, [items])
@@ -234,10 +289,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
             if (typeFilter !== 'all' && it.stock_adjustment_reasons?.reason_code !== typeFilter) return false
             if (manufacturerFilter !== 'all' && it.target_manufacturer_org_id !== manufacturerFilter) return false
             if (statusFilter !== 'all') {
-                if (statusFilter === 'pending' && (it.status !== 'pending')) return false
-                if (statusFilter === 'acknowledged' && it.manufacturer_status !== 'acknowledged') return false
-                if (statusFilter === 'resolved' && it.status !== 'resolved') return false
-                if (statusFilter === 'rejected' && it.status !== 'rejected' && it.manufacturer_status !== 'rejected') return false
+                if (getIssueDisplayStatus(it) !== statusFilter) return false
             }
             if (cutoff != null) {
                 const t = new Date(it.created_at).getTime()
@@ -266,6 +318,13 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
         }
     }, [filtered, selectedId])
 
+    useEffect(() => {
+        const requestedIssueId = searchParams.get('issueId')
+        if (requestedIssueId && filtered.some(issue => issue.id === requestedIssueId)) {
+            setSelectedId(requestedIssueId)
+        }
+    }, [filtered, searchParams])
+
     const selected = useMemo(() => items.find(it => it.id === selectedId) ?? null, [items, selectedId])
 
     async function ack(id: string) {
@@ -278,8 +337,9 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
             })
             const json = await resp.json()
             if (json.error) {
-                alert('Failed to acknowledge: ' + json.error)
+                toast({ title: 'Acknowledge Failed', description: json.error, variant: 'destructive' })
             } else {
+                toast({ title: 'Acknowledged', description: 'Manufacturer acknowledgement was recorded.' })
                 await load()
             }
         } finally {
@@ -298,10 +358,76 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                 body: JSON.stringify({ status: res }),
             })
             const json = await resp.json()
-            if (json.error) alert('Failed: ' + json.error)
+            if (json.error) {
+                toast({ title: 'Status Update Failed', description: json.error, variant: 'destructive' })
+            } else {
+                toast({ title: 'Status Updated', description: `Issue marked as ${res}.` })
+            }
             await load()
         } finally {
             setStatusLoadingId(null)
+        }
+    }
+
+    async function openSendPreview(issue: Adjustment) {
+        setSendPreviewIssue(issue)
+        setSendPreview(null)
+        setSendLoadingId(issue.id)
+        try {
+            const resp = await fetch(`/api/manufacturer/adjustments/${issue.id}/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ previewOnly: true }),
+            })
+            const json = await resp.json()
+            if (!resp.ok) throw new Error(json.error || 'Unable to load WhatsApp preview')
+            setSendPreview(json.preview)
+        } catch (err: any) {
+            setSendPreviewIssue(null)
+            toast({ title: 'Preview Failed', description: err.message || 'Unable to load WhatsApp preview', variant: 'destructive' })
+        } finally {
+            setSendLoadingId(null)
+        }
+    }
+
+    async function confirmSend() {
+        if (!sendPreviewIssue) return
+        setSendSubmittingId(sendPreviewIssue.id)
+        try {
+            const resp = await fetch(`/api/manufacturer/adjustments/${sendPreviewIssue.id}/send`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({}),
+            })
+            const json = await resp.json()
+            if (!resp.ok) throw new Error(json.error || 'Failed to send issue to manufacturer')
+            toast({ title: 'Sent to Manufacturer', description: 'WhatsApp was sent successfully and the issue is now pending manufacturer acknowledgement.' })
+            const issueId = sendPreviewIssue.id
+            setSendPreviewIssue(null)
+            setSendPreview(null)
+            await load()
+            setSelectedId(issueId)
+        } catch (err: any) {
+            toast({ title: 'Send Failed', description: err.message || 'Unable to send WhatsApp to the manufacturer', variant: 'destructive' })
+        } finally {
+            setSendSubmittingId(null)
+        }
+    }
+
+    async function deleteDraft(issue: Adjustment) {
+        if (!confirm(`Delete draft issue ${issueCode(issue)}? This action cannot be undone.`)) return
+        setDeleteLoadingId(issue.id)
+        try {
+            const resp = await fetch(`/api/manufacturer/adjustments/${issue.id}`, { method: 'DELETE' })
+            const json = await resp.json().catch(() => ({}))
+            if (!resp.ok) throw new Error(json.error || 'Unable to delete draft issue')
+            toast({ title: 'Draft Deleted', description: 'The draft issue has been removed.' })
+            if (selectedId === issue.id) setSelectedId(null)
+            await load()
+        } catch (err: any) {
+            toast({ title: 'Delete Failed', description: err.message || 'Unable to delete draft issue', variant: 'destructive' })
+        } finally {
+            setDeleteLoadingId(null)
         }
     }
 
@@ -322,7 +448,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                         {loading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
                         Refresh
                     </Button>
-                    <Button size="sm" onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                    <Button size="sm" onClick={() => { setEditingIssue(null); setCreateOpen(true) }} className="bg-orange-600 hover:bg-orange-700 text-white">
                         <Plus className="h-3.5 w-3.5 mr-1.5" />Create Issue
                     </Button>
                 </div>
@@ -331,14 +457,77 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
             {/* Create Issue Modal */}
             <CreateIssueModal
                 open={createOpen}
-                onOpenChange={setCreateOpen}
+                onOpenChange={(nextOpen) => {
+                    setCreateOpen(nextOpen)
+                    if (!nextOpen) setEditingIssue(null)
+                }}
                 userProfile={userProfile}
-                onCreated={() => { setCreateOpen(false); load() }}
+                issueToEdit={editingIssue}
+                onSaved={async (savedId) => {
+                    setCreateOpen(false)
+                    setEditingIssue(null)
+                    await load()
+                    if (savedId) setSelectedId(savedId)
+                }}
             />
+
+            <Dialog
+                open={Boolean(sendPreviewIssue)}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen) {
+                        setSendPreviewIssue(null)
+                        setSendPreview(null)
+                    }
+                }}
+            >
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Send to Manufacturer</DialogTitle>
+                        <DialogDescription>
+                            Review the WhatsApp message before sending this issue to the manufacturer. The status will only change after send succeeds.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {sendLoadingId && !sendPreview ? (
+                        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-8 text-sm text-slate-500">
+                            <Loader2 className="h-4 w-4 animate-spin" />Loading WhatsApp preview…
+                        </div>
+                    ) : sendPreview ? (
+                        <div className="space-y-4">
+                            <div className="grid gap-3 rounded-md border border-slate-200 bg-slate-50/80 p-3 text-sm md:grid-cols-2">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Manufacturer</p>
+                                    <p className="mt-1 font-medium text-slate-900">{sendPreview.manufacturerName}</p>
+                                    <p className="text-xs text-slate-500">{formatPhoneDisplay(sendPreview.manufacturerPhone)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Issue Link</p>
+                                    <a href={sendPreview.issueLink} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-xs text-blue-600 hover:underline">
+                                        {sendPreview.issueLink}
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div>
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Message Preview</p>
+                                <pre className="whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">{sendPreview.text}</pre>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => { setSendPreviewIssue(null); setSendPreview(null) }} disabled={Boolean(sendSubmittingId)}>Cancel</Button>
+                        <Button onClick={confirmSend} disabled={!sendPreview || Boolean(sendSubmittingId)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                            {sendSubmittingId ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                            Confirm Send
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                <StatCard label="Open Issues" value={stats.open} tone="orange" icon={<AlertCircle className="h-4 w-4" />} hint="Status pending" />
+                <StatCard label="Draft Issues" value={stats.draft} tone="slate" icon={<AlertCircle className="h-4 w-4" />} hint="Not sent yet" />
                 <StatCard label="Pending Manufacturer" value={stats.pendingMfr} tone="amber" icon={<Clock className="h-4 w-4" />} hint="Awaiting ack" />
                 <StatCard label="Acknowledged" value={stats.acknowledged} tone="blue" icon={<CheckCircle2 className="h-4 w-4" />} hint="By manufacturer" />
                 <StatCard label="Resolved" value={stats.resolved} tone="emerald" icon={<CheckCheck className="h-4 w-4" />} hint="Final status" />
@@ -380,7 +569,8 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                         <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="draft">Draft</SelectItem>
+                            <SelectItem value="pending_manufacturer">Pending Manufacturer</SelectItem>
                             <SelectItem value="acknowledged">Acknowledged</SelectItem>
                             <SelectItem value="resolved">Resolved</SelectItem>
                             <SelectItem value="rejected">Rejected</SelectItem>
@@ -441,21 +631,17 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide text-right">Qty</TableHead>
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Status</TableHead>
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Created</TableHead>
+                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filtered.map(r => {
                                         const isSel = selectedId === r.id
                                         const type = reasonTypeLabel(r.stock_adjustment_reasons?.reason_code)
-                                        const firstItem = r.stock_adjustment_items?.[0]
-                                        const productLabel = firstItem
-                                            ? (firstItem.product_name ?? firstItem.sku ?? shortId(firstItem.variant_id))
-                                            : '—'
+                                        const firstItem = firstIssueItem(r)
+                                        const workflowStatus = r.workflow_status || getIssueDisplayStatus(r)
                                         const extraCount = (r.stock_adjustment_items?.length ?? 0) - 1
-                                        const finalStatus = r.status === 'resolved' ? 'resolved'
-                                            : r.status === 'rejected' || r.manufacturer_status === 'rejected' ? 'rejected'
-                                                : r.manufacturer_status === 'acknowledged' ? 'acknowledged'
-                                                    : 'pending'
+                                        const canManageDraft = canManageDraftIssue(r, userProfile)
                                         return (
                                             <TableRow
                                                 key={r.id}
@@ -472,16 +658,54 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="py-2.5 text-sm text-slate-700">
-                                                    <div className="font-medium text-slate-900 truncate max-w-[160px]">{productLabel}</div>
-                                                    {extraCount > 0 && (
-                                                        <div className="text-[11px] text-slate-500">+{extraCount} more item{extraCount > 1 ? 's' : ''}</div>
-                                                    )}
+                                                    <div className="flex items-start gap-2">
+                                                        <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                                                            {firstItem?.product_image ? (
+                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                <img src={firstItem.product_image} alt={firstItem.product_name || 'product'} className="h-full w-full object-cover" />
+                                                            ) : (
+                                                                <Package className="h-4 w-4 text-slate-300" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="truncate font-medium text-slate-900">{firstItem?.product_name || firstItem?.product_code || shortId(firstItem?.variant_id)}</div>
+                                                            <div className="truncate text-[11px] text-slate-500">
+                                                                {firstItem?.variant_name || 'Standard variant'}
+                                                                {firstItem?.sku ? ` · SKU ${firstItem.sku}` : ''}
+                                                            </div>
+                                                            {extraCount > 0 && (
+                                                                <div className="text-[11px] text-slate-500">+{extraCount} more item{extraCount > 1 ? 's' : ''}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="py-2.5 text-sm text-slate-700">{r.created_by_user?.full_name ?? '—'}</TableCell>
-                                                <TableCell className="py-2.5 font-mono text-xs text-slate-600">{shortId(r.target_manufacturer_org_id)}</TableCell>
+                                                <TableCell className="py-2.5 text-sm text-slate-700">
+                                                    <div className="font-medium text-slate-900">{r.manufacturer_org?.org_name || shortId(r.target_manufacturer_org_id)}</div>
+                                                    {r.manufacturer_org?.contact_phone && (
+                                                        <div className="text-[11px] text-slate-500">{formatPhoneDisplay(r.manufacturer_org.contact_phone)}</div>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell className="py-2.5 text-right tabular-nums text-sm text-slate-700">{totalUnits(r)}</TableCell>
-                                                <TableCell className="py-2.5">{statusBadge(finalStatus)}</TableCell>
+                                                <TableCell className="py-2.5">{statusBadge(workflowStatus)}</TableCell>
                                                 <TableCell className="py-2.5 text-xs text-slate-500">{formatDate(r.created_at, false)}</TableCell>
+                                                <TableCell className="py-2.5 text-right">
+                                                    {canManageDraft ? (
+                                                        <div className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openSendPreview(r)} disabled={sendLoadingId === r.id || sendSubmittingId === r.id} title="Send to Manufacturer">
+                                                                {(sendLoadingId === r.id || sendSubmittingId === r.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingIssue(r); setCreateOpen(true) }} title="Edit Draft">
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700" onClick={() => deleteDraft(r)} disabled={deleteLoadingId === r.id} title="Delete Draft">
+                                                                {deleteLoadingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-300">—</span>
+                                                    )}
+                                                </TableCell>
                                             </TableRow>
                                         )
                                     })}
@@ -499,6 +723,12 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                     ackLoadingId={ackLoadingId}
                     onSetStatus={setFinalStatus}
                     statusLoadingId={statusLoadingId}
+                    onSendPreview={openSendPreview}
+                    sendLoadingId={sendLoadingId}
+                    sendSubmittingId={sendSubmittingId}
+                    onDeleteDraft={deleteDraft}
+                    deleteLoadingId={deleteLoadingId}
+                    onEditDraft={(issue) => { setEditingIssue(issue); setCreateOpen(true) }}
                 />
             </div>
         </div>
@@ -547,6 +777,7 @@ function EmptyState({ forSA, onCreate }: { forSA: boolean; onCreate: () => void 
 // ── Detail panel ─────────────────────────────────────────────────
 function IssueDetailPanel({
     issue, profile, onAck, ackLoadingId, onSetStatus, statusLoadingId,
+    onSendPreview, sendLoadingId, sendSubmittingId, onDeleteDraft, deleteLoadingId, onEditDraft,
 }: {
     issue: Adjustment | null
     profile: UserProfile
@@ -554,6 +785,12 @@ function IssueDetailPanel({
     ackLoadingId: string | null
     onSetStatus: (id: string) => void
     statusLoadingId: string | null
+    onSendPreview: (issue: Adjustment) => void
+    sendLoadingId: string | null
+    sendSubmittingId: string | null
+    onDeleteDraft: (issue: Adjustment) => void
+    deleteLoadingId: string | null
+    onEditDraft: (issue: Adjustment) => void
 }) {
     if (!issue) {
         return (
@@ -568,11 +805,11 @@ function IssueDetailPanel({
     }
 
     const type = reasonTypeLabel(issue.stock_adjustment_reasons?.reason_code)
-    const finalStatus = issue.status === 'resolved' ? 'resolved'
-        : issue.status === 'rejected' || issue.manufacturer_status === 'rejected' ? 'rejected'
-            : issue.manufacturer_status === 'acknowledged' ? 'acknowledged'
-                : 'pending'
-    const canAck = isManufacturerScope(issue, profile) && issue.manufacturer_status === 'pending'
+    const workflowStatus = issue.workflow_status || getIssueDisplayStatus(issue)
+    const primaryItem = firstIssueItem(issue)
+    const canAck = isManufacturerScope(issue, profile) && normalizeManufacturerWorkflowStatus(issue.manufacturer_status) === 'pending_manufacturer'
+    const canManageDraft = canManageDraftIssue(issue, profile)
+    const sentAction = issue.manufacturer_actions?.find((action) => action.action_type === 'sent_to_manufacturer') || null
 
     return (
         <div className="rounded-lg border border-slate-200 bg-white shadow-[0_1px_2px_0_rgba(0,0,0,0.04)] overflow-hidden">
@@ -584,10 +821,7 @@ function IssueDetailPanel({
                     </h3>
                 </div>
                 <div className="flex items-center gap-2">
-                    {statusBadge(finalStatus)}
-                    <Button variant="ghost" size="icon" disabled className="h-7 w-7" title="More actions not available yet">
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                    </Button>
+                    {statusBadge(workflowStatus)}
                 </div>
             </div>
 
@@ -599,53 +833,52 @@ function IssueDetailPanel({
                     </span>
                 </div>
 
-                {/* Inventory impact */}
-                <div>
-                    <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide mb-1.5">Inventory Impact</p>
-                    {issue.stock_adjustment_items && issue.stock_adjustment_items.length > 0 ? (
-                        <ul className="space-y-2">
-                            {issue.stock_adjustment_items.map(it => {
-                                const affected = Math.abs(it.adjustment_quantity ?? 0)
-                                const cost = it.unit_cost ?? null
-                                const estImpact = cost != null ? cost * affected : null
-                                return (
-                                    <li key={it.id} className="flex items-start gap-3 rounded-md border border-slate-100 bg-slate-50/40 p-2.5">
-                                        <div className="flex-shrink-0 h-14 w-14 rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
-                                            {it.product_image ? (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={it.product_image} alt={it.product_name ?? 'product'} className="h-full w-full object-cover" />
-                                            ) : (
-                                                <Package className="h-5 w-5 text-slate-300" />
-                                            )}
+                <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-md border border-slate-200 bg-slate-50/50 p-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Product</p>
+                        {primaryItem ? (
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white">
+                                    {primaryItem.product_image ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={primaryItem.product_image} alt={primaryItem.product_name || 'product'} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <Package className="h-5 w-5 text-slate-300" />
+                                    )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-slate-900">{primaryItem.product_name || primaryItem.product_code || shortId(primaryItem.variant_id)}</p>
+                                    <p className="truncate text-xs text-slate-600">{primaryItem.variant_name || 'Standard variant'}</p>
+                                    <p className="truncate text-[11px] text-slate-500">SKU {primaryItem.sku || primaryItem.product_code || '—'}</p>
+                                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                                        <div>
+                                            <span className="text-slate-400">Quantity Affected</span>
+                                            <div className="font-medium text-slate-900 tabular-nums">{Math.abs(primaryItem.adjustment_quantity || 0)}</div>
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-slate-900 truncate">{it.product_name ?? it.sku ?? shortId(it.variant_id)}</p>
-                                            {it.variant_name && <p className="text-[11px] text-slate-500 truncate">{it.variant_name}</p>}
-                                            <div className="mt-1 grid grid-cols-3 gap-2 text-[11px]">
-                                                <div><span className="text-slate-400">Affected</span><div className="text-slate-900 font-medium tabular-nums">{affected}</div></div>
-                                                <div><span className="text-slate-400">Unit Cost</span><div className="text-slate-900 tabular-nums">{cost != null ? cost.toFixed(2) : '—'}</div></div>
-                                                <div><span className="text-slate-400">Est. Impact</span><div className="text-slate-900 font-semibold tabular-nums">{estImpact != null ? estImpact.toFixed(2) : '—'}</div></div>
-                                            </div>
+                                        <div>
+                                            <span className="text-slate-400">Unit Cost</span>
+                                            <div className="font-medium text-slate-900 tabular-nums">{primaryItem.unit_cost != null ? primaryItem.unit_cost.toFixed(2) : '—'}</div>
                                         </div>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-                    ) : (
-                        <p className="text-xs text-slate-400">No item lines recorded.</p>
-                    )}
-                </div>
-
-                {/* Meta */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                        <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">Reported By</p>
-                        <p className="mt-1 text-slate-800">{issue.created_by_user?.full_name ?? '—'}</p>
-                        {issue.reporter_org?.org_name && <p className="text-[11px] text-slate-500">{issue.reporter_org.org_name}</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-400">No product details available.</p>
+                        )}
                     </div>
-                    <div>
-                        <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide">Manufacturer</p>
-                        <p className="mt-1 text-slate-800">{issue.manufacturer_org?.org_name ?? <span className="font-mono text-xs text-slate-700">{shortId(issue.target_manufacturer_org_id)}</span>}</p>
+
+                    <div className="rounded-md border border-slate-200 bg-slate-50/50 p-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Manufacturer</p>
+                        <p className="text-sm font-semibold text-slate-900">{issue.manufacturer_org?.org_name || shortId(issue.target_manufacturer_org_id)}</p>
+                        <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                            <Phone className="h-3.5 w-3.5 text-slate-400" />
+                            <span>{issue.manufacturer_org?.contact_phone ? formatPhoneDisplay(issue.manufacturer_org.contact_phone) : 'WhatsApp number not configured'}</span>
+                        </div>
+                        <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Reported By</p>
+                            <p className="mt-1 text-sm text-slate-800">{issue.created_by_user?.full_name ?? '—'}</p>
+                            {issue.reporter_org?.org_name && <p className="text-[11px] text-slate-500">{issue.reporter_org.org_name}</p>}
+                        </div>
                     </div>
                 </div>
 
@@ -659,23 +892,22 @@ function IssueDetailPanel({
                 <div>
                     <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide mb-1.5">Evidence</p>
                     {issue.proof_images && issue.proof_images.length > 0 ? (
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                             {issue.proof_images.map(url => (
-                                <Dialog key={url}>
-                                    <DialogTrigger asChild>
-                                        <button className="relative rounded-md overflow-hidden border border-slate-200 aspect-square bg-slate-50 hover:opacity-90 transition-opacity">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={url} alt="evidence" className="w-full h-full object-cover" />
-                                        </button>
-                                    </DialogTrigger>
-                                    <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden bg-black/80 border-none">
-                                        <DialogTitle className="sr-only">Evidence image</DialogTitle>
-                                        <div className="flex items-center justify-center w-full h-full">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img src={url} alt="evidence full" className="max-w-full max-h-[90vh] object-contain" />
-                                        </div>
-                                    </DialogContent>
-                                </Dialog>
+                                <a key={url} href={url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-md border border-slate-200 bg-white hover:border-orange-300">
+                                    <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
+                                        {isImageEvidenceUrl(url) ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={url} alt={getEvidenceFileName(url)} className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
+                                        ) : (
+                                            <FileText className="h-6 w-6 text-slate-400" />
+                                        )}
+                                    </div>
+                                    <div className="space-y-1 p-2">
+                                        <p className="truncate text-[11px] font-medium text-slate-700">{getEvidenceFileName(url)}</p>
+                                        <p className="text-[10px] text-slate-500">{isImageEvidenceUrl(url) ? 'Open preview' : 'Open file'}</p>
+                                    </div>
+                                </a>
                             ))}
                         </div>
                     ) : (
@@ -697,9 +929,9 @@ function IssueDetailPanel({
                 <div>
                     <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide mb-2">Timeline</p>
                     <ol className="relative border-l border-slate-200 ml-2 space-y-3">
-                        <TimelineEvent label="Reported" date={issue.created_at} tone="blue" />
-                        {issue.manufacturer_assigned_at && (
-                            <TimelineEvent label="Assigned to Manufacturer" date={issue.manufacturer_assigned_at} tone="amber" />
+                        <TimelineEvent label="Draft Created" date={issue.created_at} tone="slate" />
+                        {(sentAction?.created_at || issue.manufacturer_assigned_at) && (
+                            <TimelineEvent label="Sent to Manufacturer" date={sentAction?.created_at || issue.manufacturer_assigned_at || null} tone="amber" />
                         )}
                         {issue.manufacturer_acknowledged_at && (
                             <TimelineEvent label="Acknowledged" date={issue.manufacturer_acknowledged_at} tone="emerald" />
@@ -715,6 +947,26 @@ function IssueDetailPanel({
 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-100">
+                    {canManageDraft && (
+                        <>
+                            <Button
+                                size="sm"
+                                onClick={() => onSendPreview(issue)}
+                                disabled={sendLoadingId === issue.id || sendSubmittingId === issue.id}
+                                className="bg-orange-600 hover:bg-orange-700 text-white"
+                            >
+                                {(sendLoadingId === issue.id || sendSubmittingId === issue.id) ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+                                Send to Manufacturer
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => onEditDraft(issue)}>
+                                <Pencil className="h-3.5 w-3.5 mr-1.5" />Edit Draft
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => onDeleteDraft(issue)} disabled={deleteLoadingId === issue.id} className="text-red-600 hover:text-red-700">
+                                {deleteLoadingId === issue.id ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1.5" />}
+                                Delete Draft
+                            </Button>
+                        </>
+                    )}
                     {canAck && (
                         <Button
                             size="sm"
@@ -731,7 +983,7 @@ function IssueDetailPanel({
                             variant="outline"
                             size="sm"
                             onClick={() => onSetStatus(issue.id)}
-                            disabled={statusLoadingId === issue.id}
+                            disabled={statusLoadingId === issue.id || workflowStatus === 'draft'}
                         >
                             {statusLoadingId === issue.id && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
                             Set Final Status
@@ -743,12 +995,13 @@ function IssueDetailPanel({
     )
 }
 
-function TimelineEvent({ label, date, tone }: { label: string; date: string | null; tone: 'blue' | 'amber' | 'emerald' | 'red' }) {
+function TimelineEvent({ label, date, tone }: { label: string; date: string | null; tone: 'blue' | 'amber' | 'emerald' | 'red' | 'slate' }) {
     const dot = {
         blue: 'bg-blue-500',
         amber: 'bg-amber-500',
         emerald: 'bg-emerald-500',
         red: 'bg-red-500',
+        slate: 'bg-slate-500',
     }[tone]
     return (
         <li className="ml-3">
@@ -811,14 +1064,16 @@ function buildVariantSearchText(variant: VariantOption) {
 }
 
 function CreateIssueModal({
-    open, onOpenChange, userProfile, onCreated,
+    open, onOpenChange, userProfile, issueToEdit, onSaved,
 }: {
     open: boolean
     onOpenChange: (v: boolean) => void
     userProfile: UserProfile
-    onCreated: () => void
+    issueToEdit: Adjustment | null
+    onSaved: (savedId?: string | null) => void | Promise<void>
 }) {
     const supabase = useMemo(() => createClient(), [])
+    const isEditing = Boolean(issueToEdit)
     const [reasonCode, setReasonCode] = useState<'quality_issue' | 'return_to_supplier' | 'damaged_goods'>('quality_issue')
     const [allVariants, setAllVariants] = useState<VariantOption[]>([])
     const [selectedProductFilter, setSelectedProductFilter] = useState('all')
@@ -827,6 +1082,7 @@ function CreateIssueModal({
     const [quantity, setQuantity] = useState<string>('1')
     const [unitCost, setUnitCost] = useState<string>('')
     const [notes, setNotes] = useState('')
+    const [existingProofImages, setExistingProofImages] = useState<string[]>([])
     const [files, setFiles] = useState<File[]>([])
     const [filePreviews, setFilePreviews] = useState<AttachmentPreview[]>([])
     const [submitting, setSubmitting] = useState(false)
@@ -839,10 +1095,26 @@ function CreateIssueModal({
         if (!open) {
             setReasonCode('quality_issue'); setVariantSearch(''); setAllVariants([]); setSelectedProductFilter('all')
             setSelectedVariant(null); setQuantity('1'); setUnitCost(''); setNotes('')
+            setExistingProofImages([])
             setFiles([]); setError(null); setSubmitting(false)
             setVariantLoading(false); setVariantLoadError(null)
         }
     }, [open])
+
+    useEffect(() => {
+        if (!open) return
+        if (!issueToEdit) {
+            setExistingProofImages([])
+            return
+        }
+
+        const firstItem = firstIssueItem(issueToEdit)
+        setReasonCode((issueToEdit.stock_adjustment_reasons?.reason_code as any) || 'quality_issue')
+        setQuantity(String(Math.abs(firstItem?.adjustment_quantity ?? 1) || 1))
+        setUnitCost(firstItem?.unit_cost != null ? String(firstItem.unit_cost) : '')
+        setNotes(issueToEdit.notes || '')
+        setExistingProofImages(issueToEdit.proof_images || [])
+    }, [open, issueToEdit])
 
     useEffect(() => {
         const previews = files.map((file) => ({
@@ -926,6 +1198,15 @@ function CreateIssueModal({
         return () => { cancelled = true }
     }, [open, supabase])
 
+    useEffect(() => {
+        if (!open || !issueToEdit || allVariants.length === 0) return
+        const currentVariantId = firstIssueItem(issueToEdit)?.variant_id
+        if (!currentVariantId) return
+        const match = allVariants.find((variant) => variant.id === currentVariantId) || null
+        setSelectedVariant(match)
+        if (match) setSelectedProductFilter(match.product_id)
+    }, [open, issueToEdit, allVariants])
+
     const productOptions = useMemo(() => {
         const counts = new Map<string, { id: string; name: string; count: number }>()
         allVariants.forEach((variant) => {
@@ -959,6 +1240,7 @@ function CreateIssueModal({
         setFiles(prev => [...prev, ...arr])
     }
     function removeFile(idx: number) { setFiles(prev => prev.filter((_, i) => i !== idx)) }
+    function removeExistingProofImage(idx: number) { setExistingProofImages(prev => prev.filter((_, i) => i !== idx)) }
 
     async function uploadEvidence(): Promise<string[]> {
         if (files.length === 0) return []
@@ -981,11 +1263,16 @@ function CreateIssueModal({
         const qty = Number(quantity)
         if (!qty || qty <= 0) { setError('Quantity affected must be greater than 0'); return }
         if (!notes.trim()) { setError('Please describe the issue'); return }
+        if (existingProofImages.length + files.length === 0) { setError('At least one evidence attachment is required'); return }
         setSubmitting(true)
         try {
             const proofImages = await uploadEvidence()
-            const resp = await fetch('/api/manufacturer/adjustments/create', {
-                method: 'POST', headers: { 'content-type': 'application/json' },
+            const combinedProofImages = [...existingProofImages, ...proofImages]
+            const endpoint = isEditing && issueToEdit ? `/api/manufacturer/adjustments/${issueToEdit.id}` : '/api/manufacturer/adjustments/create'
+            const method = isEditing ? 'PATCH' : 'POST'
+            const resp = await fetch(endpoint, {
+                method,
+                headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                     reason_code: reasonCode,
                     variant_id: selectedVariant.id,
@@ -993,24 +1280,28 @@ function CreateIssueModal({
                     quantity_affected: qty,
                     unit_cost: unitCost ? Number(unitCost) : null,
                     notes: notes.trim(),
-                    proof_images: proofImages,
+                    proof_images: combinedProofImages,
                 }),
             })
             const json = await resp.json()
-            if (!resp.ok) { setError(json.error || 'Unable to create the issue right now'); return }
-            onCreated()
+            if (!resp.ok) { setError(json.error || 'Unable to save the issue right now'); return }
+            await onSaved(issueToEdit?.id || json?.data?.id || null)
         } catch (e: any) {
-            setError(e?.message || 'Unable to create the issue right now')
+            setError(e?.message || 'Unable to save the issue right now')
         } finally { setSubmitting(false) }
     }
+
+    const totalAttachments = existingProofImages.length + files.length
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Create Issue</DialogTitle>
+                    <DialogTitle>{isEditing ? 'Edit Draft Issue' : 'Create Issue'}</DialogTitle>
                     <DialogDescription>
-                        Log a new quality or return-to-supplier case. The manufacturer will be notified to acknowledge.
+                        {isEditing
+                            ? 'Update the draft before sending it to the manufacturer.'
+                            : 'Log a new quality or return-to-supplier case. The manufacturer will only be notified after you send the draft.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -1190,8 +1481,34 @@ function CreateIssueModal({
                                 <Upload className="h-3.5 w-3.5" />Upload
                                 <input type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={e => addFiles(e.target.files)} />
                             </label>
-                            <span className="text-[11px] text-slate-500">{files.length} file{files.length === 1 ? '' : 's'} attached</span>
+                            <span className="text-[11px] text-slate-500">{totalAttachments} file{totalAttachments === 1 ? '' : 's'} attached</span>
+                            <span className="text-[11px] text-orange-600">Required</span>
                         </div>
+                        {existingProofImages.length > 0 && (
+                            <ul className="mt-2 grid grid-cols-3 gap-2">
+                                {existingProofImages.map((url, index) => (
+                                    <li key={`${url}-${index}`} className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
+                                        <button type="button" onClick={() => removeExistingProofImage(index)} className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white">
+                                            <X className="h-2.5 w-2.5" />
+                                        </button>
+                                        <a href={url} target="_blank" rel="noreferrer" className="block">
+                                            <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
+                                                {isImageEvidenceUrl(url) ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={url} alt={getEvidenceFileName(url)} className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <FileText className="h-5 w-5 text-slate-400" />
+                                                )}
+                                            </div>
+                                            <div className="space-y-1 p-2">
+                                                <div className="truncate text-[11px] font-medium text-slate-700">{getEvidenceFileName(url)}</div>
+                                                <div className="text-[10px] text-slate-500">Saved attachment</div>
+                                            </div>
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                         {files.length > 0 && (
                             <ul className="mt-2 grid grid-cols-3 gap-2">
                                 {filePreviews.map((preview, i) => (
@@ -1232,7 +1549,7 @@ function CreateIssueModal({
                     <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
                     <Button onClick={submit} disabled={submitting} className="bg-orange-600 hover:bg-orange-700 text-white">
                         {submitting ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Plus className="h-3.5 w-3.5 mr-1.5" />}
-                        Create Issue
+                        {isEditing ? 'Save Draft' : 'Create Draft'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getIssueDisplayStatus } from '@/lib/quality-issues'
 
 /**
  * GET /api/manufacturer/adjustments
@@ -10,6 +12,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const admin = createAdminClient()
 
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,24 +31,26 @@ export async function GET(request: NextRequest) {
     const reasonCodes = ['quality_issue', 'return_to_supplier', 'damaged_goods']
 
     // get reason ids
-    const { data: reasons } = await supabase
+    const { data: reasons } = await admin
       .from('stock_adjustment_reasons')
       .select('id, reason_code')
       .in('reason_code', reasonCodes)
 
     const reasonIds = (reasons || []).map((r: any) => r.id)
 
-    let query = supabase
+    let query = admin
       .from('stock_adjustments')
       .select(
-        `id, organization_id, reason_id, notes, proof_images, status, created_at, created_by, target_manufacturer_org_id, manufacturer_status, manufacturer_acknowledged_at, manufacturer_acknowledged_by, manufacturer_assigned_at, manufacturer_notes, stock_adjustment_items (*), stock_adjustment_reasons (reason_code, reason_name)`
+        `id, organization_id, reason_id, notes, proof_images, status, created_at, created_by, target_manufacturer_org_id, manufacturer_status, manufacturer_acknowledged_at, manufacturer_acknowledged_by, manufacturer_assigned_at, manufacturer_notes, stock_adjustment_items (id, variant_id, adjustment_quantity, unit_cost, system_quantity, physical_quantity), stock_adjustment_reasons (reason_code, reason_name)`
       )
       .in('reason_id', reasonIds)
       .order('created_at', { ascending: false })
 
     if (userProfile.role_code !== 'SA') {
       // limit to adjustments assigned to the manufacturer organization
-      query = query.eq('target_manufacturer_org_id', userProfile.organization_id)
+      query = query
+        .eq('target_manufacturer_org_id', userProfile.organization_id)
+        .neq('manufacturer_status', 'draft')
     }
 
     const { data: adjustments, error } = await query
@@ -57,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     let usersMap: Record<string, any> = {}
     if (userIds.length > 0) {
-      const { data: users } = await supabase
+      const { data: users } = await admin
         .from('users')
         .select('id, full_name, email')
         .in('id', userIds)
@@ -75,11 +80,12 @@ export async function GET(request: NextRequest) {
     )) as string[]
 
     let variantsMap: Record<string, any> = {}
+    let productsMap: Record<string, any> = {}
     let productImagesMap: Record<string, string> = {}
     if (variantIds.length > 0) {
-      const { data: variants } = await supabase
+      const { data: variants } = await admin
         .from('product_variants')
-        .select('id, variant_name, variant_code, manufacturer_sku, image_url, product_id, products(id, product_name, product_code, brand_name, category_name)')
+        .select('id, variant_name, variant_code, manufacturer_sku, image_url, product_id')
         .in('id', variantIds)
       if (variants) {
         const productIds: string[] = []
@@ -91,7 +97,18 @@ export async function GET(request: NextRequest) {
           }
         })
         if (productIds.length > 0) {
-          const { data: images } = await supabase
+          const { data: products } = await admin
+            .from('products')
+            .select('id, product_name, product_code, manufacturer_id')
+            .in('id', Array.from(new Set(productIds)))
+
+          if (products) {
+            products.forEach((product: any) => {
+              productsMap[product.id] = product
+            })
+          }
+
+          const { data: images } = await admin
             .from('product_images')
             .select('product_id, image_url, is_primary, sort_order')
             .in('product_id', Array.from(new Set(productIds)))
@@ -115,11 +132,29 @@ export async function GET(request: NextRequest) {
     )) as string[]
     let orgsMap: Record<string, any> = {}
     if (orgIds.length > 0) {
-      const { data: orgs } = await supabase
+      const { data: orgs } = await admin
         .from('organizations')
-        .select('id, org_name, org_type_code')
+        .select('id, org_name, org_type_code, contact_phone')
         .in('id', orgIds)
       if (orgs) orgs.forEach((o: any) => { orgsMap[o.id] = o })
+    }
+
+    const adjustmentIds = (adjustments || []).map((adjustment: any) => adjustment.id)
+    let actionsByAdjustmentId: Record<string, any[]> = {}
+    if (adjustmentIds.length > 0) {
+      const { data: actions } = await admin
+        .from('stock_adjustment_manufacturer_actions')
+        .select('id, adjustment_id, manufacturer_org_id, action_type, notes, created_by, created_at')
+        .in('adjustment_id', adjustmentIds)
+        .order('created_at', { ascending: true })
+
+      if (actions) {
+        actionsByAdjustmentId = actions.reduce((acc: Record<string, any[]>, action: any) => {
+          if (!acc[action.adjustment_id]) acc[action.adjustment_id] = []
+          acc[action.adjustment_id].push(action)
+          return acc
+        }, {})
+      }
     }
 
     const data = (adjustments || []).map((a: any) => ({
@@ -127,15 +162,20 @@ export async function GET(request: NextRequest) {
       created_by_user: usersMap[a.created_by] || null,
       reporter_org: orgsMap[a.organization_id] || null,
       manufacturer_org: orgsMap[a.target_manufacturer_org_id] || null,
+      workflow_status: getIssueDisplayStatus(a),
+      manufacturer_actions: actionsByAdjustmentId[a.id] || [],
       stock_adjustment_items: (a.stock_adjustment_items || []).map((it: any) => {
         const v = variantsMap[it.variant_id]
         const productId = v?.product_id
+        const product = productId ? productsMap[productId] : null
         return {
           ...it,
-          product_name: v?.products?.product_name || it.product_name || null,
-          sku: v?.manufacturer_sku || v?.variant_code || it.sku || null,
+          product_name: product?.product_name || it.product_name || null,
+          product_code: product?.product_code || null,
+          sku: v?.manufacturer_sku || v?.variant_code || product?.product_code || it.sku || null,
           variant_name: v?.variant_name || null,
-          product_image: productId ? productImagesMap[productId] || null : null,
+          variant_id: it.variant_id,
+          product_image: productId ? productImagesMap[productId] || v?.image_url || null : v?.image_url || null,
         }
       }),
     }))

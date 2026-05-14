@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         if (!variantId) return NextResponse.json({ error: 'variant_id is required' }, { status: 400 })
         if (!notes) return NextResponse.json({ error: 'notes is required' }, { status: 400 })
         if (!quantity || quantity <= 0) return NextResponse.json({ error: 'quantity_affected must be > 0' }, { status: 400 })
+        if (proofImages.length === 0) return NextResponse.json({ error: 'At least one evidence attachment is required' }, { status: 400 })
 
         // Fetch caller profile
         const { data: profile, error: profileErr } = await supabase
@@ -86,11 +87,11 @@ export async function POST(request: NextRequest) {
                 reason_id: (reason as any).id,
                 notes,
                 proof_images: proofImages.length > 0 ? proofImages : null,
-                status: 'pending',
+                status: 'draft',
                 created_by: user.id,
                 target_manufacturer_org_id: manufacturerOrgId,
-                manufacturer_assigned_at: manufacturerOrgId ? new Date().toISOString() : null,
-                manufacturer_status: manufacturerOrgId ? 'pending' : null,
+                manufacturer_assigned_at: null,
+                manufacturer_status: 'draft',
             })
             .select()
             .single()
