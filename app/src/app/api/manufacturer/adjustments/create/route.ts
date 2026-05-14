@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
         const orgId = body.organization_id || profile.organization_id
         if (!orgId) return NextResponse.json({ error: 'Reporter organization required' }, { status: 400 })
 
+        const affectedQuantity = Math.abs(quantity)
+
         // Resolve manufacturer from product
         let manufacturerOrgId = body.target_manufacturer_org_id || null
         if (!manufacturerOrgId) {
@@ -97,15 +99,33 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unable to create the issue right now' }, { status: 500 })
         }
 
-        // Insert item row (no stock movement — system_quantity left null, this is a complaint record only)
+        // stock_adjustment_items requires non-null quantity fields, even for
+        // complaint-only records that do not post an actual stock movement.
+        // Use the current on-hand quantity when available; otherwise fall back
+        // to a minimal consistent snapshot for the affected units.
+        const { data: inventorySnapshot, error: inventoryErr } = await supabase
+            .from('product_inventory')
+            .select('quantity_on_hand')
+            .eq('organization_id', orgId)
+            .eq('variant_id', variantId)
+            .maybeSingle()
+
+        if (inventoryErr) {
+            console.warn('Create issue inventory snapshot lookup failed', inventoryErr)
+        }
+
+        const systemQuantity = Math.max(Number((inventorySnapshot as any)?.quantity_on_hand ?? affectedQuantity), affectedQuantity)
+        const physicalQuantity = Math.max(systemQuantity - affectedQuantity, 0)
+
+        // Insert item row for the affected variant.
         const { error: itemErr } = await supabase
             .from('stock_adjustment_items')
             .insert({
                 adjustment_id: (adjustment as any).id,
                 variant_id: variantId,
-                system_quantity: null,
-                physical_quantity: null,
-                adjustment_quantity: -Math.abs(quantity),
+                system_quantity: systemQuantity,
+                physical_quantity: physicalQuantity,
+                adjustment_quantity: -affectedQuantity,
                 unit_cost: unitCost,
             })
         if (itemErr) {

@@ -455,6 +455,15 @@ export default function UserManagementNew({
 
     // Validate levels before proceeding
     const currentUserLevel = resolveCurrentUserLevel();
+    if (currentUserLevel !== 1) {
+      toast({
+        title: "Access Denied",
+        description: "Only Super Admin can delete users.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const ids = Array.from(selectedUsers);
 
     // Check if any selected user has higher privileges (lower role level number)
@@ -474,124 +483,31 @@ export default function UserManagementNew({
       return;
     }
 
-    const confirmed = confirm(
-      `Are you sure you want to delete ${selectedUsers.size} user${selectedUsers.size > 1 ? "s" : ""}?\n\nThis will:\n• Remove users from database\n• Delete from Supabase Auth\n• Remove all related data\n\nThis action cannot be undone.`,
-    );
-
-    if (!confirmed) return;
-
-    try {
-      setIsSaving(true);
-      setDeleteProgress({
-        isDeleting: true,
-        current: 0,
-        total: selectedUsers.size,
-        progress: 0,
-        success: 0,
-        errors: 0,
-        message: "Starting deletion...",
-      });
-
-      // Use streaming endpoint for bulk delete with progress
-      const response = await fetch("/api/admin/bulk-delete-users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userIds: Array.from(selectedUsers),
-          callerId: userProfile.id,
-          callerRoleCode: userProfile.role_code,
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error("Failed to start bulk deletion");
+    if (ids.length === 1) {
+      const targetUser = usersToDelete[0];
+      if (!targetUser) {
+        toast({
+          title: "User Not Found",
+          description: "The selected user could not be loaded. Please refresh and try again.",
+          variant: "destructive",
+        });
+        return;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              switch (data.type) {
-                case "init":
-                  setDeleteProgress((prev) => ({
-                    ...prev!,
-                    total: data.total,
-                    message: data.message,
-                  }));
-                  break;
-                case "progress":
-                  setDeleteProgress({
-                    isDeleting: true,
-                    current: data.current,
-                    total: data.total,
-                    progress: data.progress,
-                    success: data.success,
-                    errors: data.errors,
-                    message: data.message,
-                  });
-                  break;
-                case "complete":
-                  setDeleteProgress((prev) => ({
-                    ...prev!,
-                    isDeleting: false,
-                    progress: 100,
-                    message: `Completed! ${data.summary.success} deleted, ${data.summary.error} failed`,
-                  }));
-
-                  toast({
-                    title: "Bulk Delete Complete",
-                    description: `Successfully deleted ${data.summary.success} user${data.summary.success !== 1 ? "s" : ""}${data.summary.error > 0 ? `. ${data.summary.error} failed.` : ""}`,
-                    variant: data.summary.error > 0 ? "default" : "default",
-                  });
-
-                  setSelectedUsers(new Set());
-                  await loadUsers();
-
-                  // Clear progress after a delay
-                  setTimeout(() => setDeleteProgress(null), 3000);
-                  break;
-                case "ping":
-                  // Keep-alive, do nothing
-                  break;
-                case "error":
-                  throw new Error(data.message);
-              }
-            } catch (parseError) {
-              if (parseError instanceof Error && parseError.message) {
-                throw parseError;
-              }
-              console.error("Parse error:", parseError);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Bulk delete error:", error);
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "An error occurred during bulk delete",
-        variant: "destructive",
-      });
-      setDeleteProgress(null);
-    } finally {
-      setIsSaving(false);
+      setSelectedUsers(new Set());
+      await handleDeleteUser(
+        targetUser.id,
+        targetUser.full_name || targetUser.email || "selected user",
+      );
+      return;
     }
+
+    toast({
+      title: "OTP Required",
+      description: "Bulk delete is disabled because each user deletion requires OTP confirmation. Delete users one at a time.",
+      variant: "default",
+    });
+    return;
   };
 
   const handleSaveUser = async (
@@ -1547,8 +1463,11 @@ export default function UserManagementNew({
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                Delete {selectedUsers.size} User
-                {selectedUsers.size > 1 ? "s" : ""}
+                {resolveCurrentUserLevel() === 1
+                  ? selectedUsers.size === 1
+                    ? "Delete Selected User (OTP)"
+                    : "Delete One User at a Time"
+                  : `Delete ${selectedUsers.size} User${selectedUsers.size > 1 ? "s" : ""}`}
               </Button>
             </div>
           )}

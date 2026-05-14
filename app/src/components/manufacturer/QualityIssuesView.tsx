@@ -48,6 +48,12 @@ interface AdjustmentItem {
 
 interface OrgRef { id: string; org_name: string; org_type_code?: string | null }
 
+interface AttachmentPreview {
+    file: File
+    previewUrl: string | null
+    isImage: boolean
+}
+
 interface Adjustment {
     id: string
     organization_id: string
@@ -822,6 +828,7 @@ function CreateIssueModal({
     const [unitCost, setUnitCost] = useState<string>('')
     const [notes, setNotes] = useState('')
     const [files, setFiles] = useState<File[]>([])
+    const [filePreviews, setFilePreviews] = useState<AttachmentPreview[]>([])
     const [submitting, setSubmitting] = useState(false)
     const [variantLoading, setVariantLoading] = useState(false)
     const [variantLoadError, setVariantLoadError] = useState<string | null>(null)
@@ -836,6 +843,24 @@ function CreateIssueModal({
             setVariantLoading(false); setVariantLoadError(null)
         }
     }, [open])
+
+    useEffect(() => {
+        const previews = files.map((file) => ({
+            file,
+            previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+            isImage: file.type.startsWith('image/'),
+        }))
+
+        setFilePreviews(previews)
+
+        return () => {
+            previews.forEach((preview) => {
+                if (preview.previewUrl) {
+                    URL.revokeObjectURL(preview.previewUrl)
+                }
+            })
+        }
+    }, [files])
 
     // Load active variants once when the modal opens, then filter in memory.
     useEffect(() => {
@@ -1169,12 +1194,27 @@ function CreateIssueModal({
                         </div>
                         {files.length > 0 && (
                             <ul className="mt-2 grid grid-cols-3 gap-2">
-                                {files.map((f, i) => (
-                                    <li key={i} className="relative rounded-md border border-slate-200 p-1.5 text-[10px] text-slate-700 truncate">
-                                        <button onClick={() => removeFile(i)} className="absolute top-0.5 right-0.5 rounded-full bg-slate-900/70 text-white h-4 w-4 flex items-center justify-center">
+                                {filePreviews.map((preview, i) => (
+                                    <li key={`${preview.file.name}-${i}`} className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
+                                        <button type="button" onClick={() => removeFile(i)} className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white">
                                             <X className="h-2.5 w-2.5" />
                                         </button>
-                                        <div className="truncate pr-4">{f.name}</div>
+                                        <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
+                                            {preview.isImage && preview.previewUrl ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={preview.previewUrl} alt={preview.file.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center px-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                                    {preview.file.name.split('.').pop() || 'file'}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1 p-2">
+                                            <div className="truncate text-[11px] font-medium text-slate-700">{preview.file.name}</div>
+                                            <div className="text-[10px] text-slate-500">
+                                                {preview.isImage ? 'Image preview ready' : 'Document attached'}
+                                            </div>
+                                        </div>
                                     </li>
                                 ))}
                             </ul>
