@@ -78,10 +78,11 @@ export async function GET(_req: NextRequest) {
             })
         }
 
-        // 4) Daily scan trend (last 30 days) — group consumer_qr_scans by day
+        // 4) Daily scan trend (last 12 months) — group consumer_qr_scans by day
         const trend: { date: string; scans: number; redeemed: number; failed: number }[] = []
-        const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29)
-        const startIso = thirtyDaysAgo.toISOString().slice(0, 10)
+        const trendLookbackDays = 365
+        const trendStart = new Date(); trendStart.setDate(trendStart.getDate() - (trendLookbackDays - 1))
+        const startIso = trendStart.toISOString().slice(0, 10)
 
         let scansByDay = new Map<string, number>()
         let redeemByDay = new Map<string, number>()
@@ -114,8 +115,8 @@ export async function GET(_req: NextRequest) {
                 }
             }
         }
-        for (let i = 0; i < 30; i++) {
-            const d = new Date(thirtyDaysAgo); d.setDate(thirtyDaysAgo.getDate() + i)
+        for (let i = 0; i < trendLookbackDays; i++) {
+            const d = new Date(trendStart); d.setDate(trendStart.getDate() + i)
             const key = d.toISOString().slice(0, 10)
             trend.push({ date: key, scans: scansByDay.get(key) || 0, redeemed: redeemByDay.get(key) || 0, failed: 0 })
         }

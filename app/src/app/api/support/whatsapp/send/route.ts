@@ -12,13 +12,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
+import { normalizePhoneE164 } from '@/utils/phone'
+import { callGateway, getWhatsAppConfig } from '@/app/api/settings/whatsapp/_utils'
 
 export const dynamic = 'force-dynamic'
 
-// Baileys Gateway configuration
-const BAILEYS_GATEWAY_URL = process.env.BAILEYS_GATEWAY_URL || 'https://wa.getouch.cloud'
-const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY || process.env.WHATSAPP_AGENT_KEY
 const DEFAULT_TENANT_ID = process.env.BAILEYS_TENANT_ID || 'serapod2u'
 
 function getServiceClient() {
@@ -67,7 +65,7 @@ export async function POST(request: NextRequest) {
     // Check if user is admin
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, role, is_super_admin, full_name, email')
+      .select('id, role, is_super_admin, full_name, email, organization_id')
       .eq('id', user.id)
       .single()
 
@@ -150,40 +148,45 @@ export async function POST(request: NextRequest) {
     let gatewaySuccess = false
     let gatewayMessageId: string | null = null
     let gatewayError: string | null = null
+    let resolvedTenantId = tenantId || DEFAULT_TENANT_ID
 
     try {
-      const gatewayTenantId = tenantId || DEFAULT_TENANT_ID
-      const gatewayUrl = `${BAILEYS_GATEWAY_URL}/tenants/${gatewayTenantId}/messages/send`
-
-      console.log(`[WhatsApp Send] Calling gateway: ${gatewayUrl}`)
-
-      const gatewayResponse = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': BAILEYS_API_KEY || ''
-        },
-        body: JSON.stringify({
-          to: toProviderPhone(recipientPhone),
-          text: text,
-          metadata: {
-            source: 'serapod',
-            outbound_id: outboundId,
-            conversation_id: threadId,
-            message_id: message.id
-          }
-        })
-      })
-
-      const gatewayResult = await gatewayResponse.json()
-
-      if (gatewayResult.ok) {
-        gatewaySuccess = true
-        gatewayMessageId = gatewayResult.message_id || gatewayResult.jid
-        console.log(`[WhatsApp Send] Gateway success: ${gatewayMessageId}`)
+      const orgId = userData.organization_id
+      if (!orgId) {
+        gatewayError = 'WhatsApp configuration is not available for this admin user'
       } else {
-        gatewayError = gatewayResult.error || 'Unknown gateway error'
-        console.error(`[WhatsApp Send] Gateway failed: ${gatewayError}`)
+        const config = await getWhatsAppConfig(supabaseAdmin as any, orgId)
+        if (!config?.baseUrl || !config?.apiKey) {
+          gatewayError = 'WhatsApp configuration is not set up for this organization'
+        } else {
+          resolvedTenantId = tenantId || config.tenantId || DEFAULT_TENANT_ID
+          const gatewayResult = await callGateway(
+            config.baseUrl,
+            config.apiKey,
+            'POST',
+            '/messages/send',
+            {
+              to: recipientPhone,
+              text,
+              metadata: {
+                source: 'serapod',
+                outbound_id: outboundId,
+                conversation_id: threadId,
+                message_id: message.id,
+              },
+            },
+            resolvedTenantId,
+          )
+
+          if (gatewayResult?.success ?? gatewayResult?.ok) {
+            gatewaySuccess = true
+            gatewayMessageId = gatewayResult.message_id || gatewayResult.messageId || gatewayResult.jid || null
+            console.log(`[WhatsApp Send] Gateway success: ${gatewayMessageId}`)
+          } else {
+            gatewayError = gatewayResult?.error || 'Unknown gateway error'
+            console.error(`[WhatsApp Send] Gateway failed: ${gatewayError}`)
+          }
+        }
       }
 
     } catch (gwError: any) {
@@ -234,7 +237,7 @@ export async function POST(request: NextRequest) {
 
     // Step 5: Log to audit
     await supabaseAdmin.from('whatsapp_message_logs').insert({
-      tenant_id: tenantId || DEFAULT_TENANT_ID,
+      tenant_id: resolvedTenantId,
       direction: 'outbound',
       phone_e164: recipientPhone,
       external_message_id: gatewayMessageId || outboundId,

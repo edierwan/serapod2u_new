@@ -101,6 +101,7 @@ function formatDate(iso?: string | null, withTime = true) {
 function reasonTypeLabel(code?: string | null) {
     if (code === 'quality_issue') return { label: 'Quality Issue', tone: 'bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200' }
     if (code === 'return_to_supplier') return { label: 'Return to Supplier', tone: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200' }
+    if (code === 'damaged_goods') return { label: 'Damaged Goods', tone: 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200' }
     return { label: code ?? '—', tone: 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200' }
 }
 
@@ -209,7 +210,9 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
     const manufacturerOptions = useMemo(() => {
         const set = new Map<string, string>()
         items.forEach(i => {
-            if (i.target_manufacturer_org_id) set.set(i.target_manufacturer_org_id, shortId(i.target_manufacturer_org_id))
+            if (i.target_manufacturer_org_id) {
+                set.set(i.target_manufacturer_org_id, i.manufacturer_org?.org_name || shortId(i.target_manufacturer_org_id))
+            }
         })
         return Array.from(set.entries())
     }, [items])
@@ -242,6 +245,9 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                 it.stock_adjustment_reasons?.reason_name,
                 it.created_by_user?.full_name,
                 it.target_manufacturer_org_id,
+                it.reporter_org?.org_name,
+                it.manufacturer_org?.org_name,
+                ...(it.stock_adjustment_items || []).flatMap(item => [item.product_name, item.variant_name, item.sku]),
             ].filter(Boolean).join(' ').toLowerCase()
             return hay.includes(s)
         })
@@ -352,6 +358,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                             <SelectItem value="all">All Types</SelectItem>
                             <SelectItem value="quality_issue">Quality Issue</SelectItem>
                             <SelectItem value="return_to_supplier">Return to Supplier</SelectItem>
+                            <SelectItem value="damaged_goods">Damaged Goods</SelectItem>
                         </SelectContent>
                     </Select>
                     <Select value={manufacturerFilter} onValueChange={setManufacturerFilter}>
@@ -749,13 +756,52 @@ function TimelineEvent({ label, date, tone }: { label: string; date: string | nu
 // ─────────────────────── Create Issue Modal ───────────────────────
 interface VariantOption {
     id: string
-    sku: string
+    product_id: string
+    product_name: string
+    product_code: string | null
     variant_name: string | null
-    product_id: string | null
-    product_name: string | null
+    variant_code: string | null
+    manufacturer_sku: string | null
+    barcode: string | null
     manufacturer_id: string | null
     manufacturer_name?: string | null
     image_url: string | null
+    base_cost: number | null
+    attributes?: Record<string, any> | null
+}
+
+function formatCurrency(amount?: number | null) {
+    const numeric = Number(amount || 0)
+    return numeric.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function collectAttributeValues(value: unknown): string[] {
+    if (value == null) return []
+    if (Array.isArray(value)) return value.flatMap(collectAttributeValues)
+    if (typeof value === 'object') return Object.values(value as Record<string, unknown>).flatMap(collectAttributeValues)
+    return [String(value)]
+}
+
+function getAttributeSummary(attributes?: Record<string, any> | null) {
+    const values = Array.from(new Set(collectAttributeValues(attributes).map(v => v.trim()).filter(Boolean)))
+    return values.slice(0, 3).join(' • ')
+}
+
+function getVariantSkuLabel(variant: VariantOption) {
+    return variant.manufacturer_sku || variant.variant_code || variant.product_code || variant.barcode || '—'
+}
+
+function buildVariantSearchText(variant: VariantOption) {
+    return [
+        variant.product_name,
+        variant.product_code,
+        variant.variant_name,
+        variant.variant_code,
+        variant.manufacturer_sku,
+        variant.barcode,
+        variant.manufacturer_name,
+        ...collectAttributeValues(variant.attributes),
+    ].filter(Boolean).join(' ').toLowerCase()
 }
 
 function CreateIssueModal({
@@ -766,75 +812,120 @@ function CreateIssueModal({
     userProfile: UserProfile
     onCreated: () => void
 }) {
-    const supabase = createClient()
+    const supabase = useMemo(() => createClient(), [])
     const [reasonCode, setReasonCode] = useState<'quality_issue' | 'return_to_supplier' | 'damaged_goods'>('quality_issue')
+    const [allVariants, setAllVariants] = useState<VariantOption[]>([])
+    const [selectedProductFilter, setSelectedProductFilter] = useState('all')
     const [variantSearch, setVariantSearch] = useState('')
-    const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
     const [selectedVariant, setSelectedVariant] = useState<VariantOption | null>(null)
     const [quantity, setQuantity] = useState<string>('1')
     const [unitCost, setUnitCost] = useState<string>('')
     const [notes, setNotes] = useState('')
     const [files, setFiles] = useState<File[]>([])
     const [submitting, setSubmitting] = useState(false)
-    const [searching, setSearching] = useState(false)
+    const [variantLoading, setVariantLoading] = useState(false)
+    const [variantLoadError, setVariantLoadError] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     // Reset on close
     useEffect(() => {
         if (!open) {
-            setReasonCode('quality_issue'); setVariantSearch(''); setVariantOptions([])
+            setReasonCode('quality_issue'); setVariantSearch(''); setAllVariants([]); setSelectedProductFilter('all')
             setSelectedVariant(null); setQuantity('1'); setUnitCost(''); setNotes('')
             setFiles([]); setError(null); setSubmitting(false)
+            setVariantLoading(false); setVariantLoadError(null)
         }
     }, [open])
 
-    // Search variants (debounced)
+    // Load active variants once when the modal opens, then filter in memory.
     useEffect(() => {
         if (!open) return
-        if (selectedVariant) return
-        if (variantSearch.trim().length < 2) { setVariantOptions([]); return }
         let cancelled = false
-        const t = setTimeout(async () => {
-            setSearching(true)
+        async function loadVariants() {
+            setVariantLoading(true)
+            setVariantLoadError(null)
             try {
-                const term = `%${variantSearch.trim()}%`
                 const { data, error } = await (supabase as any)
                     .from('product_variants')
-                    .select('id, sku, variant_name, product_id, products(id, name, manufacturer_id)')
-                    .or(`sku.ilike.${term},variant_name.ilike.${term}`)
-                    .limit(20)
+                    .select('id, product_id, variant_name, variant_code, manufacturer_sku, barcode, base_cost, image_url, attributes, is_active, products!inner(id, product_name, product_code, manufacturer_id)')
+                    .eq('is_active', true)
+                    .order('variant_name', { ascending: true })
+
                 if (cancelled) return
-                if (error) { setError(error.message); setVariantOptions([]); return }
-                const productIds = Array.from(new Set((data || []).map((v: any) => v.products?.id).filter(Boolean))) as string[]
-                let imagesByProduct: Record<string, string> = {}
-                let mfrByProduct: Record<string, string> = {}
-                if (productIds.length) {
-                    const [{ data: imgs }, { data: mfrs }] = await Promise.all([
-                        (supabase as any).from('product_images').select('product_id, image_url, is_primary, sort_order').in('product_id', productIds).eq('is_active', true).order('is_primary', { ascending: false }).order('sort_order', { ascending: true }),
-                        (() => {
-                            const mfrIds = Array.from(new Set((data || []).map((v: any) => v.products?.manufacturer_id).filter(Boolean))) as string[]
-                            return mfrIds.length ? (supabase as any).from('organizations').select('id, org_name').in('id', mfrIds) : Promise.resolve({ data: [] })
-                        })(),
-                    ])
-                    if (imgs) for (const im of imgs as any[]) { if (!imagesByProduct[im.product_id]) imagesByProduct[im.product_id] = im.image_url }
-                    if (mfrs) for (const m of mfrs as any[]) mfrByProduct[m.id] = m.org_name
+                if (error) throw error
+
+                const manufacturerIds = Array.from(new Set((data || []).map((variant: any) => variant.products?.manufacturer_id).filter(Boolean))) as string[]
+                let manufacturerNames: Record<string, string> = {}
+                if (manufacturerIds.length > 0) {
+                    const { data: manufacturers, error: manufacturersError } = await (supabase as any)
+                        .from('organizations')
+                        .select('id, org_name')
+                        .in('id', manufacturerIds)
+                    if (manufacturersError) throw manufacturersError
+                    manufacturerNames = Object.fromEntries((manufacturers || []).map((manufacturer: any) => [manufacturer.id, manufacturer.org_name]))
                 }
-                const opts: VariantOption[] = (data || []).map((v: any) => ({
-                    id: v.id,
-                    sku: v.sku,
-                    variant_name: v.variant_name,
-                    product_id: v.products?.id || null,
-                    product_name: v.products?.name || null,
-                    manufacturer_id: v.products?.manufacturer_id || null,
-                    manufacturer_name: v.products?.manufacturer_id ? mfrByProduct[v.products.manufacturer_id] || null : null,
-                    image_url: v.products?.id ? imagesByProduct[v.products.id] || null : null,
-                }))
-                setVariantOptions(opts)
-            } catch (e: any) { if (!cancelled) setError(e?.message || 'Search failed') }
-            finally { if (!cancelled) setSearching(false) }
-        }, 250)
-        return () => { cancelled = true; clearTimeout(t) }
-    }, [open, variantSearch, selectedVariant, supabase])
+
+                const variants: VariantOption[] = (data || []).map((variant: any) => ({
+                    id: variant.id,
+                    product_id: variant.products.id,
+                    product_name: variant.products.product_name,
+                    product_code: variant.products.product_code || null,
+                    variant_name: variant.variant_name,
+                    variant_code: variant.variant_code || null,
+                    manufacturer_sku: variant.manufacturer_sku || null,
+                    barcode: variant.barcode || null,
+                    manufacturer_id: variant.products.manufacturer_id || null,
+                    manufacturer_name: variant.products.manufacturer_id ? manufacturerNames[variant.products.manufacturer_id] || null : null,
+                    image_url: variant.image_url || null,
+                    base_cost: variant.base_cost != null ? Number(variant.base_cost) : null,
+                    attributes: variant.attributes || null,
+                })).sort((left, right) => {
+                    const productCompare = left.product_name.localeCompare(right.product_name)
+                    if (productCompare !== 0) return productCompare
+                    return (left.variant_name || '').localeCompare(right.variant_name || '')
+                })
+
+                setAllVariants(variants)
+            } catch (loadError) {
+                console.error('Failed to load issue variants', loadError)
+                if (!cancelled) {
+                    setAllVariants([])
+                    setVariantLoadError('Unable to load products right now. Please try again.')
+                }
+            } finally {
+                if (!cancelled) setVariantLoading(false)
+            }
+        }
+
+        loadVariants()
+        return () => { cancelled = true }
+    }, [open, supabase])
+
+    const productOptions = useMemo(() => {
+        const counts = new Map<string, { id: string; name: string; count: number }>()
+        allVariants.forEach((variant) => {
+            const current = counts.get(variant.product_id)
+            if (current) {
+                current.count += 1
+            } else {
+                counts.set(variant.product_id, {
+                    id: variant.product_id,
+                    name: variant.product_name,
+                    count: 1,
+                })
+            }
+        })
+        return Array.from(counts.values()).sort((left, right) => left.name.localeCompare(right.name))
+    }, [allVariants])
+
+    const filteredVariantOptions = useMemo(() => {
+        const searchLower = variantSearch.trim().toLowerCase()
+        return allVariants.filter((variant) => {
+            if (selectedProductFilter !== 'all' && variant.product_id !== selectedProductFilter) return false
+            if (!searchLower) return true
+            return buildVariantSearchText(variant).includes(searchLower)
+        })
+    }, [allVariants, selectedProductFilter, variantSearch])
 
     function addFiles(list: FileList | null) {
         if (!list) return
@@ -881,10 +972,10 @@ function CreateIssueModal({
                 }),
             })
             const json = await resp.json()
-            if (!resp.ok) { setError(json.error || 'Failed to create issue'); return }
+            if (!resp.ok) { setError(json.error || 'Unable to create the issue right now'); return }
             onCreated()
         } catch (e: any) {
-            setError(e?.message || 'Failed to create issue')
+            setError(e?.message || 'Unable to create the issue right now')
         } finally { setSubmitting(false) }
     }
 
@@ -913,58 +1004,135 @@ function CreateIssueModal({
                     </div>
 
                     {/* Product picker */}
-                    <div>
-                        <label className="text-xs font-medium text-slate-700">Product / Variant *</label>
-                        {selectedVariant ? (
-                            <div className="mt-1 flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-2.5">
-                                <div className="h-14 w-14 rounded-md overflow-hidden bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                                    {selectedVariant.image_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={selectedVariant.image_url} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <Package className="h-5 w-5 text-slate-300" />
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-900 truncate">{selectedVariant.product_name || selectedVariant.sku}</p>
-                                    <p className="text-[11px] text-slate-500 truncate">SKU {selectedVariant.sku}{selectedVariant.variant_name ? ` · ${selectedVariant.variant_name}` : ''}</p>
-                                    {selectedVariant.manufacturer_name && <p className="text-[11px] text-slate-500">Manufacturer: {selectedVariant.manufacturer_name}</p>}
-                                </div>
-                                <Button variant="ghost" size="sm" onClick={() => { setSelectedVariant(null); setVariantSearch('') }}>
-                                    <X className="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                        ) : (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-medium text-slate-700">Filter by Product</label>
+                            <Select value={selectedProductFilter} onValueChange={setSelectedProductFilter}>
+                                <SelectTrigger className="mt-1 h-9">
+                                    <SelectValue placeholder="Choose a product" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Products ({allVariants.length})</SelectItem>
+                                    {productOptions.map((product) => (
+                                        <SelectItem key={product.id} value={product.id}>
+                                            {product.name} ({product.count})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium text-slate-700">Search Variant</label>
                             <div className="relative mt-1">
-                                <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                                 <Input
-                                    placeholder="Search by SKU or variant name…"
+                                    placeholder="Search by product, variant, SKU, or attributes…"
                                     value={variantSearch}
-                                    onChange={e => setVariantSearch(e.target.value)}
-                                    className="pl-8 h-9"
+                                    onChange={(event) => setVariantSearch(event.target.value)}
+                                    className="h-9 pl-8"
                                 />
-                                {variantSearch.length >= 2 && (
-                                    <div className="mt-1 border border-slate-200 rounded-md bg-white max-h-60 overflow-y-auto">
-                                        {searching ? (
-                                            <div className="p-3 text-xs text-slate-500 flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Searching…</div>
-                                        ) : variantOptions.length === 0 ? (
-                                            <div className="p-3 text-xs text-slate-400">No matches</div>
-                                        ) : variantOptions.map(opt => (
-                                            <button key={opt.id} onClick={() => setSelectedVariant(opt)} className="w-full flex items-center gap-2.5 px-2.5 py-2 hover:bg-slate-50 text-left">
-                                                <div className="h-9 w-9 rounded overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
-                                                    {opt.image_url ? (
-                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                        <img src={opt.image_url} alt="" className="h-full w-full object-cover" />
-                                                    ) : <Package className="h-3.5 w-3.5 text-slate-300" />}
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-xs font-medium text-slate-900 truncate">{opt.product_name || opt.sku}</p>
-                                                    <p className="text-[10px] text-slate-500 truncate">SKU {opt.sku}{opt.variant_name ? ` · ${opt.variant_name}` : ''}</p>
-                                                </div>
-                                            </button>
-                                        ))}
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                                {filteredVariantOptions.length} of {allVariants.length} active variants available
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-medium text-slate-700">Select Variant *</label>
+                            <div className="mt-1 overflow-hidden rounded-md border border-slate-200 bg-white">
+                                {variantLoading ? (
+                                    <div className="flex items-center gap-2 p-3 text-xs text-slate-500">
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />Loading active variants…
+                                    </div>
+                                ) : variantLoadError ? (
+                                    <div className="flex items-start gap-2 p-3 text-xs text-red-700 bg-red-50/70">
+                                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />{variantLoadError}
+                                    </div>
+                                ) : filteredVariantOptions.length === 0 ? (
+                                    <div className="p-3 text-xs text-slate-500">
+                                        No variants match the current product filter or search.
+                                    </div>
+                                ) : (
+                                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                                        {filteredVariantOptions.map((variant) => {
+                                            const attributeSummary = getAttributeSummary(variant.attributes)
+                                            const isSelected = selectedVariant?.id === variant.id
+                                            return (
+                                                <button
+                                                    key={variant.id}
+                                                    type="button"
+                                                    onClick={() => { setSelectedVariant(variant); setError(null) }}
+                                                    className={cn(
+                                                        'flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
+                                                        isSelected ? 'bg-orange-50' : 'hover:bg-slate-50',
+                                                    )}
+                                                >
+                                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                                                        {variant.image_url ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img src={variant.image_url} alt="" className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <Package className="h-4 w-4 text-slate-300" />
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-sm font-medium text-slate-900">{variant.product_name}</p>
+                                                        <p className="truncate text-xs text-slate-600">
+                                                            {variant.variant_name || 'Standard variant'}
+                                                            {attributeSummary ? ` · ${attributeSummary}` : ''}
+                                                        </p>
+                                                        <p className="truncate text-[11px] text-slate-500">
+                                                            SKU {getVariantSkuLabel(variant)}
+                                                            {variant.manufacturer_name ? ` · ${variant.manufacturer_name}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex-shrink-0 text-right">
+                                                        {variant.base_cost != null && (
+                                                            <p className="text-xs font-semibold text-slate-900">RM {formatCurrency(variant.base_cost)}</p>
+                                                        )}
+                                                        <p className={cn('text-[11px] font-medium', isSelected ? 'text-orange-700' : 'text-slate-400')}>
+                                                            {isSelected ? 'Selected' : 'Select'}
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                            )
+                                        })}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+
+                        {selectedVariant && (
+                            <div className="rounded-md border border-orange-200 bg-orange-50/70 p-3">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-orange-200 bg-white">
+                                        {selectedVariant.image_url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={selectedVariant.image_url} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <Package className="h-5 w-5 text-slate-300" />
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">Selected Product</p>
+                                        <p className="truncate text-sm font-semibold text-slate-900">{selectedVariant.product_name}</p>
+                                        <p className="truncate text-xs text-slate-600">
+                                            {selectedVariant.variant_name || 'Standard variant'}
+                                            {getAttributeSummary(selectedVariant.attributes) ? ` · ${getAttributeSummary(selectedVariant.attributes)}` : ''}
+                                        </p>
+                                        <p className="truncate text-[11px] text-slate-500">
+                                            SKU {getVariantSkuLabel(selectedVariant)}
+                                            {selectedVariant.manufacturer_name ? ` • Manufacturer: ${selectedVariant.manufacturer_name}` : ''}
+                                        </p>
+                                        {selectedVariant.base_cost != null && (
+                                            <p className="mt-1 text-[11px] text-slate-500">Base cost: RM {formatCurrency(selectedVariant.base_cost)}</p>
+                                        )}
+                                    </div>
+                                    <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedVariant(null)}>
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </div>

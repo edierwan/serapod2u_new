@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unable to fetch user profile' }, { status: 500 })
     }
 
-    const reasonCodes = ['quality_issue', 'return_to_supplier']
+    const reasonCodes = ['quality_issue', 'return_to_supplier', 'damaged_goods']
 
     // get reason ids
     const { data: reasons } = await supabase
@@ -79,13 +79,16 @@ export async function GET(request: NextRequest) {
     if (variantIds.length > 0) {
       const { data: variants } = await supabase
         .from('product_variants')
-        .select('id, sku, variant_name, product_id, products(id, name, brand, category_id)')
+        .select('id, variant_name, variant_code, manufacturer_sku, image_url, product_id, products(id, product_name, product_code, brand_name, category_name)')
         .in('id', variantIds)
       if (variants) {
         const productIds: string[] = []
         variants.forEach((v: any) => {
           variantsMap[v.id] = v
           if (v.product_id) productIds.push(v.product_id)
+          if (v.product_id && v.image_url && !productImagesMap[v.product_id]) {
+            productImagesMap[v.product_id] = v.image_url
+          }
         })
         if (productIds.length > 0) {
           const { data: images } = await supabase
@@ -129,8 +132,8 @@ export async function GET(request: NextRequest) {
         const productId = v?.product_id
         return {
           ...it,
-          product_name: v?.products?.name || it.product_name || null,
-          sku: v?.sku || it.sku || null,
+          product_name: v?.products?.product_name || it.product_name || null,
+          sku: v?.manufacturer_sku || v?.variant_code || it.sku || null,
           variant_name: v?.variant_name || null,
           product_image: productId ? productImagesMap[productId] || null : null,
         }
@@ -140,6 +143,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data })
   } catch (err: any) {
     console.error('GET /api/manufacturer/adjustments error', err)
-    return NextResponse.json({ error: err.message || 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: 'Unable to load issues right now' }, { status: 500 })
   }
 }
