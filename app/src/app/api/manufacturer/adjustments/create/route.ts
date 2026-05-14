@@ -56,11 +56,15 @@ export async function POST(request: NextRequest) {
         // Resolve manufacturer from product
         let manufacturerOrgId = body.target_manufacturer_org_id || null
         if (!manufacturerOrgId) {
-            const { data: variant } = await supabase
+            const { data: variant, error: variantErr } = await supabase
                 .from('product_variants')
                 .select('product_id, products!inner(manufacturer_id)')
                 .eq('id', variantId)
                 .single()
+            if (variantErr || !variant) {
+                console.error('Create issue variant lookup failed', variantErr)
+                return NextResponse.json({ error: 'Selected product variant could not be found' }, { status: 400 })
+            }
             manufacturerOrgId = (variant as any)?.products?.manufacturer_id || null
         }
 
@@ -80,7 +84,7 @@ export async function POST(request: NextRequest) {
                 reason_id: (reason as any).id,
                 notes,
                 proof_images: proofImages.length > 0 ? proofImages : null,
-                status: 'completed',
+                status: 'pending',
                 created_by: user.id,
                 target_manufacturer_org_id: manufacturerOrgId,
                 manufacturer_assigned_at: manufacturerOrgId ? new Date().toISOString() : null,
@@ -88,7 +92,10 @@ export async function POST(request: NextRequest) {
             })
             .select()
             .single()
-        if (adjErr) return NextResponse.json({ error: adjErr.message }, { status: 500 })
+        if (adjErr) {
+            console.error('Create issue adjustment insert failed', adjErr)
+            return NextResponse.json({ error: 'Unable to create the issue right now' }, { status: 500 })
+        }
 
         // Insert item row (no stock movement — system_quantity left null, this is a complaint record only)
         const { error: itemErr } = await supabase
@@ -104,12 +111,13 @@ export async function POST(request: NextRequest) {
         if (itemErr) {
             // best-effort cleanup
             await supabase.from('stock_adjustments').delete().eq('id', (adjustment as any).id)
-            return NextResponse.json({ error: itemErr.message }, { status: 500 })
+            console.error('Create issue item insert failed', itemErr)
+            return NextResponse.json({ error: 'Unable to save the selected product for this issue' }, { status: 500 })
         }
 
         return NextResponse.json({ data: adjustment })
     } catch (err: any) {
         console.error('POST /api/manufacturer/adjustments/create error', err)
-        return NextResponse.json({ error: err.message || 'Unknown' }, { status: 500 })
+        return NextResponse.json({ error: 'Unable to create the issue right now' }, { status: 500 })
     }
 }
