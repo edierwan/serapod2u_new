@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
     AlertCircle, Clock, CheckCircle2, CheckCheck, XCircle, Package,
-    Search, Filter, Download, Plus, RefreshCw, MoreHorizontal, Loader2,
+    Search, Filter, Download, Plus, RefreshCw, Loader2,
     Calendar, Image as ImageIcon, ExternalLink, ChevronRight, Upload, X,
     Send, Pencil, Trash2, Phone, FileText,
 } from 'lucide-react'
@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
@@ -147,6 +147,38 @@ function formatDate(iso?: string | null, withTime = true) {
     return withTime
         ? d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
         : d.toLocaleDateString(undefined, { dateStyle: 'medium' })
+}
+
+function formatRelativeTime(iso?: string | null) {
+    if (!iso) return '—'
+    const time = new Date(iso).getTime()
+    if (isNaN(time)) return '—'
+
+    const diff = Date.now() - time
+    if (diff < 60_000) return 'Just now'
+    if (diff < 3_600_000) return `${Math.max(1, Math.round(diff / 60_000))}m ago`
+    if (diff < 86_400_000) return `${Math.max(1, Math.round(diff / 3_600_000))}h ago`
+    if (diff < 2_592_000_000) return `${Math.max(1, Math.round(diff / 86_400_000))}d ago`
+    return formatDate(iso, false)
+}
+
+function getIssueLastActivityAt(issue: Adjustment) {
+    const candidates = [
+        issue.created_at,
+        issue.manufacturer_assigned_at,
+        issue.manufacturer_acknowledged_at,
+        ...(issue.manufacturer_actions || []).map((action) => action.created_at),
+    ].filter(Boolean) as string[]
+
+    return candidates.reduce<string | null>((latest, current) => {
+        if (!latest) return current
+        return new Date(current).getTime() > new Date(latest).getTime() ? current : latest
+    }, null)
+}
+
+function buildIssueEvidenceUrl(issueId: string, index: number, download = false) {
+    const suffix = download ? '?download=1' : ''
+    return `/api/manufacturer/adjustments/${issueId}/evidence/${index}${suffix}`
 }
 
 function reasonTypeLabel(code?: string | null) {
@@ -619,18 +651,15 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                             <p className="text-sm text-slate-500 mt-1">Try adjusting filters or search.</p>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="overflow-hidden">
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-slate-50/60 hover:bg-slate-50/60 border-slate-100">
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Issue ID</TableHead>
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Type</TableHead>
+                                        <TableHead className="h-9 w-[135px] text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Issue</TableHead>
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Product</TableHead>
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Reported By</TableHead>
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Manufacturer</TableHead>
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide text-right">Qty</TableHead>
+                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Type</TableHead>
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Status</TableHead>
-                                        <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Created</TableHead>
+                                        <TableHead className="h-9 w-[110px] text-[11px] font-semibold uppercase text-slate-500 tracking-wide">Updated</TableHead>
                                         <TableHead className="h-9 text-[11px] font-semibold uppercase text-slate-500 tracking-wide text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -642,6 +671,7 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                         const workflowStatus = r.workflow_status || getIssueDisplayStatus(r)
                                         const extraCount = (r.stock_adjustment_items?.length ?? 0) - 1
                                         const canManageDraft = canManageDraftIssue(r, userProfile)
+                                        const updatedAt = getIssueLastActivityAt(r)
                                         return (
                                             <TableRow
                                                 key={r.id}
@@ -651,13 +681,13 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                                     isSel ? 'bg-orange-50/50 hover:bg-orange-50/70 border-l-[3px] border-l-orange-500' : 'hover:bg-slate-50/60',
                                                 )}
                                             >
-                                                <TableCell className="py-2.5 font-mono text-xs text-slate-700">{issueCode(r)}</TableCell>
-                                                <TableCell className="py-2.5">
-                                                    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', type.tone)}>
-                                                        {type.label}
-                                                    </span>
+                                                <TableCell className="py-3 align-top">
+                                                    <div className="space-y-0.5">
+                                                        <div className="font-mono text-xs text-slate-700">{issueCode(r)}</div>
+                                                        <div className="text-[11px] text-slate-500">{formatDate(r.created_at, false)}</div>
+                                                    </div>
                                                 </TableCell>
-                                                <TableCell className="py-2.5 text-sm text-slate-700">
+                                                <TableCell className="py-3 text-sm text-slate-700">
                                                     <div className="flex items-start gap-2">
                                                         <div className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
                                                             {firstItem?.product_image ? (
@@ -669,27 +699,21 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="truncate font-medium text-slate-900">{firstItem?.product_name || firstItem?.product_code || shortId(firstItem?.variant_id)}</div>
-                                                            <div className="truncate text-[11px] text-slate-500">
-                                                                {firstItem?.variant_name || 'Standard variant'}
-                                                                {firstItem?.sku ? ` · SKU ${firstItem.sku}` : ''}
-                                                            </div>
+                                                            <div className="truncate text-[11px] text-slate-500">{firstItem?.variant_name || 'Standard variant'}</div>
                                                             {extraCount > 0 && (
                                                                 <div className="text-[11px] text-slate-500">+{extraCount} more item{extraCount > 1 ? 's' : ''}</div>
                                                             )}
                                                         </div>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell className="py-2.5 text-sm text-slate-700">{r.created_by_user?.full_name ?? '—'}</TableCell>
-                                                <TableCell className="py-2.5 text-sm text-slate-700">
-                                                    <div className="font-medium text-slate-900">{r.manufacturer_org?.org_name || shortId(r.target_manufacturer_org_id)}</div>
-                                                    {r.manufacturer_org?.contact_phone && (
-                                                        <div className="text-[11px] text-slate-500">{formatPhoneDisplay(r.manufacturer_org.contact_phone)}</div>
-                                                    )}
+                                                <TableCell className="py-3 align-top">
+                                                    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', type.tone)}>
+                                                        {type.label}
+                                                    </span>
                                                 </TableCell>
-                                                <TableCell className="py-2.5 text-right tabular-nums text-sm text-slate-700">{totalUnits(r)}</TableCell>
-                                                <TableCell className="py-2.5">{statusBadge(workflowStatus)}</TableCell>
-                                                <TableCell className="py-2.5 text-xs text-slate-500">{formatDate(r.created_at, false)}</TableCell>
-                                                <TableCell className="py-2.5 text-right">
+                                                <TableCell className="py-3 align-top">{statusBadge(workflowStatus)}</TableCell>
+                                                <TableCell className="py-3 align-top text-xs text-slate-500">{formatRelativeTime(updatedAt)}</TableCell>
+                                                <TableCell className="py-3 text-right align-top">
                                                     {canManageDraft ? (
                                                         <div className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
                                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openSendPreview(r)} disabled={sendLoadingId === r.id || sendSubmittingId === r.id} title="Send to Manufacturer">
@@ -701,9 +725,16 @@ export default function QualityIssuesView({ userProfile }: { userProfile: UserPr
                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-red-600 hover:text-red-700" onClick={() => deleteDraft(r)} disabled={deleteLoadingId === r.id} title="Delete Draft">
                                                                 {deleteLoadingId === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                                                             </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedId(r.id)} title="Open Details">
+                                                                <ChevronRight className="h-3.5 w-3.5" />
+                                                            </Button>
                                                         </div>
                                                     ) : (
-                                                        <span className="text-xs text-slate-300">—</span>
+                                                        <div className="flex items-center justify-end" onClick={(event) => event.stopPropagation()}>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedId(r.id)} title="Open Details">
+                                                                <ChevronRight className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </div>
                                                     )}
                                                 </TableCell>
                                             </TableRow>
@@ -849,7 +880,6 @@ function IssueDetailPanel({
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-semibold text-slate-900">{primaryItem.product_name || primaryItem.product_code || shortId(primaryItem.variant_id)}</p>
                                     <p className="truncate text-xs text-slate-600">{primaryItem.variant_name || 'Standard variant'}</p>
-                                    <p className="truncate text-[11px] text-slate-500">SKU {primaryItem.sku || primaryItem.product_code || '—'}</p>
                                     <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
                                         <div>
                                             <span className="text-slate-400">Quantity Affected</span>
@@ -874,6 +904,16 @@ function IssueDetailPanel({
                             <Phone className="h-3.5 w-3.5 text-slate-400" />
                             <span>{issue.manufacturer_org?.contact_phone ? formatPhoneDisplay(issue.manufacturer_org.contact_phone) : 'WhatsApp number not configured'}</span>
                         </div>
+                        {issue.manufacturer_org?.contact_phone && (
+                            <a
+                                href={`https://wa.me/${issue.manufacturer_org.contact_phone.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex items-center gap-1 text-[11px] text-green-700 hover:underline"
+                            >
+                                <ExternalLink className="h-3 w-3" />Open WhatsApp chat
+                            </a>
+                        )}
                         <div className="mt-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Reported By</p>
                             <p className="mt-1 text-sm text-slate-800">{issue.created_by_user?.full_name ?? '—'}</p>
@@ -892,24 +932,7 @@ function IssueDetailPanel({
                 <div>
                     <p className="text-[11px] uppercase text-slate-500 font-semibold tracking-wide mb-1.5">Evidence</p>
                     {issue.proof_images && issue.proof_images.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                            {issue.proof_images.map(url => (
-                                <a key={url} href={url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-md border border-slate-200 bg-white hover:border-orange-300">
-                                    <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
-                                        {isImageEvidenceUrl(url) ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={url} alt={getEvidenceFileName(url)} className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]" />
-                                        ) : (
-                                            <FileText className="h-6 w-6 text-slate-400" />
-                                        )}
-                                    </div>
-                                    <div className="space-y-1 p-2">
-                                        <p className="truncate text-[11px] font-medium text-slate-700">{getEvidenceFileName(url)}</p>
-                                        <p className="text-[10px] text-slate-500">{isImageEvidenceUrl(url) ? 'Open preview' : 'Open file'}</p>
-                                    </div>
-                                </a>
-                            ))}
-                        </div>
+                        <IssueEvidenceGallery issue={issue} />
                     ) : (
                         <div className="flex items-center gap-1.5 text-xs text-slate-400">
                             <ImageIcon className="h-3.5 w-3.5" />No attachments
@@ -1009,6 +1032,114 @@ function TimelineEvent({ label, date, tone }: { label: string; date: string | nu
             <p className="text-sm font-medium text-slate-800">{label}</p>
             <p className="text-[11px] text-slate-500">{formatDate(date)}</p>
         </li>
+    )
+}
+
+function IssueEvidenceGallery({ issue }: { issue: Adjustment }) {
+    const evidenceItems = issue.proof_images || []
+    const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+    const [failedImageIndexes, setFailedImageIndexes] = useState<Record<number, boolean>>({})
+    const activeReference = previewIndex != null ? evidenceItems[previewIndex] : null
+    const activePreviewUrl = previewIndex != null ? buildIssueEvidenceUrl(issue.id, previewIndex) : null
+
+    useEffect(() => {
+        setPreviewIndex(null)
+        setFailedImageIndexes({})
+    }, [issue.id, issue.proof_images])
+
+    return (
+        <>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {evidenceItems.map((reference, index) => {
+                    const isImage = isImageEvidenceUrl(reference)
+                    const proxyUrl = buildIssueEvidenceUrl(issue.id, index)
+                    const fileName = getEvidenceFileName(reference)
+                    const isBroken = Boolean(failedImageIndexes[index])
+
+                    if (!isImage) {
+                        return (
+                            <a
+                                key={`${reference}-${index}`}
+                                href={proxyUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group overflow-hidden rounded-md border border-slate-200 bg-white hover:border-orange-300"
+                            >
+                                <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
+                                    <FileText className="h-6 w-6 text-slate-400" />
+                                </div>
+                                <div className="space-y-1 p-2">
+                                    <p className="truncate text-[11px] font-medium text-slate-700">{fileName}</p>
+                                    <p className="text-[10px] text-slate-500">Open file</p>
+                                </div>
+                            </a>
+                        )
+                    }
+
+                    return (
+                        <button
+                            key={`${reference}-${index}`}
+                            type="button"
+                            onClick={() => !isBroken && setPreviewIndex(index)}
+                            className="group overflow-hidden rounded-md border border-slate-200 bg-white text-left hover:border-orange-300 disabled:cursor-not-allowed"
+                            disabled={isBroken}
+                        >
+                            <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-slate-200 bg-slate-50">
+                                {isBroken ? (
+                                    <div className="flex flex-col items-center gap-1 text-slate-400">
+                                        <ImageIcon className="h-5 w-5" />
+                                        <span className="text-[10px]">Preview unavailable</span>
+                                    </div>
+                                ) : (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={proxyUrl}
+                                        alt={fileName}
+                                        className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"
+                                        onError={() => setFailedImageIndexes((current) => ({ ...current, [index]: true }))}
+                                    />
+                                )}
+                            </div>
+                            <div className="space-y-1 p-2">
+                                <p className="truncate text-[11px] font-medium text-slate-700">{fileName}</p>
+                                <p className="text-[10px] text-slate-500">{isBroken ? 'File missing or inaccessible' : 'Open preview'}</p>
+                            </div>
+                        </button>
+                    )
+                })}
+            </div>
+
+            <Dialog open={previewIndex != null} onOpenChange={(open) => { if (!open) setPreviewIndex(null) }}>
+                <DialogContent className="max-w-5xl overflow-hidden p-0">
+                    <DialogTitle className="sr-only">Evidence preview</DialogTitle>
+                    {activeReference && activePreviewUrl ? (
+                        <div className="flex min-h-[320px] flex-col bg-slate-950">
+                            <div className="border-b border-slate-800 px-4 py-3 text-sm text-slate-200">{getEvidenceFileName(activeReference)}</div>
+                            <div className="flex flex-1 items-center justify-center bg-black/90 p-4">
+                                {failedImageIndexes[previewIndex ?? -1] ? (
+                                    <div className="text-center text-slate-300">
+                                        <p className="text-sm font-medium">Preview unavailable</p>
+                                        <p className="mt-1 text-xs text-slate-400">The evidence file may be missing or no longer accessible.</p>
+                                    </div>
+                                ) : (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={activePreviewUrl}
+                                        alt={getEvidenceFileName(activeReference)}
+                                        className="max-h-[75vh] max-w-full object-contain"
+                                        onError={() => {
+                                            if (previewIndex != null) {
+                                                setFailedImageIndexes((current) => ({ ...current, [previewIndex]: true }))
+                                            }
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    ) : null}
+                </DialogContent>
+            </Dialog>
+        </>
     )
 }
 

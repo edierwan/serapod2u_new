@@ -104,3 +104,37 @@ export function isImageEvidenceUrl(url: string) {
     const lower = url.split('?')[0].toLowerCase()
     return /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(lower)
 }
+
+export function extractEvidenceStoragePath(reference: string | null | undefined, bucket = 'documents') {
+    if (!reference) return null
+
+    const trimmed = reference.trim()
+    if (!trimmed) return null
+
+    if (!/^https?:\/\//i.test(trimmed)) {
+        return trimmed.replace(/^\/+/, '')
+    }
+
+    try {
+        const parsed = new URL(trimmed)
+        const markers = [
+            `/storage/v1/object/public/${bucket}/`,
+            `/storage/v1/object/sign/${bucket}/`,
+            `/storage/v1/object/authenticated/${bucket}/`,
+            `/object/public/${bucket}/`,
+            `/object/sign/${bucket}/`,
+            `/object/authenticated/${bucket}/`,
+        ]
+
+        for (const marker of markers) {
+            const index = parsed.pathname.indexOf(marker)
+            if (index !== -1) {
+                return decodeURIComponent(parsed.pathname.slice(index + marker.length))
+            }
+        }
+
+        return null
+    } catch {
+        return null
+    }
+}
