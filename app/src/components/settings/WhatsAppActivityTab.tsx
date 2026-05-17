@@ -118,12 +118,12 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
           .limit(200),
         orgId
           ? (supabase as any)
-              .from("notification_logs")
-              .select("id, created_at, sent_at, delivered_at, failed_at, status, recipient_value, event_code, provider_name, error_message, provider_response")
-              .eq("channel", "whatsapp")
-              .eq("org_id", orgId)
-              .order("created_at", { ascending: false })
-              .limit(200)
+            .from("notification_logs")
+            .select("id, created_at, sent_at, delivered_at, failed_at, status, recipient_value, event_code, provider_name, error_message, provider_response")
+            .eq("channel", "whatsapp")
+            .eq("org_id", orgId)
+            .order("created_at", { ascending: false })
+            .limit(200)
           : Promise.resolve({ data: [], error: null }),
         (supabase as any)
           .from("notification_types")
@@ -282,15 +282,14 @@ export function WhatsAppActivityTab({ userProfile }: WhatsAppActivityTabProps) {
                           </Badge>
                         </td>
                         <td className="px-3 py-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                            evt.status === "sent" ? "bg-green-100 text-green-800" :
-                            evt.status === "failed" || evt.status === "send_failed" ? "bg-red-100 text-red-800" :
-                            evt.status === "verified" ? "bg-blue-100 text-blue-800" :
-                            evt.status === "completed" ? "bg-emerald-100 text-emerald-800" :
-                            evt.status === "rate_limited" ? "bg-orange-100 text-orange-800" :
-                            evt.status === "no_account" ? "bg-gray-100 text-gray-600" :
-                            "bg-gray-100 text-gray-800"
-                          }`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${evt.status === "sent" ? "bg-green-100 text-green-800" :
+                              evt.status === "failed" || evt.status === "send_failed" ? "bg-red-100 text-red-800" :
+                                evt.status === "verified" ? "bg-blue-100 text-blue-800" :
+                                  evt.status === "completed" ? "bg-emerald-100 text-emerald-800" :
+                                    evt.status === "rate_limited" ? "bg-orange-100 text-orange-800" :
+                                      evt.status === "no_account" ? "bg-gray-100 text-gray-600" :
+                                        "bg-gray-100 text-gray-800"
+                            }`}>
                             {evt.status}
                           </span>
                         </td>

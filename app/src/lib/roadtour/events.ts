@@ -33,28 +33,28 @@ export const DUPLICATE_POLICY_OPTIONS: Array<{
     description: string
     recommended?: boolean
 }> = [
-    {
-        value: 'per_run',
-        label: 'One shop once per event',
-        description: 'Each shop can be rewarded only once per RoadTour Event regardless of campaign/reference.',
-        recommended: true,
-    },
-    {
-        value: 'per_campaign',
-        label: 'One shop once per campaign',
-        description: 'Legacy behaviour. Same shop can be rewarded by different campaigns in the same event.',
-    },
-    {
-        value: 'per_day',
-        label: 'One shop once per day',
-        description: 'Each shop can be rewarded once per calendar day within the event.',
-    },
-    {
-        value: 'none',
-        label: 'No duplicate restriction',
-        description: 'No automatic block. Use only for special diagnostic runs.',
-    },
-]
+        {
+            value: 'per_run',
+            label: 'One shop once per event',
+            description: 'Each shop can be rewarded only once per RoadTour Event regardless of campaign/reference.',
+            recommended: true,
+        },
+        {
+            value: 'per_campaign',
+            label: 'One shop once per campaign',
+            description: 'Legacy behaviour. Same shop can be rewarded by different campaigns in the same event.',
+        },
+        {
+            value: 'per_day',
+            label: 'One shop once per day',
+            description: 'Each shop can be rewarded once per calendar day within the event.',
+        },
+        {
+            value: 'none',
+            label: 'No duplicate restriction',
+            description: 'No automatic block. Use only for special diagnostic runs.',
+        },
+    ]
 
 export const STATUS_LABEL: Record<RoadtourRunStatus, string> = {
     draft: 'Draft',

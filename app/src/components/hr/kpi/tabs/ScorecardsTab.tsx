@@ -407,12 +407,12 @@ function ScorecardDetailPanel({ scorecard, onRecalc }: { scorecard: Scorecard; o
 
     useEffect(() => {
         let alive = true
-        ;(async () => {
-            setLoading(true)
-            const r = await kpiFetch<ScorecardDetail>(`/api/hr/kpi/scorecards/${scorecard.id}`)
-            if (alive && r.success && r.data) setDetail(r.data)
-            if (alive) setLoading(false)
-        })()
+            ; (async () => {
+                setLoading(true)
+                const r = await kpiFetch<ScorecardDetail>(`/api/hr/kpi/scorecards/${scorecard.id}`)
+                if (alive && r.success && r.data) setDetail(r.data)
+                if (alive) setLoading(false)
+            })()
         return () => { alive = false }
     }, [scorecard.id])
 
