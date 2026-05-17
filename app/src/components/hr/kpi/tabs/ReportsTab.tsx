@@ -271,7 +271,7 @@ export function KPIReportsTab({
                             title="Score Trend"
                             description="Average overall score"
                             action={
-                                <Select value="current" onValueChange={() => {}}>
+                                <Select value="current" onValueChange={() => { }}>
                                     <SelectTrigger className="w-[120px] h-8 text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="current">Current Period</SelectItem>

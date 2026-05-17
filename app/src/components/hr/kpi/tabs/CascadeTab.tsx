@@ -372,12 +372,12 @@ function AssignmentDetailPanel({
     useEffect(() => {
         if (!assignment) { setTargets([]); return }
         let alive = true
-        ;(async () => {
-            setLoadingTargets(true)
-            const r = await kpiFetch<LinkedTarget[]>(`/api/hr/kpi/targets?assignment_id=${assignment.id}`)
-            if (alive && r.success && r.data) setTargets(r.data)
-            if (alive) setLoadingTargets(false)
-        })()
+            ; (async () => {
+                setLoadingTargets(true)
+                const r = await kpiFetch<LinkedTarget[]>(`/api/hr/kpi/targets?assignment_id=${assignment.id}`)
+                if (alive && r.success && r.data) setTargets(r.data)
+                if (alive) setLoadingTargets(false)
+            })()
         return () => { alive = false }
     }, [assignment?.id])
 

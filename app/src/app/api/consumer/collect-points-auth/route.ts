@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
         consumerPhoneSnapshot: shopUser.phone || null,
         consumerEmailSnapshot: shopUser.email || null,
         consumerNameSnapshot: shopUser.full_name || null,
-      }).catch(() => {})
+      }).catch(() => { })
       return NextResponse.json(
         {
           success: false,
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
         consumerEmailSnapshot: shopUser.email || null,
         consumerNameSnapshot: shopUser.full_name || null,
         metadata: { is_buffer: (qrCodeData as any).is_buffer === true, sequence_number: (qrCodeData as any).sequence_number },
-      }).catch(() => {})
+      }).catch(() => { })
       return NextResponse.json(
         { success: false, error: 'QR code is not active or has not been shipped yet' },
         { status: 400 }

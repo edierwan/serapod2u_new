@@ -487,7 +487,7 @@ function TargetDetailPanel({ target }: { target: Target }) {
                                         onClick={() => {
                                             navigator.clipboard?.writeText(formula).then(
                                                 () => toast({ title: 'Formula copied' }),
-                                            ).catch(() => {})
+                                            ).catch(() => { })
                                         }}
                                     >
                                         <Copy className="h-3.5 w-3.5" />

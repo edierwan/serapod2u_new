@@ -68,6 +68,8 @@ interface DashboardSummary {
     recentActivity: { id: string; type: string; title: string; location: string | null; time: string }[]
 }
 
+type TrendRange = '7d' | '30d' | '3m' | '6m' | 'lastMonth' | '12m'
+
 const DEFAULT_PAGE_SIZE = 3
 
 function formatNumber(n: number) {
@@ -83,6 +85,38 @@ function timeAgo(iso: string): string {
     const h = Math.floor(m / 60)
     if (h < 24) return `${h}h ago`
     return `${Math.floor(h / 24)}d ago`
+}
+
+function parseTrendDate(value: string) {
+    return new Date(`${value}T00:00:00`)
+}
+
+function filterTrendByRange(data: DashboardSummary['trend'], range: TrendRange) {
+    if (data.length === 0) return []
+
+    const latest = parseTrendDate(data[data.length - 1].date)
+    let start = new Date(latest)
+    let end = new Date(latest)
+
+    if (range === '7d') {
+        start.setDate(start.getDate() - 6)
+    } else if (range === '30d') {
+        start.setDate(start.getDate() - 29)
+    } else if (range === '3m') {
+        start.setMonth(start.getMonth() - 3)
+    } else if (range === '6m') {
+        start.setMonth(start.getMonth() - 6)
+    } else if (range === '12m') {
+        start.setFullYear(start.getFullYear() - 1)
+    } else {
+        start = new Date(latest.getFullYear(), latest.getMonth() - 1, 1)
+        end = new Date(latest.getFullYear(), latest.getMonth(), 0)
+    }
+
+    return data.filter((point) => {
+        const current = parseTrendDate(point.date)
+        return current >= start && current <= end
+    })
 }
 
 // ───────────────────────────────── KPI Card ─────────────────────────────────
@@ -289,7 +323,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
     const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
     const [visibleCount, setVisibleCount] = useState(DEFAULT_PAGE_SIZE)
     const [trendMetric, setTrendMetric] = useState<'scans' | 'redeemed' | 'failed'>('scans')
-    const [trendRange, setTrendRange] = useState<'7d' | '30d'>('30d')
+    const [trendRange, setTrendRange] = useState<TrendRange>('30d')
 
     const supabase = createClient()
 
@@ -299,7 +333,8 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
         if (tab === 'announcement-banner') setActiveTab('announcement-banner')
     }, [])
 
-    useEffect(() => { loadJourneys(); loadSummary() // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        loadJourneys(); loadSummary() // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     async function loadJourneys() {
@@ -437,7 +472,7 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
 
     const trendData = useMemo(() => {
         if (!summary) return []
-        return trendRange === '7d' ? summary.trend.slice(-7) : summary.trend
+        return filterTrendByRange(summary.trend, trendRange)
     }, [summary, trendRange])
 
     const k = summary?.kpis
@@ -479,10 +514,14 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
                             <h3 className="text-sm font-semibold text-slate-900">QR Engagement Trend</h3>
                             <div className="flex items-center gap-2">
                                 <Select value={trendRange} onValueChange={(v: any) => setTrendRange(v)}>
-                                    <SelectTrigger className="h-7 w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="h-7 w-[150px] text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="7d">Last 7 Days</SelectItem>
                                         <SelectItem value="30d">Last 30 Days</SelectItem>
+                                        <SelectItem value="3m">Last 3 Months</SelectItem>
+                                        <SelectItem value="6m">Last 6 Months</SelectItem>
+                                        <SelectItem value="lastMonth">Last Month</SelectItem>
+                                        <SelectItem value="12m">Last 12 Months</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <Select value={trendMetric} onValueChange={(v: any) => setTrendMetric(v)}>
