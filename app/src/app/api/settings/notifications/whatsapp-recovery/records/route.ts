@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdminUser } from '@/app/api/settings/whatsapp/_utils'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import {
+    isMonitoringDismissed,
+    normalizeActivityMetadata,
+    RECOVERY_PURPOSES,
+} from '@/lib/wa-recovery/activity-status'
 import { resolveRecoveryContacts } from '@/lib/wa-recovery/contact-resolver'
 import { loadRecoveryTemplates, pickRecoveryTemplate } from '@/lib/wa-recovery/template-store'
 import { buildRecoveryMessageVariables, renderTemplate } from '@/lib/wa-recovery/templates'
@@ -10,24 +15,11 @@ import { normalizePhoneE164 } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
-const RECOVERY_PURPOSES = new Set([
-    'recovery_notice',
-    'password_reset_recovery',
-    'registration_recovery',
-    'qr_claim_recovery',
-])
+const RECOVERY_PURPOSE_SET = new Set(RECOVERY_PURPOSES)
 
 function parseProviderResponse(value: unknown): Record<string, any> | null {
-    if (!value) return null
-    if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>
-    if (typeof value === 'string') {
-        try {
-            return JSON.parse(value)
-        } catch {
-            return null
-        }
-    }
-    return null
+    const parsed = normalizeActivityMetadata(value)
+    return Object.keys(parsed).length > 0 ? parsed : null
 }
 
 function resolveLogRecipientPhone(recipient: unknown, providerResponse: unknown) {
@@ -49,11 +41,6 @@ function inferPurpose(rawPurpose: unknown, rawEventType: unknown) {
     if (probe.includes('phone_verification')) return 'phone_verification'
     if (probe.includes('qr') || probe.includes('claim')) return 'qr_consumer'
     return 'system'
-}
-
-function normalizeMeta(value: unknown): Record<string, any> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-    return value as Record<string, any>
 }
 
 function toRecoverySnapshot(row: any) {
@@ -112,13 +99,14 @@ export async function GET(_request: NextRequest) {
             return NextResponse.json({ error: logRowsRes.error.message }, { status: 500 })
         }
 
-        const eventRows = (eventRowsRes.data || []) as any[]
+        const eventRows = ((eventRowsRes.data || []) as any[]).filter((row) => !isMonitoringDismissed(row.meta))
+        const logRows = ((logRowsRes.data || []) as any[]).filter((row) => !isMonitoringDismissed(row.provider_response))
         const recoveryBySourceKey = new Map<string, ReturnType<typeof toRecoverySnapshot>>()
         const recoveryByPhoneAndPurpose = new Map<string, ReturnType<typeof toRecoverySnapshot>>()
 
         for (const row of eventRows) {
-            if (!RECOVERY_PURPOSES.has(String(row.purpose || ''))) continue
-            const meta = normalizeMeta(row.meta)
+            if (!RECOVERY_PURPOSE_SET.has(String(row.purpose || ''))) continue
+            const meta = normalizeActivityMetadata(row.meta)
             const snapshot = toRecoverySnapshot(row)
             const sourceKey = String(meta.source_key || '').trim()
             if (sourceKey && !recoveryBySourceKey.has(sourceKey)) {
@@ -153,10 +141,10 @@ export async function GET(_request: NextRequest) {
                     providerMessageId: row.provider_message_id ? String(row.provider_message_id) : null,
                     messageTemplate: row.message_template ? String(row.message_template) : null,
                     messageBody: row.message_body ? String(row.message_body) : null,
-                    meta: normalizeMeta(row.meta),
+                    meta: normalizeActivityMetadata(row.meta),
                 }
             }),
-            ...((logRowsRes.data || []) as any[]).map((row) => {
+            ...logRows.map((row) => {
                 const normalizedPhone = normalizePhoneE164(resolveLogRecipientPhone(row.recipient_value, row.provider_response))
                 return {
                     id: `log-${row.id}`,
@@ -174,7 +162,7 @@ export async function GET(_request: NextRequest) {
                     providerMessageId: null,
                     messageTemplate: null,
                     messageBody: null,
-                    meta: {},
+                    meta: normalizeActivityMetadata(row.provider_response),
                 }
             }),
         ].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
@@ -207,7 +195,7 @@ export async function GET(_request: NextRequest) {
                     recipientName: contact.displayName === 'Unknown contact' ? null : contact.displayName,
                 }),
             )
-            const latestRecovery = RECOVERY_PURPOSES.has(record.purpose)
+            const latestRecovery = RECOVERY_PURPOSE_SET.has(record.purpose)
                 ? null
                 : recoveryBySourceKey.get(record.sourceKey) || recoveryByPhoneAndPurpose.get(`${contact.normalizedPhone}:${selectedTemplate.key}`) || null
 

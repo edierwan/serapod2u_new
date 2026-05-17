@@ -32,6 +32,7 @@ import {
     Send,
     ShieldCheck,
     Sparkles,
+    Trash2,
     UserPlus,
     Wifi,
     WifiOff,
@@ -49,6 +50,14 @@ import {
 
 import type { UserProfileWithRelations } from "@/lib/server/get-user-profile"
 import type { RecoveryPurpose } from "@/lib/wa-recovery/templates"
+import {
+    hasTrendActivity,
+    isFailedStatus,
+    isRecoverySentStatus,
+    isResolvedStatus,
+    RECOVERY_PURPOSES,
+    type RecoveryTrendPoint,
+} from "@/lib/wa-recovery/activity-status"
 
 interface Props {
     userProfile: UserProfileWithRelations
@@ -93,13 +102,14 @@ interface ActivityRecord {
 
 interface Summary {
     kpis: {
-        failedToday: number
+        failed: number
         recoverySent: number
         delivered: number
         read: number
         resolved: number
     }
-    trend: { hour: string; failed: number; recoverySent: number; delivered: number; read: number }[]
+    trend: RecoveryTrendPoint[]
+    hasActivityLast24h: boolean
     failedByPurpose: Record<string, number>
 }
 
@@ -119,13 +129,6 @@ interface BulkActionState {
     records: ActivityRecord[]
     templateKey?: RecoveryPurpose
 }
-
-const RECOVERY_PURPOSES: RecoveryPurpose[] = [
-    "recovery_notice",
-    "password_reset_recovery",
-    "registration_recovery",
-    "qr_claim_recovery",
-]
 
 const PURPOSE_LABELS: Record<string, string> = {
     password_reset: "Password Reset",
@@ -160,14 +163,6 @@ function formatPurpose(value: string) {
 
 function normalizePhoneForSearch(value: string) {
     return String(value || "").replace(/\D/g, "")
-}
-
-function isFailedStatus(status: string) {
-    return status === "failed" || status === "send_failed"
-}
-
-function isRecoverySentStatus(status?: string | null) {
-    return status === "recovery_sent" || status === "sent"
 }
 
 function formatTime(value: string) {
@@ -252,7 +247,7 @@ function StatusPill({ status }: { status: string }) {
                 ? "bg-cyan-100 text-cyan-800"
                 : isFailedStatus(status)
                     ? "bg-red-100 text-red-800"
-                    : status === "verified" || status === "completed" || status === "resolved"
+                        : isResolvedStatus(status)
                         ? "bg-emerald-100 text-emerald-800"
                         : status === "rate_limited"
                             ? "bg-orange-100 text-orange-800"
@@ -284,12 +279,14 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
     const [sendingRecordId, setSendingRecordId] = useState<string | null>(null)
     const [bulkSending, setBulkSending] = useState(false)
     const [confirmRecord, setConfirmRecord] = useState<ActivityRecord | null>(null)
+    const [clearRecord, setClearRecord] = useState<ActivityRecord | null>(null)
     const [previewRecord, setPreviewRecord] = useState<ActivityRecord | null>(null)
     const [bulkAction, setBulkAction] = useState<BulkActionState | null>(null)
     const [customOpen, setCustomOpen] = useState(false)
     const [customMessage, setCustomMessage] = useState("")
     const [customTargetRecord, setCustomTargetRecord] = useState<ActivityRecord | null>(null)
     const [toast, setToast] = useState<{ kind: "ok" | "err"; text: string } | null>(null)
+    const [clearingRecordId, setClearingRecordId] = useState<string | null>(null)
 
     const [templateEditorOpen, setTemplateEditorOpen] = useState(false)
     const [editingTemplateKey, setEditingTemplateKey] = useState<RecoveryPurpose>("recovery_notice")
@@ -368,7 +365,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
             if (statusTab === "recovery_sent" && !(RECOVERY_PURPOSES.includes(record.purpose as RecoveryPurpose) && isRecoverySentStatus(record.status))) return false
             if (statusTab === "delivered" && record.status !== "delivered") return false
             if (statusTab === "read" && record.status !== "read") return false
-            if (statusTab === "resolved" && !["verified", "completed", "resolved"].includes(record.status)) return false
+            if (statusTab === "resolved" && !isResolvedStatus(record.status)) return false
 
             if (filterPurpose !== "all" && record.purpose !== filterPurpose) return false
             if (filterStatus !== "all" && record.status !== filterStatus) return false
@@ -402,7 +399,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
         recovery_sent: allEvents.filter((record) => RECOVERY_PURPOSES.includes(record.purpose as RecoveryPurpose) && isRecoverySentStatus(record.status)).length,
         delivered: allEvents.filter((record) => record.status === "delivered").length,
         read: allEvents.filter((record) => record.status === "read").length,
-        resolved: allEvents.filter((record) => ["verified", "completed", "resolved"].includes(record.status)).length,
+        resolved: allEvents.filter((record) => isResolvedStatus(record.status)).length,
     }), [allEvents])
 
     const selectedTargets = useMemo(
@@ -519,6 +516,44 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
             userId: record.resolvedUserId || record.userId,
             resolvedName: record.contactName,
             resolvedSource: record.contactSource,
+        }
+    }
+
+    async function clearFailedRecord(record: ActivityRecord) {
+        const previousEvents = allEvents
+        const previousSelected = new Set(selected)
+
+        setClearingRecordId(record.id)
+        setAllEvents((current) => current.filter((item) => item.id !== record.id))
+        setSelected((current) => {
+            const next = new Set(current)
+            next.delete(record.id)
+            return next
+        })
+
+        try {
+            const response = await fetch("/api/settings/notifications/whatsapp-recovery/records/clear", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    sourceType: record.sourceType,
+                    sourceRecordId: record.sourceRecordId,
+                }),
+            })
+
+            const payload = await response.json()
+            if (!response.ok) {
+                throw new Error(payload.error || "Failed to clear WhatsApp activity")
+            }
+
+            showToast("ok", "Failed WhatsApp activity cleared")
+            await Promise.all([loadSummary(), loadEvents()])
+        } catch (error: any) {
+            setAllEvents(previousEvents)
+            setSelected(previousSelected)
+            showToast("err", error?.message || "Failed to clear WhatsApp activity")
+        } finally {
+            setClearingRecordId(null)
         }
     }
 
@@ -663,22 +698,22 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_320px]">
                 <div className="min-w-0 space-y-5">
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-                        <KpiCard tone="red" icon={<AlertCircle className="h-4 w-4" />} label="Failed Today" value={summary?.kpis.failedToday ?? 0} hint="Failed WhatsApp attempts" />
+                        <KpiCard tone="red" icon={<AlertCircle className="h-4 w-4" />} label="Failed" value={summary?.kpis.failed ?? 0} hint="Last 24 hours" />
                         <KpiCard tone="orange" icon={<MailWarning className="h-4 w-4" />} label="Recovery Sent" value={summary?.kpis.recoverySent ?? 0} hint="Last 24 hours" />
                         <KpiCard tone="blue" icon={<Mail className="h-4 w-4" />} label="Delivered" value={summary?.kpis.delivered ?? 0} hint="If receipts are available" />
                         <KpiCard tone="emerald" icon={<Eye className="h-4 w-4" />} label="Read" value={summary?.kpis.read ?? 0} hint="If receipts are available" />
-                        <KpiCard tone="purple" icon={<ShieldCheck className="h-4 w-4" />} label="Resolved" value={summary?.kpis.resolved ?? 0} hint="Verified or completed" />
+                        <KpiCard tone="purple" icon={<ShieldCheck className="h-4 w-4" />} label="Resolved" value={summary?.kpis.resolved ?? 0} hint="Resolved, verified, or completed" />
                     </div>
 
                     <div className="rounded-xl border border-slate-200 bg-white p-4">
                         <div className="mb-3 flex items-center justify-between">
                             <div>
                                 <h3 className="text-sm font-semibold text-slate-900">Delivery Trend (Last 24 Hours)</h3>
-                                <p className="text-[11px] text-slate-500">Failed · Recovery Sent · Delivered · Read</p>
+                                <p className="text-[11px] text-slate-500">Failed · Recovery Sent · Delivered · Read · Resolved</p>
                             </div>
                         </div>
                         <div className="h-[240px]">
-                            {summary && summary.trend.length > 0 ? (
+                            {summary && summary.hasActivityLast24h ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={summary.trend} margin={{ top: 5, right: 12, left: -8, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -690,10 +725,11 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                         <Line type="monotone" dataKey="recoverySent" stroke="#f97316" strokeWidth={1.5} dot={{ r: 2 }} name="Recovery Sent" />
                                         <Line type="monotone" dataKey="delivered" stroke="#3b82f6" strokeWidth={1.5} dot={{ r: 2 }} name="Delivered" />
                                         <Line type="monotone" dataKey="read" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} name="Read" />
+                                        <Line type="monotone" dataKey="resolved" stroke="#a855f7" strokeWidth={1.5} dot={{ r: 2 }} name="Resolved" />
                                     </LineChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="flex h-full items-center justify-center text-xs text-slate-400">No data in the last 24 hours</div>
+                                <div className="flex h-full items-center justify-center text-xs text-slate-400">No WhatsApp activity in the last 24 hours</div>
                             )}
                         </div>
                     </div>
@@ -730,6 +766,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                     <SelectItem value="failed">Failed</SelectItem>
                                     <SelectItem value="send_failed">Send Failed</SelectItem>
                                     <SelectItem value="recovery_sent">Recovery Sent</SelectItem>
+                                    <SelectItem value="resolved">Resolved</SelectItem>
                                     <SelectItem value="sent">Sent</SelectItem>
                                     <SelectItem value="delivered">Delivered</SelectItem>
                                     <SelectItem value="read">Read</SelectItem>
@@ -855,6 +892,8 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                                         ? "bg-blue-500"
                                                         : record.status === "read"
                                                             ? "bg-cyan-500"
+                                                            : isResolvedStatus(record.status)
+                                                                ? "bg-violet-500"
                                                             : "bg-slate-400"
                                             return (
                                                 <tr key={record.id} className="hover:bg-slate-50/60">
@@ -920,6 +959,16 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                                                 >
                                                                     <Plus className="h-3.5 w-3.5 text-slate-500" />
                                                                 </Button>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                                                    disabled={clearingRecordId === record.id}
+                                                                    onClick={() => setClearRecord(record)}
+                                                                    title="Clear failed activity"
+                                                                >
+                                                                    {clearingRecordId === record.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                                                </Button>
                                                             </div>
                                                         ) : (
                                                             <div className="inline-flex items-center gap-1">
@@ -971,7 +1020,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                             </div>
                         </div>
                         <div className="space-y-1.5 text-xs">
-                            <div className="flex justify-between"><span className="text-slate-500">Failed (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.failedToday ?? 0}</span></div>
+                            <div className="flex justify-between"><span className="text-slate-500">Failed (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.failed ?? 0}</span></div>
                             <div className="flex justify-between"><span className="text-slate-500">Recovery Sent (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.recoverySent ?? 0}</span></div>
                             <div className="flex justify-between"><span className="text-slate-500">Delivered (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.delivered ?? 0}</span></div>
                         </div>
@@ -1100,6 +1149,33 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                         >
                             {confirmRecord && sendingRecordId === confirmRecord.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
                             {confirmRecord && isRecoverySentStatus(confirmRecord.latestRecovery?.status) ? "Resend" : "Send"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!clearRecord} onOpenChange={(open) => !open && !clearingRecordId && setClearRecord(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Clear failed WhatsApp activity?</DialogTitle>
+                        <DialogDescription>
+                            This will remove the selected failed notification from the monitoring list. This action should only be used when the record no longer needs recovery monitoring.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="ghost" disabled={!!clearingRecordId} onClick={() => setClearRecord(null)}>Cancel</Button>
+                        <Button
+                            className="bg-red-600 text-white hover:bg-red-700"
+                            disabled={!clearRecord || !!clearingRecordId}
+                            onClick={async () => {
+                                if (!clearRecord) return
+                                const record = clearRecord
+                                setClearRecord(null)
+                                await clearFailedRecord(record)
+                            }}
+                        >
+                            {clearingRecordId ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />}
+                            Clear
                         </Button>
                     </DialogFooter>
                 </DialogContent>

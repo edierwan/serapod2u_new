@@ -18,15 +18,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminUser } from '@/app/api/settings/whatsapp/_utils'
+import {
+    addRecordToTrendPoint,
+    createEmptyTrendPoint,
+    hasTrendActivity,
+    isFailedStatus,
+    isMonitoringDismissed,
+    isRecoveryPurpose,
+    isRecoverySentStatus,
+    isResolvedStatus,
+    type RecoveryTrendPoint,
+} from '@/lib/wa-recovery/activity-status'
 
 export const dynamic = 'force-dynamic'
-
-const RECOVERY_PURPOSES = [
-    'recovery_notice',
-    'password_reset_recovery',
-    'registration_recovery',
-    'qr_claim_recovery',
-]
 
 export async function GET(_req: NextRequest) {
     try {
@@ -37,105 +41,59 @@ export async function GET(_req: NextRequest) {
         const admin = await isAdminUser(supabase, user.id)
         if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-        const todayIso = todayStart.toISOString()
-        const last24Iso = new Date(Date.now() - 24 * 3600_000).toISOString()
+        const now = new Date()
+        const last24Iso = new Date(now.getTime() - 24 * 3600_000).toISOString()
 
-        // Failed today — failed sends across notification_events (any WA purpose) today
-        const { count: failedToday } = await supabase
-            .from('notification_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel', 'whatsapp')
-            .in('status', ['failed', 'send_failed'])
-            .gte('created_at', todayIso)
-
-        // Recovery sent — count of recovery_* events with status sent
-        const { count: recoverySent } = await supabase
-            .from('notification_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel', 'whatsapp')
-            .in('purpose', RECOVERY_PURPOSES)
-            .in('status', ['sent', 'recovery_sent'])
-            .gte('created_at', last24Iso)
-
-        // Delivered — events status = 'delivered'
-        const { count: delivered } = await supabase
-            .from('notification_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel', 'whatsapp')
-            .eq('status', 'delivered')
-            .gte('created_at', last24Iso)
-
-        // Read — events status = 'read'
-        const { count: readCount } = await supabase
-            .from('notification_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel', 'whatsapp')
-            .eq('status', 'read')
-            .gte('created_at', last24Iso)
-
-        // Resolved — verified or completed within recovery window
-        const { count: resolved } = await supabase
-            .from('notification_events')
-            .select('id', { count: 'exact', head: true })
-            .eq('channel', 'whatsapp')
-            .in('status', ['verified', 'completed'])
-            .gte('created_at', last24Iso)
-
-        // Trend (last 24 hours, hourly buckets)
         const { data: trendRows } = await supabase
             .from('notification_events')
-            .select('created_at, status, purpose')
+            .select('created_at, status, purpose, meta')
             .eq('channel', 'whatsapp')
             .gte('created_at', last24Iso)
             .limit(5000)
 
-        const trend: { hour: string; failed: number; recoverySent: number; delivered: number; read: number }[] = []
-        const buckets = new Map<string, { failed: number; recoverySent: number; delivered: number; read: number }>()
+        const trend: RecoveryTrendPoint[] = []
+        const buckets = new Map<string, RecoveryTrendPoint>()
         for (let i = 23; i >= 0; i--) {
-            const h = new Date(Date.now() - i * 3600_000)
+            const h = new Date(now.getTime() - i * 3600_000)
             h.setMinutes(0, 0, 0)
             const key = h.toISOString().slice(0, 13)
-            buckets.set(key, { failed: 0, recoverySent: 0, delivered: 0, read: 0 })
-        }
-        for (const r of trendRows || []) {
-            const key = String((r as any).created_at).slice(0, 13)
-            const b = buckets.get(key)
-            if (!b) continue
-            const status = String((r as any).status || '')
-            const purpose = String((r as any).purpose || '')
-            if (status === 'failed' || status === 'send_failed') b.failed++
-            if (RECOVERY_PURPOSES.includes(purpose) && (status === 'sent' || status === 'recovery_sent')) b.recoverySent++
-            if (status === 'delivered') b.delivered++
-            if (status === 'read') b.read++
-        }
-        for (const [hour, v] of buckets.entries()) {
-            trend.push({ hour: `${hour.slice(11, 13)}:00`, ...v })
+            buckets.set(key, createEmptyTrendPoint(`${key.slice(11, 13)}:00`))
         }
 
-        // Counts of failed-by-purpose for Quick Actions
-        const { data: failedByPurposeRows } = await supabase
-            .from('notification_events')
-            .select('purpose')
-            .eq('channel', 'whatsapp')
-            .in('status', ['failed', 'send_failed'])
-            .gte('created_at', last24Iso)
-            .limit(5000)
+        const kpis = {
+            failed: 0,
+            recoverySent: 0,
+            delivered: 0,
+            read: 0,
+            resolved: 0,
+        }
         const failedByPurpose: Record<string, number> = {}
-        for (const r of failedByPurposeRows || []) {
-            const p = String((r as any).purpose || 'system')
-            failedByPurpose[p] = (failedByPurpose[p] || 0) + 1
+
+        for (const r of trendRows || []) {
+            if (isMonitoringDismissed((r as any).meta)) continue
+            const key = String((r as any).created_at).slice(0, 13)
+            const b = buckets.get(key)
+            const status = String((r as any).status || '')
+            const purpose = String((r as any).purpose || '')
+            if (isFailedStatus(status)) {
+                kpis.failed += 1
+                failedByPurpose[purpose || 'system'] = (failedByPurpose[purpose || 'system'] || 0) + 1
+            }
+            if (isRecoveryPurpose(purpose) && isRecoverySentStatus(status)) kpis.recoverySent += 1
+            if (status === 'delivered') kpis.delivered += 1
+            if (status === 'read') kpis.read += 1
+            if (isResolvedStatus(status)) kpis.resolved += 1
+            if (!b) continue
+            addRecordToTrendPoint(b, status, purpose)
+        }
+        for (const [hour, v] of buckets.entries()) {
+            trend.push({ ...v, hour: `${hour.slice(11, 13)}:00` })
         }
 
         return NextResponse.json({
-            kpis: {
-                failedToday: failedToday || 0,
-                recoverySent: recoverySent || 0,
-                delivered: delivered || 0,
-                read: readCount || 0,
-                resolved: resolved || 0,
-            },
+            kpis,
             trend,
+            hasActivityLast24h: hasTrendActivity(trend),
             failedByPurpose,
         })
     } catch (e: any) {
