@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils';
-import { normalizePhoneE164 } from '@/utils/phone';
+import { normalizePhoneE164, toProviderPhone } from '@/utils/phone';
+import { normalizeAdhocRecipientList } from '@/lib/marketing/adhocRecipients';
 import {
     buildDailyReportingData,
     normalizeDailyReportingConfig,
@@ -163,6 +164,7 @@ export async function POST(
                     filters: audienceFilters.filters,
                     segment_id: normalizeUuid(audienceFilters.segment_id),
                     user_ids: normalizeIdArray(audienceFilters.user_ids),
+                    adhoc_recipients: normalizeAdhocRecipientList(audienceFilters.adhoc_recipients),
                     overrides: audienceFilters.overrides,
                     include_all: true
                 })
@@ -457,7 +459,7 @@ async function sendMessagesAsync(
                     .replace(/{phone}/g, recipient.phone || '');
 
             // Send via gateway using shared utility (same as test-send)
-            const phone = recipient.phone.replace(/[^\d]/g, '');
+            const phone = toProviderPhone(recipient.phone) || recipient.phone.replace(/[^\d]/g, '');
 
             const result = await callGateway(
                 waConfig.baseUrl,
