@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { buildConsumerRewardRedemptionPlan } from '@/lib/engagement/consumer-reward-wallet'
+import { resolveMobileConsumerWalletContext } from '@/lib/utils/qr-resolver'
 
 /**
  * POST /api/consumer/redeem-reward
@@ -49,7 +51,6 @@ export async function POST(request: NextRequest) {
 
     console.log('🎁 Reward Redemption Request:', { reward_id, user_id: user.id })
 
-    // 1. Get user's organization (shop)
     const { data: userProfile, error: profileError } = await supabase
       .from('users')
       .select('id, organization_id, phone, email, role_code')
@@ -64,16 +65,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // GUEST/CONSUMER users linked to a shop should use their INDIVIDUAL balance,
-    // not the shop aggregate balance
-    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code || '')
+    let organizationTypeCode: string | null = null
 
-    let shopId = user.id // Default to user ID for independent consumers
-    let isIndependent = true
-
-    // If user belongs to an organization, validate it
     if (userProfile.organization_id) {
-      // 2. Get organization details
       const { data: organization, error: orgError } = await supabase
         .from('organizations')
         .select('id, org_type_code, org_name')
@@ -88,21 +82,20 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      if (organization.org_type_code !== 'SHOP') {
+      organizationTypeCode = organization.org_type_code || null
+
+      if (organizationTypeCode !== 'SHOP') {
         return NextResponse.json(
           { success: false, error: 'Only shop users or independent consumers can redeem rewards' },
           { status: 403 }
         )
       }
 
-      shopId = organization.id
-      isIndependent = false
-      console.log('✅ Shop user:', organization.org_name, 'Shop ID:', shopId)
+      console.log('✅ Shop-linked mobile user:', organization.org_name, 'Shop ID:', organization.id)
     } else {
       console.log('✅ Independent consumer:', user.id)
     }
 
-    // 2. Get reward details
     const { data: reward, error: rewardError } = await supabase
       .from('redeem_items')
       .select('*')
@@ -120,16 +113,26 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Reward found:', reward.item_name, 'Points required:', reward.points_required)
 
-    // Check if this is a Point category reward (bonus points)
     const isPointCategory = reward.category === 'point'
     const pointRewardAmount = (reward as any).point_reward_amount || 0
     const collectionMode = (reward as any).collection_mode || 'always'
     const perUserLimit = (reward as any).per_user_limit || false
+    const rewardWalletScope = (reward as any).wallet_scope || 'consumer'
+    const consumerPhone = userProfile.phone || ''
 
-    // For Point category, points_required should be 0 (free to collect)
     const pointsRequired = isPointCategory ? 0 : (reward.point_offer || reward.points_required)
 
-    // 3. Check stock (skip for Point category which typically has unlimited stock)
+    if (rewardWalletScope !== 'consumer') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Shop wallet rewards are disabled for mobile redemption.',
+          wallet_scope: rewardWalletScope,
+        },
+        { status: 403 }
+      )
+    }
+
     if (!isPointCategory && typeof reward.stock_quantity === 'number' && reward.stock_quantity <= 0) {
       return NextResponse.json(
         { success: false, error: 'This reward is out of stock' },
@@ -137,13 +140,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 3.5 For Point category, check collection restrictions
     if (isPointCategory) {
-      const consumerPhone = userProfile.phone || ''
-
-      // Check per-user limit
       if (perUserLimit) {
-        // Get previous collections of this reward by this user
         const { data: previousCollections, error: prevError } = await supabaseAdmin
           .from('points_transactions')
           .select('id, created_at')
@@ -153,13 +151,11 @@ export async function POST(request: NextRequest) {
 
         if (previousCollections && previousCollections.length > 0) {
           if (collectionMode === 'once') {
-            // One-time collection only
             return NextResponse.json(
               { success: false, error: 'You have already collected this reward. One-time collection only!' },
               { status: 400 }
             )
           } else if (collectionMode === 'daily') {
-            // Check if already collected today
             const today = new Date()
             today.setHours(0, 0, 0, 0)
             const lastCollection = new Date(previousCollections[0].created_at)
@@ -174,7 +170,6 @@ export async function POST(request: NextRequest) {
           }
         }
       } else if (collectionMode === 'daily') {
-        // Daily collection without per-user tracking (by phone)
         const today = new Date().toISOString().split('T')[0]
         const { count } = await supabaseAdmin
           .from('points_transactions')
@@ -192,61 +187,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Get current points balance
-    // GUEST/CONSUMER users always use individual balance (v_consumer_points_balance)
-    // Only non-consumer shop staff/owners use shop aggregate balance (v_shop_points_balance)
-    let currentBalance = 0
+    const walletContext = await resolveMobileConsumerWalletContext(supabaseAdmin, {
+      userId: user.id,
+      roleCode: userProfile.role_code,
+      organizationId: userProfile.organization_id,
+      organizationTypeCode,
+    })
 
-    if (!isIndependent && !isConsumerRole) {
-      const { data: balanceData, error: balanceError } = await supabaseAdmin
-        .from('v_shop_points_balance')
-        .select('*')
-        .eq('shop_id', shopId)
-        .maybeSingle()
+    const redemptionPlan = buildConsumerRewardRedemptionPlan({
+      wallet: walletContext,
+      reward: {
+        id: reward.id,
+        itemName: reward.item_name,
+        category: reward.category,
+        pointsRequired: reward.points_required,
+        pointOffer: (reward as any).point_offer,
+        pointRewardAmount,
+        walletScope: rewardWalletScope,
+      },
+      user: {
+        id: user.id,
+        phone: consumerPhone,
+        email: consumer_email || userProfile.email || null,
+      },
+    })
 
-      if (balanceError) {
-        console.error('❌ Error fetching balance:', balanceError)
-        return NextResponse.json(
-          { success: false, error: 'Failed to fetch points balance' },
-          { status: 500 }
-        )
-      }
-      currentBalance = balanceData?.current_balance || 0
-    } else {
-      // Individual consumer balance - consistent with profile API and UI
-      const { data: balanceData, error: balanceError } = await supabaseAdmin
-        .from('v_consumer_points_balance')
-        .select('current_balance')
-        .eq('user_id', user.id)
-        .maybeSingle()
+    console.log('💰 Mobile wallet balance:', walletContext.balance, 'Required:', pointsRequired, 'Source:', walletContext.balance_source)
 
-      if (balanceError) {
-        console.error('❌ Error fetching balance:', balanceError)
-        return NextResponse.json(
-          { success: false, error: 'Failed to fetch points balance' },
-          { status: 500 }
-        )
-      }
-
-      currentBalance = balanceData?.current_balance || 0
-    }
-
-    console.log('💰 Current balance:', currentBalance, 'Required:', pointsRequired)
-
-    // 5. Check if user has enough points
-    if (currentBalance < pointsRequired) {
+    if (!redemptionPlan.success) {
       return NextResponse.json(
         {
           success: false,
-          error: `Insufficient points. You need ${pointsRequired} points but have ${currentBalance}.`,
-          current_balance: currentBalance,
-          required: pointsRequired
+          error: redemptionPlan.error,
+          current_balance: redemptionPlan.currentBalance,
+          required: redemptionPlan.requiredPoints,
+          wallet_scope: walletContext.wallet_scope,
+          wallet_owner_user_id: walletContext.wallet_owner_user_id,
+          wallet_owner_org_id: walletContext.wallet_owner_org_id,
+          reporting_shop_id: walletContext.reporting_shop_id,
+          balance_source: walletContext.balance_source,
         },
-        { status: 400 }
+        { status: redemptionPlan.status }
       )
     }
 
-    // 6. Check redemption limit per consumer (if applicable)
     if (reward.max_redemptions_per_consumer) {
       const phoneToCheck = consumer_phone || userProfile.phone
       if (phoneToCheck) {
@@ -268,51 +252,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 7. Record the redemption transaction
-    // IMPORTANT: Use shopId (the shop's organization ID) as company_id
-    // so the shop_points_ledger view can properly filter by shop_id
-    const consumerPhone = userProfile.phone || ''
-
-    // For Point category, we ADD points instead of deducting
-    const pointsChange = isPointCategory ? pointRewardAmount : -pointsRequired
-    const newBalance = currentBalance + pointsChange
-
-    // Generate redemption code (will be finalized after insert with transaction ID)
-    const tempRedemptionCode = isPointCategory
-      ? `BONUS-${Date.now().toString(36).toUpperCase()}`
-      : `RED-${Date.now().toString(36).toUpperCase()}`
+    if (!redemptionPlan.transactionInsert) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to prepare redemption transaction' },
+        { status: 500 }
+      )
+    }
 
     console.log('📝 Recording ' + (isPointCategory ? 'bonus points' : 'redemption') + ':', {
-      shop_id: shopId,
-      consumer_phone: consumerPhone,
-      points_amount: pointsChange,
-      balance_after: newBalance,
+      wallet_scope: redemptionPlan.walletScope,
+      wallet_owner_user_id: redemptionPlan.walletOwnerUserId,
+      reporting_shop_id: redemptionPlan.reportingShopId,
+      consumer_phone: redemptionPlan.transactionInsert.consumer_phone,
+      points_amount: redemptionPlan.pointsChange,
+      balance_after: redemptionPlan.newBalance,
       reward_name: reward.item_name
     })
 
     const { data: transaction, error: txnError } = await supabase
       .from('points_transactions')
-      .insert({
-        company_id: isIndependent ? null : shopId, // Use shop's org ID if available, else null
-        consumer_phone: consumerPhone,
-        consumer_email: consumer_email || userProfile.email || null,
-        transaction_type: isPointCategory ? 'earn' : 'redeem',  // Use 'earn' for bonus points (valid: earn, redeem, expire, adjust)
-        points_amount: pointsChange,
-        balance_after: newBalance,
-        redeem_item_id: reward_id,
-        description: isPointCategory
-          ? `Bonus Points: ${reward.item_name}`
-          : `Redeemed: ${reward.item_name}`,
-        transaction_date: new Date().toISOString(),
-        fulfillment_status: isPointCategory ? 'fulfilled' : 'pending',
-        redemption_code: tempRedemptionCode,
-        user_id: user.id, // Record the user ID for independent consumers
-        // Taxonomy dual-write (Phase 1)
-        point_category: isPointCategory ? 'bonus' : 'redemption',
-        point_indicator: isPointCategory ? 'point_reward' : 'physical_reward',
-        point_owner_type: 'consumer',
-        point_direction: isPointCategory ? 'earn' : 'spend',
-      } as any)
+      .insert(redemptionPlan.transactionInsert as any)
       .select()
       .single()
 
@@ -384,10 +343,15 @@ export async function POST(request: NextRequest) {
         transaction_id: transaction.id,
         reward_name: reward.item_name,
         points_earned: pointRewardAmount,
-        new_balance: newBalance,
+        new_balance: redemptionPlan.newBalance,
         redemption_code: redemptionCode,
         collection_mode: collectionMode,
-        per_user_limit: perUserLimit
+        per_user_limit: perUserLimit,
+        wallet_scope: redemptionPlan.walletScope,
+        wallet_owner_user_id: redemptionPlan.walletOwnerUserId,
+        wallet_owner_org_id: redemptionPlan.walletOwnerOrgId,
+        reporting_shop_id: redemptionPlan.reportingShopId,
+        balance_source: redemptionPlan.balanceSource,
       })
     }
 
@@ -396,10 +360,15 @@ export async function POST(request: NextRequest) {
       message: 'Reward redeemed successfully!',
       transaction_id: transaction.id,
       reward_name: reward.item_name,
-      points_deducted: pointsRequired,
-      new_balance: newBalance,
+      points_deducted: redemptionPlan.requiredPoints,
+      new_balance: redemptionPlan.newBalance,
       redemption_code: redemptionCode,
-      instructions: 'Your redemption is being processed. Please show this confirmation to redeem your reward.'
+      instructions: 'Your redemption is being processed. Please show this confirmation to redeem your reward.',
+      wallet_scope: redemptionPlan.walletScope,
+      wallet_owner_user_id: redemptionPlan.walletOwnerUserId,
+      wallet_owner_org_id: redemptionPlan.walletOwnerOrgId,
+      reporting_shop_id: redemptionPlan.reportingShopId,
+      balance_source: redemptionPlan.balanceSource,
     })
 
   } catch (error) {

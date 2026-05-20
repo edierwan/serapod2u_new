@@ -41,21 +41,6 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user's organization (shop)
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('users')
-      .select('id, organization_id, phone')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      console.error('❌ User profile not found:', profileError)
-      return NextResponse.json(
-        { success: false, error: 'User profile not found' },
-        { status: 404 }
-      )
-    }
-
     let query = supabaseAdmin
       .from('shop_points_ledger')
       .select('*')
@@ -63,35 +48,7 @@ export async function GET(request: NextRequest) {
       .order('occurred_at', { ascending: false })
       .limit(100)
 
-    // If user belongs to an organization, filter by shop_id
-    if (userProfile.organization_id) {
-      // Get organization details
-      const { data: organization, error: orgError } = await supabaseAdmin
-        .from('organizations')
-        .select('id, org_type_code, org_name')
-        .eq('id', userProfile.organization_id)
-        .single()
-
-      if (orgError || !organization) {
-        console.error('❌ Organization not found:', orgError)
-        return NextResponse.json(
-          { success: false, error: 'Organization not found' },
-          { status: 404 }
-        )
-      }
-
-      if (organization.org_type_code !== 'SHOP') {
-        return NextResponse.json(
-          { success: false, error: 'Only shop users or independent consumers can view scanned products' },
-          { status: 403 }
-        )
-      }
-
-      query = query.eq('shop_id', organization.id)
-    } else {
-      // Independent consumer - filter by consumer_id
-      query = query.eq('consumer_id', user.id)
-    }
+    query = query.eq('consumer_id', user.id)
 
     // Execute query
     const { data: ledgerData, error: ledgerError } = await query
@@ -142,7 +99,7 @@ export async function GET(request: NextRequest) {
             scan_count: 1,
             total_points: entry.points_change || 0,
             image_url: entry.variant_id ? variantImagesMap[entry.variant_id] : null,
-            last_scanned: entry.transaction_date
+              last_scanned: entry.occurred_at
           }
         }
       }

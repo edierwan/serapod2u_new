@@ -145,6 +145,7 @@ interface RewardItem {
     item_description: string | null
     points_required: number
     point_offer?: number | null
+    wallet_scope?: 'consumer' | 'shop' | null
     item_image_url: string | null
     additional_images?: string[]
     item_code: string
@@ -4264,6 +4265,19 @@ export default function PremiumLoyaltyTemplate({
                 // IMPORTANT: Refresh redemption history to show new redemption
                 fetchRedemptionHistory()
             } else {
+                if (typeof data.current_balance === 'number') {
+                    setUserPoints(data.current_balance)
+                }
+
+                if (typeof data.current_balance === 'number' && typeof data.required === 'number') {
+                    setShowRedeemConfirm(false)
+                    setInsufficientPointsData({
+                        needed: data.required,
+                        available: data.current_balance
+                    })
+                    setShowInsufficientPoints(true)
+                }
+
                 setRedeemError(data.error || 'Failed to redeem reward')
             }
         } catch (error) {

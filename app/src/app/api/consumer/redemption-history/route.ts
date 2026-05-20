@@ -41,67 +41,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user's organization (shop)
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('users')
-      .select('id, organization_id, phone')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      console.error('❌ User profile not found:', profileError)
-      return NextResponse.json(
-        { success: false, error: 'User profile not found' },
-        { status: 404 }
-      )
-    }
-
-    let shopId = user.id // Default to user ID for independent consumers
-
-    // If user belongs to an organization, validate it
-    if (userProfile.organization_id) {
-      // Get organization details
-      const { data: organization, error: orgError } = await supabaseAdmin
-        .from('organizations')
-        .select('id, org_type_code, org_name')
-        .eq('id', userProfile.organization_id)
-        .single()
-
-      if (orgError || !organization) {
-        console.error('❌ Organization not found:', orgError)
-        return NextResponse.json(
-          { success: false, error: 'Organization not found' },
-          { status: 404 }
-        )
-      }
-
-      if (organization.org_type_code !== 'SHOP') {
-        return NextResponse.json(
-          { success: false, error: 'Only shop users or independent consumers can view redemption history' },
-          { status: 403 }
-        )
-      }
-
-      shopId = organization.id
-    }
-
-    // Get redemption history (transaction_type = 'redeem')
-    let query = supabaseAdmin
+    const { data: redemptions, error: redemptionsError } = await supabaseAdmin
       .from('points_transactions')
       .select('*')
       .eq('transaction_type', 'redeem')
+      .eq('user_id', user.id)
       .order('transaction_date', { ascending: false })
       .limit(50)
-
-    if (userProfile.organization_id) {
-      // Shop user: filter by company_id (shop ID)
-      query = query.eq('company_id', shopId)
-    } else {
-      // Independent consumer: filter by user_id
-      query = query.eq('user_id', user.id)
-    }
-
-    const { data: redemptions, error: redemptionsError } = await query
 
     if (redemptionsError) {
       console.error('❌ Error fetching redemption history:', redemptionsError)
@@ -141,6 +87,8 @@ export async function GET(request: NextRequest) {
         description: txn.description,
         status: txn.fulfillment_status || 'pending',
         redemption_code: txn.redemption_code,
+        wallet_scope: (txn as any).wallet_scope || 'consumer',
+        reporting_shop_id: (txn as any).reporting_shop_id || null,
         reward: reward ? {
           id: reward.id,
           name: reward.item_name,

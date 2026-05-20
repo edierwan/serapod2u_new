@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveMobileConsumerWalletContext } from '@/lib/utils/qr-resolver'
 
 /**
  * GET /api/consumer/points-history
@@ -41,23 +42,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user's organization (shop)
-    const { data: userProfile, error: profileError } = await supabaseAdmin
-      .from('users')
-      .select('id, organization_id, phone, role_code')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !userProfile) {
-      console.error('❌ User profile not found:', profileError)
-      return NextResponse.json(
-        { success: false, error: 'User profile not found' },
-        { status: 404 }
-      )
-    }
-
-    // GUEST/CONSUMER users should see only their own transactions, not the whole shop
-    const isConsumerRole = ['GUEST', 'CONSUMER'].includes(userProfile.role_code || '')
+    const walletContext = await resolveMobileConsumerWalletContext(supabaseAdmin, {
+      userId: user.id,
+    })
 
     let query = supabaseAdmin
       .from('shop_points_ledger')
@@ -65,35 +52,7 @@ export async function GET(request: NextRequest) {
       .order('occurred_at', { ascending: false })
       .limit(100)
 
-    // If user belongs to an organization, filter by shop_id
-    if (userProfile.organization_id && !isConsumerRole) {
-      // Get organization details
-      const { data: organization, error: orgError } = await supabaseAdmin
-        .from('organizations')
-        .select('id, org_type_code, org_name')
-        .eq('id', userProfile.organization_id)
-        .single()
-
-      if (orgError || !organization) {
-        console.error('❌ Organization not found:', orgError)
-        return NextResponse.json(
-          { success: false, error: 'Organization not found' },
-          { status: 404 }
-        )
-      }
-
-      if (organization.org_type_code !== 'SHOP') {
-        return NextResponse.json(
-          { success: false, error: 'Only shop users or independent consumers can view points history' },
-          { status: 403 }
-        )
-      }
-
-      query = query.eq('shop_id', organization.id)
-    } else {
-      // Individual consumer (independent or GUEST/CONSUMER role) - filter by consumer_id
-      query = query.eq('consumer_id', user.id)
-    }
+    query = query.eq('consumer_id', user.id)
 
     // Execute query
     const { data: ledgerData, error: ledgerError } = await query
@@ -178,7 +137,11 @@ export async function GET(request: NextRequest) {
       summary: {
         total_earned: totalEarned,
         total_redeemed: totalRedeemed,
-        current_balance: formattedTransactions.length > 0 ? formattedTransactions[0].balance_after : 0
+        current_balance: walletContext.balance,
+        wallet_scope: walletContext.wallet_scope,
+        wallet_owner_user_id: walletContext.wallet_owner_user_id,
+        reporting_shop_id: walletContext.reporting_shop_id,
+        balance_source: walletContext.balance_source,
       },
       count: formattedTransactions.length
     })

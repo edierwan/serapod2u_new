@@ -38,9 +38,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    const consumerRewards = (rewards || []).filter((reward: any) => (reward.wallet_scope || 'consumer') === 'consumer')
+
     return NextResponse.json({
       success: true,
-      rewards: rewards || []
+      rewards: consumerRewards
     })
   } catch (error: any) {
     console.error('Error in rewards API:', error)
