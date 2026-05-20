@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { buildConsumerRewardRedemptionPlan } from '@/lib/engagement/consumer-reward-wallet'
+import { validatePersonalCashbackBank } from '@/lib/engagement/personal-bank-details'
 import { resolveMobileConsumerWalletContext } from '@/lib/utils/qr-resolver'
 
 /**
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const { data: userProfile, error: profileError } = await supabase
       .from('users')
-      .select('id, organization_id, phone, email, role_code')
+      .select('id, organization_id, phone, email, role_code, bank_id, bank_account_number')
       .eq('id', user.id)
       .single()
 
@@ -119,6 +120,9 @@ export async function POST(request: NextRequest) {
     const perUserLimit = (reward as any).per_user_limit || false
     const rewardWalletScope = (reward as any).wallet_scope || 'consumer'
     const consumerPhone = userProfile.phone || ''
+    const isCashbackReward = !isPointCategory
+      && typeof reward.item_code === 'string'
+      && reward.item_code.toLowerCase().includes('cashback')
 
     const pointsRequired = isPointCategory ? 0 : (reward.point_offer || reward.points_required)
 
@@ -131,6 +135,42 @@ export async function POST(request: NextRequest) {
         },
         { status: 403 }
       )
+    }
+
+    if (isCashbackReward) {
+      const bankId = userProfile.bank_id || null
+      let bankRule = null
+
+      if (bankId) {
+        const { data: bankData, error: bankError } = await supabaseAdmin
+          .from('msia_banks')
+          .select('id, short_name, min_account_length, max_account_length, is_numeric_only, is_active')
+          .eq('id', bankId)
+          .maybeSingle()
+
+        if (bankError) {
+          console.error('❌ Failed to validate personal bank details:', bankError)
+          return NextResponse.json(
+            { success: false, error: 'Failed to validate personal bank details' },
+            { status: 500 }
+          )
+        }
+
+        bankRule = bankData
+      }
+
+      const bankValidation = validatePersonalCashbackBank({
+        bankId,
+        bankAccountNumber: userProfile.bank_account_number,
+        bank: bankRule,
+      })
+
+      if (!bankValidation.isValid) {
+        return NextResponse.json(
+          { success: false, error: bankValidation.error },
+          { status: 400 }
+        )
+      }
     }
 
     if (!isPointCategory && typeof reward.stock_quantity === 'number' && reward.stock_quantity <= 0) {
