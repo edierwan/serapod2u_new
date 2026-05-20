@@ -247,7 +247,7 @@ function StatusPill({ status }: { status: string }) {
                 ? "bg-cyan-100 text-cyan-800"
                 : isFailedStatus(status)
                     ? "bg-red-100 text-red-800"
-                        : isResolvedStatus(status)
+                    : isResolvedStatus(status)
                         ? "bg-emerald-100 text-emerald-800"
                         : status === "rate_limited"
                             ? "bg-orange-100 text-orange-800"
@@ -894,7 +894,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                                             ? "bg-cyan-500"
                                                             : isResolvedStatus(record.status)
                                                                 ? "bg-violet-500"
-                                                            : "bg-slate-400"
+                                                                : "bg-slate-400"
                                             return (
                                                 <tr key={record.id} className="hover:bg-slate-50/60">
                                                     <td className="px-2 py-2.5 align-top">

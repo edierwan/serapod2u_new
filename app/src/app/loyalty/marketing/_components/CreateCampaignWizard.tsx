@@ -24,6 +24,11 @@ import { SpecificUserSelector } from './SpecificUserSelector';
 import { CampaignSafetyAdvisor } from './CampaignSafetyAdvisor';
 import { PrelaunchAnalysisModal } from './PrelaunchAnalysisModal';
 import {
+    type ParsedRecipient,
+    normalizeAdhocRecipientList,
+    summarizeAdhocRecipients,
+} from '@/lib/marketing/adhocRecipients';
+import {
     validateTemplate,
     getRiskLevel,
     getRiskBadgeColor,
@@ -206,6 +211,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
         audienceMode: 'filters' as 'filters' | 'segment' | 'specific_users',
         selectedSegmentId: '',
         selectedUserIds: [] as string[],
+        adhocRecipients: [] as ParsedRecipient[],
         filters: {
             organization_type: 'all',
             state: 'any',
@@ -237,6 +243,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                 audienceMode: audienceFilters.mode || 'filters',
                 selectedSegmentId: audienceFilters.segment_id || '',
                 selectedUserIds: audienceFilters.user_ids || [],
+                adhocRecipients: normalizeAdhocRecipientList(audienceFilters.adhoc_recipients),
                 filters: audienceFilters.filters || {
                     organization_type: 'all',
                     state: 'any',
@@ -518,6 +525,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                         filters: formData.filters,
                         segment_id: isWinbackObjective ? null : (formData.selectedSegmentId || null),
                         user_ids: isWinbackObjective ? [] : formData.selectedUserIds.filter(Boolean),
+                        adhoc_recipients: isWinbackObjective ? [] : formData.adhocRecipients,
                         reporting: isDailyReportingObjective ? {
                             report_type: formData.reportingType,
                             enable_reply_action: formData.enableReplyAction,
@@ -605,6 +613,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
     const riskLevel = estimatedRecipients > 5000 ? 'High' : estimatedRecipients > 1000 ? 'Medium' : 'Low';
     const isWinbackObjective = formData.objective === 'Winback';
     const effectiveAudienceMode = isWinbackObjective ? 'filters' : formData.audienceMode;
+    const adhocSummary = summarizeAdhocRecipients(formData.adhocRecipients);
 
     const templatesByLanguage = templates.filter(
         (t) => (t.language || 'EN').toString().toUpperCase() === selectedLanguage
@@ -927,7 +936,9 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                 {!isWinbackObjective && formData.audienceMode === 'specific_users' && (
                                     <SpecificUserSelector
                                         selectedUserIds={formData.selectedUserIds}
-                                        onSelect={(ids) => setFormData({ ...formData, selectedUserIds: ids })}
+                                        onSelect={(ids) => setFormData(prev => ({ ...prev, selectedUserIds: ids }))}
+                                        adhocRecipients={formData.adhocRecipients}
+                                        onAdhocRecipientsChange={(recipients) => setFormData(prev => ({ ...prev, adhocRecipients: recipients }))}
                                     />
                                 )}
                             </ScrollArea>
@@ -940,6 +951,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                 filters={formData.filters}
                                 segmentId={isWinbackObjective ? '' : formData.selectedSegmentId}
                                 userIds={isWinbackObjective ? [] : formData.selectedUserIds}
+                                adhocRecipients={isWinbackObjective ? [] : formData.adhocRecipients}
                                 onCountChange={(count) => setEstimatedRecipients(count)}
                                 overrides={{
                                     include_ids: formData.overrideIncludeIds,
@@ -1212,6 +1224,26 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                                         <span className="text-gray-500">Recipients</span>
                                         <span className="font-medium">{estimatedRecipients.toLocaleString()}</span>
                                     </div>
+                                    {!isWinbackObjective && effectiveAudienceMode === 'specific_users' && (
+                                        <>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Existing CRM Users</span>
+                                                <span className="font-medium">{formData.selectedUserIds.length}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Ad-hoc Imported</span>
+                                                <span className="font-medium">{adhocSummary.total}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Ad-hoc Eligible</span>
+                                                <span className="font-medium">{adhocSummary.eligible}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-500">Ad-hoc Excluded</span>
+                                                <span className="font-medium">{adhocSummary.excluded}</span>
+                                            </div>
+                                        </>
+                                    )}
                                     <div className="flex justify-between text-sm">
                                         <span className="text-gray-500">Objective</span>
                                         <Badge variant="outline">{formData.objective}</Badge>
@@ -1363,7 +1395,7 @@ export function CreateCampaignWizard({ onCancel, onComplete, editingCampaign, se
                     {step === 1 ? 'Cancel' : 'Back'}
                 </Button>
                 {step < 4 ? (
-                    <Button onClick={handleNext} size="lg" className="px-6 shadow-sm">
+                    <Button onClick={handleNext} size="lg" className="px-6 shadow-sm" disabled={step === 2 && estimatedRecipients < 1}>
                         Next Step <ChevronRight className="w-4 h-4 ml-2" />
                     </Button>
                 ) : (

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { normalizeAdhocRecipientList } from '@/lib/marketing/adhocRecipients';
 
 function normalizeUuid(value: unknown) {
   if (typeof value !== 'string') {
@@ -34,6 +35,7 @@ function normalizeAudienceFilters(audienceFilters: any) {
     ...audienceFilters,
     segment_id: normalizeUuid(audienceFilters.segment_id),
     user_ids: normalizeIdArray(audienceFilters.user_ids),
+    adhoc_recipients: normalizeAdhocRecipientList(audienceFilters.adhoc_recipients),
     overrides: {
       include_ids: normalizeIdArray(audienceFilters.overrides?.include_ids),
       exclude_ids: normalizeIdArray(audienceFilters.overrides?.exclude_ids),

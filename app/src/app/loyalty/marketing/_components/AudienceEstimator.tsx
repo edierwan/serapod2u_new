@@ -9,12 +9,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import type { ParsedRecipient } from '@/lib/marketing/adhocRecipients';
 
 interface AudienceEstimatorProps {
     mode: 'filters' | 'segment' | 'specific_users';
     filters?: any;
     segmentId?: string;
     userIds?: string[];
+    adhocRecipients?: ParsedRecipient[];
     onCountChange?: (count: number) => void;
     overrides?: {
         include_ids: string[];
@@ -30,7 +32,9 @@ interface AudienceStats {
     excluded_missing_phone: number;
     excluded_opt_out: number;
     excluded_invalid_wa: number;
+    excluded_invalid_input?: number;
     excluded_activity: number;
+    excluded_duplicate?: number;
     excluded_total: number;
     excluded_by_override: number; // New field
     preview: Array<{
@@ -55,7 +59,7 @@ interface AudienceStats {
     }>;
 }
 
-export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountChange, overrides, onOverrideChange }: AudienceEstimatorProps) {
+export function AudienceEstimator({ mode, filters, segmentId, userIds, adhocRecipients, onCountChange, overrides, onOverrideChange }: AudienceEstimatorProps) {
     const [stats, setStats] = useState<AudienceStats | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -81,6 +85,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
     // Serialize filters to detect actual changes (not just reference changes)
     const filtersKey = JSON.stringify(filters || {});
     const userIdsKey = userIds?.join(',') || '';
+    const adhocRecipientsKey = JSON.stringify(adhocRecipients || []);
     const overridesKey = JSON.stringify(overrides || {});
 
     // Clear pending actions when API data is refreshed (stats change means API returned new data)
@@ -96,14 +101,17 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
     useEffect(() => {
         setPage(0);
         setHasMore(true);
-    }, [mode, filtersKey, segmentId, userIdsKey, overridesKey, activeTab]);
+    }, [mode, filtersKey, segmentId, userIdsKey, adhocRecipientsKey, overridesKey, activeTab]);
 
     useEffect(() => {
         let isMounted = true;
         const fetchStats = async () => {
             // Don't fetch if conditions aren't met
             if (mode === 'segment' && !segmentId) return;
-            if (mode === 'specific_users' && (!userIds || userIds.length === 0)) {
+            const hasSpecificUsers = Boolean(userIds && userIds.length > 0);
+            const hasAdhocRecipients = Boolean(adhocRecipients && adhocRecipients.length > 0);
+
+            if (mode === 'specific_users' && !hasSpecificUsers && !hasAdhocRecipients) {
                 setStats(null);
                 onCountChangeRef.current?.(0);
                 return;
@@ -122,6 +130,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                         filters,
                         segment_id: segmentId,
                         user_ids: userIds,
+                        adhoc_recipients: adhocRecipients,
                         overrides, // Pass overrides to API
                         offset: page * PAGE_SIZE,
                         limit: PAGE_SIZE,
@@ -169,7 +178,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
             clearTimeout(timer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, filtersKey, segmentId, userIdsKey, overridesKey, activeTab, page]);
+    }, [mode, filtersKey, segmentId, userIdsKey, adhocRecipientsKey, overridesKey, activeTab, page]);
 
     // Calculate optimistic count adjustments based on pending actions
     // Pending excludes reduce eligible count
@@ -218,6 +227,8 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
 
     // Now define variables that depend on stats existing
     const adjustedExcludedTotal = stats.excluded_total + pendingExcludeCount - pendingIncludeCount;
+    const duplicateCount = stats.excluded_duplicate || 0;
+    const invalidCount = stats.excluded_missing_phone + stats.excluded_invalid_wa + (stats.excluded_invalid_input || 0);
 
     // Get users that were manually excluded from eligible (from stored data)
     const manuallyExcludedUsers = Array.from(manuallyExcludedUsersData.values())
@@ -299,7 +310,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
         // Cannot include if no phone number
         if (!user.phone || user.phone.trim() === '') return false;
         // Cannot include if system exclusion reasons (missing phone, invalid whatsapp, opt-out)
-        const systemExclusions = ['Missing Phone', 'Invalid WhatsApp', 'Missing/Invalid Phone', 'Opt-out', 'No Phone'];
+        const systemExclusions = ['Missing Phone', 'Invalid WhatsApp', 'Missing/Invalid Phone', 'Opt-out', 'No Phone', 'Duplicate', 'Invalid Phone', 'Not WhatsApp Format'];
         if (systemExclusions.some(r => user.exclusion_reason?.includes(r))) return false;
         return true;
     };
@@ -318,7 +329,7 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                     <CheckCircle className="w-3 h-3" /> Valid WhatsApp Number
                 </p>
 
-                <div className="mt-4 grid grid-cols-2 gap-2 text-xs w-full max-w-[240px]">
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs w-full max-w-[300px]">
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -347,6 +358,16 @@ export function AudienceEstimator({ mode, filters, segmentId, userIds, onCountCh
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
+
+                    <div className="bg-amber-50 p-2 rounded border border-amber-100 flex flex-col items-center text-amber-700">
+                        <span className="text-gray-600">Invalid</span>
+                        <span className="font-bold">{invalidCount.toLocaleString()}</span>
+                    </div>
+
+                    <div className="bg-slate-50 p-2 rounded border flex flex-col items-center text-slate-700">
+                        <span className="text-gray-600">Duplicate</span>
+                        <span className="font-bold">{duplicateCount.toLocaleString()}</span>
+                    </div>
                 </div>
             </div>
 

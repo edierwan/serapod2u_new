@@ -3,6 +3,8 @@ import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { loadScopedShopUsers } from '@/app/api/admin/_user-management-scope';
 import { isReportRowActive, normalizeReportStatusSettings } from '@/lib/engagement/report-status-settings';
+import { normalizeAdhocRecipientList } from '@/lib/marketing/adhocRecipients';
+import { toProviderPhone } from '@/utils/phone';
 
 // Organization types that should target organization contacts (company contact_phone)
 const ORG_CONTACT_TYPES = ['DIST', 'MFG', 'SHOP', 'WH'];
@@ -11,6 +13,25 @@ const ORG_USER_TYPES = ['HQ'];
 
 function hasUsablePhone(phone?: string | null) {
     return Boolean(phone && phone.trim().length >= 8);
+}
+
+function normalizePhoneComparisonKey(phone?: string | null) {
+    if (!phone) return null;
+    const providerPhone = toProviderPhone(phone);
+    return providerPhone || phone.replace(/\D/g, '') || null;
+}
+
+function isPhoneOptedOut(phone: string | null | undefined, optOutPhones: Set<string>) {
+    const normalized = normalizePhoneComparisonKey(phone);
+    if (!normalized) return false;
+    return optOutPhones.has(normalized);
+}
+
+function mapAdhocReasonToLabel(reason?: string | null) {
+    if (reason === 'duplicate') return 'Duplicate';
+    if (reason === 'missing_phone') return 'Missing Phone';
+    if (reason === 'not_whatsapp_format') return 'Not WhatsApp Format';
+    return 'Invalid Phone';
 }
 
 function toDateOrNull(value?: string | null) {
@@ -53,7 +74,9 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { mode, filters, segment_id, user_ids, overrides } = body;
+        const { mode, filters, segment_id, user_ids, adhoc_recipients, overrides } = body;
+        const specificUserIds = Array.isArray(user_ids) ? user_ids.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0) : [];
+        const adhocRecipients = normalizeAdhocRecipientList(adhoc_recipients);
 
         // Extract override IDs
         const excludeIds = new Set<string>(overrides?.exclude_ids || []);
@@ -109,7 +132,9 @@ export async function POST(request: NextRequest) {
         let excludedMissingPhone = 0;
         let excludedOptOut = 0;
         let excludedInvalidWA = 0;
+        let excludedInvalidInput = 0;
         let excludedActivity = 0;
+        let excludedDuplicate = 0;
         let eligibleRecipients: any[] = [];
         let excludedRecipients: any[] = [];
 
@@ -120,7 +145,12 @@ export async function POST(request: NextRequest) {
                 const { data: optOuts } = await supabase
                     .from('marketing_opt_outs' as any)
                     .select('phone');
-                optOuts?.forEach((o: any) => optOutPhones.add(o.phone));
+                optOuts?.forEach((o: any) => {
+                    const normalized = normalizePhoneComparisonKey(o.phone);
+                    if (normalized) {
+                        optOutPhones.add(normalized);
+                    }
+                });
             } catch (e) {
                 console.warn('Could not fetch opt-outs:', e);
             }
@@ -175,7 +205,7 @@ export async function POST(request: NextRequest) {
                     return;
                 }
 
-                if (activeFilters.opt_in_only !== false && optOutPhones.has(recipient.phone)) {
+                if (activeFilters.opt_in_only !== false && isPhoneOptedOut(recipient.phone, optOutPhones)) {
                     excludedOptOut++;
                     excludedRecipients.push({ ...recipient, status: 'excluded', exclusion_reason: 'Opt-out' });
                     return;
@@ -549,7 +579,7 @@ export async function POST(request: NextRequest) {
                                 }
 
                                 // Check opt-out
-                                if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                                if (activeFilters.opt_in_only !== false && isPhoneOptedOut(phone, optOutPhones)) {
                                     excludedOptOut++;
                                     excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                                     continue;
@@ -652,7 +682,7 @@ export async function POST(request: NextRequest) {
                         }
 
                         // Check opt-out
-                        if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                        if (activeFilters.opt_in_only !== false && isPhoneOptedOut(phone, optOutPhones)) {
                             excludedOptOut++;
                             excludedRecipients.push({ ...orgInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                             continue;
@@ -684,8 +714,9 @@ export async function POST(request: NextRequest) {
 
                 let users: any[] = [];
                 let viewQuerySucceeded = false;
+                const specificUsersMode = mode === 'specific_users';
 
-                if (needsPointsView) {
+                if (needsPointsView && (!specificUsersMode || specificUserIds.length > 0)) {
                     try {
                         const PAGE_SIZE = 1000;
                         let offset = 0;
@@ -695,8 +726,8 @@ export async function POST(request: NextRequest) {
                         while (hasMore) {
                             let query = supabase.from('v_consumer_points_summary' as any).select('*', { count: 'exact' });
 
-                            if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                                query = query.in('user_id', user_ids);
+                            if (specificUsersMode) {
+                                query = query.in('user_id', specificUserIds);
                             } else {
                                 // End Users only: users with no organization_id
                                 query = query.is('organization_id', null);
@@ -760,7 +791,7 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Use basic users query when no point filters needed OR as fallback
-                if (!needsPointsView || !viewQuerySucceeded) {
+                if ((!needsPointsView || !viewQuerySucceeded) && (!specificUsersMode || specificUserIds.length > 0)) {
                     const PAGE_SIZE = 1000;
                     let offset = 0;
                     let hasMore = true;
@@ -776,8 +807,8 @@ export async function POST(request: NextRequest) {
                         is_active
                     `, { count: 'exact' });
 
-                        if (mode === 'specific_users' && user_ids && user_ids.length > 0) {
-                            query = query.in('id', user_ids);
+                        if (specificUsersMode) {
+                            query = query.in('id', specificUserIds);
                         } else {
                             // End Users only: users with no organization_id
                             query = query.is('organization_id', null);
@@ -884,7 +915,7 @@ export async function POST(request: NextRequest) {
                     }
 
                     // Check opt-out
-                    if (activeFilters.opt_in_only !== false && optOutPhones.has(phone)) {
+                    if (activeFilters.opt_in_only !== false && isPhoneOptedOut(phone, optOutPhones)) {
                         excludedOptOut++;
                         excludedRecipients.push({ ...userInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
                         continue;
@@ -936,6 +967,74 @@ export async function POST(request: NextRequest) {
 
         }
 
+        if (adhocRecipients.length > 0) {
+            const seenPhoneKeys = new Set(
+                [...eligibleRecipients, ...excludedRecipients]
+                    .map((recipient) => normalizePhoneComparisonKey(recipient.phone))
+                    .filter((value): value is string => Boolean(value))
+            );
+
+            for (const recipient of adhocRecipients) {
+                totalMatched++;
+
+                const phoneKey = normalizePhoneComparisonKey(recipient.phone_e164 || recipient.phone_normalized || recipient.phone_raw);
+                const adhocInfo = {
+                    id: recipient.id,
+                    name: recipient.name || recipient.display_name || recipient.phone_normalized || recipient.phone_raw || 'Unknown',
+                    phone: recipient.phone_e164 || recipient.phone_raw || 'No Phone',
+                    phone_raw: recipient.phone_raw,
+                    phone_normalized: recipient.phone_normalized,
+                    whatsapp_number: recipient.whatsapp_number,
+                    state: 'Manual Import',
+                    city: '',
+                    location: 'Manual Import',
+                    organization_type: 'Ad-hoc',
+                    org_name: 'Manual Ad-hoc',
+                    source: 'manual_adhoc',
+                    display_name: recipient.display_name,
+                };
+
+                if (recipient.status === 'excluded') {
+                    if (recipient.reason === 'duplicate') {
+                        excludedDuplicate++;
+                    } else if (recipient.reason === 'missing_phone') {
+                        excludedMissingPhone++;
+                    } else {
+                        excludedInvalidInput++;
+                    }
+
+                    excludedRecipients.push({
+                        ...adhocInfo,
+                        status: 'excluded',
+                        exclusion_reason: mapAdhocReasonToLabel(recipient.reason),
+                    });
+                    continue;
+                }
+
+                if (!phoneKey) {
+                    excludedMissingPhone++;
+                    excludedRecipients.push({ ...adhocInfo, status: 'excluded', exclusion_reason: 'Missing Phone' });
+                    continue;
+                }
+
+                if (activeFilters.opt_in_only !== false && isPhoneOptedOut(adhocInfo.phone, optOutPhones)) {
+                    excludedOptOut++;
+                    excludedRecipients.push({ ...adhocInfo, status: 'excluded', exclusion_reason: 'Opt-out' });
+                    continue;
+                }
+
+                if (seenPhoneKeys.has(phoneKey)) {
+                    excludedDuplicate++;
+                    excludedRecipients.push({ ...adhocInfo, status: 'excluded', exclusion_reason: 'Duplicate' });
+                    continue;
+                }
+
+                seenPhoneKeys.add(phoneKey);
+                validPhones++;
+                eligibleRecipients.push({ ...adhocInfo, status: 'eligible' });
+            }
+        }
+
         // Apply manual overrides (exclude_ids and include_ids)
         let excludedByOverride = 0;
 
@@ -955,7 +1054,10 @@ export async function POST(request: NextRequest) {
         // Move manually included users from excluded to eligible (if they have valid phone)
         if (includeIds.size > 0) {
             const manuallyIncluded = excludedRecipients.filter(u =>
-                includeIds.has(u.id) && u.phone && u.phone.trim() !== ''
+                includeIds.has(u.id) &&
+                u.phone &&
+                u.phone.trim() !== '' &&
+                !['Missing Phone', 'Missing/Invalid Phone', 'Invalid WhatsApp', 'Opt-out', 'No Phone', 'Duplicate', 'Invalid Phone', 'Not WhatsApp Format'].includes(u.exclusion_reason || '')
             );
             excludedRecipients = excludedRecipients.filter(u => !includeIds.has(u.id));
 
@@ -977,9 +1079,11 @@ export async function POST(request: NextRequest) {
             excluded_missing_phone: excludedMissingPhone,
             excluded_opt_out: excludedOptOut,
             excluded_invalid_wa: excludedInvalidWA,
+            excluded_invalid_input: excludedInvalidInput,
             excluded_activity: excludedActivity,
+            excluded_duplicate: excludedDuplicate,
             excluded_by_override: excludedByOverride,
-            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedActivity + excludedByOverride,
+            excluded_total: excludedMissingPhone + excludedOptOut + excludedInvalidWA + excludedInvalidInput + excludedActivity + excludedDuplicate + excludedByOverride,
             preview: view === 'eligible' ? eligibleRecipients.slice(offset, offset + limit) : [],
             excluded_list: view === 'excluded' ? excludedRecipients.slice(offset, offset + limit) : [],
             users: body.include_all ? eligibleRecipients : undefined
