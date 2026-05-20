@@ -4,6 +4,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { resolveMobileConsumerWalletContext } from '@/lib/utils/qr-resolver'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
+import { resolveMobilePersonalBankDetails } from '@/lib/engagement/personal-bank-details'
 
 /**
  * GET /api/user/profile
@@ -110,47 +111,28 @@ export async function GET(request: NextRequest) {
     // Fetch organization info if organization_id exists
     let isShop = false
     let orgName = linkValidation.organizationName || ''
-    let bankId = null
-    let bankName = null
-    let bankAccountNumber = null
-    let bankAccountHolderName = null
+    const {
+      bankId,
+      bankName,
+      bankAccountNumber,
+      bankAccountHolderName,
+    } = resolveMobilePersonalBankDetails(userProfile)
     const referenceDisplayName = linkValidation.referenceDisplayName
 
     if (userProfile.organization_id) {
       const { data: orgData, error: orgError } = await supabaseAdmin
         .from('organizations')
         .select(`
-          org_type_code, 
-          org_name, 
-          bank_id,
-          bank_account_number, 
-          bank_account_holder_name,
-          msia_banks (
-            id,
-            short_name
-          )
+          org_type_code,
+          org_name
         `)
         .eq('id', userProfile.organization_id)
         .single()
 
       if (orgData && !orgError) {
         isShop = orgData.org_type_code === 'SHOP'
-        orgName = orgData.org_name || ''
-
-        if (isShop) {
-          bankId = orgData.bank_id
-          // Prefer the joined bank name, fallback to legacy if needed (though we are moving away from it)
-          bankName = (orgData.msia_banks as any)?.short_name || null
-          bankAccountNumber = orgData.bank_account_number
-          bankAccountHolderName = orgData.bank_account_holder_name
-        }
+        orgName = orgData.org_name || orgName || ''
       }
-    } else {
-      // Independent Consumer - Use bank details from users table
-      bankId = userProfile.bank_id
-      bankName = (userProfile.msia_banks as any)?.short_name || null
-      bankAccountNumber = userProfile.bank_account_number
-      bankAccountHolderName = userProfile.bank_account_holder_name
     }
 
     const walletContext = await resolveMobileConsumerWalletContext(supabaseAdmin, {

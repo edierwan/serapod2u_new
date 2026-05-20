@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
+import { buildPersonalBankUpdateData, validateMsiaBankAccount } from '@/lib/engagement/personal-bank-details'
 
 /**
  * POST /api/user/update-profile
@@ -166,71 +167,52 @@ export async function POST(request: NextRequest) {
 
     // Handle Bank Details Update
     if (bank_id !== undefined || bank_account_number !== undefined || bank_account_holder_name !== undefined) {
-      // Get user's organization
-      const { data: userProfile, error: userError } = await adminClient
-        .from('users')
-        .select('organization_id')
-        .eq('id', userId)
-        .single()
+      Object.assign(updateData, buildPersonalBankUpdateData({
+        bankId: bank_id,
+        bankAccountNumber: bank_account_number,
+        bankAccountHolderName: bank_account_holder_name,
+      }))
 
-      if (userProfile?.organization_id) {
-        // Check if organization is a SHOP
-        const { data: orgData } = await adminClient
-          .from('organizations')
-          .select('org_type_code')
-          .eq('id', userProfile.organization_id)
-          .single()
+      const nextBankId = updateData.bank_id ?? null
+      const nextBankAccountNumber = updateData.bank_account_number ?? null
+      const nextBankAccountHolderName = updateData.bank_account_holder_name ?? null
+      const hasAnyBankDetails = Boolean(nextBankId || nextBankAccountNumber || nextBankAccountHolderName)
 
-        if (orgData?.org_type_code === 'SHOP') {
-          const orgUpdateData: any = {}
-
-          // If bank_id is provided, we need to fetch the bank name
-          if (bank_id) {
-            const { data: bankData } = await adminClient
-              .from('msia_banks')
-              .select('short_name')
-              .eq('id', bank_id)
-              .single()
-
-            if (bankData) {
-              orgUpdateData.bank_name = bankData.short_name
-            }
-          }
-
-          // Note: We don't save bank_id to organizations table as it doesn't have that column
-          // We only save the bank_name which is what the admin view uses
-
-          if (bank_account_number !== undefined) orgUpdateData.bank_account_number = bank_account_number
-          if (bank_account_holder_name !== undefined) orgUpdateData.bank_account_holder_name = bank_account_holder_name
-
-          if (Object.keys(orgUpdateData).length > 0) {
-            const { error: orgUpdateError } = await adminClient
-              .from('organizations')
-              .update(orgUpdateData)
-              .eq('id', userProfile.organization_id)
-
-            if (orgUpdateError) {
-              console.error('Error updating organization bank details:', orgUpdateError)
-              // Return error if it's a validation error
-              if (orgUpdateError.message.includes('organizations_bank_account_valid_chk')) {
-                return NextResponse.json(
-                  { success: false, error: 'Invalid bank account number for the selected bank.' },
-                  { status: 400 }
-                )
-              }
-              // We continue to update user profile even if org update fails, but log it
-            } else {
-              console.log('✅ Organization bank details updated')
-            }
-          }
+      if (hasAnyBankDetails) {
+        if (!nextBankId || !nextBankAccountNumber) {
+          return NextResponse.json(
+            { success: false, error: 'Please select a bank and enter a valid personal bank account number.' },
+            { status: 400 }
+          )
         }
-      } else {
-        // Independent Consumer (No Organization)
-        // Save bank details directly to users table
-        // Convert empty strings to null for UUID fields
-        if (bank_id !== undefined) updateData.bank_id = bank_id || null
-        if (bank_account_number !== undefined) updateData.bank_account_number = bank_account_number || null
-        if (bank_account_holder_name !== undefined) updateData.bank_account_holder_name = bank_account_holder_name || null
+
+        if (!nextBankAccountHolderName) {
+          return NextResponse.json(
+            { success: false, error: 'Please enter your personal bank account holder name.' },
+            { status: 400 }
+          )
+        }
+
+        const { data: bankRule, error: bankRuleError } = await adminClient
+          .from('msia_banks')
+          .select('id, short_name, min_account_length, max_account_length, is_numeric_only, is_active')
+          .eq('id', nextBankId)
+          .maybeSingle()
+
+        if (bankRuleError) {
+          console.error('Error validating personal bank details:', bankRuleError)
+          return NextResponse.json(
+            { success: false, error: 'Failed to validate the selected bank.' },
+            { status: 500 }
+          )
+        }
+
+        if (!validateMsiaBankAccount(bankRule, nextBankAccountNumber)) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid bank account number for the selected bank.' },
+            { status: 400 }
+          )
+        }
       }
     }
 
