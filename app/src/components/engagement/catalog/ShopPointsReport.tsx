@@ -33,8 +33,11 @@ interface ShopSummary {
   total_collected_manual: number
   total_migration_points: number
   total_redeemed: number
+  total_redeemed_by_attached_users?: number
+  total_earned_by_attached_users?: number
   total_transactions: number
   last_activity: string | null
+  shop_current_user_balance?: number
 }
 
 interface Totals {
@@ -168,11 +171,11 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
   }
 
   const exportCSV = () => {
-    const headers = ['Shop Name', 'Branch', 'State', 'Reference (AM)', 'Contact', 'Phone', 'Shop Staff', 'Total Balance', 'System Collected', 'Bonus', 'Manual Collected', 'Migration', 'Redeemed', 'Transactions', 'Last Activity']
+    const headers = ['Shop Name', 'Branch', 'State', 'Reference (AM)', 'Contact', 'Phone', 'Attached Users', 'Total User Wallet Balance', 'System Collected', 'Bonus', 'Manual Collected', 'Migration', 'Redeemed by Attached Users', 'Transactions', 'Last Activity']
     const rows = filtered.map(s => [
       s.shop_name, s.branch_name || '', s.state || '', s.shop_reference_am || '', s.contact_name || '', s.contact_phone || '',
       s.total_consumers, s.total_points_balance, s.total_collected_system, s.total_bonus_points || 0, s.total_collected_manual,
-      s.total_migration_points, s.total_redeemed, s.total_transactions, s.last_activity || '',
+      s.total_migration_points, s.total_redeemed_by_attached_users || s.total_redeemed, s.total_transactions, s.last_activity || '',
     ])
     const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -206,9 +209,9 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
               <TrendingUp className="h-5 w-5 text-emerald-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-emerald-900">Shop Points Report</h3>
+              <h3 className="font-semibold text-emerald-900">Shop User Wallet Report</h3>
               <p className="mt-0.5 text-sm text-emerald-700/80">
-                Overview of point collection performance by shop. Shows which shops have the highest point balances, linked shop accounts, and bonus daily-claim points.
+                Reporting totals derived from attached users' individual wallets. This is not a pooled shop wallet.
               </p>
               {totals && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -216,10 +219,10 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
                     <Store className="h-3 w-3 mr-1" /> {totals.total_shops} Shops
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
-                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Shop Staff
+                    <Users className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_consumers)} Attached Users
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
-                    <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_balance)} Total Points
+                    <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_balance)} Total User Wallet Balance
                   </Badge>
                   <Badge variant="secondary" className="bg-emerald-100/80 text-emerald-700 text-[11px]">
                     <Trophy className="h-3 w-3 mr-1" /> {formatNumber(totals.grand_total_bonus || 0)} Bonus
@@ -251,9 +254,9 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
         <Card className="border-emerald-200 bg-emerald-50/70 shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-semibold text-emerald-700">
-              <Trophy className="h-5 w-5" /> Total Balance
+              <Trophy className="h-5 w-5" /> Total User Wallet Balance
             </CardTitle>
-            <CardDescription className="text-emerald-700/80">Live balance held by listed shops</CardDescription>
+            <CardDescription className="text-emerald-700/80">Sum of attached users' current balances</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold text-emerald-700">{formatNumber(summaryStats.totalBalance)}</p>
@@ -363,7 +366,7 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
                       <SortHeader label="State" field="state" />
                       <SortHeader label="Reference (AM)" field="shop_reference_am" />
                       <SortHeader label="Shop Staff" field="total_consumers" />
-                      <SortHeader label="Total Balance" field="total_points_balance" />
+                      <SortHeader label="User Wallet Balance" field="total_points_balance" />
                       <SortHeader label="System" field="total_collected_system" />
                       <SortHeader label="Bonus" field="total_bonus_points" />
                       <SortHeader label="Manual" field="total_collected_manual" />

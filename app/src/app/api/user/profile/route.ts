@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server'
-import { resolveTrustedPointsBalance } from '@/lib/utils/qr-resolver'
+import { resolveMobileConsumerWalletContext } from '@/lib/utils/qr-resolver'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
 
@@ -153,13 +153,14 @@ export async function GET(request: NextRequest) {
       bankAccountHolderName = userProfile.bank_account_holder_name
     }
 
-    // Fetch points balance
-    // GUEST/CONSUMER users always use consumer balance, even if linked to a shop org
-    const pointsBalance = (await resolveTrustedPointsBalance(supabaseAdmin, {
+    const walletContext = await resolveMobileConsumerWalletContext(supabaseAdmin, {
       userId: user.id,
       roleCode: userProfile.role_code,
       organizationId: userProfile.organization_id,
-    })).balance
+      organizationTypeCode: isShop ? 'SHOP' : null,
+    })
+
+    const pointsBalance = walletContext.balance
 
     // Add cache-busting to avatar URL
     const avatarUrlWithCache = userProfile.avatar_url
@@ -210,7 +211,15 @@ export async function GET(request: NextRequest) {
         bankName,
         bankAccountNumber,
         bankAccountHolderName,
-        pointsBalance
+        pointsBalance,
+        walletScope: walletContext.wallet_scope,
+        walletOwnerUserId: walletContext.wallet_owner_user_id,
+        walletOwnerOrgId: walletContext.wallet_owner_org_id,
+        reportingShopId: walletContext.reporting_shop_id,
+        balanceSource: walletContext.balance_source,
+        ownerType: walletContext.owner_type,
+        ownerId: walletContext.owner_id,
+        roleClassificationReason: walletContext.role_classification_reason,
       }
     })
 

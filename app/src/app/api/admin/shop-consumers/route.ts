@@ -47,24 +47,20 @@ export async function GET(request: NextRequest) {
 
         if (error) throw error
 
-        // For shop-linked users, show contribution points from shop-lane scans.
-        // SHOP users are intentionally excluded from v_consumer_points_balance.
+        // Show each attached user's individual wallet balance.
         const consumerIds = consumers?.map(c => c.id) || []
         let balances: Record<string, number> = {}
 
         if (consumerIds.length > 0) {
             const { data: balanceData } = await admin
-                .from('consumer_qr_scans')
-                .select('consumer_id, points_amount')
-                .eq('shop_id', shopId)
-                .eq('claim_lane', 'shop')
-                .eq('collected_points', true)
-                .in('consumer_id', consumerIds)
+                .from('v_consumer_points_balance')
+                .select('user_id, current_balance')
+                .in('user_id', consumerIds)
 
             if (balanceData) {
                 balances = balanceData.reduce((acc: Record<string, number>, row: any) => {
-                    if (!row.consumer_id) return acc
-                    acc[row.consumer_id] = (acc[row.consumer_id] || 0) + Number(row.points_amount || 0)
+                    if (!row.user_id) return acc
+                    acc[row.user_id] = Number(row.current_balance || 0)
                     return acc
                 }, {})
             }

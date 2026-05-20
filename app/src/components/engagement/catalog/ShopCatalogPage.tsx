@@ -74,6 +74,8 @@ const SORT_OPTIONS = [
   { value: "ending-soon", label: "Ending Soon" }
 ]
 
+const SHOP_WALLET_REDEMPTION_ENABLED = false
+
 function formatRelative(date: Date): string {
   const now = new Date()
   const diffMs = date.getTime() - now.getTime()
@@ -114,6 +116,14 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   const [visibleProductCount, setVisibleProductCount] = useState(5)
 
   const shopOrgId = userProfile.organization_id
+
+  const resolveRewardWalletScope = (reward: Partial<RedeemItemRow> | EnrichedReward | null | undefined): 'consumer' | 'shop' => {
+    return ((reward as any)?.wallet_scope || 'consumer') === 'shop' ? 'shop' : 'consumer'
+  }
+
+  const isShopRewardRedeemable = (reward: Partial<RedeemItemRow> | EnrichedReward | null | undefined) => {
+    return resolveRewardWalletScope(reward) === 'shop' && SHOP_WALLET_REDEMPTION_ENABLED
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -304,6 +314,19 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
   }, [shopOrgId, userProfile.organization_id])
 
   const handleRedeemReward = async (reward: EnrichedReward) => {
+    const rewardWalletScope = resolveRewardWalletScope(reward)
+
+    if (!isShopRewardRedeemable(reward)) {
+      toast({
+        title: rewardWalletScope === 'shop' ? 'Shop redemption disabled' : 'Individual wallet only',
+        description: rewardWalletScope === 'shop'
+          ? 'Shop pooled redemption stays disabled until an explicit shop wallet flow is implemented and tested.'
+          : 'Consumer-scoped rewards must be redeemed from the individual mobile user account.',
+        variant: 'destructive'
+      })
+      return
+    }
+
     if (!reward.isAvailable || currentBalance < reward.points_required || redeeming) {
       return
     }
@@ -574,7 +597,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <p className="text-sm font-medium text-muted-foreground">Consumer Engagement • Shop View</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">My Points & Rewards Catalog</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-            View your shop&apos;s point balance earned by scanning QR codes. Redeem rewards from the catalog with your accumulated points.
+            Review shop activity and reward visibility. Mobile users redeem from their own individual wallets.
           </p>
         </div>
         <div className="flex gap-2">
@@ -610,9 +633,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
           <div className="absolute -right-4 -top-6 h-24 w-24 rounded-full bg-blue-100" />
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base font-medium">
-              <Trophy className="h-5 w-5 text-blue-500" /> Current Balance
+              <Trophy className="h-5 w-5 text-blue-500" /> Shop Reporting Snapshot
             </CardTitle>
-            <CardDescription>Your shop&apos;s total points ready to redeem</CardDescription>
+            <CardDescription>Legacy shop-ledger aggregate shown for monitoring only. Not redeemable.</CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold text-blue-600">{formatNumber(currentBalance)}</p>
@@ -1032,7 +1055,11 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
 
                     <div className="mt-auto flex items-center justify-between gap-3">
                       <div className="text-sm font-medium text-muted-foreground">
-                        {currentBalance >= ((reward as any).point_offer || reward.points_required) ? (
+                        {!isShopRewardRedeemable(reward) ? (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <ShieldCheck className="h-4 w-4" /> {resolveRewardWalletScope(reward) === 'shop' ? 'Shop redemption disabled' : 'Individual wallet only'}
+                          </span>
+                        ) : currentBalance >= ((reward as any).point_offer || reward.points_required) ? (
                           <span className="flex items-center gap-1 text-emerald-600">
                             <TrendingUp className="h-4 w-4" /> Can redeem
                           </span>
@@ -1298,7 +1325,20 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     <li>• Staff verification {selectedReward.requiresVerification ? "required" : "not required"}.</li>
                     <li>• {selectedReward.max_redemptions_per_consumer ? `Limited to ${selectedReward.max_redemptions_per_consumer} redemption(s) per consumer.` : "No per-consumer limit set."}</li>
                     <li>• Present consumer QR history to confirm eligibility.</li>
+                    <li>• Consumer-scoped rewards must be redeemed from the mobile user wallet.</li>
                   </ul>
+                </div>
+
+                <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/30 p-4 text-sm">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Wallet scope</p>
+                  <p className="mt-1 font-medium text-slate-700">
+                    {resolveRewardWalletScope(selectedReward) === 'shop' ? 'Shop wallet' : 'Individual mobile wallet'}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {resolveRewardWalletScope(selectedReward) === 'shop'
+                      ? 'Shop pooled redemption remains disabled until a dedicated flow is implemented.'
+                      : 'This reward must be redeemed by the individual user through the mobile rewards flow.'}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-end gap-3">
@@ -1306,7 +1346,7 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                     Close
                   </Button>
                   <Button
-                    disabled={!selectedReward.isAvailable || currentBalance < selectedReward.points_required || redeeming}
+                    disabled={!selectedReward.isAvailable || !isShopRewardRedeemable(selectedReward) || currentBalance < selectedReward.points_required || redeeming}
                     className="gap-2"
                     onClick={() => handleRedeemReward(selectedReward)}
                   >
@@ -1320,6 +1360,10 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                         <Gift className="h-4 w-4" />
                         {!selectedReward.isAvailable
                           ? "Not available"
+                          : !isShopRewardRedeemable(selectedReward)
+                            ? resolveRewardWalletScope(selectedReward) === 'shop'
+                              ? 'Shop redemption disabled'
+                              : 'Redeem in mobile app'
                           : currentBalance >= selectedReward.points_required
                             ? "Redeem now"
                             : "Need more points"}

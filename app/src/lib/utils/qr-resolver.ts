@@ -33,16 +33,51 @@ export interface PointsBalanceContext {
   organizationId?: string | null
 }
 
+export interface MobileWalletContext extends PointsBalanceContext {
+  organizationTypeCode?: string | null
+}
+
 export interface ResolvedPointsBalance {
   balance: number
   source: 'consumer_view' | 'consumer_ledger' | 'consumer_scans' | 'shop_view' | 'shop_ledger_shop' | 'shop_ledger_consumer' | 'shop_scans' | 'consumer_scans_fallback' | 'none'
   scope: 'consumer' | 'shop'
 }
 
+export interface ResolvedWalletContext {
+  balance: number
+  wallet_scope: 'consumer' | 'shop'
+  owner_type: 'user' | 'organization'
+  owner_id: string | null
+  wallet_owner_user_id: string | null
+  wallet_owner_org_id: string | null
+  reporting_shop_id: string | null
+  balance_source: ResolvedPointsBalance['source']
+  ledger_source: 'consumer_wallet' | 'shop_wallet'
+  role_classification_reason: string
+}
+
 const CONSUMER_SCOPED_ROLE_CODES = new Set(['GUEST', 'CONSUMER', 'USER'])
 
 export function isConsumerScopedRole(roleCode?: string | null): boolean {
   return CONSUMER_SCOPED_ROLE_CODES.has((roleCode || '').toUpperCase())
+}
+
+export function classifyMobileConsumerWallet(
+  context: Pick<MobileWalletContext, 'userId' | 'roleCode' | 'organizationId' | 'organizationTypeCode'> & { userId: string }
+): Omit<ResolvedWalletContext, 'balance' | 'balance_source'> {
+  const normalizedRoleCode = (context.roleCode || '').toUpperCase() || 'UNKNOWN'
+  const normalizedOrgTypeCode = (context.organizationTypeCode || '').toUpperCase() || null
+
+  return {
+    wallet_scope: 'consumer',
+    owner_type: 'user',
+    owner_id: context.userId,
+    wallet_owner_user_id: context.userId,
+    wallet_owner_org_id: null,
+    reporting_shop_id: normalizedOrgTypeCode === 'SHOP' ? context.organizationId || null : null,
+    ledger_source: 'consumer_wallet',
+    role_classification_reason: `mobile_consumer_routes_use_individual_wallet:${normalizedRoleCode}:${normalizedOrgTypeCode || 'NO_ORG'}`,
+  }
 }
 
 /**
@@ -351,6 +386,78 @@ export async function resolveTrustedPointsBalance(
   }
 
   return { balance: 0, source: 'none', scope: 'consumer' }
+}
+
+export async function resolveMobileConsumerWalletContext(
+  supabase: SupabaseClient,
+  context: MobileWalletContext
+): Promise<ResolvedWalletContext> {
+  let {
+    userId = null,
+    roleCode = null,
+    organizationId = undefined,
+    organizationTypeCode = undefined,
+  } = context
+
+  if (!userId) {
+    return {
+      balance: 0,
+      wallet_scope: 'consumer',
+      owner_type: 'user',
+      owner_id: null,
+      wallet_owner_user_id: null,
+      wallet_owner_org_id: null,
+      reporting_shop_id: null,
+      balance_source: 'none',
+      ledger_source: 'consumer_wallet',
+      role_classification_reason: 'mobile_consumer_routes_require_authenticated_user',
+    }
+  }
+
+  if (!roleCode || organizationId === undefined) {
+    const { data: userProfile, error: userError } = await supabase
+      .from('users')
+      .select('role_code, organization_id')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (userError) {
+      console.warn(`⚠️ Error resolving mobile wallet context for ${userId}:`, userError)
+    }
+
+    roleCode = roleCode || userProfile?.role_code || null
+    if (organizationId === undefined) {
+      organizationId = userProfile?.organization_id || null
+    }
+  }
+
+  if (organizationId && organizationTypeCode === undefined) {
+    const { data: organization, error: orgError } = await supabase
+      .from('organizations')
+      .select('org_type_code')
+      .eq('id', organizationId)
+      .maybeSingle()
+
+    if (orgError) {
+      console.warn(`⚠️ Error resolving mobile wallet organization for ${userId}:`, orgError)
+    }
+
+    organizationTypeCode = organization?.org_type_code || null
+  }
+
+  const resolvedBalance = await resolveConsumerPointsBalance(supabase, userId)
+  const walletClassification = classifyMobileConsumerWallet({
+    userId,
+    roleCode,
+    organizationId,
+    organizationTypeCode,
+  })
+
+  return {
+    balance: resolvedBalance.balance,
+    balance_source: resolvedBalance.source,
+    ...walletClassification,
+  }
 }
 
 /**

@@ -37,7 +37,7 @@ export interface ShopPointsLedgerRow {
   point_category: string | null
   point_indicator: string | null
   point_owner_type: string | null
-  point_direction: 'earn' | 'spend' | null
+  point_direction: 'earn' | 'spend' | 'debit' | null
 }
 
 /**

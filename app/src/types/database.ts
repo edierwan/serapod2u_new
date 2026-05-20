@@ -2799,45 +2799,96 @@ export type Database = {
       points_transactions: {
         Row: {
           balance_after: number
-          company_id: string
+          company_id: string | null
           consumer_email: string | null
           consumer_phone: string
           created_at: string | null
+          created_by: string | null
           description: string | null
+          fulfillment_notes: string | null
+          fulfillment_status: string | null
+          fulfilled_at: string | null
+          fulfilled_by: string | null
           id: string
+          point_category: string | null
+          point_direction: string | null
+          point_indicator: string | null
+          point_owner_type: string | null
           points_amount: number
           qr_code_id: string | null
           redeem_item_id: string | null
+          redemption_code: string | null
+          reporting_shop_id: string | null
           transaction_date: string | null
           transaction_type: string
+          user_id: string | null
+          wallet_balance_after: number | null
+          wallet_owner_org_id: string | null
+          wallet_owner_user_id: string | null
+          wallet_scope: string | null
+          wallet_source: string | null
         }
         Insert: {
           balance_after: number
-          company_id: string
+          company_id?: string | null
           consumer_email?: string | null
           consumer_phone: string
           created_at?: string | null
+          created_by?: string | null
           description?: string | null
+          fulfillment_notes?: string | null
+          fulfillment_status?: string | null
+          fulfilled_at?: string | null
+          fulfilled_by?: string | null
           id?: string
+          point_category?: string | null
+          point_direction?: string | null
+          point_indicator?: string | null
+          point_owner_type?: string | null
           points_amount: number
           qr_code_id?: string | null
           redeem_item_id?: string | null
+          redemption_code?: string | null
+          reporting_shop_id?: string | null
           transaction_date?: string | null
           transaction_type: string
+          user_id?: string | null
+          wallet_balance_after?: number | null
+          wallet_owner_org_id?: string | null
+          wallet_owner_user_id?: string | null
+          wallet_scope?: string | null
+          wallet_source?: string | null
         }
         Update: {
           balance_after?: number
-          company_id?: string
+          company_id?: string | null
           consumer_email?: string | null
           consumer_phone?: string
           created_at?: string | null
+          created_by?: string | null
           description?: string | null
+          fulfillment_notes?: string | null
+          fulfillment_status?: string | null
+          fulfilled_at?: string | null
+          fulfilled_by?: string | null
           id?: string
+          point_category?: string | null
+          point_direction?: string | null
+          point_indicator?: string | null
+          point_owner_type?: string | null
           points_amount?: number
           qr_code_id?: string | null
           redeem_item_id?: string | null
+          redemption_code?: string | null
+          reporting_shop_id?: string | null
           transaction_date?: string | null
           transaction_type?: string
+          user_id?: string | null
+          wallet_balance_after?: number | null
+          wallet_owner_org_id?: string | null
+          wallet_owner_user_id?: string | null
+          wallet_scope?: string | null
+          wallet_source?: string | null
         }
         Relationships: [
           {
@@ -5475,9 +5526,14 @@ export type Database = {
       }
       redeem_items: {
         Row: {
+          additional_images: Json | null
+          animation_url: string | null
+          category: string | null
           company_id: string
+          collection_mode: string | null
           created_at: string | null
           created_by: string | null
+          display_duration: number | null
           id: string
           is_active: boolean | null
           item_code: string
@@ -5485,17 +5541,27 @@ export type Database = {
           item_image_url: string | null
           item_name: string
           max_redemptions_per_consumer: number | null
+          per_user_limit: boolean | null
+          point_offer: number | null
+          point_reward_amount: number | null
           points_required: number
+          reward_message: string | null
           stock_quantity: number | null
           terms_and_conditions: string | null
           updated_at: string | null
           valid_from: string | null
           valid_until: string | null
+          wallet_scope: string | null
         }
         Insert: {
+          additional_images?: Json | null
+          animation_url?: string | null
+          category?: string | null
           company_id: string
+          collection_mode?: string | null
           created_at?: string | null
           created_by?: string | null
+          display_duration?: number | null
           id?: string
           is_active?: boolean | null
           item_code: string
@@ -5503,17 +5569,27 @@ export type Database = {
           item_image_url?: string | null
           item_name: string
           max_redemptions_per_consumer?: number | null
+          per_user_limit?: boolean | null
+          point_offer?: number | null
+          point_reward_amount?: number | null
           points_required: number
+          reward_message?: string | null
           stock_quantity?: number | null
           terms_and_conditions?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
+          wallet_scope?: string | null
         }
         Update: {
+          additional_images?: Json | null
+          animation_url?: string | null
+          category?: string | null
           company_id?: string
+          collection_mode?: string | null
           created_at?: string | null
           created_by?: string | null
+          display_duration?: number | null
           id?: string
           is_active?: boolean | null
           item_code?: string
@@ -5521,12 +5597,17 @@ export type Database = {
           item_image_url?: string | null
           item_name?: string
           max_redemptions_per_consumer?: number | null
+          per_user_limit?: boolean | null
+          point_offer?: number | null
+          point_reward_amount?: number | null
           points_required?: number
+          reward_message?: string | null
           stock_quantity?: number | null
           terms_and_conditions?: string | null
           updated_at?: string | null
           valid_from?: string | null
           valid_until?: string | null
+          wallet_scope?: string | null
         }
         Relationships: [
           {
