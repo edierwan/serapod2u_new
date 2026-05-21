@@ -1,23 +1,41 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildVisitRegionDataset, extractVisitRegionFromLocation, resolveVisitRegion } from './visit-region'
+import { buildVisitRegionDataset, extractVisitRegionFromLocation, getStateFlagPath, getStateFromCapturedLocation, resolveVisitRegion } from './visit-region'
 
 describe('visit-region', () => {
-    describe('extractVisitRegionFromLocation', () => {
+    describe('getStateFromCapturedLocation', () => {
         it('normalizes Pulau Pinang addresses', () => {
-            expect(extractVisitRegionFromLocation('Bandar Perda, Bukit Mertajam, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
-            expect(extractVisitRegionFromLocation('Bukit Jambul, George Town, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
-            expect(extractVisitRegionFromLocation('Seberang Jaya, Permatang Pauh, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
+            expect(getStateFromCapturedLocation('Bandar Perda, Bukit Mertajam, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
+            expect(getStateFromCapturedLocation('Bukit Jambul, George Town, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
+            expect(getStateFromCapturedLocation('Seberang Jaya, Permatang Pauh, Pulau Pinang, Malaysia')).toBe('Pulau Pinang')
         })
 
         it('extracts other supported Malaysian states', () => {
-            expect(extractVisitRegionFromLocation('Melaka Tengah, Melaka, Malaysia')).toBe('Melaka')
-            expect(extractVisitRegionFromLocation('Alor Setar, Kedah, Malaysia')).toBe('Kedah')
+            expect(getStateFromCapturedLocation('Melaka Tengah, Melaka, Malaysia')).toBe('Melaka')
+            expect(getStateFromCapturedLocation('Alor Setar, Kedah, Malaysia')).toBe('Kedah')
         })
 
         it('returns null for missing locations', () => {
-            expect(extractVisitRegionFromLocation('')).toBeNull()
-            expect(extractVisitRegionFromLocation(null)).toBeNull()
+            expect(getStateFromCapturedLocation('')).toBeNull()
+            expect(getStateFromCapturedLocation(null)).toBeNull()
+        })
+
+        it('keeps extractVisitRegionFromLocation as a compatibility alias', () => {
+            expect(extractVisitRegionFromLocation('Melaka Tengah, Melaka, Malaysia')).toBe('Melaka')
+        })
+    })
+
+    describe('getStateFlagPath', () => {
+        it('maps normalized states to local flag assets', () => {
+            expect(getStateFlagPath('Pulau Pinang')).toBe('/images/state-flags/penang.png')
+            expect(getStateFlagPath('Penang')).toBe('/images/state-flags/penang.png')
+            expect(getStateFlagPath('Melaka')).toBe('/images/state-flags/melaka.png')
+            expect(getStateFlagPath('Kedah')).toBe('/images/state-flags/kedah.png')
+        })
+
+        it('returns null when no local flag asset is available', () => {
+            expect(getStateFlagPath('Negeri Sembilan')).toBeNull()
+            expect(getStateFlagPath(null)).toBeNull()
         })
     })
 

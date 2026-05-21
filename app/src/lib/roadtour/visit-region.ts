@@ -28,7 +28,25 @@ const REGION_MATCHERS: Array<{ label: string; pattern: RegExp }> = [
     { label: 'Labuan', pattern: /\blabuan\b/i },
 ]
 
-export function extractVisitRegionFromLocation(locationText: string | null | undefined): string | null {
+const STATE_FLAG_PATHS: Record<string, string> = {
+    Johor: '/images/state-flags/johor.png',
+    Kedah: '/images/state-flags/kedah.png',
+    Kelantan: '/images/state-flags/kelantan.png',
+    Melaka: '/images/state-flags/melaka.png',
+    'Pulau Pinang': '/images/state-flags/penang.png',
+    Pahang: '/images/state-flags/pahang.png',
+    Perak: '/images/state-flags/perak.png',
+    Perlis: '/images/state-flags/perlis.png',
+    Sabah: '/images/state-flags/sabah.png',
+    Sarawak: '/images/state-flags/sarawak.png',
+    Selangor: '/images/state-flags/selangor.png',
+    Terengganu: '/images/state-flags/terengganu.png',
+    'Kuala Lumpur': '/images/state-flags/kuala-lumpur.png',
+    Labuan: '/images/state-flags/labuan.png',
+    Putrajaya: '/images/state-flags/putrajaya.png',
+}
+
+export function getStateFromCapturedLocation(locationText: string | null | undefined): string | null {
     const value = typeof locationText === 'string' ? locationText.trim() : ''
     if (!value) return null
 
@@ -39,14 +57,24 @@ export function extractVisitRegionFromLocation(locationText: string | null | und
     return null
 }
 
+export function extractVisitRegionFromLocation(locationText: string | null | undefined): string | null {
+    return getStateFromCapturedLocation(locationText)
+}
+
+export function getStateFlagPath(stateName: string | null | undefined): string | null {
+    const normalizedState = getStateFromCapturedLocation(stateName)
+    if (!normalizedState) return null
+    return STATE_FLAG_PATHS[normalizedState] || null
+}
+
 export function resolveVisitRegion(source: VisitRegionSource): string {
-    const structuredState = extractVisitRegionFromLocation(source.capturedState)
+    const structuredState = getStateFromCapturedLocation(source.capturedState)
     if (structuredState) return structuredState
 
-    const capturedAddress = extractVisitRegionFromLocation(source.capturedAddress)
+    const capturedAddress = getStateFromCapturedLocation(source.capturedAddress)
     if (capturedAddress) return capturedAddress
 
-    const capturedLabel = extractVisitRegionFromLocation(source.capturedLabel)
+    const capturedLabel = getStateFromCapturedLocation(source.capturedLabel)
     if (capturedLabel) return capturedLabel
 
     return 'Unknown'
