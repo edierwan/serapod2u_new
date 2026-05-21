@@ -206,11 +206,11 @@ export default function UserDialogNew({
   const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Password reset for Super Admin only
+  // Password reset for platform admins
   const [showPasswordReset, setShowPasswordReset] = useState(false)
   const [resetPassword, setResetPassword] = useState('')
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState('')
-  const isSuperAdmin = currentUserRoleLevel === 1
+  const canResetPasswords = currentUserRoleLevel <= 10
 
   // Filter roles based on current user's role level
   const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
@@ -707,7 +707,7 @@ export default function UserDialogNew({
       }
     }
 
-    // Validate password reset for existing users (Super Admin only)
+    // Validate password reset for existing users (admin only)
     if (user && showPasswordReset) {
       if (!resetPassword) {
         newErrors.resetPassword = 'New password is required'
@@ -753,7 +753,7 @@ export default function UserDialogNew({
       // Remove confirmPassword before saving
       const { confirmPassword, ...dataToSave } = formData
 
-      // Include password reset if Super Admin is resetting password
+      // Include password reset when an admin is resetting password
       const passwordReset = (user && showPasswordReset && resetPassword)
         ? { password: resetPassword }
         : undefined
@@ -1522,8 +1522,8 @@ export default function UserDialogNew({
                 />
               </div>
 
-              {/* Password Reset - Super Admin only, existing users */}
-              {user && isSuperAdmin && (
+              {/* Password Reset - Admin only, existing users */}
+              {user && canResetPasswords && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1531,7 +1531,7 @@ export default function UserDialogNew({
                       <span className="text-sm font-medium text-gray-700">Password Reset</span>
                     </div>
                     <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">
-                      Super Admin
+                      Admin
                     </Badge>
                   </div>
 

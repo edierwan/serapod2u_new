@@ -11,7 +11,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
         'view_warehouse', 'receive_goods', 'ship_goods', 'view_receiving_value',
         'view_accounting', 'manage_chart_of_accounts', 'post_journal_entries', 'view_gl_reports', 'manage_fiscal_years',
         'view_organizations', 'create_organizations', 'edit_organizations',
-        'view_users', 'create_users', 'edit_users', 'delete_users', 'manage_roles',
+        'view_users', 'create_users', 'edit_users', 'delete_users', 'reset_passwords', 'manage_roles',
         'view_settings', 'edit_org_settings', 'manage_org_chart', 'manage_notifications', 'data_migration',
     ],
     20: [

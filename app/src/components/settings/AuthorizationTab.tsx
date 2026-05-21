@@ -263,7 +263,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
             { id: 'create_users', name: 'Create Users', description: 'Add new users', category: 'users', defaultLevels: [1, 10, 20], sensitivity: 'high' },
             { id: 'edit_users', name: 'Edit Users', description: 'Modify user details', category: 'users', defaultLevels: [1, 10, 20], sensitivity: 'high' },
             { id: 'delete_users', name: 'Delete Users', description: 'Remove users', category: 'users', defaultLevels: [1, 10], sensitivity: 'critical' },
-            { id: 'reset_passwords', name: 'Reset Passwords', description: 'Reset user passwords', category: 'users', defaultLevels: [1], sensitivity: 'critical' },
+            { id: 'reset_passwords', name: 'Reset Passwords', description: 'Reset user passwords', category: 'users', defaultLevels: [1, 10], sensitivity: 'critical' },
             { id: 'manage_roles', name: 'Manage Roles', description: 'Assign and modify roles', category: 'users', defaultLevels: [1, 10], sensitivity: 'critical' },
         ]
     },
