@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
-import { buildVisitRegionDataset } from '@/lib/roadtour/visit-region'
+import { buildVisitRegionDataset, getStateFlagPath, getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import {
     AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
@@ -221,9 +221,13 @@ function formatVisitLocationDisplay(visit: OfficialVisit) {
         ? visit.visit_geo_label?.trim() || null
         : null
     const title = readableLabel
-        || shopSummary
         || reverseGeocodedSummary
+        || shopSummary
         || (hasCoordinates ? 'Location captured' : 'Location unavailable')
+
+    const capturedState = getStateFromCapturedLocation(visit.visit_geo_state)
+        || getStateFromCapturedLocation(visit.visit_geo_full_address)
+        || getStateFromCapturedLocation(visit.visit_geo_label)
 
     const metaParts: string[] = []
     const accuracyLabel = formatMeters(coordinates.accuracy)
@@ -241,10 +245,35 @@ function formatVisitLocationDisplay(visit: OfficialVisit) {
 
     return {
         title,
+        capturedState,
         accuracyBadge,
         metaParts: uniqueTextParts(metaParts),
         coordinates,
     }
+}
+
+function StateFlag({ stateName, size = 'sm', showPlaceholder = false }: { stateName?: string | null; size?: 'sm' | 'md'; showPlaceholder?: boolean }) {
+    const flagPath = getStateFlagPath(stateName)
+    const sizeClass = size === 'md' ? 'h-8 w-8' : 'h-4 w-4'
+    const iconClass = size === 'md' ? 'h-4 w-4' : 'h-2.5 w-2.5'
+
+    if (flagPath) {
+        return (
+            <img
+                src={flagPath}
+                alt={stateName ? `${stateName} flag` : 'State flag'}
+                className={`${sizeClass} rounded-full object-cover shrink-0 border border-slate-200 bg-white`}
+            />
+        )
+    }
+
+    if (!showPlaceholder) return null
+
+    return (
+        <span className={`flex ${sizeClass} items-center justify-center rounded-full shrink-0 border border-slate-200 bg-slate-50 text-slate-400`}>
+            <MapPin className={iconClass} />
+        </span>
+    )
 }
 
 export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
@@ -557,9 +586,10 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     }
 
     const handleExport = () => {
-        const headers = ['Date/Time', 'Reference', 'Shop', 'Campaign', 'Location', 'Distance (km)', 'Outcome', 'Status']
+        const headers = ['Date/Time', 'Reference', 'Shop', 'Campaign', 'Location', 'Distance (km)', 'Status']
         const rows = filtered.map((v) => {
             const dist = distanceByVisitId.get(v.id)
+            const status = visitOutcomeForRow(v)
             const locationDisplay = formatVisitLocationDisplay(v)
             return [
                 `${v.visit_date} ${new Date(v.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
@@ -568,8 +598,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 v.campaign_name || '',
                 [locationDisplay.title, locationDisplay.accuracyBadge.label, ...locationDisplay.metaParts].filter(Boolean).join(' · '),
                 dist ? dist.km.toFixed(1) : '',
-                v.visit_outcome || (v.visit_status === 'official' ? 'Completed' : v.visit_status),
-                v.visit_status,
+                status.label,
             ]
         })
         const csv = [headers, ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -796,10 +825,10 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                     </ResponsiveContainer>
                                 </div>
                                 <div className="w-36 space-y-2 text-xs">
-                                    {visitsByRegion.map((entry, index) => (
+                                    {visitsByRegion.map((entry) => (
                                         <div key={entry.regionName} className="flex items-center justify-between gap-2">
                                             <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: REGION_COLORS[index % REGION_COLORS.length] }} />
+                                                <StateFlag stateName={entry.regionName} />
                                                 <span className="truncate">{entry.regionName}</span>
                                             </span>
                                             <span className="shrink-0 font-medium text-foreground">= {entry.visitCount}</span>
@@ -860,18 +889,17 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                 <TableHead>Campaign</TableHead>
                                 <TableHead>Location</TableHead>
                                 <TableHead>Distance from Previous</TableHead>
-                                <TableHead>Outcome</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {pageItems.length === 0 && (
-                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
                             )}
                             {pageItems.map((v) => {
                                 const dist = distanceByVisitId.get(v.id)
-                                const outcome = visitOutcomeForRow(v)
+                                const status = visitOutcomeForRow(v)
                                 const locationDisplay = formatVisitLocationDisplay(v)
                                 const time = new Date(v.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
                                 const visitDate = (() => { try { return new Date(v.visit_date + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) } catch { return v.visit_date } })()
@@ -881,9 +909,9 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                     : dist.level === 'high' ? 'text-amber-700'
                                         : dist.level === 'medium' ? 'text-amber-600'
                                             : 'text-muted-foreground'
-                                const outcomeBadge = outcome.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
-                                    : outcome.tone === 'amber' ? 'bg-amber-100 text-amber-700'
-                                        : outcome.tone === 'red' ? 'bg-red-100 text-red-700'
+                                const statusBadge = status.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
+                                    : status.tone === 'amber' ? 'bg-amber-100 text-amber-700'
+                                        : status.tone === 'red' ? 'bg-red-100 text-red-700'
                                             : 'bg-slate-100 text-slate-700'
                                 return (
                                     <TableRow key={v.id}>
@@ -906,27 +934,28 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                         </TableCell>
                                         <TableCell className="text-sm">{v.campaign_name}</TableCell>
                                         <TableCell className="text-xs">
-                                            <div className="space-y-1">
-                                                <div className={`flex items-center gap-1 ${locColor}`}>
-                                                    <MapPin className="h-3 w-3" />
-                                                    <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
-                                                </div>
-                                                <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-                                                    <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
-                                                        {locationDisplay.accuracyBadge.label}
-                                                    </Badge>
-                                                    {locationDisplay.metaParts.map((part) => (
-                                                        <span key={part}>{part}</span>
-                                                    ))}
+                                            <div className="flex items-start gap-3">
+                                                <StateFlag stateName={locationDisplay.capturedState} size="md" showPlaceholder />
+                                                <div className="space-y-1 min-w-0">
+                                                    <div className={`flex items-center gap-1 ${locColor}`}>
+                                                        <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                                                        <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
+                                                            {locationDisplay.accuracyBadge.label}
+                                                        </Badge>
+                                                        {locationDisplay.metaParts.map((part) => (
+                                                            <span key={part}>{part}</span>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className={`text-sm ${distColor}`}>
                                             {dist ? `${dist.km.toFixed(1)} km` : '—'}
                                         </TableCell>
-                                        <TableCell className="text-sm">{outcome.label}</TableCell>
                                         <TableCell>
-                                            <Badge className={outcomeBadge}>{outcome.label}</Badge>
+                                            <Badge className={statusBadge}>{status.label}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button size="sm" variant="ghost" onClick={() => openDetail(v)}>
