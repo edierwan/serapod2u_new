@@ -22,6 +22,7 @@ import {
     fetchRoadtourRuns,
     type RoadtourRun,
 } from '@/lib/roadtour/events'
+import { capitalizeFirstOnly, toTitleCase } from '@/lib/roadtour/campaign-text'
 import { CreateRoadtourEventDialog } from './CreateRoadtourEventDialog'
 
 interface RoadtourCampaignsViewProps {
@@ -534,7 +535,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     }
 
     const handleSave = async () => {
-        if (!formName.trim()) { toast({ title: 'Validation', description: 'Campaign name is required.', variant: 'destructive' }); return }
+        const sanitizedName = toTitleCase(formName.trim())
+        const sanitizedDescription = capitalizeFirstOnly(formDesc.trim())
+
+        if (!sanitizedName) { toast({ title: 'Validation', description: 'Campaign name is required.', variant: 'destructive' }); return }
         if (!formStart || !formEnd) { toast({ title: 'Validation', description: 'Start and end dates are required.', variant: 'destructive' }); return }
         if (!formRunId) {
             toast({
@@ -559,8 +563,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             const payload = {
                 org_id: companyId,
                 roadtour_run_id: formRunId,
-                name: formName.trim(),
-                description: formDesc.trim() || null,
+                name: sanitizedName,
+                description: sanitizedDescription || null,
                 start_date: formStart,
                 end_date: formEnd,
                 default_points: formPoints,
@@ -585,7 +589,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         .eq('status', 'active')
                         .is('shop_id', null)
                 }
-                toast({ title: 'Campaign Updated', description: `"${formName}" has been updated.` })
+                toast({ title: 'Campaign Updated', description: `"${sanitizedName}" has been updated.` })
             } else {
                 const { data: createdCampaign, error } = await (supabase as any)
                     .from('roadtour_campaigns')
@@ -596,7 +600,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 if (createdCampaign?.id && formReferenceIds.length > 0) {
                     await syncCampaignManagers(createdCampaign.id, formReferenceIds)
                 }
-                toast({ title: 'Campaign Created', description: `"${formName}" has been created.` })
+                toast({ title: 'Campaign Created', description: `"${sanitizedName}" has been created.` })
             }
 
             setDialogOpen(false)
@@ -1022,13 +1026,13 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 <CardContent className="space-y-4">
                                     <div className="space-y-1.5">
                                         <Label className="text-xs">Campaign Name *</Label>
-                                        <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. Northern Region April 2026" />
+                                        <Input value={formName} onChange={(e) => setFormName(toTitleCase(e.target.value))} placeholder="e.g. Northern Region April 2026" />
                                     </div>
                                     <div className="space-y-1.5">
                                         <Label className="text-xs">Description</Label>
                                         <Textarea
                                             value={formDesc}
-                                            onChange={(e) => setFormDesc(e.target.value.slice(0, 250))}
+                                            onChange={(e) => setFormDesc(capitalizeFirstOnly(e.target.value.slice(0, 250)))}
                                             placeholder="Optional description..."
                                             rows={3}
                                             maxLength={250}

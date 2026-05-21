@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
+import { buildVisitRegionDataset } from '@/lib/roadtour/visit-region'
 import {
     AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react'
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, Legend
+    PieChart, Pie, Cell
 } from 'recharts'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
@@ -464,20 +465,13 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             .map(([k, v]) => ({ label: `Wk ${formatShortDate(k)}`, value: v }))
     }, [filtered, dateFrom, dateTo, trendView])
 
-    // Visits by Region (donut) — uses shop state
+    // Visits by Region (donut) — uses captured visit geolocation state/address
     const visitsByRegion = useMemo(() => {
-        const counts = new Map<string, number>()
-        for (const v of filtered) {
-            const region = (v.shop_state || '').trim() || 'Unknown'
-            counts.set(region, (counts.get(region) || 0) + 1)
-        }
-        const sorted = Array.from(counts.entries()).sort(([, a], [, b]) => b - a)
-        // Group small slices into Others
-        const top = sorted.slice(0, 4)
-        const otherTotal = sorted.slice(4).reduce((s, [, c]) => s + c, 0)
-        const arr = top.map(([name, value]) => ({ name, value }))
-        if (otherTotal > 0) arr.push({ name: 'Others', value: otherTotal })
-        return arr
+        return buildVisitRegionDataset(filtered.map((visit) => ({
+            capturedState: visit.visit_geo_state,
+            capturedAddress: visit.visit_geo_full_address,
+            capturedLabel: visit.visit_geo_label,
+        })))
     }, [filtered])
 
     // Top References list
@@ -790,15 +784,29 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                         {visitsByRegion.length === 0 ? (
                             <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No region data</div>
                         ) : (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={visitsByRegion} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                                        {visitsByRegion.map((_, i) => <Cell key={i} fill={REGION_COLORS[i % REGION_COLORS.length]} />)}
-                                    </Pie>
-                                    <Tooltip />
-                                    <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                                </PieChart>
-                            </ResponsiveContainer>
+                            <div className="flex h-full items-center gap-4">
+                                <div className="h-full min-w-0 flex-1">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie data={visitsByRegion} dataKey="visitCount" nameKey="regionName" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                                                {visitsByRegion.map((_, i) => <Cell key={i} fill={REGION_COLORS[i % REGION_COLORS.length]} />)}
+                                            </Pie>
+                                            <Tooltip formatter={(value: number) => [`${value} visits`, 'Visits']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="w-36 space-y-2 text-xs">
+                                    {visitsByRegion.map((entry, index) => (
+                                        <div key={entry.regionName} className="flex items-center justify-between gap-2">
+                                            <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                                                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: REGION_COLORS[index % REGION_COLORS.length] }} />
+                                                <span className="truncate">{entry.regionName}</span>
+                                            </span>
+                                            <span className="shrink-0 font-medium text-foreground">= {entry.visitCount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         )}
                     </CardContent>
                 </Card>
