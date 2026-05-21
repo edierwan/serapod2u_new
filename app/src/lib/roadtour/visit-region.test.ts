@@ -12,7 +12,10 @@ describe('visit-region', () => {
 
         it('extracts other supported Malaysian states', () => {
             expect(getStateFromCapturedLocation('Melaka Tengah, Melaka, Malaysia')).toBe('Melaka')
+            expect(getStateFromCapturedLocation('Bandar Hilir, Malacca, Malaysia')).toBe('Melaka')
             expect(getStateFromCapturedLocation('Alor Setar, Kedah, Malaysia')).toBe('Kedah')
+            expect(getStateFromCapturedLocation('Kuala Lumpur, Malaysia')).toBe('Kuala Lumpur')
+            expect(getStateFromCapturedLocation('Kuala Terengganu, Terengganu, Malaysia')).toBe('Terengganu')
         })
 
         it('returns null for missing locations', () => {
@@ -30,7 +33,10 @@ describe('visit-region', () => {
             expect(getStateFlagPath('Pulau Pinang')).toBe('/images/state-flags/penang.png')
             expect(getStateFlagPath('Penang')).toBe('/images/state-flags/penang.png')
             expect(getStateFlagPath('Melaka')).toBe('/images/state-flags/melaka.png')
+            expect(getStateFlagPath('Malacca')).toBe('/images/state-flags/melaka.png')
             expect(getStateFlagPath('Kedah')).toBe('/images/state-flags/kedah.png')
+            expect(getStateFlagPath('Kuala Lumpur')).toBe('/images/state-flags/kuala-lumpur.png')
+            expect(getStateFlagPath('Terengganu')).toBe('/images/state-flags/terengganu.png')
         })
 
         it('returns null when no local flag asset is available', () => {
