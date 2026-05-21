@@ -568,7 +568,7 @@ export default function UserManagementNew({
         if ("referral_phone" in userData) updateData.referral_phone = (userData as any).referral_phone || null;
         if ("can_be_reference" in userData) updateData.can_be_reference = !!(userData as any).can_be_reference;
 
-        // Handle password reset (Super Admin only)
+        // Handle password reset (admin only)
         if (resetPassword && resetPassword.password) {
           try {
             const response = await fetch("/api/users/reset-password", {

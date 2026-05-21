@@ -7,6 +7,12 @@ import {
 } from './role-permissions'
 
 describe('role-permissions', () => {
+    it('includes reset-password access for admin defaults', () => {
+        const permissions = buildDefaultPermissionMap(10)
+
+        expect(permissions.reset_passwords).toBe(true)
+    })
+
     it('keeps default admin permissions when DB payload is partial', () => {
         const permissions = normalizeRolePermissions(10, {
             view_dashboard: true,
