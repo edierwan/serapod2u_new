@@ -7,6 +7,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -24,6 +34,7 @@ import {
 } from '@/lib/roadtour/events'
 import { capitalizeFirstOnly, toTitleCase } from '@/lib/roadtour/campaign-text'
 import { CreateRoadtourEventDialog } from './CreateRoadtourEventDialog'
+import { RoadtourStateFlag } from './RoadtourStateFlag'
 
 interface RoadtourCampaignsViewProps {
     userProfile: any
@@ -102,6 +113,8 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [runsLoading, setRunsLoading] = useState(true)
     const [selectedRunId, setSelectedRunId] = useState<string>('')
     const [createEventOpen, setCreateEventOpen] = useState(false)
+    const [deleteEventDialogOpen, setDeleteEventDialogOpen] = useState(false)
+    const [deleteEventLoading, setDeleteEventLoading] = useState(false)
     const [formRunId, setFormRunId] = useState<string>('')
 
     // Dialog state
@@ -777,17 +790,85 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         return true
     })
 
+    const canManageRuns = (userProfile.roles?.role_level ?? 999) <= 20
+    const runCampaignCountById = useMemo(() => {
+        const counts = new Map<string, number>()
+
+        for (const campaign of campaigns) {
+            if (!campaign.roadtour_run_id) continue
+            counts.set(campaign.roadtour_run_id, (counts.get(campaign.roadtour_run_id) || 0) + 1)
+        }
+
+        return counts
+    }, [campaigns])
+
     const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) || null, [runs, selectedRunId])
+    const selectedRunCampaignCount = selectedRun ? (runCampaignCountById.get(selectedRun.id) || 0) : 0
     const runById = useMemo(() => {
         const map = new Map<string, RoadtourRun>()
         for (const r of runs) map.set(r.id, r)
         return map
     }, [runs])
 
+    const handleDeleteSelectedRun = async () => {
+        if (!selectedRun) return
+
+        try {
+            setDeleteEventLoading(true)
+
+            const response = await fetch(`/api/roadtour/events/${selectedRun.id}`, {
+                method: 'DELETE',
+            })
+
+            const result = await response.json().catch(() => null)
+            if (!response.ok) {
+                throw new Error(result?.error || result?.message || 'Failed to delete RoadTour Event.')
+            }
+
+            toast({
+                title: 'RoadTour Event deleted',
+                description: `"${selectedRun.name}" has been deleted.`,
+            })
+
+            setDeleteEventDialogOpen(false)
+            await Promise.all([loadRuns(), loadCampaigns()])
+        } catch (err: any) {
+            toast({
+                title: 'Error',
+                description: err.message || 'Failed to delete RoadTour Event.',
+                variant: 'destructive',
+            })
+        } finally {
+            setDeleteEventLoading(false)
+        }
+    }
+
     if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     return (
         <div className="space-y-4 sm:space-y-6">
+            <AlertDialog open={deleteEventDialogOpen} onOpenChange={setDeleteEventDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete RoadTour Event?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This event has no campaigns. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={deleteEventLoading}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDeleteSelectedRun}
+                            disabled={deleteEventLoading}
+                            className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                        >
+                            {deleteEventLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Delete Event
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><MapIcon className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
@@ -841,6 +922,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     </SelectContent>
                                 </Select>
                             </div>
+                            {canManageRuns && selectedRun && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setDeleteEventDialogOpen(true)}
+                                    disabled={deleteEventLoading || runsLoading || selectedRunCampaignCount > 0}
+                                    title={selectedRunCampaignCount > 0 ? 'Cannot delete event with existing campaigns.' : 'Delete RoadTour Event'}
+                                    className="gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:border-border disabled:text-muted-foreground"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Delete Event</span>
+                                </Button>
+                            )}
                             {selectedRun && (
                                 <>
                                     <Badge className={statusColors[selectedRun.status] || ''}>{selectedRun.status}</Badge>
@@ -931,9 +1026,18 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         <TableCell className="hidden lg:table-cell"><Badge variant="outline" className="text-xs">{c.reward_mode === 'survey_submit' ? 'Survey' : 'Direct'}</Badge></TableCell>
                                         <TableCell className="text-sm hidden lg:table-cell">
                                             {c.region_scope && c.region_scope.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1">
+                                                <div className="flex flex-wrap gap-2">
                                                     {c.region_scope.map((r) => (
-                                                        <Badge key={r} variant="outline" className="text-xs cursor-pointer hover:bg-primary/10" onClick={() => openRegionShops(r)}>{r}</Badge>
+                                                        <button
+                                                            key={r}
+                                                            type="button"
+                                                            onClick={() => openRegionShops(r)}
+                                                            title={`View shops in ${r}`}
+                                                            aria-label={`View shops in ${r}`}
+                                                            className="inline-flex items-center"
+                                                        >
+                                                            <RoadtourStateFlag stateName={r} size="md" fallback="badge" />
+                                                        </button>
                                                     ))}
                                                 </div>
                                             ) : '—'}

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
-import { buildVisitRegionDataset, getStateFlagPath, getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
+import { buildVisitRegionDataset, getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import {
     AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
@@ -23,6 +23,7 @@ import {
 } from 'recharts'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
+import { RoadtourStateFlag } from './RoadtourStateFlag'
 
 interface RoadtourVisitsViewProps {
     userProfile: any
@@ -250,30 +251,6 @@ function formatVisitLocationDisplay(visit: OfficialVisit) {
         metaParts: uniqueTextParts(metaParts),
         coordinates,
     }
-}
-
-function StateFlag({ stateName, size = 'sm', showPlaceholder = false }: { stateName?: string | null; size?: 'sm' | 'md'; showPlaceholder?: boolean }) {
-    const flagPath = getStateFlagPath(stateName)
-    const sizeClass = size === 'md' ? 'h-8 w-8' : 'h-4 w-4'
-    const iconClass = size === 'md' ? 'h-4 w-4' : 'h-2.5 w-2.5'
-
-    if (flagPath) {
-        return (
-            <img
-                src={flagPath}
-                alt={stateName ? `${stateName} flag` : 'State flag'}
-                className={`${sizeClass} rounded-full object-cover shrink-0 border border-slate-200 bg-white`}
-            />
-        )
-    }
-
-    if (!showPlaceholder) return null
-
-    return (
-        <span className={`flex ${sizeClass} items-center justify-center rounded-full shrink-0 border border-slate-200 bg-slate-50 text-slate-400`}>
-            <MapPin className={iconClass} />
-        </span>
-    )
 }
 
 export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
@@ -828,7 +805,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                     {visitsByRegion.map((entry) => (
                                         <div key={entry.regionName} className="flex items-center justify-between gap-2">
                                             <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                                <StateFlag stateName={entry.regionName} />
+                                                <RoadtourStateFlag stateName={entry.regionName} fallback="placeholder" />
                                                 <span className="truncate">{entry.regionName}</span>
                                             </span>
                                             <span className="shrink-0 font-medium text-foreground">= {entry.visitCount}</span>
@@ -935,7 +912,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                         <TableCell className="text-sm">{v.campaign_name}</TableCell>
                                         <TableCell className="text-xs">
                                             <div className="flex items-start gap-3">
-                                                <StateFlag stateName={locationDisplay.capturedState} size="md" showPlaceholder />
+                                                <RoadtourStateFlag stateName={locationDisplay.capturedState} size="md" fallback="placeholder" />
                                                 <div className="space-y-1 min-w-0">
                                                     <div className={`flex items-center gap-1 ${locColor}`}>
                                                         <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
