@@ -12,6 +12,7 @@ import {
     Megaphone,
     BookOpen,
     MessageSquare,
+    PanelTop,
     type LucideIcon,
 } from 'lucide-react'
 
@@ -41,6 +42,7 @@ export const marketingNavGroups: MarketingNavGroup[] = [
         icon: Megaphone,
         description: 'Build automated consumer journeys and send targeted WhatsApp broadcasts.',
         children: [
+            { id: 'landing-pages', label: 'Landing Pages', icon: PanelTop },
             { id: 'journey-builder', label: 'Journey Builder', icon: BookOpen },
             { id: 'marketing', label: 'WhatsApp Broadcast', icon: MessageSquare },
         ],

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { getStoredLandingPageAttribution, trackLandingPageEvent } from '@/lib/storefront/landing-attribution'
 import {
   ArrowLeft,
   CreditCard,
@@ -88,6 +89,16 @@ export default function CheckoutPage() {
     setError(null)
 
     try {
+      const landingPageAttribution = getStoredLandingPageAttribution()
+      if (landingPageAttribution) {
+        trackLandingPageEvent('checkout_start', {
+          landingPageId: landingPageAttribution.landingPageId,
+          landingPageSlug: landingPageAttribution.landingPageSlug,
+          landingPageSessionId: landingPageAttribution.landingPageSessionId,
+          attribution: landingPageAttribution,
+        })
+      }
+
       const res = await fetch('/api/storefront/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -97,6 +108,7 @@ export default function CheckoutPage() {
             variantId: i.variantId,
             quantity: i.quantity,
           })),
+          landingPageAttribution,
         }),
       })
 
@@ -110,12 +122,30 @@ export default function CheckoutPage() {
 
       // If the API returns a payment redirect URL, navigate there
       if (data.paymentUrl) {
+        if (landingPageAttribution) {
+          trackLandingPageEvent('order_created', {
+            landingPageId: landingPageAttribution.landingPageId,
+            landingPageSlug: landingPageAttribution.landingPageSlug,
+            landingPageSessionId: landingPageAttribution.landingPageSessionId,
+            attribution: landingPageAttribution,
+            metadata: { orderRef: data.orderRef },
+          })
+        }
         clearCart()
         window.location.href = data.paymentUrl
         return
       }
 
       // Otherwise, go to success page
+      if (landingPageAttribution) {
+        trackLandingPageEvent('order_created', {
+          landingPageId: landingPageAttribution.landingPageId,
+          landingPageSlug: landingPageAttribution.landingPageSlug,
+          landingPageSessionId: landingPageAttribution.landingPageSessionId,
+          attribution: landingPageAttribution,
+          metadata: { orderRef: data.orderRef },
+        })
+      }
       clearCart()
       router.push(`/store/orders/success?ref=${data.orderRef}`)
     } catch {
