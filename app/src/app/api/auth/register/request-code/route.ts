@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
+import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhoneE164 } from '@/utils/phone'
 import {
@@ -20,6 +22,11 @@ export async function POST(req: NextRequest) {
         const phoneRaw = String(body?.phone || '').trim()
         const fullName = String(body?.fullName || '').trim()
         const orgId = String(body?.orgId || '').trim()
+        const referenceUserId = String(body?.referenceUserId || '').trim()
+        const referralPhone = String(body?.referralPhone || '').trim()
+        const shopOrganizationId = String(body?.shopOrganizationId || '').trim()
+        const shopName = String(body?.shopName || '').trim()
+        const roadtourContext = sanitizeRoadtourRegistrationContext(body?.roadtourContext)
 
         if (!email || !phoneRaw || !fullName || !orgId) {
             return NextResponse.json({ error: 'Email, full name, phone number, and organization are required.' }, { status: 400 })
@@ -29,6 +36,17 @@ export async function POST(req: NextRequest) {
         const phone = normalizePhoneE164(phoneRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const ua = req.headers.get('user-agent') || null
+
+        const linkSelection = await resolveRegistrationLinkSelection(admin, {
+            organizationId: shopOrganizationId,
+            shopName,
+            referenceUserId,
+            referralPhone,
+        })
+
+        if (!linkSelection.ok) {
+            return NextResponse.json({ field: linkSelection.field, error: linkSelection.error }, { status: 400 })
+        }
 
         const availability = await checkRegistrationAvailability(admin, email, phoneRaw)
         if (!availability.emailAvailable) {
@@ -61,7 +79,17 @@ export async function POST(req: NextRequest) {
             admin,
             phone,
             hashOtp(code),
-            { email, full_name: fullName, org_id: orgId },
+            {
+                email,
+                full_name: fullName,
+                org_id: orgId,
+                reference_user_id: linkSelection.referenceUserId,
+                referral_phone: linkSelection.referralPhone,
+                shop_organization_id: linkSelection.organizationId,
+                shop_name: linkSelection.shopDisplayName,
+                registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
+                roadtour_context: roadtourContext,
+            },
             ip,
             ua,
         )
@@ -74,7 +102,15 @@ export async function POST(req: NextRequest) {
                 phone,
                 status: 'sent',
                 providerMessageId: sendResult.providerMessageId,
-                meta: { codeId, email, org_id: orgId },
+                meta: {
+                    codeId,
+                    email,
+                    org_id: orgId,
+                    reference_user_id: linkSelection.referenceUserId,
+                    shop_organization_id: linkSelection.organizationId,
+                    registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
+                    roadtour_context: roadtourContext,
+                },
                 ip,
             })
         } else {
@@ -83,7 +119,15 @@ export async function POST(req: NextRequest) {
                 phone,
                 status: 'failed',
                 errorMessage: sendResult.error,
-                meta: { codeId, email, org_id: orgId },
+                meta: {
+                    codeId,
+                    email,
+                    org_id: orgId,
+                    reference_user_id: linkSelection.referenceUserId,
+                    shop_organization_id: linkSelection.organizationId,
+                    registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
+                    roadtour_context: roadtourContext,
+                },
                 ip,
             })
             return NextResponse.json({
@@ -96,7 +140,15 @@ export async function POST(req: NextRequest) {
             eventType: 'registration_otp_requested',
             phone,
             status: 'sent',
-            meta: { codeId, email, org_id: orgId },
+            meta: {
+                codeId,
+                email,
+                org_id: orgId,
+                reference_user_id: linkSelection.referenceUserId,
+                shop_organization_id: linkSelection.organizationId,
+                registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
+                roadtour_context: roadtourContext,
+            },
             ip,
         })
 

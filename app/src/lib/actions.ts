@@ -5,9 +5,11 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
-import { normalizePhoneE164 } from '@/utils/phone'
+import { normalizePhoneE164, samePhone } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
+import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
+import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
 import {
   findCodeByVerificationToken,
   logNotificationEvent as logRegistrationNotificationEvent,
@@ -648,8 +650,10 @@ export async function registerConsumer(userData: {
   full_name: string
   phone?: string
   location?: string
+  reference_user_id?: string
   referral_phone?: string
   address?: string
+  organization_id?: string
   shop_name?: string
   registration_org_id?: string
   verification_token?: string
@@ -694,6 +698,48 @@ export async function registerConsumer(userData: {
       return {
         success: false,
         error: 'The verified mobile number does not match the current registration details. Please verify again.'
+      }
+    }
+
+    const verifiedMeta = (verificationCode.meta as any) || {}
+    const verifiedReferenceUserId = String(verifiedMeta.reference_user_id || '').trim()
+    const verifiedReferralPhone = String(verifiedMeta.referral_phone || '').trim()
+    const verifiedOrganizationId = String(verifiedMeta.shop_organization_id || '').trim()
+    const verifiedShopName = String(verifiedMeta.shop_name || '').trim()
+    const verifiedRoadtourContext = sanitizeRoadtourRegistrationContext(verifiedMeta.roadtour_context)
+
+    if (verifiedReferenceUserId && userData.reference_user_id?.trim() && userData.reference_user_id.trim() !== verifiedReferenceUserId) {
+      return {
+        success: false,
+        error: 'Your selected reference changed after verification. Please request a new WhatsApp code and try again.'
+      }
+    }
+
+    if (verifiedOrganizationId && userData.organization_id?.trim() && userData.organization_id.trim() !== verifiedOrganizationId) {
+      return {
+        success: false,
+        error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+      }
+    }
+
+    if (verifiedReferralPhone && userData.referral_phone?.trim() && !samePhone(userData.referral_phone, verifiedReferralPhone)) {
+      return {
+        success: false,
+        error: 'Your selected reference changed after verification. Please request a new WhatsApp code and try again.'
+      }
+    }
+
+    const linkSelection = await resolveRegistrationLinkSelection(adminClient, {
+      organizationId: verifiedOrganizationId || userData.organization_id,
+      shopName: verifiedShopName || userData.shop_name,
+      referenceUserId: verifiedReferenceUserId || userData.reference_user_id,
+      referralPhone: verifiedReferralPhone || userData.referral_phone,
+    })
+
+    if (!linkSelection.ok) {
+      return {
+        success: false,
+        error: 'Your selected reference and shop must be verified again. Please request a new WhatsApp code and try again.'
       }
     }
 
@@ -742,9 +788,11 @@ export async function registerConsumer(userData: {
 
     const profileUpdates: Record<string, any> = {}
     if (userData.location) profileUpdates.location = userData.location
-    if (userData.referral_phone) profileUpdates.referral_phone = userData.referral_phone
+    profileUpdates.reference_user_id = linkSelection.referenceUserId
+    profileUpdates.referral_phone = linkSelection.referralPhone
     if (userData.address) profileUpdates.address = userData.address
-    if (userData.shop_name) profileUpdates.shop_name = userData.shop_name
+    profileUpdates.organization_id = linkSelection.organizationId
+    profileUpdates.shop_name = linkSelection.shopDisplayName
 
     if (Object.keys(profileUpdates).length > 0) {
       const { error: profileError } = await adminClient
@@ -854,6 +902,10 @@ export async function registerConsumer(userData: {
       meta: {
         email: normalizedEmail,
         org_id: userData.registration_org_id || null,
+        reference_user_id: linkSelection.referenceUserId,
+        shop_organization_id: linkSelection.organizationId,
+        registration_source: verifiedRoadtourContext ? 'roadtour' : 'premium_loyalty',
+        roadtour_context: verifiedRoadtourContext,
       },
     })
 
