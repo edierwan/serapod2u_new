@@ -8,6 +8,9 @@ interface RoadtourContext {
     account_manager_name: string
     default_points: number
     org_id: string
+    qr_code_id?: string | null
+    campaign_id?: string | null
+    account_manager_user_id?: string | null
     reward_mode?: string | null
     survey_template_id?: string | null
     require_geolocation?: boolean

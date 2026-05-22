@@ -87,6 +87,7 @@ import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
 import { hasValidLinkedShop, hasValidReferenceLink, resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
+import { validateRegistrationLinkSelections } from '@/lib/engagement/registration-link-selection'
 import { getRoadtourShopSurveyField, getRoadtourShopSurveyPrefillValues, type RoadtourShopSurveySource } from '@/lib/roadtour/survey'
 
 // Types
@@ -247,6 +248,9 @@ interface PremiumLoyaltyTemplateProps {
         account_manager_name: string
         default_points: number
         org_id: string
+        qr_code_id?: string | null
+        campaign_id?: string | null
+        account_manager_user_id?: string | null
         reward_mode?: string | null
         survey_template_id?: string | null
         require_geolocation?: boolean
@@ -717,6 +721,10 @@ export default function PremiumLoyaltyTemplate({
     // New Signup Fields
     const [signUpReference, setSignUpReference] = useState('')
     const [signUpShopName, setSignUpShopName] = useState('')
+    const [signUpReferenceUserId, setSignUpReferenceUserId] = useState<string | null>(null)
+    const [signUpShopOrganizationId, setSignUpShopOrganizationId] = useState<string | null>(null)
+    const [signUpReferenceError, setSignUpReferenceError] = useState('')
+    const [signUpShopError, setSignUpShopError] = useState('')
 
     // Security modal states
     const [showSecurityModal, setShowSecurityModal] = useState(false)
@@ -2227,11 +2235,29 @@ export default function PremiumLoyaltyTemplate({
         setSignUpConfirmPassword('')
         setSignUpReference('')
         setSignUpShopName('')
+        setSignUpReferenceUserId(null)
+        setSignUpShopOrganizationId(null)
+        setSignUpReferenceError('')
+        setSignUpShopError('')
         setEmailError('')
         setPhoneError('')
         setSignUpEmailStatus('idle')
         setSignUpPhoneStatus('idle')
         resetRegistrationVerificationState()
+    }
+
+    const validateSignUpLinkSelections = () => {
+        const validation = validateRegistrationLinkSelections({
+            referenceValue: signUpReference,
+            referenceUserId: signUpReferenceUserId,
+            shopValue: signUpShopName,
+            shopOrganizationId: signUpShopOrganizationId,
+        })
+
+        setSignUpReferenceError(validation.referenceError || '')
+        setSignUpShopError(validation.shopError || '')
+
+        return validation.isValid
     }
 
     const completeVerifiedRegistration = async (emailToUse: string, verificationToken: string) => {
@@ -2240,7 +2266,9 @@ export default function PremiumLoyaltyTemplate({
             password: loginPassword,
             full_name: signUpName,
             phone: signUpPhone || undefined,
+            reference_user_id: signUpReferenceUserId || undefined,
             referral_phone: signUpReference || undefined,
+            organization_id: signUpShopOrganizationId || undefined,
             shop_name: signUpShopName || undefined,
             registration_org_id: orgId,
             verification_token: verificationToken,
@@ -2302,6 +2330,11 @@ export default function PremiumLoyaltyTemplate({
             throw new Error('Registration is not available because the organization is missing.')
         }
 
+        if (!validateSignUpLinkSelections()) {
+            setLoginError('Please select a valid reference and shop before continuing.')
+            return
+        }
+
         setRegistrationOtpSending(true)
         setRegistrationOtpError('')
 
@@ -2314,6 +2347,21 @@ export default function PremiumLoyaltyTemplate({
                     phone: signUpPhone.trim(),
                     fullName: signUpName.trim(),
                     orgId,
+                    referenceUserId: signUpReferenceUserId,
+                    referralPhone: signUpReference.trim(),
+                    shopOrganizationId: signUpShopOrganizationId,
+                    shopName: signUpShopName.trim(),
+                    roadtourContext: roadtourContext
+                        ? {
+                            token: roadtourContext.token,
+                            campaign_name: roadtourContext.campaign_name,
+                            account_manager_name: roadtourContext.account_manager_name,
+                            org_id: roadtourContext.org_id,
+                            qr_code_id: roadtourContext.qr_code_id || null,
+                            campaign_id: roadtourContext.campaign_id || null,
+                            account_manager_user_id: roadtourContext.account_manager_user_id || null,
+                        }
+                        : null,
                 }),
             })
 
@@ -2326,6 +2374,12 @@ export default function PremiumLoyaltyTemplate({
                 if (result.field === 'phone') {
                     setPhoneError(result.error)
                     setSignUpPhoneStatus('taken')
+                }
+                if (result.field === 'reference') {
+                    setSignUpReferenceError(result.error)
+                }
+                if (result.field === 'shop') {
+                    setSignUpShopError(result.error)
                 }
                 throw new Error(result.error || 'Unable to send verification code.')
             }
@@ -2511,6 +2565,12 @@ export default function PremiumLoyaltyTemplate({
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
                 if (!emailRegex.test(emailToUse)) {
                     setLoginError(`Invalid email format: "${emailToUse}". Please check for typos.`)
+                    setLoginLoading(false)
+                    return
+                }
+
+                if (!validateSignUpLinkSelections()) {
+                    setLoginError('Please select a valid reference and shop before continuing.')
                     setLoginLoading(false)
                     return
                 }
@@ -6372,18 +6432,24 @@ export default function PremiumLoyaltyTemplate({
                                             </label>
                                             <ReferencePicker
                                                 value={signUpReference}
+                                                referenceUserId={signUpReferenceUserId}
                                                 onSelect={(ref: ReferenceUser | null, phone: string) => {
                                                     setSignUpReference(phone)
                                                     if (ref) {
-                                                        setReferralCheckStatus('valid')
-                                                        setReferralName(ref.full_name)
-                                                    } else if (!phone) {
-                                                        setReferralCheckStatus('idle')
-                                                        setReferralName('')
+                                                        setSignUpReferenceUserId(ref.user_id)
+                                                        setSignUpReferenceError('')
+                                                    } else {
+                                                        setSignUpReferenceUserId(null)
+                                                        if (!phone) {
+                                                            setSignUpReferenceError('')
+                                                        }
                                                     }
                                                 }}
                                                 placeholder="Search by name, phone, or email..."
                                             />
+                                            {signUpReferenceError && (
+                                                <p className="text-xs text-red-500 mt-1">{signUpReferenceError}</p>
+                                            )}
                                         </div>
 
                                         <div>
@@ -6392,12 +6458,21 @@ export default function PremiumLoyaltyTemplate({
                                             </label>
                                             <ShopPicker
                                                 value={signUpShopName}
-                                                onSelect={(_shop: ShopResult | null, displayName: string) => {
+                                                onSelect={(shop: ShopResult | null, displayName: string) => {
                                                     setSignUpShopName(displayName)
+                                                    setSignUpShopOrganizationId(shop?.org_id || null)
+                                                    if (shop) {
+                                                        setSignUpShopError('')
+                                                    } else if (!displayName) {
+                                                        setSignUpShopError('')
+                                                    }
                                                 }}
                                                 placeholder="Search shop by name..."
                                                 maxLength={50}
                                             />
+                                            {signUpShopError && (
+                                                <p className="text-xs text-red-500 mt-1">{signUpShopError}</p>
+                                            )}
                                         </div>
                                     </>
                                 )}
