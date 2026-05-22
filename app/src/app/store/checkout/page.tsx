@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useCart } from '@/lib/storefront/cart-context'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getStoredLandingPageAttribution, trackLandingPageEvent } from '@/lib/storefront/landing-attribution'
+import type { LandingPageAttribution } from '@/lib/landing-pages/types'
 import {
   ArrowLeft,
   CreditCard,
@@ -15,6 +16,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Sparkles,
 } from 'lucide-react'
 
 function formatPrice(price: number) {
@@ -68,6 +70,11 @@ export default function CheckoutPage() {
   const [form, setForm] = useState<CheckoutForm>(INITIAL_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [landingAttribution, setLandingAttribution] = useState<LandingPageAttribution | null>(null)
+
+  useEffect(() => {
+    setLandingAttribution(getStoredLandingPageAttribution())
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -181,7 +188,15 @@ export default function CheckoutPage() {
         Back to cart
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Checkout</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-2">Checkout</h1>
+
+      {landingAttribution && (
+        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+          <Sparkles className="h-3.5 w-3.5" />
+          Source: {landingAttribution.landingPageTitle || landingAttribution.landingPageSlug}
+        </div>
+      )}
+
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">

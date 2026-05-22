@@ -124,6 +124,7 @@ export interface LandingPageAttribution {
   landingPageId: string
   landingPageSlug: string
   landingPageSessionId: string
+  landingPageTitle?: string
   sourceCode: string
   utmSource: string
   utmMedium: string

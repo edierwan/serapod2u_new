@@ -50,6 +50,7 @@ export default function LandingPageClient({ result, preview }: { result: Landing
 
     return {
       ...base,
+      landingPageTitle: page.public_title,
       sourceCode: base.sourceCode || page.tracking_defaults.source_code,
       utmSource: base.utmSource || page.tracking_defaults.utm_source,
       utmMedium: base.utmMedium || page.tracking_defaults.utm_medium,
