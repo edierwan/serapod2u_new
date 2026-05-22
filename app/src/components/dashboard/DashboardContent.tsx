@@ -132,6 +132,7 @@ import { isCrmViewId } from '@/modules/crm/crmNav'
 // Marketing Module Components
 import MarketingLandingView from '@/modules/marketing/components/MarketingLandingView'
 import MarketingTopNav from '@/modules/marketing/components/MarketingTopNav'
+import LandingPagesAdminView from '@/modules/marketing/components/LandingPagesAdminView'
 import { isMarketingViewId } from '@/modules/marketing/marketingNav'
 // Catalog Module Components
 import CatalogLandingView from '@/modules/catalog/components/CatalogLandingView'
@@ -382,6 +383,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <JourneyBuilderV2 userProfile={userProfile} />
       case 'marketing':
         return <MarketingPage />
+      case 'landing-pages':
+        return <LandingPagesAdminView />
       case 'support-inbox':
         return <AdminSupportInboxV2 />
       case 'lucky-draw':

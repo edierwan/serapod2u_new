@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, type Ref } from 'react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, UserCheck, X, Search, Phone, Mail } from 'lucide-react'
@@ -18,18 +18,22 @@ interface ReferencePickerProps {
     value?: string | null           // current referral_phone value (backward compat)
     referenceUserId?: string | null // new: direct user_id if available
     onSelect: (ref: ReferenceUser | null, phone: string) => void
+    onBlur?: (value: string, hasSelection: boolean) => void
     disabled?: boolean
     placeholder?: string
     className?: string
+    inputRef?: Ref<HTMLInputElement>
 }
 
 export function ReferencePicker({
     value,
     referenceUserId,
     onSelect,
+    onBlur,
     disabled = false,
     placeholder = 'Search by name, phone, or email...',
     className,
+    inputRef: externalInputRef,
 }: ReferencePickerProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [results, setResults] = useState<ReferenceUser[]>([])
@@ -41,6 +45,12 @@ export function ReferencePicker({
     const containerRef = useRef<HTMLDivElement>(null)
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+
+    useEffect(() => {
+        if (!selectedRef && value !== searchTerm) {
+            setSearchTerm(value || '')
+        }
+    }, [searchTerm, selectedRef, value])
 
     // Resolve initial value to a display name
     useEffect(() => {
@@ -124,6 +134,8 @@ export function ReferencePicker({
             setResolvedName(null)
         }
 
+        onSelect(null, val)
+
         if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
         searchTimeoutRef.current = setTimeout(() => doSearch(val), 300)
     }
@@ -191,10 +203,25 @@ export function ReferencePicker({
                 <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
                     <Input
-                        ref={inputRef}
+                        ref={(node) => {
+                            inputRef.current = node
+                            if (typeof externalInputRef === 'function') {
+                                externalInputRef(node)
+                            } else if (externalInputRef) {
+                                externalInputRef.current = node
+                            }
+                        }}
                         value={searchTerm}
                         onChange={(e) => handleInputChange(e.target.value)}
                         onFocus={() => { if (results.length > 0) setIsOpen(true) }}
+                        onBlur={(e) => {
+                            const nextFocused = e.relatedTarget as Node | null
+                            if (containerRef.current && nextFocused && containerRef.current.contains(nextFocused)) {
+                                return
+                            }
+
+                            onBlur?.(searchTerm, Boolean(selectedRef || referenceUserId))
+                        }}
                         placeholder={placeholder}
                         disabled={disabled}
                         className="h-9 text-sm pl-8 pr-8"

@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
+import { SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE } from '@/lib/engagement/registration-link-selection'
 import { normalizePhoneE164, samePhone } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
@@ -669,6 +670,13 @@ export async function registerConsumer(userData: {
 
     const phone = userData.phone ? normalizePhone(userData.phone) : undefined
     const normalizedEmail = userData.email.trim().toLowerCase()
+
+    if (!userData.password || userData.password.length < 6) {
+      return {
+        success: false,
+        error: SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE,
+      }
+    }
 
     if (!phone) {
       return {

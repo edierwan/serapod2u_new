@@ -87,7 +87,16 @@ import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
 import { hasValidLinkedShop, hasValidReferenceLink, resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
-import { validateRegistrationLinkSelections } from '@/lib/engagement/registration-link-selection'
+import {
+    getRegistrationReferenceSelectionError,
+    getRegistrationShopSelectionError,
+    SIGNUP_CONFIRM_PASSWORD_REQUIRED_MESSAGE,
+    SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE,
+    SIGNUP_PASSWORD_REQUIRED_MESSAGE,
+    SIGNUP_PASSWORDS_DO_NOT_MATCH_MESSAGE,
+    SIGNUP_PASSWORDS_MATCH_MESSAGE,
+    validateRegistrationPasswordFields,
+} from '@/lib/engagement/registration-link-selection'
 import { getRoadtourShopSurveyField, getRoadtourShopSurveyPrefillValues, type RoadtourShopSurveySource } from '@/lib/roadtour/survey'
 
 // Types
@@ -725,6 +734,14 @@ export default function PremiumLoyaltyTemplate({
     const [signUpShopOrganizationId, setSignUpShopOrganizationId] = useState<string | null>(null)
     const [signUpReferenceError, setSignUpReferenceError] = useState('')
     const [signUpShopError, setSignUpShopError] = useState('')
+    const [signUpPasswordError, setSignUpPasswordError] = useState('')
+    const [signUpConfirmPasswordError, setSignUpConfirmPasswordError] = useState('')
+    const [signUpPasswordSuccess, setSignUpPasswordSuccess] = useState('')
+    const [signUpReferenceTouched, setSignUpReferenceTouched] = useState(false)
+    const [signUpShopTouched, setSignUpShopTouched] = useState(false)
+    const [signUpPasswordTouched, setSignUpPasswordTouched] = useState(false)
+    const [signUpConfirmPasswordTouched, setSignUpConfirmPasswordTouched] = useState(false)
+    const [signUpValidationAttempted, setSignUpValidationAttempted] = useState(false)
 
     // Security modal states
     const [showSecurityModal, setShowSecurityModal] = useState(false)
@@ -807,7 +824,22 @@ export default function PremiumLoyaltyTemplate({
     const [passwordSuccess, setPasswordSuccess] = useState(false)
     const [showProfileInfo, setShowProfileInfo] = useState(false)
 
+    const signUpEmailInputRef = useRef<HTMLInputElement>(null)
+    const signUpNameInputRef = useRef<HTMLInputElement>(null)
+    const signUpPhoneInputRef = useRef<HTMLInputElement>(null)
+    const signUpReferenceInputRef = useRef<HTMLInputElement>(null)
+    const signUpShopInputRef = useRef<HTMLInputElement>(null)
+    const signUpPasswordInputRef = useRef<HTMLInputElement>(null)
+    const signUpConfirmPasswordInputRef = useRef<HTMLInputElement>(null)
+
     const shouldRequestRoadtourGeolocation = Boolean(roadtourContext?.require_geolocation)
+    const signUpEmailValue = loginEmail.replace(/\s/g, '')
+    const signUpEmailFormatValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signUpEmailValue)
+    const signUpPhoneValidation = validatePhoneNumber(signUpPhone)
+    const signUpPasswordValidation = useMemo(
+        () => validateRegistrationPasswordFields(loginPassword, signUpConfirmPassword),
+        [loginPassword, signUpConfirmPassword],
+    )
 
     const getRoadtourProfileIncompleteMessage = (name?: string | null) => {
         const resolvedName = (name || userName || 'there').trim()
@@ -2239,6 +2271,14 @@ export default function PremiumLoyaltyTemplate({
         setSignUpShopOrganizationId(null)
         setSignUpReferenceError('')
         setSignUpShopError('')
+        setSignUpPasswordError('')
+        setSignUpConfirmPasswordError('')
+        setSignUpPasswordSuccess('')
+        setSignUpReferenceTouched(false)
+        setSignUpShopTouched(false)
+        setSignUpPasswordTouched(false)
+        setSignUpConfirmPasswordTouched(false)
+        setSignUpValidationAttempted(false)
         setEmailError('')
         setPhoneError('')
         setSignUpEmailStatus('idle')
@@ -2246,18 +2286,120 @@ export default function PremiumLoyaltyTemplate({
         resetRegistrationVerificationState()
     }
 
-    const validateSignUpLinkSelections = () => {
-        const validation = validateRegistrationLinkSelections({
-            referenceValue: signUpReference,
-            referenceUserId: signUpReferenceUserId,
-            shopValue: signUpShopName,
-            shopOrganizationId: signUpShopOrganizationId,
+    const focusAndScrollToField = (ref: React.RefObject<HTMLInputElement | null>) => {
+        ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        ref.current?.focus()
+    }
+
+    const resolveSignUpReferenceError = (value: string, referenceUserId: string | null) => {
+        return getRegistrationReferenceSelectionError(value, referenceUserId) || ''
+    }
+
+    const resolveSignUpShopError = (value: string, shopOrganizationId: string | null) => {
+        return getRegistrationShopSelectionError(value, shopOrganizationId) || ''
+    }
+
+    const applySignUpPasswordValidation = (options?: {
+        password?: string
+        confirmPassword?: string
+        showPassword?: boolean
+        showConfirmPassword?: boolean
+    }) => {
+        const password = options?.password ?? loginPassword
+        const confirmPassword = options?.confirmPassword ?? signUpConfirmPassword
+        const validation = validateRegistrationPasswordFields(password, confirmPassword)
+        const shouldShowPassword = (options?.showPassword ?? signUpPasswordTouched) || signUpValidationAttempted
+        const shouldShowConfirmPassword = (options?.showConfirmPassword ?? signUpConfirmPasswordTouched) || signUpValidationAttempted || Boolean(confirmPassword)
+
+        setSignUpPasswordError(shouldShowPassword ? (validation.passwordError || '') : '')
+        setSignUpConfirmPasswordError(shouldShowConfirmPassword ? (validation.confirmPasswordError || '') : '')
+        setSignUpPasswordSuccess(shouldShowConfirmPassword ? (validation.confirmPasswordSuccess || '') : '')
+
+        return validation
+    }
+
+    const validateSignUpFields = () => {
+        setSignUpValidationAttempted(true)
+        setSignUpReferenceTouched(true)
+        setSignUpShopTouched(true)
+        setSignUpPasswordTouched(true)
+        setSignUpConfirmPasswordTouched(true)
+
+        const referenceError = resolveSignUpReferenceError(signUpReference, signUpReferenceUserId)
+        const shopError = resolveSignUpShopError(signUpShopName, signUpShopOrganizationId)
+        const passwordValidation = applySignUpPasswordValidation({
+            showPassword: true,
+            showConfirmPassword: true,
         })
 
-        setSignUpReferenceError(validation.referenceError || '')
-        setSignUpShopError(validation.shopError || '')
+        setSignUpReferenceError(referenceError)
+        setSignUpShopError(shopError)
 
-        return validation.isValid
+        const emailFieldError = !signUpEmailValue
+            ? 'Please fill in all fields'
+            : !signUpEmailFormatValid
+                ? 'Please enter a valid email address'
+                : emailError || (signUpEmailStatus === 'taken'
+                    ? 'Please update the highlighted registration details before continuing.'
+                    : signUpEmailStatus === 'checking'
+                        ? 'Please wait while we validate your registration details.'
+                        : '')
+
+        const fullNameFieldError = !signUpName.trim() ? 'Please enter your full name' : ''
+        const phoneFieldError = !signUpPhone.trim()
+            ? 'Please enter your mobile number'
+            : !signUpPhoneValidation.isValid
+                ? 'Please enter a valid Malaysia or China mobile number'
+                : phoneError || (signUpPhoneStatus === 'taken'
+                    ? 'Please update the highlighted registration details before continuing.'
+                    : signUpPhoneStatus === 'checking'
+                        ? 'Please wait while we validate your registration details.'
+                        : '')
+
+        if (emailFieldError) {
+            setLoginError(emailFieldError)
+            focusAndScrollToField(signUpEmailInputRef)
+            return false
+        }
+
+        if (fullNameFieldError) {
+            setLoginError(fullNameFieldError)
+            focusAndScrollToField(signUpNameInputRef)
+            return false
+        }
+
+        if (phoneFieldError) {
+            setLoginError(phoneFieldError)
+            focusAndScrollToField(signUpPhoneInputRef)
+            return false
+        }
+
+        if (referenceError) {
+            setLoginError('Please correct the highlighted fields before continuing.')
+            focusAndScrollToField(signUpReferenceInputRef)
+            return false
+        }
+
+        if (shopError) {
+            setLoginError('Please correct the highlighted fields before continuing.')
+            focusAndScrollToField(signUpShopInputRef)
+            return false
+        }
+
+        if (passwordValidation.passwordError) {
+            setLoginError(passwordValidation.passwordError)
+            focusAndScrollToField(signUpPasswordInputRef)
+            return false
+        }
+
+        if (passwordValidation.confirmPasswordError) {
+            setLoginError(passwordValidation.confirmPasswordError)
+            focusAndScrollToField(signUpConfirmPasswordInputRef)
+            return false
+        }
+
+        setLoginError('')
+        return true
     }
 
     const completeVerifiedRegistration = async (emailToUse: string, verificationToken: string) => {
@@ -2330,8 +2472,7 @@ export default function PremiumLoyaltyTemplate({
             throw new Error('Registration is not available because the organization is missing.')
         }
 
-        if (!validateSignUpLinkSelections()) {
-            setLoginError('Please select a valid reference and shop before continuing.')
+        if (!validateSignUpFields()) {
             return
         }
 
@@ -2351,6 +2492,8 @@ export default function PremiumLoyaltyTemplate({
                     referralPhone: signUpReference.trim(),
                     shopOrganizationId: signUpShopOrganizationId,
                     shopName: signUpShopName.trim(),
+                    password: loginPassword,
+                    confirmPassword: signUpConfirmPassword,
                     roadtourContext: roadtourContext
                         ? {
                             token: roadtourContext.token,
@@ -2380,6 +2523,16 @@ export default function PremiumLoyaltyTemplate({
                 }
                 if (result.field === 'shop') {
                     setSignUpShopError(result.error)
+                }
+                if (result.field === 'password') {
+                    setSignUpPasswordTouched(true)
+                    setSignUpPasswordError(result.error)
+                    focusAndScrollToField(signUpPasswordInputRef)
+                }
+                if (result.field === 'confirmPassword') {
+                    setSignUpConfirmPasswordTouched(true)
+                    setSignUpConfirmPasswordError(result.error)
+                    focusAndScrollToField(signUpConfirmPasswordInputRef)
                 }
                 throw new Error(result.error || 'Unable to send verification code.')
             }
@@ -2449,36 +2602,7 @@ export default function PremiumLoyaltyTemplate({
         }
 
         if (isSignUp) {
-            if (!signUpName) {
-                setLoginError('Please enter your full name')
-                return
-            }
-            if (!signUpPhone) {
-                setLoginError('Please enter your mobile number')
-                return
-            }
-            if (!signUpConfirmPassword) {
-                setLoginError('Please confirm your password')
-                return
-            }
-            if (loginPassword !== signUpConfirmPassword) {
-                setLoginError('Passwords do not match')
-                return
-            }
-            if (!validatePhoneNumber(signUpPhone)) {
-                setLoginError('Please enter a valid Malaysia or China mobile number')
-                return
-            }
-            if (emailError || phoneError) {
-                setLoginError(emailError || phoneError)
-                return
-            }
-            if (signUpEmailStatus === 'checking' || signUpPhoneStatus === 'checking') {
-                setLoginError('Please wait while we validate your registration details.')
-                return
-            }
-            if (signUpEmailStatus === 'taken' || signUpPhoneStatus === 'taken') {
-                setLoginError('Please update the highlighted registration details before continuing.')
+            if (!validateSignUpFields()) {
                 return
             }
         }
@@ -6357,10 +6481,12 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="relative">
                                                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                                 <Input
+                                                    ref={signUpNameInputRef}
                                                     type="text"
                                                     placeholder="Enter your full name"
                                                     value={signUpName}
                                                     onChange={(e) => {
+                                                        setLoginError('')
                                                         let newValue = e.target.value
                                                         // Auto-capitalize words in Full Name when space is pressed
                                                         if (newValue.endsWith(' ') && newValue.length > 1) {
@@ -6389,10 +6515,12 @@ export default function PremiumLoyaltyTemplate({
                                             <div className="relative">
                                                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                                                 <Input
+                                                    ref={signUpPhoneInputRef}
                                                     type="tel"
                                                     placeholder="e.g., 0123456789"
                                                     value={signUpPhone}
                                                     onChange={(e) => {
+                                                        setLoginError('')
                                                         setSignUpPhone(e.target.value)
                                                         if (!e.target.value.trim()) {
                                                             setPhoneError('')
@@ -6431,19 +6559,36 @@ export default function PremiumLoyaltyTemplate({
                                                 Reference
                                             </label>
                                             <ReferencePicker
+                                                inputRef={signUpReferenceInputRef}
                                                 value={signUpReference}
                                                 referenceUserId={signUpReferenceUserId}
                                                 onSelect={(ref: ReferenceUser | null, phone: string) => {
+                                                    setLoginError('')
+                                                    const hadSelectedReference = Boolean(signUpReferenceUserId)
+                                                    const nextReferenceUserId = ref?.user_id || null
                                                     setSignUpReference(phone)
+                                                    setSignUpReferenceUserId(nextReferenceUserId)
+
                                                     if (ref) {
-                                                        setSignUpReferenceUserId(ref.user_id)
+                                                        setSignUpReferenceTouched(true)
                                                         setSignUpReferenceError('')
-                                                    } else {
-                                                        setSignUpReferenceUserId(null)
-                                                        if (!phone) {
-                                                            setSignUpReferenceError('')
-                                                        }
+                                                        return
                                                     }
+
+                                                    if (!phone) {
+                                                        setSignUpReferenceError(signUpReferenceTouched || signUpValidationAttempted ? resolveSignUpReferenceError('', null) : '')
+                                                        return
+                                                    }
+
+                                                    setSignUpReferenceError(
+                                                        signUpReferenceTouched || signUpValidationAttempted || hadSelectedReference
+                                                            ? resolveSignUpReferenceError(phone, null)
+                                                            : ''
+                                                    )
+                                                }}
+                                                onBlur={(value: string, hasSelection: boolean) => {
+                                                    setSignUpReferenceTouched(true)
+                                                    setSignUpReferenceError(resolveSignUpReferenceError(value, hasSelection ? signUpReferenceUserId : null))
                                                 }}
                                                 placeholder="Search by name, phone, or email..."
                                             />
@@ -6457,15 +6602,35 @@ export default function PremiumLoyaltyTemplate({
                                                 Shop Name
                                             </label>
                                             <ShopPicker
+                                                inputRef={signUpShopInputRef}
                                                 value={signUpShopName}
                                                 onSelect={(shop: ShopResult | null, displayName: string) => {
+                                                    setLoginError('')
+                                                    const hadSelectedShop = Boolean(signUpShopOrganizationId)
+                                                    const nextShopOrganizationId = shop?.org_id || null
                                                     setSignUpShopName(displayName)
-                                                    setSignUpShopOrganizationId(shop?.org_id || null)
+                                                    setSignUpShopOrganizationId(nextShopOrganizationId)
+
                                                     if (shop) {
+                                                        setSignUpShopTouched(true)
                                                         setSignUpShopError('')
-                                                    } else if (!displayName) {
-                                                        setSignUpShopError('')
+                                                        return
                                                     }
+
+                                                    if (!displayName) {
+                                                        setSignUpShopError(signUpShopTouched || signUpValidationAttempted ? resolveSignUpShopError('', null) : '')
+                                                        return
+                                                    }
+
+                                                    setSignUpShopError(
+                                                        signUpShopTouched || signUpValidationAttempted || hadSelectedShop
+                                                            ? resolveSignUpShopError(displayName, null)
+                                                            : ''
+                                                    )
+                                                }}
+                                                onBlur={(value: string, hasSelection: boolean) => {
+                                                    setSignUpShopTouched(true)
+                                                    setSignUpShopError(resolveSignUpShopError(value, hasSelection ? signUpShopOrganizationId : null))
                                                 }}
                                                 placeholder="Search shop by name..."
                                                 maxLength={50}
@@ -6483,10 +6648,26 @@ export default function PremiumLoyaltyTemplate({
                                     </label>
                                     <div className="relative">
                                         <Input
+                                            ref={signUpPasswordInputRef}
                                             type={showPassword ? 'text' : 'password'}
                                             placeholder="Enter your password"
                                             value={loginPassword}
-                                            onChange={(e) => setLoginPassword(e.target.value)}
+                                            onChange={(e) => {
+                                                setLoginError('')
+                                                setLoginPassword(e.target.value)
+                                                applySignUpPasswordValidation({
+                                                    password: e.target.value,
+                                                    showPassword: signUpPasswordTouched || signUpValidationAttempted,
+                                                    showConfirmPassword: signUpConfirmPasswordTouched || signUpValidationAttempted || Boolean(signUpConfirmPassword),
+                                                })
+                                            }}
+                                            onBlur={() => {
+                                                setSignUpPasswordTouched(true)
+                                                applySignUpPasswordValidation({
+                                                    showPassword: true,
+                                                    showConfirmPassword: signUpConfirmPasswordTouched || signUpValidationAttempted || Boolean(signUpConfirmPassword),
+                                                })
+                                            }}
                                             className="h-11 pr-10"
                                             autoComplete="new-password"
                                         />
@@ -6503,6 +6684,9 @@ export default function PremiumLoyaltyTemplate({
                                         </button>
                                     </div>
                                     {isSignUp && <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>}
+                                    {isSignUp && signUpPasswordError && (
+                                        <p className="text-xs text-red-500 mt-1">{signUpPasswordError}</p>
+                                    )}
                                 </div>
 
                                 {isSignUp && (
@@ -6512,13 +6696,32 @@ export default function PremiumLoyaltyTemplate({
                                         </label>
                                         <div className="relative">
                                             <Input
+                                                ref={signUpConfirmPasswordInputRef}
                                                 type={showConfirmPassword ? 'text' : 'password'}
                                                 placeholder="Re-enter your password"
                                                 value={signUpConfirmPassword}
-                                                onChange={(e) => setSignUpConfirmPassword(e.target.value)}
-                                                className={`h-11 pr-10 ${signUpConfirmPassword && loginPassword === signUpConfirmPassword
+                                                onChange={(e) => {
+                                                    setLoginError('')
+                                                    setSignUpConfirmPasswordTouched(true)
+                                                    setSignUpConfirmPassword(e.target.value)
+                                                    applySignUpPasswordValidation({
+                                                        confirmPassword: e.target.value,
+                                                        showPassword: signUpPasswordTouched || signUpValidationAttempted || Boolean(loginPassword),
+                                                        showConfirmPassword: true,
+                                                    })
+                                                }}
+                                                onBlur={() => {
+                                                    setSignUpConfirmPasswordTouched(true)
+                                                    applySignUpPasswordValidation({
+                                                        showPassword: signUpPasswordTouched || signUpValidationAttempted || Boolean(loginPassword),
+                                                        showConfirmPassword: true,
+                                                    })
+                                                }}
+                                                className={`h-11 pr-10 ${signUpPasswordSuccess
                                                     ? 'border-green-500 focus-visible:ring-green-500'
-                                                    : ''
+                                                    : signUpConfirmPasswordError
+                                                        ? 'border-red-500 focus-visible:ring-red-500'
+                                                        : ''
                                                     }`}
                                                 autoComplete="new-password"
                                             />
@@ -6534,9 +6737,12 @@ export default function PremiumLoyaltyTemplate({
                                                 )}
                                             </button>
                                         </div>
-                                        {signUpConfirmPassword && loginPassword === signUpConfirmPassword && (
+                                        {signUpConfirmPasswordError && (
+                                            <p className="text-xs text-red-500 mt-1">{signUpConfirmPasswordError}</p>
+                                        )}
+                                        {signUpPasswordSuccess && !signUpConfirmPasswordError && (
                                             <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                                <Check className="w-3 h-3" /> Passwords match
+                                                <Check className="w-3 h-3" /> {signUpPasswordSuccess}
                                             </p>
                                         )}
                                     </div>
@@ -6544,7 +6750,7 @@ export default function PremiumLoyaltyTemplate({
 
                                 <Button
                                     onClick={handleLogin}
-                                    disabled={loginLoading || registrationOtpSending || !loginEmail || !loginPassword || (isSignUp && (!signUpName || !signUpPhone || signUpEmailStatus === 'checking' || signUpPhoneStatus === 'checking' || signUpEmailStatus === 'taken' || signUpPhoneStatus === 'taken'))}
+                                    disabled={loginLoading || registrationOtpSending || (!isSignUp && (!loginEmail || !loginPassword))}
                                     className="w-full h-11 font-semibold"
                                     style={{ backgroundColor: config.button_color }}
                                 >

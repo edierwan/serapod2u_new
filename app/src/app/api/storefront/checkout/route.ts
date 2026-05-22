@@ -24,6 +24,51 @@ interface CheckoutBody {
     variantId: string
     quantity: number
   }[]
+  landingPageAttribution?: {
+    landingPageId?: string
+    landingPageSlug?: string
+    landingPageSessionId?: string
+    sourceCode?: string
+    utmSource?: string
+    utmMedium?: string
+    utmCampaign?: string
+    utmContent?: string
+    utmTerm?: string
+    fbclid?: string
+    referrerDomain?: string
+  } | null
+}
+
+function cleanAttributionText(value: unknown, max = 300) {
+  return typeof value === 'string' ? value.slice(0, max) : ''
+}
+
+async function validateLandingPageCheckoutAttribution(supabase: any, attribution: CheckoutBody['landingPageAttribution']) {
+  if (!attribution?.landingPageId || !attribution?.landingPageSlug || !attribution?.landingPageSessionId) return null
+
+  const { data: page, error } = await supabase
+    .from('landing_pages')
+    .select('id, slug, status')
+    .eq('id', attribution.landingPageId)
+    .eq('slug', attribution.landingPageSlug)
+    .eq('status', 'published')
+    .maybeSingle()
+
+  if (error || !page) return null
+
+  return {
+    landing_page_id: page.id,
+    landing_page_slug: page.slug,
+    landing_page_session_id: cleanAttributionText(attribution.landingPageSessionId, 80),
+    source_code: cleanAttributionText(attribution.sourceCode),
+    utm_source: cleanAttributionText(attribution.utmSource),
+    utm_medium: cleanAttributionText(attribution.utmMedium),
+    utm_campaign: cleanAttributionText(attribution.utmCampaign),
+    utm_content: cleanAttributionText(attribution.utmContent),
+    utm_term: cleanAttributionText(attribution.utmTerm),
+    fbclid: cleanAttributionText(attribution.fbclid, 500),
+    referrer_domain: cleanAttributionText(attribution.referrerDomain),
+  }
 }
 
 // ── POST /api/storefront/checkout ─────────────────────────────────
@@ -42,6 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Cast to any: new tables not in generated types until migration runs
     const supabase: any = createAdminClient()
+    const landingPageAttribution = await validateLandingPageCheckoutAttribution(supabase, body.landingPageAttribution)
 
     // ── 1. Verify prices server-side ──────────────────────────────
     const variantIds = body.items.map((i) => i.variantId)
@@ -144,6 +190,32 @@ export async function POST(request: NextRequest) {
       // Delete the order to be safe
       await supabase.from('storefront_orders').delete().eq('id', order.id)
       return NextResponse.json({ error: 'Could not create order items' }, { status: 500 })
+    }
+
+    if (landingPageAttribution) {
+      const { error: attributionErr } = await supabase
+        .from('landing_page_order_attributions')
+        .insert({
+          ...landingPageAttribution,
+          order_id: order.id,
+          order_ref: order.order_ref,
+          order_total: orderTotal,
+          currency: 'MYR',
+        })
+
+      if (attributionErr) {
+        console.error('Landing page attribution insert failed:', attributionErr)
+      } else {
+        await supabase
+          .from('landing_page_events')
+          .insert({
+            landing_page_id: landingPageAttribution.landing_page_id,
+            landing_page_slug: landingPageAttribution.landing_page_slug,
+            landing_page_session_id: landingPageAttribution.landing_page_session_id,
+            event_type: 'order_created',
+            metadata: { orderId: order.id, orderRef: order.order_ref, orderTotal },
+          })
+      }
     }
 
     // ── 5. Create payment intent via gateway adapter ─────────────

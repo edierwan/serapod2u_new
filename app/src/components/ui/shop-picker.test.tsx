@@ -6,13 +6,16 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ShopPicker } from './shop-picker'
+import { getRegistrationShopSelectionError } from '@/lib/engagement/registration-link-selection'
 
 function ShopPickerHarness({
     onCreateRequest,
     onSelectSpy,
+    onBlurSpy,
 }: {
     onCreateRequest?: (shopName: string) => void
     onSelectSpy?: (shop: any, displayName: string) => void
+    onBlurSpy?: (value: string, hasSelection: boolean) => void
 }) {
     const [value, setValue] = useState('')
 
@@ -23,8 +26,33 @@ function ShopPickerHarness({
                 setValue(displayName)
                 onSelectSpy?.(shop, displayName)
             }}
+            onBlur={onBlurSpy}
             onCreateRequest={onCreateRequest}
         />
+    )
+}
+
+function ValidatingShopPickerHarness() {
+    const [value, setValue] = useState('')
+    const [organizationId, setOrganizationId] = useState<string | null>(null)
+    const [error, setError] = useState('')
+
+    return (
+        <>
+            <ShopPicker
+                value={value}
+                onSelect={(shop, displayName) => {
+                    setValue(displayName)
+                    setOrganizationId(shop?.org_id || null)
+                    setError(shop ? '' : error)
+                }}
+                onBlur={(nextValue, hasSelection) => {
+                    setError(getRegistrationShopSelectionError(nextValue, hasSelection ? organizationId : null) || '')
+                }}
+            />
+            {error && <p>{error}</p>}
+            <button type="button">Next field</button>
+        </>
     )
 }
 
@@ -112,5 +140,43 @@ describe('ShopPicker', () => {
         await user.type(input, ' X')
 
         expect(onSelect).toHaveBeenLastCalledWith(null, 'Kedai Maju (HQ)X')
+    })
+
+    it('reports blur for typed shop text without a selected shop', async () => {
+        const user = userEvent.setup()
+        const onBlur = vi.fn()
+
+        render(
+            <>
+                <ShopPickerHarness onBlurSpy={onBlur} />
+                <button type="button">Next field</button>
+            </>
+        )
+
+        await user.type(screen.getByPlaceholderText('Search shop by name...'), 'kedai rawak')
+        await user.click(screen.getByText('Next field'))
+
+        expect(onBlur).toHaveBeenLastCalledWith('kedai rawak', false)
+    })
+
+    it('shows the inline invalid-shop error on blur and clears it after valid selection', async () => {
+        const user = userEvent.setup()
+
+        render(<ValidatingShopPickerHarness />)
+
+        await user.type(screen.getByPlaceholderText('Search shop by name...'), 'kedai rawak')
+        await user.click(screen.getByText('Next field'))
+
+        expect(screen.getByText('Please select a valid shop from the list.')).toBeTruthy()
+
+        await user.type(screen.getByPlaceholderText('Search shop by name...'), 'Kedai Maju')
+
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 350))
+        })
+
+        await user.click(screen.getByText('Kedai Maju'))
+
+        expect(screen.queryByText('Please select a valid shop from the list.')).toBeNull()
     })
 })

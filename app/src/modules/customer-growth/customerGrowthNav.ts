@@ -18,6 +18,7 @@ import {
     HeadphonesIcon,
     BookOpen,
     Megaphone,
+    PanelTop,
     Trophy,
     Gamepad2,
     Store,
@@ -114,6 +115,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: Megaphone,
         description: 'Build automated consumer journeys and send targeted WhatsApp broadcasts.',
         children: [
+            { id: 'landing-pages', label: 'Landing Pages', icon: PanelTop, route: '/marketing', description: 'Curated public campaign pages with product attribution', href: '/marketing' },
             { id: 'journey-builder', label: 'Journey Builder', icon: BookOpen, route: '/marketing', description: 'Automated consumer journeys', href: '/marketing' },
             { id: 'roadtour', label: 'Road Tour', icon: Map, route: '/roadtour', description: 'Field-visit verification with QR codes, surveys, and rewards', href: '/roadtour' },
             { id: 'marketing', label: 'WhatsApp Broadcast', icon: MessageSquare, route: '/marketing', description: 'Outbound WhatsApp messaging', href: '/marketing' },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, type Ref } from 'react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Store, X, Search, MapPin, Phone } from 'lucide-react'
@@ -19,21 +19,25 @@ export interface ShopResult {
 interface ShopPickerProps {
     value?: string | null          // current shop_name value (free text, backward compat)
     onSelect: (shop: ShopResult | null, displayName: string) => void
+    onBlur?: (value: string, hasSelection: boolean) => void
     onCreateRequest?: (shopName: string) => void
     disabled?: boolean
     placeholder?: string
     className?: string
     maxLength?: number
+    inputRef?: Ref<HTMLInputElement>
 }
 
 export function ShopPicker({
     value,
     onSelect,
+    onBlur,
     onCreateRequest,
     disabled = false,
     placeholder = 'Search shop by name...',
     className,
     maxLength = 50,
+    inputRef: externalInputRef,
 }: ShopPickerProps) {
     const [searchTerm, setSearchTerm] = useState(value || '')
     const [results, setResults] = useState<ShopResult[]>([])
@@ -168,10 +172,25 @@ export function ShopPicker({
             <div className="relative">
                 <Store className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
-                    ref={inputRef}
+                    ref={(node) => {
+                        inputRef.current = node
+                        if (typeof externalInputRef === 'function') {
+                            externalInputRef(node)
+                        } else if (externalInputRef) {
+                            externalInputRef.current = node
+                        }
+                    }}
                     value={searchTerm}
                     onChange={(e) => handleInputChange(e.target.value)}
                     onFocus={() => { if (results.length > 0) setIsOpen(true) }}
+                    onBlur={(e) => {
+                        const nextFocused = e.relatedTarget as Node | null
+                        if (containerRef.current && nextFocused && containerRef.current.contains(nextFocused)) {
+                            return
+                        }
+
+                        onBlur?.(searchTerm, Boolean(selectedShop))
+                    }}
                     placeholder={placeholder}
                     disabled={disabled}
                     className="h-9 text-sm pl-8 pr-8"
