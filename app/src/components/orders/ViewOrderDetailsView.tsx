@@ -31,6 +31,25 @@ interface ViewOrderDetailsViewProps {
   orderId?: string
 }
 
+type OrderActor = {
+  email?: string | null
+  full_name?: string | null
+  signature_url?: string | null
+}
+
+function mergeOrderActor(existing: OrderActor | null | undefined, fallback: OrderActor | undefined) {
+  if (!existing) return fallback
+  if (!fallback) return existing
+
+  return {
+    ...fallback,
+    ...existing,
+    full_name: existing.full_name || fallback.full_name,
+    email: existing.email || fallback.email,
+    signature_url: existing.signature_url || fallback.signature_url,
+  }
+}
+
 export default function ViewOrderDetailsView({ userProfile, onViewChange, orderId }: ViewOrderDetailsViewProps) {
   const [orderData, setOrderData] = useState<any>(null)
   const [journeyData, setJourneyData] = useState<any>(null)
@@ -77,6 +96,27 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
       if (error) throw error
       if (!order) throw new Error('Order not found')
+
+      if (!order.created_by_user || (order.approved_by && !order.approved_by_user)) {
+        try {
+          const actorResponse = await fetch('/api/orders/actors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderIds: [orderId] })
+          })
+
+          if (actorResponse.ok) {
+            const actorPayload = await actorResponse.json()
+            const actorUsers = Array.isArray(actorPayload?.users) ? actorPayload.users : []
+            const actorMap = new Map(actorUsers.map(actor => [actor.id, actor]))
+
+            order.created_by_user = mergeOrderActor(order.created_by_user, order.created_by ? actorMap.get(order.created_by) : undefined)
+            order.approved_by_user = mergeOrderActor(order.approved_by_user, order.approved_by ? actorMap.get(order.approved_by) : undefined)
+          }
+        } catch (actorError) {
+          console.warn('Failed to hydrate order detail actors:', actorError)
+        }
+      }
 
       // Load order items with product and variant in parallel
       const [itemsResult, poDocResult, paymentDocsResult] = await Promise.all([

@@ -61,6 +61,68 @@ interface OrdersViewProps {
   onViewChange?: (view: string) => void
 }
 
+type OrderActor = {
+  id: string
+  email: string
+  full_name?: string | null
+  roles?: {
+    role_level: number
+  } | null
+}
+
+function mergeOrderActor(existing: OrderActor | undefined, fallback: OrderActor | undefined) {
+  if (!existing) return fallback
+  if (!fallback) return existing
+
+  return {
+    ...fallback,
+    ...existing,
+    full_name: existing.full_name || fallback.full_name,
+    email: existing.email || fallback.email,
+    roles: existing.roles || fallback.roles,
+  }
+}
+
+async function hydrateOrderActors<T extends { id: string; created_by?: string; approved_by?: string; created_by_user?: OrderActor; approved_by_user?: OrderActor }>(ordersData: T[]) {
+  const orderIdsNeedingActors = ordersData
+    .filter(order => (order.created_by && !order.created_by_user) || (order.approved_by && !order.approved_by_user))
+    .map(order => order.id)
+
+  if (orderIdsNeedingActors.length === 0) {
+    return ordersData
+  }
+
+  try {
+    const response = await fetch('/api/orders/actors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderIds: orderIdsNeedingActors })
+    })
+
+    if (!response.ok) {
+      console.warn('Failed to hydrate order actors:', response.status)
+      return ordersData
+    }
+
+    const payload = await response.json()
+    const users = Array.isArray(payload?.users) ? payload.users as OrderActor[] : []
+    if (users.length === 0) {
+      return ordersData
+    }
+
+    const usersById = new Map(users.map(user => [user.id, user]))
+
+    return ordersData.map(order => ({
+      ...order,
+      created_by_user: mergeOrderActor(order.created_by_user, order.created_by ? usersById.get(order.created_by) : undefined),
+      approved_by_user: mergeOrderActor(order.approved_by_user, order.approved_by ? usersById.get(order.approved_by) : undefined),
+    }))
+  } catch (error) {
+    console.warn('Failed to hydrate order actors:', error)
+    return ordersData
+  }
+}
+
 export default function OrdersView({ userProfile, onViewChange }: OrdersViewProps) {
   const [orders, setOrders] = useState<Order[]>([])
   const [summary, setSummary] = useState<OrderSummary | null>(null)
@@ -834,14 +896,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       if (ordersError) throw ordersError
 
+      const hydratedOrdersData = await hydrateOrderActors(ordersData || [])
+
       console.log('=== ORDER LOADING DEBUG ===')
-      console.log('Orders loaded:', ordersData?.length, 'orders')
+      console.log('Orders loaded:', hydratedOrdersData.length, 'orders')
       console.log('Company ID used:', companyId)
       console.log('User org ID:', userProfile.organization_id)
 
       // Now get order_items for these orders separately
-      if (ordersData && ordersData.length > 0) {
-        const orderIds = ordersData.map(o => o.id)
+      if (hydratedOrdersData.length > 0) {
+        const orderIds = hydratedOrdersData.map(o => o.id)
 
         // 1. Fetch Order Items
         const { data: itemsData, error: itemsError } = await supabase
@@ -883,7 +947,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           console.error('Error loading order items:', itemsError)
         } else if (itemsData) {
           // Map items to orders
-          const ordersWithItems = ordersData.map(order => {
+          const ordersWithItems = hydratedOrdersData.map(order => {
             const items = itemsData.filter(item => item.order_id === order.id)
             const poDoc = poData?.find(d => d.order_id === order.id)
 
@@ -939,7 +1003,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       }
 
       console.log('========================')
-      setOrders((ordersData || []) as any)
+      setOrders(hydratedOrdersData as any)
     } catch (error) {
       console.error('Error loading orders:', error)
     } finally {
