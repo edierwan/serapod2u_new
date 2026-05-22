@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone } from 'lucide-react'
+import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, TrendingUp, Store, UserCheck, Flag } from 'lucide-react'
 
 export interface RoadtourNavChild {
     id: string
@@ -28,22 +28,17 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
         ],
     },
     {
-        id: 'rt-field',
-        label: 'Field Operations',
-        icon: ClipboardList,
-        description: 'Track visits, manage surveys, and monitor field activity.',
-        children: [
-            { id: 'roadtour-visits', label: 'Visits', icon: Users },
-            { id: 'roadtour-surveys', label: 'Surveys', icon: ClipboardList },
-        ],
-    },
-    {
         id: 'rt-analytics',
         label: 'Analytics',
         icon: BarChart3,
-        description: 'Monitor campaign performance, WhatsApp delivery, and track field activity.',
+        description: 'Monitor campaign performance, post-visit shop impact, and account manager effectiveness.',
         children: [
-            { id: 'roadtour-analytics', label: 'Analytics', icon: BarChart3 },
+            { id: 'roadtour-analytics', label: 'Analytics Overview', icon: BarChart3 },
+            { id: 'roadtour-visits', label: 'Visits', icon: Users },
+            { id: 'roadtour-post-visit-impact', label: 'Post-Visit Impact Report', icon: TrendingUp },
+            { id: 'roadtour-shop-impact', label: 'Shop Impact Detail', icon: Store },
+            { id: 'roadtour-am-impact', label: 'Account Manager Impact', icon: UserCheck },
+            { id: 'roadtour-follow-up-priority', label: 'Follow-Up Priority Queue', icon: Flag },
             { id: 'roadtour-whatsapp', label: 'WhatsApp Monitoring', icon: Smartphone },
         ],
     },
@@ -51,8 +46,9 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
         id: 'rt-settings',
         label: 'Settings',
         icon: Settings,
-        description: 'Configure RoadTour module settings, user registration, and preferences.',
+        description: 'Configure RoadTour module settings, surveys, user registration, and preferences.',
         children: [
+            { id: 'roadtour-surveys', label: 'Surveys', icon: ClipboardList },
             { id: 'roadtour-settings', label: 'RoadTour Settings', icon: Settings },
         ],
     },

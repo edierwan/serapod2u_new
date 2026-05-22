@@ -153,6 +153,10 @@ import { RoadtourVisitsView } from '@/modules/roadtour/components/RoadtourVisits
 import { RoadtourAnalyticsView } from '@/modules/roadtour/components/RoadtourAnalyticsView'
 import { RoadtourSettingsView } from '@/modules/roadtour/components/RoadtourSettingsView'
 import { RoadtourWhatsAppMonitoringView } from '@/modules/roadtour/components/RoadtourWhatsAppMonitoringView'
+import { PostVisitImpactReportView } from '@/modules/roadtour/components/analytics/PostVisitImpactReportView'
+import { ShopImpactDetailView } from '@/modules/roadtour/components/analytics/ShopImpactDetailView'
+import { AccountManagerImpactPerformanceView } from '@/modules/roadtour/components/analytics/AccountManagerImpactPerformanceView'
+import { FollowUpPriorityQueueView } from '@/modules/roadtour/components/analytics/FollowUpPriorityQueueView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
@@ -443,6 +447,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <RoadtourVisitsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-analytics':
         return <RoadtourAnalyticsView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-post-visit-impact':
+        return <PostVisitImpactReportView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-shop-impact':
+        return <ShopImpactDetailView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-am-impact':
+        return <AccountManagerImpactPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-follow-up-priority':
+        return <FollowUpPriorityQueueView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-whatsapp':
         return <RoadtourWhatsAppMonitoringView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-settings':
