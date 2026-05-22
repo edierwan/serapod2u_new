@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
+import {
+    SIGNUP_CONFIRM_PASSWORD_REQUIRED_MESSAGE,
+    SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE,
+    SIGNUP_PASSWORDS_DO_NOT_MATCH_MESSAGE,
+} from '@/lib/engagement/registration-link-selection'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhoneE164 } from '@/utils/phone'
@@ -26,6 +31,8 @@ export async function POST(req: NextRequest) {
         const referralPhone = String(body?.referralPhone || '').trim()
         const shopOrganizationId = String(body?.shopOrganizationId || '').trim()
         const shopName = String(body?.shopName || '').trim()
+        const password = String(body?.password || '')
+        const confirmPassword = String(body?.confirmPassword || '')
         const roadtourContext = sanitizeRoadtourRegistrationContext(body?.roadtourContext)
 
         if (!email || !phoneRaw || !fullName || !orgId) {
@@ -36,6 +43,18 @@ export async function POST(req: NextRequest) {
         const phone = normalizePhoneE164(phoneRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const ua = req.headers.get('user-agent') || null
+
+        if (password.length < 6) {
+            return NextResponse.json({ field: 'password', error: SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE }, { status: 400 })
+        }
+
+        if (!confirmPassword) {
+            return NextResponse.json({ field: 'confirmPassword', error: SIGNUP_CONFIRM_PASSWORD_REQUIRED_MESSAGE }, { status: 400 })
+        }
+
+        if (password !== confirmPassword) {
+            return NextResponse.json({ field: 'confirmPassword', error: SIGNUP_PASSWORDS_DO_NOT_MATCH_MESSAGE }, { status: 400 })
+        }
 
         const linkSelection = await resolveRegistrationLinkSelection(admin, {
             organizationId: shopOrganizationId,

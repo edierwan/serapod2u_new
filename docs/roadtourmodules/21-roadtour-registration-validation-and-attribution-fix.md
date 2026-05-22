@@ -150,28 +150,64 @@ Added tests:
 Covered behaviors:
 - missing or free-text-only selections are rejected
 - valid ids plus canonical values are accepted
+- invalid Reference text shows the inline error on blur and clears after valid selection
+- invalid Shop text shows the inline error on blur and clears after valid selection
 - editing selected shop text invalidates the selection id
+- live password validation distinguishes required, short, mismatch, and match states
 - OTP start route rejects invalid authoritative selections before code creation or WhatsApp send
 
-## 8. Staging Validation Checklist
+## 8. Field-level Validation Timing Fix
+
+Current broken behavior before this update:
+- Reference and Shop inline errors could appear too late because the parent form only knew about final selected ids, not about typed-but-unselected blur events.
+- Reference free text was not propagated back to the form state while typing, so the form could not distinguish empty from invalid typed input reliably.
+- Password mismatch was only enforced on submit, which is why the banner-level error in staging appeared before clear inline field feedback.
+
+New validation timing behavior:
+- Reference now propagates typed text back to form state and reports blur to the parent.
+- If Reference is empty on blur, the form shows `Reference is required.`
+- If Reference has typed text but no selected id on blur or when leaving the field, the form shows `Please select a valid reference from the list.`
+- Shop now reports blur to the parent with the current text and whether a selected shop still exists.
+- If Shop is empty on blur, the form shows `Shop name is required.`
+- If Shop has typed text but no selected shop id on blur or when leaving the field, the form shows `Please select a valid shop from the list.`
+- Password and Confirm Password are now validated live while typing.
+- If Confirm Password differs, the form shows `Passwords do not match` inline before submit.
+- If both password fields match and password length is valid, the form shows `Passwords match` inline.
+- Clicking `Create Account` now focuses and scrolls to the first invalid field if any validation still fails.
+- WhatsApp OTP cannot start when Reference, Shop, or password validation fails.
+
+Files changed for the timing fix:
+- `app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx`
+- `app/src/components/ui/reference-picker.tsx`
+- `app/src/components/ui/shop-picker.tsx`
+- `app/src/lib/engagement/registration-link-selection.ts`
+- `app/src/app/api/auth/register/request-code/route.ts`
+- `app/src/app/api/auth/register/resend-code/route.ts`
+
+## 9. Staging Validation Checklist
 
 Run through this checklist on staging:
 1. Open a RoadTour registration URL and confirm campaign and account manager context still render correctly.
-2. Try to start signup with no Reference selected. Confirm the OTP modal does not open and the Reference error is shown.
-3. Try to type a Shop name without choosing a search result. Confirm the OTP modal does not open and the Shop error is shown.
-4. Select a valid Shop, then edit the text. Confirm the selection is invalidated and signup is blocked until a new valid selection is made.
-5. Select a valid Reference and valid Shop, then start signup. Confirm the WhatsApp OTP modal opens.
-6. Complete OTP and registration. Confirm the created user has:
+2. Type random text in Reference, then tab or click into Shop Name. Confirm Reference immediately shows `Please select a valid reference from the list.`
+3. Clear Reference, leave the field, and confirm it shows `Reference is required.`
+4. Type random text in Shop Name, then tab or click into Password. Confirm Shop shows `Please select a valid shop from the list.`
+5. Clear Shop Name, leave the field, and confirm it shows `Shop name is required.`
+6. Enter different Password and Confirm Password values. Confirm `Passwords do not match` appears before clicking Create Account.
+7. Correct Confirm Password. Confirm `Passwords match` appears inline.
+8. Keep Reference or Shop invalid and click Create Account. Confirm the OTP modal does not open and the form focuses the first invalid field.
+9. Select a valid Shop, then edit the text. Confirm the selection is invalidated and signup is blocked until a new valid selection is made.
+10. Select a valid Reference and valid Shop, then start signup. Confirm the WhatsApp OTP modal opens.
+11. Complete OTP and registration. Confirm the created user has:
    - `reference_user_id` populated
    - canonical `referral_phone`
    - `organization_id` populated with the selected shop
    - canonical `shop_name`
-7. Repeat with an invalid or stale selection payload through devtools or direct request replay. Confirm the server rejects OTP start.
-8. Repeat an OTP resend flow after valid selections. Confirm resend still works.
-9. Confirm no new shop is silently created from this flow when no result exists.
-10. Confirm User Management or profile views still show the linked shop and reference correctly after signup.
+12. Repeat with an invalid or stale selection payload through devtools or direct request replay. Confirm the server rejects OTP start.
+13. Repeat an OTP resend flow after valid selections. Confirm resend still works.
+14. Confirm no new shop is silently created from this flow when no result exists.
+15. Confirm User Management or profile views still show the linked shop and reference correctly after signup.
 
-## 9. Changed Files
+## 10. Changed Files
 
 Implementation files changed:
 - `app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx`
@@ -188,9 +224,10 @@ Test files changed:
 - `app/src/lib/engagement/registration-link-selection.test.ts`
 - `app/src/lib/engagement/registration-link-resolution.test.ts`
 - `app/src/app/api/auth/register/request-code/route.test.ts`
+- `app/src/components/ui/reference-picker.test.tsx`
 - `app/src/components/ui/shop-picker.test.tsx`
 
-## 10. Outcome
+## 11. Outcome
 
 This change closes the immediate reliability bug:
 - Reference and Shop are now mandatory authoritative selections

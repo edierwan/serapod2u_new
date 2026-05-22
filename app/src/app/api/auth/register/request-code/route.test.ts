@@ -70,6 +70,8 @@ describe('POST /api/auth/register/request-code', () => {
         referenceUserId: 'ref-1',
         referralPhone: '+60123456789',
         shopName: 'Kedai Maju',
+        password: 'secret123',
+        confirmPassword: 'secret123',
       }),
     }) as any)
     const payload = await response.json()
@@ -97,6 +99,8 @@ describe('POST /api/auth/register/request-code', () => {
         orgId: 'org-1',
         shopOrganizationId: 'shop-1',
         shopName: 'Kedai Maju (HQ)',
+        password: 'secret123',
+        confirmPassword: 'secret123',
       }),
     }) as any)
     const payload = await response.json()
@@ -109,5 +113,55 @@ describe('POST /api/auth/register/request-code', () => {
     expect(checkRegistrationAvailabilityMock).not.toHaveBeenCalled()
     expect(createVerificationCodeMock).not.toHaveBeenCalled()
     expect(sendOtpViaWhatsAppMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects OTP start when the password is too short', async () => {
+    const { POST } = await import('./route')
+
+    const response = await POST(new Request('http://localhost/api/auth/register/request-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'ali@example.com',
+        phone: '0123456789',
+        fullName: 'Ali',
+        orgId: 'org-1',
+        password: '12345',
+        confirmPassword: '12345',
+      }),
+    }) as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toEqual({
+      field: 'password',
+      error: 'Password must be at least 6 characters.',
+    })
+    expect(checkRegistrationAvailabilityMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects OTP start when confirm password does not match', async () => {
+    const { POST } = await import('./route')
+
+    const response = await POST(new Request('http://localhost/api/auth/register/request-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'ali@example.com',
+        phone: '0123456789',
+        fullName: 'Ali',
+        orgId: 'org-1',
+        password: 'secret123',
+        confirmPassword: 'secret321',
+      }),
+    }) as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toEqual({
+      field: 'confirmPassword',
+      error: 'Passwords do not match',
+    })
+    expect(checkRegistrationAvailabilityMock).not.toHaveBeenCalled()
   })
 })
