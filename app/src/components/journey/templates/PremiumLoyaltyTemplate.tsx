@@ -2308,8 +2308,8 @@ export default function PremiumLoyaltyTemplate({
         const password = options?.password ?? loginPassword
         const confirmPassword = options?.confirmPassword ?? signUpConfirmPassword
         const validation = validateRegistrationPasswordFields(password, confirmPassword)
-        const shouldShowPassword = options?.showPassword ?? signUpPasswordTouched || signUpValidationAttempted
-        const shouldShowConfirmPassword = options?.showConfirmPassword ?? signUpConfirmPasswordTouched || signUpValidationAttempted || Boolean(confirmPassword)
+        const shouldShowPassword = (options?.showPassword ?? signUpPasswordTouched) || signUpValidationAttempted
+        const shouldShowConfirmPassword = (options?.showConfirmPassword ?? signUpConfirmPasswordTouched) || signUpValidationAttempted || Boolean(confirmPassword)
 
         setSignUpPasswordError(shouldShowPassword ? (validation.passwordError || '') : '')
         setSignUpConfirmPasswordError(shouldShowConfirmPassword ? (validation.confirmPasswordError || '') : '')
