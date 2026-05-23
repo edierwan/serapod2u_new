@@ -8,6 +8,21 @@ export const dynamic = 'force-dynamic'
 
 const PURPOSE = 'organization_deletion'
 
+function getRoleLevel(profile: any) {
+  if (Array.isArray(profile?.roles)) {
+    return profile.roles[0]?.role_level ?? null
+  }
+
+  return profile?.roles?.role_level ?? null
+}
+
+function isSuperAdminProfile(profile: any) {
+  const roleLevel = getRoleLevel(profile)
+  const roleCode = String(profile?.role_code || '').trim().toLowerCase()
+
+  return roleLevel === 1 || profile?.is_super_admin === true || ['super_admin', 'superadmin', 'sa'].includes(roleCode)
+}
+
 export async function POST(request: NextRequest) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
 
@@ -21,14 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from('users')
-      .select('organization_id, roles(role_level)')
+      .select('organization_id, role_code, is_super_admin, roles(role_level)')
       .eq('id', user.id)
       .single()
 
-    const roleLevel = (profile as any)?.roles?.role_level
-    if (roleLevel !== 1) {
+    if (!isSuperAdminProfile(profile)) {
       return NextResponse.json({ error: 'Access denied. Super Admin only.' }, { status: 403 })
     }
 
