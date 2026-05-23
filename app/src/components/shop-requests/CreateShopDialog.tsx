@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
-import { toTitleCaseWords, validateMalaysianMobileNumber } from '@/lib/utils'
+import { toTitleCaseAddress, toTitleCaseWords, validateMalaysianMobileNumber } from '@/lib/utils'
 import type { ShopRequestFormInput } from '@/lib/shop-requests/core'
 import { formatShopNameTitleCase, normalizeShopNameForSubmit } from '@/lib/shop-requests/shop-name-formatting'
 import { formatPhoneDisplay } from '@/utils/phone'
@@ -261,20 +261,31 @@ export function CreateShopDialog({
             return null
         }
 
+        const normalizedAddress = toTitleCaseAddress(address)
+        if (address !== normalizedAddress) {
+            setAddress(normalizedAddress)
+        }
+
         return {
             normalizedContactPhone,
             normalizedShopName,
+            normalizedAddress,
         }
     }
 
-    const buildRequestPayload = (normalizedContactPhone: string, normalizedShopName: string, confirmCreate = false) => ({
+    const buildRequestPayload = (
+        normalizedContactPhone: string,
+        normalizedShopName: string,
+        normalizedAddress: string,
+        confirmCreate = false,
+    ) => ({
         shopName: normalizedShopName,
         branch: selectedDistrict?.district_name || branch.trim() || null,
         state: selectedState?.state_name || null,
         contactName: contactName.trim() || null,
         contactPhone: normalizedContactPhone,
         contactEmail: contactEmail.trim() || null,
-        address: address.trim() || null,
+        address: normalizedAddress || null,
         hotFlavourBrands: hotFlavourBrands.trim() || null,
         sellsSerapodFlavour,
         sellsSbox,
@@ -297,7 +308,12 @@ export function CreateShopDialog({
             const response = await fetch('/api/shops/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, validated.normalizedShopName, confirmCreate)),
+                body: JSON.stringify(buildRequestPayload(
+                    validated.normalizedContactPhone,
+                    validated.normalizedShopName,
+                    validated.normalizedAddress,
+                    confirmCreate,
+                )),
             })
 
             const result = await response.json()
@@ -343,7 +359,12 @@ export function CreateShopDialog({
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, validated.normalizedShopName, confirmCreate)),
+                    body: JSON.stringify(buildRequestPayload(
+                        validated.normalizedContactPhone,
+                        validated.normalizedShopName,
+                        validated.normalizedAddress,
+                        confirmCreate,
+                    )),
                 },
             )
 
@@ -661,6 +682,7 @@ export function CreateShopDialog({
                             <Textarea
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
+                                onBlur={() => setAddress(toTitleCaseAddress(address))}
                                 rows={2}
                                 placeholder="Shop address"
                             />

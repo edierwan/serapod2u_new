@@ -16,6 +16,15 @@ export function toTitleCaseWords(value: string): string {
     .replace(/\b[\p{L}\p{N}]/gu, (char) => char.toUpperCase())
 }
 
+export function toTitleCaseAddress(value?: string | null): string {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return ''
+
+  return normalized
+    .toLowerCase()
+    .replace(/(^|[\s,./-])(\p{L})/gu, (_, prefix: string, char: string) => `${prefix}${char.toUpperCase()}`)
+}
+
 export function getStorageUrl(path: string | null) {
   if (!path) return '';
   if (path.startsWith('http')) return path;

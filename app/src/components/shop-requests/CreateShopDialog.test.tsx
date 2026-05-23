@@ -135,12 +135,19 @@ describe('CreateShopDialog', () => {
         await user.type(await screen.findByPlaceholderText('e.g. ABC Vape Shop'), 'Kedai Baru')
         await user.type(screen.getByPlaceholderText('Person in charge'), 'Ali')
         await user.type(screen.getByPlaceholderText('e.g. 0123456789'), '0123456789')
+        const addressInput = screen.getByPlaceholderText('Shop address') as HTMLTextAreaElement
+        await user.type(addressInput, 'jalan dato onn, taman bukit indah')
+        await user.tab()
+
+        expect(addressInput.value).toBe('Jalan Dato Onn, Taman Bukit Indah')
 
         await user.click(screen.getByRole('button', { name: 'Continue' }))
 
         await waitFor(() => {
             const requestCodeCall = (fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/api/shops/contact-verification/request-code'))
-            expect(JSON.parse(requestCodeCall[1].body).shopName).toBe('Kedai Baru')
+            const requestBody = JSON.parse(requestCodeCall[1].body)
+            expect(requestBody.shopName).toBe('Kedai Baru')
+            expect(requestBody.address).toBe('Jalan Dato Onn, Taman Bukit Indah')
         })
 
         await waitFor(() => {
