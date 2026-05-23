@@ -11,6 +11,7 @@ import { getStorageUrl, cn } from '@/lib/utils'
 import {
   Package,
   BarChart3,
+  Bell,
   Building2,
   Truck,
   MessageSquare,
@@ -121,6 +122,16 @@ const navigationItems: MenuItem[] = [
     },
     // Finance submenu moved to Finance top-nav bar (src/modules/finance/financeNav.ts)
     // Sidebar now shows Finance as a single module entry → navigates to /finance
+  },
+  {
+    id: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+    description: 'Operational notification monitoring',
+    access: {
+      allowedOrgTypes: ['HQ'],
+      maxRoleLevel: 40
+    },
   },
 ]
 
@@ -234,6 +245,7 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
     'Customer & Growth': t('sidebar.customerGrowth'),
     'HR': t('sidebar.hr'),
     'Finance': t('sidebar.finance'),
+    'Notifications': t('sidebar.notifications'),
     'My Profile': t('sidebar.myProfile'),
     'User Management': t('sidebar.userManagement'),
     'Settings': t('sidebar.settings'),
@@ -298,9 +310,15 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
     return null
   }
 
+  const resolveNotificationsPath = (id: string) => {
+    if (id === 'notifications') return '/notifications'
+    if (id.startsWith('notifications/')) return `/${id}`
+    return null
+  }
+
   /** Resolve module-level navigation paths (HR, Finance, Settings, Supply Chain, Customer Growth, etc.) */
   const resolveModulePath = (id: string) => {
-    return resolveHrPath(id) || resolveFinancePath(id) || resolveSettingsPath(id) || resolveSupplyChainPath(id) || resolveCustomerGrowthPath(id)
+    return resolveHrPath(id) || resolveFinancePath(id) || resolveSettingsPath(id) || resolveSupplyChainPath(id) || resolveCustomerGrowthPath(id) || resolveNotificationsPath(id)
   }
 
   // Set mounted flag after client-side hydration
@@ -665,6 +683,8 @@ export default function Sidebar({ userProfile, currentView, onViewChange, onColl
                   (item.id === 'hr' && currentView.startsWith('hr/')) ||
                   // Finance module: highlight when on any Finance sub-route
                   (item.id === 'finance' && currentView.startsWith('finance/')) ||
+                  // Notifications module: highlight when on any Notifications sub-route
+                  (item.id === 'notifications' && currentView.startsWith('notifications/')) ||
                   // Settings module: highlight when on any Settings sub-route
                   (item.id === 'settings' && currentView.startsWith('settings/')) ||
                   // Supply Chain module: highlight when on any SC child view
