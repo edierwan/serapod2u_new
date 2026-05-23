@@ -1364,9 +1364,9 @@ export function ShopCatalogPage({ userProfile }: ShopCatalogPageProps) {
                             ? resolveRewardWalletScope(selectedReward) === 'shop'
                               ? 'Shop redemption disabled'
                               : 'Redeem in mobile app'
-                          : currentBalance >= selectedReward.points_required
-                            ? "Redeem now"
-                            : "Need more points"}
+                            : currentBalance >= selectedReward.points_required
+                              ? "Redeem now"
+                              : "Need more points"}
                       </>
                     )}
                   </Button>
