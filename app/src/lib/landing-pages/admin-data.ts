@@ -63,6 +63,55 @@ function metricClone(): LandingPageMetrics {
   return { ...EMPTY_LANDING_PAGE_METRICS }
 }
 
+async function loadLandingPageCategoryMap(adminClient: any, rows: any[]) {
+  const categoryIds = uniqueStrings(rows.map((row) => row?.category_id))
+  if (categoryIds.length === 0) return new Map<string, any>()
+
+  const { data, error } = await adminClient
+    .from('product_categories')
+    .select('id, category_name')
+    .in('id', categoryIds)
+
+  if (error) throw error
+  return new Map((data || []).map((category: any) => [category.id, category]))
+}
+
+async function loadLandingPageProductMap(adminClient: any, rows: any[]) {
+  const pageIds = uniqueStrings(rows.map((row) => row?.id))
+  const productsByPage = new Map<string, any[]>()
+  if (pageIds.length === 0) return productsByPage
+
+  const { data, error } = await adminClient
+    .from('landing_page_products')
+    .select('landing_page_id, product_id, sort_order')
+    .in('landing_page_id', pageIds)
+    .order('sort_order', { ascending: true })
+
+  if (error) throw error
+
+  for (const row of data || []) {
+    if (!productsByPage.has(row.landing_page_id)) productsByPage.set(row.landing_page_id, [])
+    productsByPage.get(row.landing_page_id)?.push(row)
+  }
+
+  return productsByPage
+}
+
+async function hydrateLandingPageRows(adminClient: any, rows: any[]) {
+  if (rows.length === 0) return rows
+
+  const [categoriesById, productsByPage] = await Promise.all([
+    loadLandingPageCategoryMap(adminClient, rows),
+    loadLandingPageProductMap(adminClient, rows),
+  ])
+
+  return rows.map((row) => ({
+    ...row,
+    product_categories: row.category_id ? categoriesById.get(row.category_id) ?? null : null,
+    landing_page_products: productsByPage.get(row.id) ?? [],
+  }))
+}
+
 export function normalizeLandingPagePayload(body: any, fallback?: Partial<LandingPagePayload>): LandingPagePayload {
   const internalName = String(body?.internal_name ?? fallback?.internal_name ?? '').trim()
   const publicTitle = String(body?.public_title ?? fallback?.public_title ?? '').trim()
@@ -166,19 +215,36 @@ export async function getLandingPageMetrics(adminClient: any, pageIds: string[])
     if (event.event_type === 'checkout_start') metric.checkout_starts += 1
   }
 
-  const { data: attributions } = await adminClient
+  const { data: attributions, error: attributionError } = await adminClient
     .from('landing_page_order_attributions')
-    .select('landing_page_id, storefront_orders(total_amount, status)')
+    .select('landing_page_id, order_id, order_total')
     .in('landing_page_id', pageIds)
+
+  if (attributionError) throw attributionError
+
+  const orderIds = uniqueStrings((attributions || []).map((attribution: any) => attribution.order_id))
+  const ordersById = new Map<string, any>()
+  if (orderIds.length > 0) {
+    const { data: orders, error: ordersError } = await adminClient
+      .from('storefront_orders')
+      .select('id, total_amount, status')
+      .in('id', orderIds)
+
+    if (ordersError) throw ordersError
+
+    for (const order of orders || []) {
+      ordersById.set(order.id, order)
+    }
+  }
 
   for (const attribution of attributions || []) {
     const metric = metrics.get(attribution.landing_page_id)
     if (!metric) continue
-    const order = relationObject(attribution.storefront_orders)
+    const order = attribution.order_id ? ordersById.get(attribution.order_id) : null
     metric.orders += 1
     const status = String(order?.status || '').toLowerCase()
     if (['paid', 'completed', 'payment_success', 'fulfilled', 'success'].includes(status)) {
-      metric.revenue += Number(order?.total_amount || 0)
+      metric.revenue += Number(order?.total_amount ?? attribution.order_total ?? 0)
     }
   }
 
@@ -225,28 +291,30 @@ export function serializeLandingPage(row: any, metrics: LandingPageMetrics = EMP
 export async function fetchLandingPageDetail(adminClient: any, id: string, organizationId: string) {
   const { data, error } = await adminClient
     .from('landing_pages')
-    .select('*, product_categories(id, category_name), landing_page_products(product_id, sort_order)')
+    .select('*')
     .eq('id', id)
     .eq('organization_id', organizationId)
     .maybeSingle()
 
   if (error) throw error
   if (!data) return null
+  const [page] = await hydrateLandingPageRows(adminClient, [data])
   const metrics = await getLandingPageMetrics(adminClient, [data.id])
-  return serializeLandingPage(data, metrics.get(data.id))
+  return serializeLandingPage(page, metrics.get(data.id))
 }
 
 export async function listLandingPages(adminClient: any, organizationId: string) {
   const { data, error } = await adminClient
     .from('landing_pages')
-    .select('*, product_categories(id, category_name), landing_page_products(product_id, sort_order)')
+    .select('*')
     .eq('organization_id', organizationId)
     .order('updated_at', { ascending: false })
 
   if (error) throw error
-  const pageIds = (data || []).map((row: any) => row.id)
+  const rows = await hydrateLandingPageRows(adminClient, data || [])
+  const pageIds = rows.map((row: any) => row.id)
   const metrics = await getLandingPageMetrics(adminClient, pageIds)
-  return (data || []).map((row: any) => serializeLandingPage(row, metrics.get(row.id)))
+  return rows.map((row: any) => serializeLandingPage(row, metrics.get(row.id)))
 }
 
 export async function listLandingPageProductOptions(adminClient: any): Promise<{ products: LandingPageProductOption[]; categories: LandingPageCategoryOption[] }> {

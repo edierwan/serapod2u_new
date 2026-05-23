@@ -50,6 +50,21 @@ function getRelationObject<T extends Record<string, any>>(value: T | T[] | null 
   return value ?? null
 }
 
+async function hydrateLandingPageCategory(adminClient: any, page: any) {
+  if (!page?.category_id) {
+    return { ...page, product_categories: null }
+  }
+
+  const { data, error } = await adminClient
+    .from('product_categories')
+    .select('id, category_name')
+    .eq('id', page.category_id)
+    .maybeSingle()
+
+  if (error) throw error
+  return { ...page, product_categories: data ?? null }
+}
+
 function isPublishedInWindow(page: any, now = new Date()) {
   if (page.status !== 'published') return false
   if (page.publish_start_at && new Date(page.publish_start_at) > now) return false
@@ -228,7 +243,7 @@ async function resolveLandingPage(query: { slug?: string; id?: string; organizat
   const adminClient = createAdminClient() as any
   let pageQuery = adminClient
     .from('landing_pages')
-    .select('*, product_categories (id, category_name)')
+    .select('*')
 
   if (query.id) pageQuery = pageQuery.eq('id', query.id)
   if (query.slug) pageQuery = pageQuery.eq('slug', query.slug)
@@ -240,27 +255,29 @@ async function resolveLandingPage(query: { slug?: string; id?: string; organizat
     return { status: 'not_found', page: null, products: [], reason: 'Landing page was not found.' }
   }
 
+  const hydratedPage = await hydrateLandingPageCategory(adminClient, page)
+
   if (!query.preview) {
-    const windowStatus = getWindowStatus(page)
+    const windowStatus = getWindowStatus(hydratedPage)
     if (windowStatus) {
       const reason = windowStatus === 'expired'
         ? 'This campaign has ended.'
         : windowStatus === 'scheduled'
           ? 'This campaign is not live yet.'
           : 'Landing page is not public.'
-      return { status: windowStatus, page: windowStatus === 'not_found' ? null : serializePage(page), products: [], reason }
+      return { status: windowStatus, page: windowStatus === 'not_found' ? null : serializePage(hydratedPage), products: [], reason }
     }
-  } else if (!isPublishedInWindow(page) && page.status === 'archived') {
+  } else if (!isPublishedInWindow(hydratedPage) && hydratedPage.status === 'archived') {
     return { status: 'not_found', page: null, products: [], reason: 'Archived landing pages cannot be previewed.' }
   }
 
-  const productIds = await resolveProductIdsForPage(adminClient, page)
-  const products = await loadResolvedProducts(adminClient, page, productIds)
+  const productIds = await resolveProductIdsForPage(adminClient, hydratedPage)
+  const products = await loadResolvedProducts(adminClient, hydratedPage, productIds)
 
   if (products.length === 0) {
     return {
       status: 'unavailable',
-      page: serializePage(page),
+      page: serializePage(hydratedPage),
       products: [],
       reason: 'This campaign is currently unavailable.',
     }
@@ -268,7 +285,7 @@ async function resolveLandingPage(query: { slug?: string; id?: string; organizat
 
   return {
     status: 'ok',
-    page: serializePage(page),
+    page: serializePage(hydratedPage),
     products,
     reason: null,
   }
