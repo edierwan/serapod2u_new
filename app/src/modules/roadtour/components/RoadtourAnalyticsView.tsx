@@ -78,6 +78,19 @@ function formatRewardCost(totalPointsAwarded: number, pointValueRm: number) {
   return `RM ${(totalPointsAwarded * pointValueRm).toFixed(2)}`
 }
 
+function formatRecentScanTimestamp(value?: string | null) {
+  if (!value) return '-'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+
+  return `${date.toLocaleDateString('en-GB')} ${date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })}`
+}
+
 function toNormalizedPhone(value?: string | null) {
   const trimmed = typeof value === 'string' ? value.trim() : ''
   if (!trimmed) return ''
@@ -671,22 +684,41 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
             <p className="text-sm text-muted-foreground text-center py-4">No scans yet.</p>
           ) : (
             <div className="space-y-2">
+              <div className="hidden rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_auto_auto] md:items-center md:gap-4">
+                <span>Name</span>
+                <span>Kedai</span>
+                <span>Date/Time Scan</span>
+                <span className="text-right">Points</span>
+                <span className="text-right">Status</span>
+              </div>
               {data.recentScans.map((s) => (
-                <div key={s.id} className="flex items-center justify-between rounded-lg border p-3">
-                  <div>
-                    <p className="text-sm font-medium">{s.consumer_name || s.consumer_phone || 'Unknown consumer'}{s.consumer_name && s.consumer_phone ? ` (${s.consumer_phone})` : ''}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {s.shop_name || 'Unknown shop'}
-                      {s.shop_name ? '' : s.shop_context_note ? ` · ${s.shop_context_note}` : ''}
-                      {' · '}
-                      {new Date(s.scanned_at).toLocaleDateString()}
-                      {' '}
-                      {new Date(s.scanned_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {s.points > 0 && <span className="text-sm font-medium text-emerald-600">+{s.points} pts</span>}
-                    <Badge className={rewardStatusColor[s.status] || ''}>{s.status}</Badge>
+                <div key={s.id} className="rounded-lg border p-4">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_auto_auto] md:items-center">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium">{s.consumer_name || 'Unknown customer'}</p>
+                      <p className="mt-1 break-all text-xs text-muted-foreground">{s.consumer_phone || 'No contact'}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="break-words text-sm">{s.shop_name || 'Unknown shop'}</p>
+                      {s.shop_context_note ? (
+                        <p className="mt-1 break-words text-xs text-muted-foreground">{s.shop_context_note}</p>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">{formatRecentScanTimestamp(s.scanned_at)}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t pt-3 md:contents md:border-0 md:pt-0">
+                      <div className="md:justify-self-end md:text-right">
+                        {s.points > 0 ? (
+                          <span className="text-sm font-medium text-emerald-600">+{s.points} pts</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </div>
+                      <div className="md:justify-self-end md:text-right">
+                        <Badge className={rewardStatusColor[s.status] || ''}>{s.status}</Badge>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
