@@ -213,6 +213,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [deleteOtpSending, setDeleteOtpSending] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
+  const canDeleteOrganizations = (userProfile.roles?.role_level ?? Number.MAX_SAFE_INTEGER) <= 10
 
   useEffect(() => {
     if (isReady) {
@@ -1279,15 +1280,17 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     <Edit className="w-3.5 h-3.5 mr-1.5" />
                     Edit
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-9 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 hover:border-red-300"
-                    onClick={() => confirmDelete(org.id)}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                    Delete
-                  </Button>
+                  {canDeleteOrganizations && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-9 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200 hover:border-red-300"
+                      onClick={() => confirmDelete(org.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                      Delete
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1448,15 +1451,17 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                          onClick={() => confirmDelete(org.id)}
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        {canDeleteOrganizations && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
+                            onClick={() => confirmDelete(org.id)}
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

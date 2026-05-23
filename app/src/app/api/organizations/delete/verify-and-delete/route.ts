@@ -16,11 +16,13 @@ function getRoleLevel(profile: any) {
   return profile?.roles?.role_level ?? null
 }
 
-function isSuperAdminProfile(profile: any) {
+function canDeleteOrganizations(profile: any) {
   const roleLevel = getRoleLevel(profile)
   const roleCode = String(profile?.role_code || '').trim().toLowerCase()
 
-  return roleLevel === 1 || profile?.is_super_admin === true || ['super_admin', 'superadmin', 'sa'].includes(roleCode)
+  return (typeof roleLevel === 'number' && roleLevel <= 10) ||
+    profile?.is_super_admin === true ||
+    ['super_admin', 'superadmin', 'sa', 'super', 'hq_admin', 'hq', 'admin', 'admin_hq'].includes(roleCode)
 }
 
 export async function POST(request: NextRequest) {
@@ -42,8 +44,8 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!isSuperAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Access denied. Super Admin only.' }, { status: 403 })
+    if (!canDeleteOrganizations(profile)) {
+      return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
     }
 
     const { orgId, code, codeId } = await request.json()

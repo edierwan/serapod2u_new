@@ -22,11 +22,13 @@ function getRoleLevel(profile: any) {
   return profile?.roles?.role_level ?? null
 }
 
-function isSuperAdminProfile(profile: any) {
+function canDeleteOrganizations(profile: any) {
   const roleLevel = getRoleLevel(profile)
   const roleCode = String(profile?.role_code || '').trim().toLowerCase()
 
-  return roleLevel === 1 || profile?.is_super_admin === true || ['super_admin', 'superadmin', 'sa'].includes(roleCode)
+  return (typeof roleLevel === 'number' && roleLevel <= 10) ||
+    profile?.is_super_admin === true ||
+    ['super_admin', 'superadmin', 'sa', 'super', 'hq_admin', 'hq', 'admin', 'admin_hq'].includes(roleCode)
 }
 
 export async function POST(request: NextRequest) {
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     const roleLevel = getRoleLevel(profile)
-    if (!isSuperAdminProfile(profile)) {
+    if (!canDeleteOrganizations(profile)) {
       await logOrganizationDeletionAudit(admin, {
         operation: 'delete_organization_otp_request',
         userId: user.id,
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
         reason: `Insufficient role (role_level=${roleLevel}, role_code=${(profile as any)?.role_code || 'null'})`,
         ip,
       })
-      return NextResponse.json({ error: 'Access denied. Super Admin only.' }, { status: 403 })
+      return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
     }
 
     const { orgId } = await request.json()
