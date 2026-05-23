@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { success: false, error: 'Please log in to view scanned products' },
@@ -64,13 +64,13 @@ export async function GET(request: NextRequest) {
     // Get unique variant IDs to fetch images
     const variantIds = Array.from(new Set((ledgerData || []).map((entry: any) => entry.variant_id).filter(Boolean)))
     let variantImagesMap: { [key: string]: string } = {}
-    
+
     if (variantIds.length > 0) {
       const { data: variants } = await supabaseAdmin
         .from('product_variants')
         .select('id, image_url')
         .in('id', variantIds)
-      
+
       if (variants) {
         const tempMap: { [key: string]: string } = {}
         variants.forEach((v: any) => {
@@ -82,13 +82,13 @@ export async function GET(request: NextRequest) {
 
     // Create a summary grouped by product and variant
     const productMapData: { [key: string]: any } = {};
-    
+
     (ledgerData || []).forEach((entry: any) => {
       if (entry.product_name) {
         const productName = entry.product_name || 'Unknown Product'
         const variantName = entry.variant_name || 'Unknown Variant'
         const key = `${productName}|${variantName}`
-        
+
         if (productMapData[key]) {
           productMapData[key].scan_count += 1
           productMapData[key].total_points += entry.points_change || 0
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
             scan_count: 1,
             total_points: entry.points_change || 0,
             image_url: entry.variant_id ? variantImagesMap[entry.variant_id] : null,
-              last_scanned: entry.occurred_at
+            last_scanned: entry.occurred_at
           }
         }
       }
