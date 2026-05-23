@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,7 +24,9 @@ interface CreateRoadtourEventDialogProps {
     supabase: SupabaseClient
     orgId: string
     createdBy?: string | null
+    event?: RoadtourRun | null
     onCreated?: (run: RoadtourRun) => void
+    onSaved?: (run: RoadtourRun) => void
 }
 
 export function CreateRoadtourEventDialog({
@@ -33,15 +35,34 @@ export function CreateRoadtourEventDialog({
     supabase,
     orgId,
     createdBy = null,
+    event = null,
     onCreated,
+    onSaved,
 }: CreateRoadtourEventDialogProps) {
+    const isEditMode = Boolean(event)
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
     const [startDate, setStartDate] = useState('')
     const [endDate, setEndDate] = useState('')
     const [status, setStatus] = useState<RoadtourRunStatus>('active')
-    const [duplicatePolicy, setDuplicatePolicy] = useState<RoadtourDuplicatePolicy>('per_run')
+    const [duplicatePolicy, setDuplicatePolicy] = useState<RoadtourDuplicatePolicy>('one_participant_once_per_event')
     const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+        if (!open) return
+
+        if (event) {
+            setName(event.name)
+            setDescription(event.description || '')
+            setStartDate(event.start_date)
+            setEndDate(event.end_date)
+            setStatus(event.status)
+            setDuplicatePolicy(event.duplicate_policy)
+            return
+        }
+
+        reset()
+    }, [event, open])
 
     const reset = () => {
         setName('')
@@ -49,7 +70,7 @@ export function CreateRoadtourEventDialog({
         setStartDate('')
         setEndDate('')
         setStatus('active')
-        setDuplicatePolicy('per_run')
+        setDuplicatePolicy('one_participant_once_per_event')
     }
 
     const handleClose = (next: boolean) => {
@@ -72,21 +93,44 @@ export function CreateRoadtourEventDialog({
         }
         try {
             setSaving(true)
-            const created = await createRoadtourRun(supabase, {
-                org_id: orgId,
-                name,
-                description,
-                start_date: startDate,
-                end_date: endDate,
-                status,
-                duplicate_policy: duplicatePolicy,
-                created_by: createdBy,
-            })
-            toast({ title: 'RoadTour Event created', description: `"${created.name}" is ready.` })
-            onCreated?.(created)
+            if (event) {
+                const response = await fetch(`/api/roadtour/events/${event.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        description,
+                        start_date: startDate,
+                        end_date: endDate,
+                        status,
+                        duplicate_policy: duplicatePolicy,
+                    }),
+                })
+
+                const result = await response.json().catch(() => null)
+                if (!response.ok || !result?.success) {
+                    throw new Error(result?.error || result?.message || 'Failed to update event.')
+                }
+
+                toast({ title: 'RoadTour Event updated', description: `"${result.data.name}" has been updated.` })
+                onSaved?.(result.data)
+            } else {
+                const created = await createRoadtourRun(supabase, {
+                    org_id: orgId,
+                    name,
+                    description,
+                    start_date: startDate,
+                    end_date: endDate,
+                    status,
+                    duplicate_policy: duplicatePolicy,
+                    created_by: createdBy,
+                })
+                toast({ title: 'RoadTour Event created', description: `"${created.name}" is ready.` })
+                onCreated?.(created)
+            }
             handleClose(false)
         } catch (err: any) {
-            toast({ title: 'Failed to create event', description: err.message, variant: 'destructive' })
+            toast({ title: isEditMode ? 'Failed to update event' : 'Failed to create event', description: err.message, variant: 'destructive' })
         } finally {
             setSaving(false)
         }
@@ -98,10 +142,12 @@ export function CreateRoadtourEventDialog({
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-lg">
                         <MapIcon className="h-5 w-5 text-primary" />
-                        Create RoadTour Event
+                        {isEditMode ? 'Edit RoadTour Event' : 'Create RoadTour Event'}
                     </DialogTitle>
                     <DialogDescription>
-                        Group campaigns under one RoadTour activity. This is the key grouping for duplicate scan protection.
+                        {isEditMode
+                            ? 'Update the RoadTour activity details and duplicate claim protection for future claims.'
+                            : 'Group campaigns under one RoadTour activity. This is the key grouping for duplicate scan protection.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -164,16 +210,21 @@ export function CreateRoadtourEventDialog({
                     </div>
 
                     <p className="text-[11px] text-muted-foreground">
-                        Default <strong>One shop once per event</strong> protects against duplicate rewards across different
-                        campaigns/references in the same RoadTour Event.
+                        Recommended: <strong>One participant once per event</strong> allows multiple workers from the same shop to claim once each,
+                        while preventing the same user or phone from claiming repeatedly. Use shop-level protection only when the reward is intended once per shop.
                     </p>
+                    {isEditMode && event?.status === 'active' && (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                            Changing duplicate protection affects future claims only. Existing successful claims remain unchanged.
+                        </p>
+                    )}
                 </div>
 
                 <DialogFooter className="pt-2">
                     <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
                     <Button onClick={handleSave} disabled={saving}>
                         {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                        Create Event
+                        {isEditMode ? 'Save Changes' : 'Create Event'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -3,9 +3,16 @@
  * Backed by the public.roadtour_runs table introduced 2026-05-12.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+    DUPLICATE_POLICY_LABEL,
+    DUPLICATE_POLICY_OPTIONS,
+    type RoadtourDuplicatePolicy,
+} from './duplicate-protection'
+
+export { DUPLICATE_POLICY_LABEL, DUPLICATE_POLICY_OPTIONS }
 
 export type RoadtourRunStatus = 'draft' | 'active' | 'completed' | 'cancelled'
-export type RoadtourDuplicatePolicy = 'per_run' | 'per_campaign' | 'per_day' | 'none'
+export type { RoadtourDuplicatePolicy }
 
 export interface RoadtourRun {
     id: string
@@ -19,42 +26,6 @@ export interface RoadtourRun {
     created_at: string
     updated_at: string
 }
-
-export const DUPLICATE_POLICY_LABEL: Record<RoadtourDuplicatePolicy, string> = {
-    per_run: 'One shop once per event',
-    per_campaign: 'One shop once per campaign',
-    per_day: 'One shop once per day',
-    none: 'No duplicate restriction',
-}
-
-export const DUPLICATE_POLICY_OPTIONS: Array<{
-    value: RoadtourDuplicatePolicy
-    label: string
-    description: string
-    recommended?: boolean
-}> = [
-        {
-            value: 'per_run',
-            label: 'One shop once per event',
-            description: 'Each shop can be rewarded only once per RoadTour Event regardless of campaign/reference.',
-            recommended: true,
-        },
-        {
-            value: 'per_campaign',
-            label: 'One shop once per campaign',
-            description: 'Legacy behaviour. Same shop can be rewarded by different campaigns in the same event.',
-        },
-        {
-            value: 'per_day',
-            label: 'One shop once per day',
-            description: 'Each shop can be rewarded once per calendar day within the event.',
-        },
-        {
-            value: 'none',
-            label: 'No duplicate restriction',
-            description: 'No automatic block. Use only for special diagnostic runs.',
-        },
-    ]
 
 export const STATUS_LABEL: Record<RoadtourRunStatus, string> = {
     draft: 'Draft',
@@ -106,7 +77,7 @@ export async function createRoadtourRun(
         start_date: input.start_date,
         end_date: input.end_date,
         status: input.status ?? 'active',
-        duplicate_policy: input.duplicate_policy ?? 'per_run',
+        duplicate_policy: input.duplicate_policy ?? 'one_participant_once_per_event',
         created_by: input.created_by ?? null,
         updated_by: input.created_by ?? null,
     }

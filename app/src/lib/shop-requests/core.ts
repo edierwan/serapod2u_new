@@ -1,5 +1,6 @@
 import { normalizePhone, toTitleCaseWords, validateMalaysianMobileNumber } from '@/lib/utils'
 import { EMAIL_REGEX } from '@/lib/utils/orgValidation'
+import { normalizeShopNameForSubmit } from './shop-name-formatting'
 
 export interface ShopRequestFormInput {
     shopName: string
@@ -87,7 +88,7 @@ function cleanBoolean(value: unknown): boolean {
 
 export function sanitizeShopRequestForm(input: ShopRequestFormInput): ShopRequestFormInput {
     return {
-        shopName: cleanTitleCase(input.shopName) || '',
+        shopName: normalizeShopNameForSubmit(input.shopName || ''),
         branch: cleanTitleCase(input.branch),
         contactName: cleanTitleCase(input.contactName),
         contactPhone: cleanText(input.contactPhone) ? normalizePhone(String(input.contactPhone)) : null,

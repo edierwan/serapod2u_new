@@ -113,6 +113,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const [runsLoading, setRunsLoading] = useState(true)
     const [selectedRunId, setSelectedRunId] = useState<string>('')
     const [createEventOpen, setCreateEventOpen] = useState(false)
+    const [editingRun, setEditingRun] = useState<RoadtourRun | null>(null)
     const [deleteEventDialogOpen, setDeleteEventDialogOpen] = useState(false)
     const [deleteEventLoading, setDeleteEventLoading] = useState(false)
     const [formRunId, setFormRunId] = useState<string>('')
@@ -486,6 +487,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                 description: 'Campaigns must belong to an event so duplicate scan protection can work correctly.',
                 variant: 'destructive',
             })
+            setEditingRun(null)
             setCreateEventOpen(true)
             return
         }
@@ -623,6 +625,17 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         } finally {
             setSaving(false)
         }
+    }
+
+    const openCreateEvent = () => {
+        setEditingRun(null)
+        setCreateEventOpen(true)
+    }
+
+    const openEditSelectedEvent = () => {
+        if (!selectedRun) return
+        setEditingRun(selectedRun)
+        setCreateEventOpen(true)
     }
 
     const updateStatus = async (campaignId: string, newStatus: string) => {
@@ -875,7 +888,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                     <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign references to road tour campaigns.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => setCreateEventOpen(true)} className="gap-2">
+                    <Button variant="outline" onClick={openCreateEvent} className="gap-2">
                         <MapIcon className="h-4 w-4" />Create RoadTour Event
                     </Button>
                     <Button onClick={openCreate} className="gap-2" disabled={runs.length === 0}>
@@ -899,7 +912,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 Create a RoadTour Event first before creating campaigns. Campaigns must belong to an event so duplicate scan protection can work correctly.
                             </p>
                         </div>
-                        <Button onClick={() => setCreateEventOpen(true)} className="gap-2">
+                        <Button onClick={openCreateEvent} className="gap-2">
                             <Plus className="h-4 w-4" />Create RoadTour Event
                         </Button>
                     </CardContent>
@@ -922,6 +935,19 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     </SelectContent>
                                 </Select>
                             </div>
+                            {canManageRuns && selectedRun && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={openEditSelectedEvent}
+                                    title="Edit RoadTour Event"
+                                    className="gap-1"
+                                >
+                                    <Edit className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Edit Event</span>
+                                </Button>
+                            )}
                             {canManageRuns && selectedRun && (
                                 <Button
                                     type="button"
@@ -1557,11 +1583,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
             {/* Create RoadTour Event Dialog */}
             <CreateRoadtourEventDialog
                 open={createEventOpen}
-                onOpenChange={setCreateEventOpen}
+                onOpenChange={(open) => {
+                    setCreateEventOpen(open)
+                    if (!open) setEditingRun(null)
+                }}
                 supabase={supabase}
                 orgId={companyId}
                 createdBy={userProfile.id}
+                event={editingRun}
                 onCreated={async (run) => {
+                    await loadRuns()
+                    setSelectedRunId(run.id)
+                    setFormRunId(run.id)
+                }}
+                onSaved={async (run) => {
                     await loadRuns()
                     setSelectedRunId(run.id)
                     setFormRunId(run.id)

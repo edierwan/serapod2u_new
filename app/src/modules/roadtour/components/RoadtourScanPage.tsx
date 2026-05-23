@@ -90,6 +90,7 @@ export default function RoadtourScanPage() {
     const [step, setStep] = useState<ScanStep>('loading')
     const [qr, setQr] = useState<QrValidation | null>(null)
     const [errorMsg, setErrorMsg] = useState('')
+    const [duplicateTitle, setDuplicateTitle] = useState('Already Claimed')
 
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -473,6 +474,7 @@ export default function RoadtourScanPage() {
                 }
                 if (result.code === 'DUPLICATE') {
                     setStep('duplicate')
+                    setDuplicateTitle(result.modalTitle || 'Already Claimed')
                     setErrorMsg(result.message || 'You have already claimed this reward.')
                 } else {
                     setErrorMsg(result.message || 'Failed to claim reward.')
@@ -864,7 +866,7 @@ export default function RoadtourScanPage() {
                 {step === 'duplicate' && (
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
                         <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
-                        <h2 className="text-lg font-semibold mt-3">Already Claimed</h2>
+                        <h2 className="text-lg font-semibold mt-3">{duplicateTitle}</h2>
                         <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
                     </div>
                 )}

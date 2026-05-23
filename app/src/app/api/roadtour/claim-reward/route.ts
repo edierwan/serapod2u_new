@@ -5,6 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 import { normalizePointClaimSettings, resolveClaimLaneExperience } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion, getIncompleteProfileMessage } from '@/lib/engagement/profile-completion'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
+import {
+    getRoadtourDuplicateResponse,
+    isSameRoadtourParticipantPhone,
+    normalizeRoadtourParticipantPhone,
+} from '@/lib/roadtour/duplicate-protection'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
@@ -210,6 +215,7 @@ async function hasExistingRoadtourReward(params: {
     campaignId: string
     accountManagerUserId: string
     scannedByUserId: string | null
+    participantPhone: string | null
     shopId: string | null
     duplicateRule: string | null
     roadtourRunId: string | null
@@ -219,10 +225,60 @@ async function hasExistingRoadtourReward(params: {
         campaignId,
         accountManagerUserId,
         scannedByUserId,
+        participantPhone,
         shopId,
         duplicateRule,
         roadtourRunId,
     } = params
+
+    const hasParticipantDuplicate = async (campaignIds: string[]) => {
+        if (campaignIds.length === 0) return false
+
+        if (scannedByUserId) {
+            const { data, error } = await (supabase as any)
+                .from('roadtour_scan_events')
+                .select('id')
+                .in('campaign_id', campaignIds)
+                .eq('scan_status', 'success')
+                .gt('points_awarded', 0)
+                .eq('scanned_by_user_id', scannedByUserId)
+                .limit(1)
+
+            if (error) throw error
+            if (Array.isArray(data) && data.length > 0) return true
+        }
+
+        const normalizedParticipantPhone = normalizeRoadtourParticipantPhone(participantPhone)
+        if (!normalizedParticipantPhone) return false
+
+        const { data, error } = await (supabase as any)
+            .from('roadtour_scan_events')
+            .select('id, consumer_phone')
+            .in('campaign_id', campaignIds)
+            .eq('scan_status', 'success')
+            .gt('points_awarded', 0)
+            .not('consumer_phone', 'is', null)
+            .limit(1000)
+
+        if (error) throw error
+
+        return (data || []).some((row: any) => isSameRoadtourParticipantPhone(row.consumer_phone, normalizedParticipantPhone))
+    }
+
+    if (duplicateRule === 'one_participant_once_per_event') {
+        if (!roadtourRunId) return false
+        const { data, error } = await (supabase as any)
+            .from('roadtour_campaigns')
+            .select('id')
+            .eq('roadtour_run_id', roadtourRunId)
+
+        if (error) throw error
+        return hasParticipantDuplicate((data || []).map((row: any) => row.id).filter(Boolean))
+    }
+
+    if (duplicateRule === 'one_participant_once_per_campaign') {
+        return hasParticipantDuplicate([campaignId])
+    }
 
     // NEW: per RoadTour Event duplicate policy
     // Any prior official visit for the same shop under the same run blocks new rewards.
@@ -553,18 +609,21 @@ export async function POST(request: NextRequest) {
             campaignId: campaign_id,
             accountManagerUserId: account_manager_user_id,
             scannedByUserId: userId,
+            participantPhone: normalizeRoadtourParticipantPhone(userPhone),
             shopId: resolvedRewardShopId,
             duplicateRule: effectiveDuplicateRule,
             roadtourRunId: roadtour_run_id,
         })
 
         if (alreadyClaimed) {
-            const eventLabel = roadtourRunName ? ` (${roadtourRunName})` : ''
-            const perRunMessage = effectiveDuplicateRule === 'per_run'
-                ? `This shop has already participated in this RoadTour Event${eventLabel}.`
-                : duplicateMessage
+            const duplicateResponse = getRoadtourDuplicateResponse(effectiveDuplicateRule, roadtourRunName)
             return NextResponse.json(
-                { message: perRunMessage, code: 'DUPLICATE' },
+                {
+                    message: duplicateResponse.message,
+                    modalTitle: duplicateResponse.title,
+                    duplicateScope: duplicateResponse.scope,
+                    code: 'DUPLICATE',
+                },
                 { status: 409 }
             )
         }
@@ -602,7 +661,7 @@ export async function POST(request: NextRequest) {
             qr_code_id,
             account_manager_user_id,
             scanned_by_user_id: userId || null,
-            consumer_phone: userPhone || null,
+            consumer_phone: normalizeRoadtourParticipantPhone(userPhone) || userPhone || null,
             shop_id: resolvedScanShopId,
             scan_status: 'opened',
             geolocation: normalizedGeolocation || null,
@@ -773,6 +832,7 @@ export async function POST(request: NextRequest) {
         if (rewardError) {
             // Check for duplicate
             if (rewardError.message?.includes('duplicate') || rewardError.code === '23505') {
+                const duplicateResponse = getRoadtourDuplicateResponse(effectiveDuplicateRule, roadtourRunName)
                 await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
                 await notifyClaim({
                     scanEventId: scanEvent.id,
@@ -786,9 +846,14 @@ export async function POST(request: NextRequest) {
                     consumerName: consumerDisplayName || 'Unknown consumer',
                     canonicalPath: qrRecord?.canonical_path || null,
                     geoLabel: resolvedGeoLabel,
-                    message: duplicateMessage,
+                    message: duplicateResponse.message,
                 })
-                return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
+                return NextResponse.json({
+                    message: duplicateResponse.message,
+                    modalTitle: duplicateResponse.title,
+                    duplicateScope: duplicateResponse.scope,
+                    code: 'DUPLICATE',
+                }, { status: 409 })
             }
             await notifyClaim({
                 scanEventId: scanEvent.id,
@@ -809,6 +874,7 @@ export async function POST(request: NextRequest) {
 
         // Check if rewardResult indicates duplicate
         if (rewardResult && rewardResult.success === false && rewardResult.error === 'duplicate') {
+            const duplicateResponse = getRoadtourDuplicateResponse(effectiveDuplicateRule, roadtourRunName)
             await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'duplicate' }).eq('id', scanEvent.id)
             await notifyClaim({
                 scanEventId: scanEvent.id,
@@ -822,9 +888,14 @@ export async function POST(request: NextRequest) {
                 consumerName: consumerDisplayName || 'Unknown consumer',
                 canonicalPath: qrRecord?.canonical_path || null,
                 geoLabel: resolvedGeoLabel,
-                message: duplicateMessage,
+                message: duplicateResponse.message,
             })
-            return NextResponse.json({ message: duplicateMessage, code: 'DUPLICATE' }, { status: 409 })
+            return NextResponse.json({
+                message: duplicateResponse.message,
+                modalTitle: duplicateResponse.title,
+                duplicateScope: duplicateResponse.scope,
+                code: 'DUPLICATE',
+            }, { status: 409 })
         }
 
         const totalBalance = await calculateRoadtourUserBalance(supabase, userId)

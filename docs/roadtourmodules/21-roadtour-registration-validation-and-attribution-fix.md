@@ -336,3 +336,53 @@ Staging validation checklist for this change:
 8. Retry with only fuzzy name matches. Confirm the dialog shows the likely existing shops and requires explicit continuation before sending OTP.
 9. Finish the normal user-registration OTP flow after the shop is created. Confirm the resulting user is linked to the created `organization_id`.
 10. Confirm no pending-shop-only fallback is left behind for the happy path; the final registration should be using the real created shop id.
+
+## 14. Create New Shop shop-name title case normalization
+
+Files changed for this update:
+- `app/src/lib/shop-requests/shop-name-formatting.ts`
+- `app/src/lib/shop-requests/core.ts`
+- `app/src/components/shop-requests/CreateShopDialog.tsx`
+- `app/src/lib/shop-requests/shop-name-formatting.test.ts`
+- `app/src/components/shop-requests/CreateShopDialog.test.tsx`
+
+Formatter behavior:
+- Shop Name is formatted only in the Create New Shop modal/panel.
+- While typing, completed words are formatted when the user types a trailing space.
+- On blur and submit, the full shop name is normalized.
+- Submit normalization trims leading/trailing spaces and collapses repeated spaces to one space.
+- The normalized shop name is sent to the duplicate-check OTP request and to the final create flow.
+
+Examples:
+- `test new shop` -> `Test New Shop`
+- `kedai maju jaya` -> `Kedai Maju Jaya`
+- `RESTORAN ALI MAJU` -> `Restoran Ali Maju`
+- `mini mart taman desa` -> `Mini Mart Taman Desa`
+- `99 speedmart taman desa` -> `99 Speedmart Taman Desa`
+- `7-eleven seksyen 9` -> `7-Eleven Seksyen 9`
+- `s.box station` -> `S.Box Station`
+
+Special-case handling:
+- known brand/acronym tokens are preserved or canonicalized where safe, including `S.Box`, `ABC`, `KK`, `U`, `MR`, `DIY`, `Mydin`, and `7-Eleven`
+- number-only tokens are preserved
+- unknown dotted, numbered, or hyphenated tokens are handled conservatively so intentional brand casing is not aggressively rewritten
+
+Validation interaction:
+- Shop Name required validation still runs after normalization
+- duplicate checks use the normalized shop name
+- final shop creation uses the normalized shop name
+- OTP behavior is unchanged: no shop is created before valid phone and OTP verification succeeds
+- selected shop id is still set after successful verified shop creation
+
+No SQL / schema confirmation:
+- no SQL migration was added
+- no table, column, enum, or database schema change was created
+
+Staging checklist:
+1. Type `test new shop ` in Shop Name. Confirm it becomes `Test New Shop ` after pressing space.
+2. Type `kedai maju jaya`, leave the field, and confirm it becomes `Kedai Maju Jaya`.
+3. Type `99 speedmart taman desa`, leave the field, and confirm it becomes `99 Speedmart Taman Desa`.
+4. Type `7-eleven seksyen 9`, leave the field, and confirm it becomes `7-Eleven Seksyen 9`.
+5. Continue the Create New Shop flow and confirm duplicate check uses the normalized name.
+6. Complete contact-phone OTP verification and confirm the created shop uses the normalized name.
+7. Confirm no shop is created before OTP verification succeeds.

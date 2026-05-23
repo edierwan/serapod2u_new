@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toTitleCaseWords, validateMalaysianMobileNumber } from '@/lib/utils'
 import type { ShopRequestFormInput } from '@/lib/shop-requests/core'
+import { formatShopNameTitleCase, normalizeShopNameForSubmit } from '@/lib/shop-requests/shop-name-formatting'
 import { formatPhoneDisplay } from '@/utils/phone'
 import { Store, MapPin, AlertTriangle } from 'lucide-react'
 
@@ -205,14 +206,33 @@ export function CreateShopDialog({
         setEmailError(emailRegex.test(contactEmail.trim()) ? '' : 'Invalid email format')
     }
 
+    const handleShopNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const nextValue = event.target.value
+        const cursorPosition = event.target.selectionStart ?? nextValue.length
+        const isTypingAtEnd = cursorPosition === nextValue.length
+        const shouldFormatCompletedWords = isTypingAtEnd && /\s$/.test(nextValue)
+
+        setShopName(shouldFormatCompletedWords ? formatShopNameTitleCase(nextValue) : nextValue)
+    }
+
+    const handleShopNameBlur = () => {
+        if (shopName.trim()) {
+            setShopName(normalizeShopNameForSubmit(shopName))
+        }
+    }
+
     const validateFormFields = () => {
         setError('')
         setVerificationError('')
 
-        const trimmedName = shopName.trim()
-        if (!trimmedName) {
+        const normalizedShopName = normalizeShopNameForSubmit(shopName)
+        if (!normalizedShopName) {
             setError('Shop name is required.')
             return null
+        }
+
+        if (shopName !== normalizedShopName) {
+            setShopName(normalizedShopName)
         }
 
         if (!contactName.trim()) {
@@ -243,12 +263,12 @@ export function CreateShopDialog({
 
         return {
             normalizedContactPhone,
-            trimmedName,
+            normalizedShopName,
         }
     }
 
-    const buildRequestPayload = (normalizedContactPhone: string, confirmCreate = false) => ({
-        shopName: shopName.trim(),
+    const buildRequestPayload = (normalizedContactPhone: string, normalizedShopName: string, confirmCreate = false) => ({
+        shopName: normalizedShopName,
         branch: selectedDistrict?.district_name || branch.trim() || null,
         state: selectedState?.state_name || null,
         contactName: contactName.trim() || null,
@@ -277,7 +297,7 @@ export function CreateShopDialog({
             const response = await fetch('/api/shops/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, confirmCreate)),
+                body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, validated.normalizedShopName, confirmCreate)),
             })
 
             const result = await response.json()
@@ -323,7 +343,7 @@ export function CreateShopDialog({
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, confirmCreate)),
+                    body: JSON.stringify(buildRequestPayload(validated.normalizedContactPhone, validated.normalizedShopName, confirmCreate)),
                 },
             )
 
@@ -546,8 +566,8 @@ export function CreateShopDialog({
                             <Input
                                 id="create-shop-name"
                                 value={shopName}
-                                onChange={(e) => setShopName(e.target.value)}
-                                onBlur={() => { if (shopName.trim()) setShopName(toTitleCaseWords(shopName.trim())) }}
+                                onChange={handleShopNameChange}
+                                onBlur={handleShopNameBlur}
                                 placeholder="e.g. ABC Vape Shop"
                             />
                         </div>

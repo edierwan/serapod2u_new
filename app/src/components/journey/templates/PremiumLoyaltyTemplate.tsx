@@ -2308,14 +2308,24 @@ export default function PremiumLoyaltyTemplate({
         return getRegistrationShopSelectionError(value, shopOrganizationId, signUpPendingShopRequest) || ''
     }
 
-    const validateSignUpLinkSelections = () => {
-        const validation = validateRegistrationLinkSelections({
-            referenceValue: signUpReference,
-            referenceUserId: signUpReferenceUserId,
-            shopValue: signUpShopName,
-            shopOrganizationId: signUpShopOrganizationId,
-            pendingShopRequest: signUpPendingShopRequest,
-        })
+    const runSignUpLinkSelectionValidation = () => {
+        let validation: ReturnType<typeof validateRegistrationLinkSelections>
+
+        try {
+            validation = validateRegistrationLinkSelections({
+                referenceValue: signUpReference,
+                referenceUserId: signUpReferenceUserId,
+                shopValue: signUpShopName,
+                shopOrganizationId: signUpShopOrganizationId,
+                pendingShopRequest: signUpPendingShopRequest,
+            })
+        } catch (validationError) {
+            console.error('Sign-up link selection validation failed:', validationError)
+            setLoginError("We couldn't validate the form. Please review the highlighted fields and try again.")
+            setSignUpReferenceError(resolveSignUpReferenceError(signUpReference, signUpReferenceUserId))
+            setSignUpShopError(resolveSignUpShopError(signUpShopName, signUpShopOrganizationId))
+            return false
+        }
 
         setSignUpReferenceError(validation.referenceError || '')
         setSignUpShopError(validation.shopError || '')
@@ -2718,7 +2728,7 @@ export default function PremiumLoyaltyTemplate({
                     return
                 }
 
-                if (!validateSignUpLinkSelections()) {
+                if (!runSignUpLinkSelectionValidation()) {
                     setLoginError('Please select a valid reference and shop before continuing.')
                     setLoginLoading(false)
                     return
@@ -3624,9 +3634,9 @@ export default function PremiumLoyaltyTemplate({
         setShowPointsLoginModal(true)
     }
 
-    const openRoadtourDuplicatePrompt = (message?: string) => {
+    const openRoadtourDuplicatePrompt = (message?: string, title = 'Already Claimed') => {
         setCollectingPoints(false)
-        setPointsErrorTitle('Already Claimed')
+        setPointsErrorTitle(title)
         setPointsError(message || 'You have already claimed this RoadTour reward.')
         setPointsErrorAction(null)
         setCollectPointsStep('login')
@@ -4136,7 +4146,7 @@ export default function PremiumLoyaltyTemplate({
             }
             if (!response.ok) {
                 if (data.code === 'DUPLICATE') {
-                    openRoadtourDuplicatePrompt(data.message)
+                    openRoadtourDuplicatePrompt(data.message, data.modalTitle || 'Already Claimed')
                     return
                 }
                 throw new Error(data.message || 'Failed to claim reward')
@@ -4221,7 +4231,7 @@ export default function PremiumLoyaltyTemplate({
             }
             if (!response.ok) {
                 if (data.code === 'DUPLICATE') {
-                    openRoadtourDuplicatePrompt(data.message)
+                    openRoadtourDuplicatePrompt(data.message, data.modalTitle || 'Already Claimed')
                     return
                 }
                 throw new Error(data.message || 'Failed to claim reward')

@@ -95,6 +95,29 @@ describe('CreateShopDialog', () => {
         expect(screen.getByText('Please enter a valid Malaysia mobile number.')).toBeTruthy()
     })
 
+    it('formats the shop name on space and blur', async () => {
+        const user = userEvent.setup()
+
+        render(
+            <CreateShopDialog
+                open
+                onOpenChange={() => {}}
+                mode="prepare-registration"
+                verificationOrgId="org-1"
+            />,
+        )
+
+        const shopNameInput = await screen.findByPlaceholderText('e.g. ABC Vape Shop') as HTMLInputElement
+
+        await user.type(shopNameInput, 'test new shop ')
+        expect(shopNameInput.value).toBe('Test New Shop ')
+
+        await user.clear(shopNameInput)
+        await user.type(shopNameInput, 'kedai maju jaya')
+        await user.tab()
+        expect(shopNameInput.value).toBe('Kedai Maju Jaya')
+    })
+
     it('requests OTP, verifies the code, and returns the created organization', async () => {
         const user = userEvent.setup()
         const onCreated = vi.fn()
@@ -116,6 +139,11 @@ describe('CreateShopDialog', () => {
         await user.click(screen.getByRole('button', { name: 'Continue' }))
 
         await waitFor(() => {
+            const requestCodeCall = (fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/api/shops/contact-verification/request-code'))
+            expect(JSON.parse(requestCodeCall[1].body).shopName).toBe('Kedai Baru')
+        })
+
+        await waitFor(() => {
             expect(screen.getByText(/Verify shop contact mobile number/i)).toBeTruthy()
         })
 
@@ -129,5 +157,8 @@ describe('CreateShopDialog', () => {
                 branch: null,
             })
         })
+
+        const createCall = (fetch as any).mock.calls.find((call: any[]) => String(call[0]).includes('/api/shops/contact-verification/create'))
+        expect(JSON.parse(createCall[1].body)).toEqual({ verificationToken: 'shop-token-1' })
     })
 })
