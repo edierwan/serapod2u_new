@@ -11,8 +11,14 @@ export async function GET() {
             adminClient.from('districts').select('id, district_name, state_id').eq('is_active', true).order('district_name'),
         ])
 
-        if (statesError) throw statesError
-        if (districtsError) throw districtsError
+        if (statesError || districtsError) {
+            console.error('Shop locations query error:', { statesError, districtsError })
+            return NextResponse.json({
+                success: true,
+                states: states || [],
+                districts: districts || [],
+            })
+        }
 
         return NextResponse.json({
             success: true,
@@ -21,6 +27,10 @@ export async function GET() {
         })
     } catch (error) {
         console.error('Shop locations load error:', error)
-        return NextResponse.json({ success: false, error: 'Unable to load shop location options.' }, { status: 500 })
+        return NextResponse.json({
+            success: true,
+            states: [],
+            districts: [],
+        })
     }
 }
