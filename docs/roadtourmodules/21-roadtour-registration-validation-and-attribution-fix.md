@@ -1,6 +1,6 @@
 # 21. RoadTour Registration Validation and Attribution Fix
 
-Date: 2026-05-22
+Date: 2026-05-23
 
 Scope of this change:
 - fix RoadTour registration so Reference and Shop are mandatory authoritative selections
@@ -237,3 +237,26 @@ This change closes the immediate reliability bug:
 
 This change does not claim to solve permanent RoadTour attribution reporting.
 That remains a schema-level follow-up and should continue under the separate `registration_attributions` direction already proposed.
+
+## 12. Create New Shop Fallback
+
+This update adds the missing fallback for RoadTour and premium-loyalty public registration when the consumer's shop is not yet present in master data.
+
+What changed:
+- existing shop selection remains authoritative and still requires a real `organization_id`
+- typed-only shop text is still rejected on both the client and the server
+- the empty shop-picker state now exposes a `Create New Shop` CTA
+- the create-shop dialog now has a prepare-only signup mode that validates fields and checks likely duplicates without creating the organization immediately
+- the pending shop draft is carried through the existing WhatsApp OTP verification metadata
+- the actual shop organization is created only after OTP verification succeeds during final registration
+- the newly created shop is then linked back into `users.organization_id` and `users.shop_name`
+
+Why this approach was chosen:
+- it reuses the existing registration WhatsApp OTP trust boundary instead of introducing a public unauthenticated create-shop API
+- it preserves the existing authoritative-selection rule for both Reference and Shop
+- it avoids schema changes, temporary attribution hacks, or free-text-only fallback writes
+
+Operationally important behavior:
+- editing the displayed shop text after selecting an existing shop or preparing a new one invalidates that selection and requires re-selection or re-preparation
+- if a real existing shop id is present, it wins over any stale pending-shop draft
+- duplicate review still happens before the user is allowed to continue with the new-shop path

@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from 'react'
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toTitleCaseWords, validatePhoneNumber } from '@/lib/utils'
+import type { ShopRequestFormInput } from '@/lib/shop-requests/core'
 import { Store, MapPin, AlertTriangle } from 'lucide-react'
 
 interface CreateShopDialogProps {
@@ -18,7 +18,9 @@ interface CreateShopDialogProps {
     onOpenChange: (open: boolean) => void
     defaultShopName?: string
     onCreated?: (org: { id: string; org_name: string; branch?: string | null }) => void
+    onPrepared?: (shopRequest: ShopRequestFormInput) => void
     linkUser?: boolean
+    mode?: 'create' | 'prepare-registration'
 }
 
 interface DuplicateShop {
@@ -33,9 +35,10 @@ export function CreateShopDialog({
     onOpenChange,
     defaultShopName = '',
     onCreated,
+    onPrepared,
     linkUser = false,
+    mode = 'create',
 }: CreateShopDialogProps) {
-    const supabase = useMemo(() => createClient(), [])
     const invalidContactPhoneMessage = 'Please enter a valid phone number. Example: +60123456789.'
 
     // Form fields
@@ -98,14 +101,14 @@ export function CreateShopDialog({
         const loadLocations = async () => {
             try {
                 setLoadingLocations(true)
-                const [{ data: statesData, error: statesErr }, { data: districtsData, error: districtsErr }] = await Promise.all([
-                    supabase.from('states').select('id, state_name').eq('is_active', true).order('state_name'),
-                    supabase.from('districts').select('id, district_name, state_id').eq('is_active', true).order('district_name'),
-                ])
-                if (statesErr) throw statesErr
-                if (districtsErr) throw districtsErr
-                setStates(statesData || [])
-                setDistricts(districtsData || [])
+                const response = await fetch('/api/shops/locations')
+                const result = await response.json()
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Failed to load state/branch options.')
+                }
+
+                setStates(result.states || [])
+                setDistricts(result.districts || [])
             } catch (err: any) {
                 console.error('Failed to load locations:', err)
                 setError('Failed to load state/branch options.')
@@ -115,7 +118,7 @@ export function CreateShopDialog({
         }
 
         void loadLocations()
-    }, [open, supabase])
+    }, [open])
 
     const filteredDistricts = districts.filter((d) => d.state_id === selectedStateId)
     const selectedState = states.find((s) => s.id === selectedStateId) || null
@@ -196,7 +199,7 @@ export function CreateShopDialog({
         try {
             setSubmitting(true)
 
-            const response = await fetch('/api/shops/create', {
+            const response = await fetch(mode === 'prepare-registration' ? '/api/shops/prepare-registration' : '/api/shops/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -213,7 +216,7 @@ export function CreateShopDialog({
                     sellsSboxSpecialEdition,
                     notes: notes.trim() || null,
                     confirmCreate,
-                    linkUser,
+                    ...(mode === 'create' ? { linkUser } : {}),
                 }),
             })
 
@@ -231,8 +234,12 @@ export function CreateShopDialog({
                 throw new Error(result.error || 'Failed to create shop.')
             }
 
-            // Success — shop created for the current profile flow
-            onCreated?.(result.organization)
+            if (mode === 'prepare-registration') {
+                onPrepared?.(result.shopRequest)
+            } else {
+                onCreated?.(result.organization)
+            }
+
             onOpenChange(false)
         } catch (err: any) {
             setError(err.message || 'Failed to create shop.')
@@ -250,7 +257,9 @@ export function CreateShopDialog({
                         Create New Shop
                     </DialogTitle>
                     <DialogDescription>
-                        {linkUser
+                        {mode === 'prepare-registration'
+                            ? 'We will verify your mobile number first, then create and link this shop while completing your account registration.'
+                            : linkUser
                             ? 'Create a new shop directly. This will be linked to your profile immediately.'
                             : 'Create a new shop, then review it below before saving your profile changes.'}
                     </DialogDescription>
@@ -300,7 +309,7 @@ export function CreateShopDialog({
                                 onClick={() => handleSubmit(true)}
                                 disabled={submitting}
                             >
-                                {submitting ? 'Creating...' : 'None of these — Create new'}
+                                {submitting ? (mode === 'prepare-registration' ? 'Saving...' : 'Creating...') : 'None of these — Continue'}
                             </Button>
                         </div>
                     </div>
@@ -463,7 +472,7 @@ export function CreateShopDialog({
                     <DialogFooter>
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
                         <Button onClick={() => handleSubmit(false)} disabled={submitting || !!phoneError || !!emailError}>
-                            {submitting ? 'Creating...' : 'Create Shop'}
+                            {submitting ? (mode === 'prepare-registration' ? 'Saving...' : 'Creating...') : (mode === 'prepare-registration' ? 'Continue' : 'Create Shop')}
                         </Button>
                     </DialogFooter>
                 )}

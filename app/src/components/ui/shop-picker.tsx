@@ -219,7 +219,11 @@ export function ShopPicker({
                 </p>
             )}
             {!selectedShop && showSelectionHint && searchTerm && (
-                <p className="text-xs text-amber-600 mt-1">Please select a shop from the list below</p>
+                <p className="text-xs text-amber-600 mt-1">
+                    {onCreateRequest
+                        ? 'Please select an existing shop or create a new shop.'
+                        : 'Please select a shop from the list below'}
+                </p>
             )}
 
             {/* Dropdown results */}
@@ -280,7 +284,7 @@ export function ShopPicker({
                                 onCreateRequest(searchTerm.trim())
                             }}
                         >
-                            My shop name is not found. Create new.
+                            Create New Shop
                         </button>
                     )}
                 </div>

@@ -1,8 +1,13 @@
+import { validateShopRequestForm } from '@/lib/shop-requests/core'
 import { samePhone } from '@/utils/phone'
 
 import {
   INVALID_SIGNUP_REFERENCE_SELECTION_MESSAGE,
   INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
+  getRegistrationPendingShopDisplayName,
+  matchesRegistrationPendingShopSelection,
+  sanitizeRegistrationPendingShopRequest,
+  type RegistrationPendingShopRequest,
 } from './registration-link-selection'
 
 export interface RegistrationLinkResolutionInput {
@@ -10,13 +15,15 @@ export interface RegistrationLinkResolutionInput {
   shopName?: string | null
   referenceUserId?: string | null
   referralPhone?: string | null
+  pendingShopRequest?: RegistrationPendingShopRequest | null
 }
 
 export interface RegistrationLinkResolutionSuccess {
   ok: true
-  organizationId: string
-  organizationName: string
+  organizationId: string | null
+  organizationName: string | null
   shopDisplayName: string
+  pendingShopRequest: RegistrationPendingShopRequest | null
   referenceUserId: string
   referralPhone: string | null
   referenceDisplayName: string | null
@@ -46,36 +53,63 @@ export async function resolveRegistrationLinkSelection(
   input: RegistrationLinkResolutionInput,
 ): Promise<RegistrationLinkResolutionSuccess | RegistrationLinkResolutionFailure> {
   const organizationId = input.organizationId?.trim() || ''
-  if (!organizationId) {
-    return {
-      ok: false,
-      field: 'shop',
-      error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
-    }
-  }
-
-  const { data: organization } = await supabaseAdmin
-    .from('organizations')
-    .select('id, org_name, branch, org_type_code, is_active')
-    .eq('id', organizationId)
-    .maybeSingle()
-
-  if (!organization || !organization.is_active || organization.org_type_code !== 'SHOP') {
-    return {
-      ok: false,
-      field: 'shop',
-      error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
-    }
-  }
-
-  const shopDisplayName = buildShopDisplayName(organization.org_name, organization.branch)
+  const pendingShopRequest = organizationId
+    ? null
+    : sanitizeRegistrationPendingShopRequest(input.pendingShopRequest)
+  let organizationName: string | null = null
+  let shopDisplayName = ''
   const submittedShopName = normalizeLabel(input.shopName)
-  const allowedShopNames = new Set([
-    normalizeLabel(shopDisplayName),
-    normalizeLabel(organization.org_name),
-  ].filter(Boolean))
 
-  if (submittedShopName && !allowedShopNames.has(submittedShopName)) {
+  if (organizationId) {
+    const { data: organization } = await supabaseAdmin
+      .from('organizations')
+      .select('id, org_name, branch, org_type_code, is_active')
+      .eq('id', organizationId)
+      .maybeSingle()
+
+    if (!organization || !organization.is_active || organization.org_type_code !== 'SHOP') {
+      return {
+        ok: false,
+        field: 'shop',
+        error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
+      }
+    }
+
+    organizationName = organization.org_name
+    shopDisplayName = buildShopDisplayName(organization.org_name, organization.branch)
+    const allowedShopNames = new Set([
+      normalizeLabel(shopDisplayName),
+      normalizeLabel(organization.org_name),
+    ].filter(Boolean))
+
+    if (submittedShopName && !allowedShopNames.has(submittedShopName)) {
+      return {
+        ok: false,
+        field: 'shop',
+        error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
+      }
+    }
+  } else if (pendingShopRequest) {
+    const pendingShopValidation = validateShopRequestForm(pendingShopRequest)
+    if (!pendingShopValidation.valid) {
+      return {
+        ok: false,
+        field: 'shop',
+        error: pendingShopValidation.errors[0] || INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
+      }
+    }
+
+    organizationName = pendingShopRequest.shopName
+    shopDisplayName = getRegistrationPendingShopDisplayName(pendingShopRequest)
+
+    if (submittedShopName && !matchesRegistrationPendingShopSelection(input.shopName, pendingShopRequest)) {
+      return {
+        ok: false,
+        field: 'shop',
+        error: INVALID_SIGNUP_SHOP_SELECTION_MESSAGE,
+      }
+    }
+  } else {
     return {
       ok: false,
       field: 'shop',
@@ -117,9 +151,10 @@ export async function resolveRegistrationLinkSelection(
 
   return {
     ok: true,
-    organizationId: organization.id,
-    organizationName: organization.org_name,
+    organizationId: organizationId || null,
+    organizationName,
     shopDisplayName,
+    pendingShopRequest,
     referenceUserId: referenceUser.id,
     referralPhone: referenceUser.phone || null,
     referenceDisplayName: referenceUser.call_name?.trim() || referenceUser.full_name?.trim() || null,
