@@ -154,6 +154,27 @@ interface DependencyCheckResult {
   error_code?: string
 }
 
+function normalizePhoneForSearch(value?: string | null) {
+  return String(value || '').replace(/\D/g, '')
+}
+
+function matchesOrganizationSearch(org: Organization, searchValue: string) {
+  const normalizedSearch = searchValue.trim().toLowerCase()
+  if (!normalizedSearch) return true
+
+  const normalizedDigits = normalizePhoneForSearch(searchValue)
+
+  return (
+    org.org_name.toLowerCase().includes(normalizedSearch) ||
+    org.org_code.toLowerCase().includes(normalizedSearch) ||
+    (org.contact_name && org.contact_name.toLowerCase().includes(normalizedSearch)) ||
+    (org.contact_phone && (
+      org.contact_phone.toLowerCase().includes(normalizedSearch) ||
+      (normalizedDigits.length > 0 && normalizePhoneForSearch(org.contact_phone).includes(normalizedDigits))
+    ))
+  )
+}
+
 export default function OrganizationsView({ userProfile, onViewChange }: OrganizationsViewProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
@@ -184,6 +205,12 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     orgId: string | null
     data: DependencyCheckResult | null
   }>({ show: false, loading: false, deleting: false, orgId: null, data: null })
+  const [deleteOtpStep, setDeleteOtpStep] = useState<'confirm' | 'otp' | 'deleting'>('confirm')
+  const [deleteOtpCode, setDeleteOtpCode] = useState('')
+  const [deleteOtpCodeId, setDeleteOtpCodeId] = useState('')
+  const [deleteOtpMaskedPhone, setDeleteOtpMaskedPhone] = useState('')
+  const [deleteOtpError, setDeleteOtpError] = useState('')
+  const [deleteOtpSending, setDeleteOtpSending] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -382,10 +409,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   }
 
   const filteredOrganizations = organizations.filter(org => {
-    const matchesSearch =
-      org.org_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      org.org_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (org.contact_name && org.contact_name.toLowerCase().includes(searchTerm.toLowerCase()))
+    const matchesSearch = matchesOrganizationSearch(org, searchTerm)
 
     const matchesType = filterType === 'all' || org.org_type_code === filterType
     const matchesStatus =
@@ -568,111 +592,84 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   }
 
-  const handleDeleteOrganization = async (orgId: string) => {
-    try {
-      const org = organizations.find(o => o.id === orgId)
-      const orgName = org?.org_name || 'Organization'
-      const orgCode = org?.org_code || 'Unknown'
-
-      // Call server-side API route (uses service_role + destructive-ops guard)
-      const response = await fetch('/api/organizations/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        toast({
-          title: "Delete Failed",
-          description: data.error || 'Failed to delete organization',
-          variant: "destructive"
-        })
-        return
-      }
-
-      // Check the response from the function
-      if (!data?.success) {
-        // Handle null or missing data
-        if (!data) {
-          toast({
-            title: "Delete Failed",
-            description: 'No response received from server. There may be related records blocking deletion.',
-            variant: "destructive"
-          })
-          return
-        }
-
-        // Show user-friendly error messages based on error code
-        if (data.error_code === 'HAS_ORDERS') {
-          toast({
-            title: "Cannot Delete",
-            description: `${orgName} has ${data.order_count} order(s). Organizations with orders cannot be deleted.`,
-            variant: "destructive"
-          })
-        } else if (data.error_code === 'HAS_CHILDREN') {
-          toast({
-            title: "Cannot Delete",
-            description: `${orgName} has ${data.child_count} active child organization(s). Delete them first.`,
-            variant: "destructive"
-          })
-        } else if (data.error_code === 'ORG_NOT_FOUND') {
-          toast({
-            title: "Not Found",
-            description: 'Organization not found. It may have already been deleted.',
-            variant: "destructive"
-          })
-        } else if (data.error_code === 'FOREIGN_KEY_VIOLATION') {
-          toast({
-            title: "Cannot Delete",
-            description: 'There are related records that must be deleted first. Use the delete button to see details.',
-            variant: "destructive"
-          })
-        } else {
-          toast({
-            title: "Delete Failed",
-            description: data.error || 'Unknown error occurred',
-            variant: "destructive"
-          })
-        }
-        return
-      }
-
-      // Success! Show detailed deletion summary
-      const deletedRecords = data.deleted_related_records || {}
-      const summary = []
-
-      if (deletedRecords.users > 0) summary.push(`${deletedRecords.users} user(s)`)
-      if (deletedRecords.shop_distributors > 0) summary.push(`${deletedRecords.shop_distributors} distributor link(s)`)
-      if (deletedRecords.distributor_products > 0) summary.push(`${deletedRecords.distributor_products} product link(s)`)
-      if (deletedRecords.inventory_records > 0) summary.push(`${deletedRecords.inventory_records} inventory record(s)`)
-
-      const summaryText = summary.length > 0
-        ? ` Also removed: ${summary.join(', ')}.`
-        : ''
-
-      toast({
-        title: "✓ Successfully Deleted",
-        description: `${orgName} (${orgCode}) has been permanently removed.${summaryText}`
-      })
-
-      setDeleteConfirmation({ show: false, orgId: null })
-
-      // Refresh the organizations list
-      fetchOrganizations()
-
-      // Refresh the relationship text (Supplying To / Additional Distributors)
-      checkShopDistributorLinks()
-      checkDistributorShopLinks()
-    } catch (error: any) {
-      console.error('Error deleting organization:', error)
+  const showDeleteFailureToast = (data: any, orgName: string) => {
+    if (!data) {
       toast({
         title: "Delete Failed",
-        description: error.message || 'Unknown error',
+        description: 'No response received from server. There may be related records blocking deletion.',
         variant: "destructive"
       })
+      return
     }
+
+    if (data.error_code === 'HAS_ORDERS') {
+      toast({
+        title: "Cannot Delete",
+        description: `${orgName} has ${data.order_count} order(s). Organizations with orders cannot be deleted.`,
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (data.error_code === 'HAS_CHILDREN') {
+      toast({
+        title: "Cannot Delete",
+        description: `${orgName} has ${data.child_count} active child organization(s). Delete them first.`,
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (data.error_code === 'ORG_NOT_FOUND') {
+      toast({
+        title: "Not Found",
+        description: 'Organization not found. It may have already been deleted.',
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (data.error_code === 'FOREIGN_KEY_VIOLATION') {
+      toast({
+        title: "Cannot Delete",
+        description: 'There are related records that must be deleted first. Use the delete button to see details.',
+        variant: "destructive"
+      })
+      return
+    }
+
+    toast({
+      title: "Delete Failed",
+      description: data.error || 'Unknown error occurred',
+      variant: "destructive"
+    })
+  }
+
+  const showDeleteSuccessToast = (data: any, orgName: string, orgCode: string) => {
+    const deletedRecords = data.deleted_related_records || {}
+    const summary = []
+
+    if (deletedRecords.users > 0) summary.push(`${deletedRecords.users} user(s)`)
+    if (deletedRecords.shop_distributors > 0) summary.push(`${deletedRecords.shop_distributors} distributor link(s)`)
+    if (deletedRecords.distributor_products > 0) summary.push(`${deletedRecords.distributor_products} product link(s)`)
+    if (deletedRecords.inventory_records > 0) summary.push(`${deletedRecords.inventory_records} inventory record(s)`)
+
+    const summaryText = summary.length > 0
+      ? ` Also removed: ${summary.join(', ')}.`
+      : ''
+
+    toast({
+      title: "✓ Successfully Deleted",
+      description: `${orgName} (${orgCode}) has been permanently removed.${summaryText}`
+    })
+  }
+
+  const refreshOrganizationData = async () => {
+    await Promise.all([
+      fetchOrganizations(),
+      checkShopDistributorLinks(),
+      checkDistributorShopLinks(),
+    ])
   }
 
   const handleQuickEdit = (orgId: string, field: 'name' | 'phone', currentValue: string) => {
@@ -733,6 +730,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
   // Check organization dependencies before deleting
   const checkDependencies = async (orgId: string) => {
+    setDeleteOtpStep('confirm')
+    setDeleteOtpCode('')
+    setDeleteOtpCodeId('')
+    setDeleteOtpMaskedPhone('')
+    setDeleteOtpError('')
     setDeleteDependenciesModal({ show: true, loading: true, deleting: false, orgId, data: null })
 
     try {
@@ -780,13 +782,83 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     const orgId = deleteDependenciesModal.orgId
     if (!orgId) return
 
-    setDeleteDependenciesModal(prev => ({ ...prev, deleting: true }))
-    await handleDeleteOrganization(orgId)
-    setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
+    setDeleteOtpSending(true)
+    setDeleteOtpError('')
+
+    try {
+      const response = await fetch('/api/organizations/delete/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send verification code')
+      }
+
+      setDeleteOtpCode('')
+      setDeleteOtpCodeId(data.codeId || '')
+      setDeleteOtpMaskedPhone(data.maskedPhone || '')
+      setDeleteOtpStep('otp')
+    } catch (error: any) {
+      setDeleteOtpError(error.message || 'Failed to send verification code')
+    } finally {
+      setDeleteOtpSending(false)
+    }
+  }
+
+  const handleDeleteOtpVerify = async () => {
+    const orgId = deleteDependenciesModal.orgId
+    if (!orgId || deleteOtpCode.length !== 4 || !deleteOtpCodeId) return
+
+    const org = organizations.find(o => o.id === orgId)
+    const orgName = org?.org_name || deleteDependenciesModal.data?.org_name || 'Organization'
+    const orgCode = org?.org_code || deleteDependenciesModal.data?.org_code || 'Unknown'
+
+    setDeleteOtpSending(true)
+    setDeleteOtpError('')
+
+    try {
+      setDeleteOtpStep('deleting')
+
+      const response = await fetch('/api/organizations/delete/verify-and-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, code: deleteOtpCode, codeId: deleteOtpCodeId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setDeleteOtpStep('otp')
+        throw new Error(data.error || 'Verification failed')
+      }
+
+      if (!data?.success) {
+        setDeleteOtpStep('confirm')
+        showDeleteFailureToast(data, orgName)
+        return
+      }
+
+      showDeleteSuccessToast(data, orgName, orgCode)
+      closeDependenciesModal()
+      setDeleteConfirmation({ show: false, orgId: null })
+      await refreshOrganizationData()
+    } catch (error: any) {
+      setDeleteOtpError(error.message || 'Verification failed')
+    } finally {
+      setDeleteOtpSending(false)
+    }
   }
 
   // Close the dependencies modal
   const closeDependenciesModal = () => {
+    setDeleteOtpStep('confirm')
+    setDeleteOtpCode('')
+    setDeleteOtpCodeId('')
+    setDeleteOtpMaskedPhone('')
+    setDeleteOtpError('')
     setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
   }
 
@@ -1542,6 +1614,16 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
                   Checking Dependencies...
                 </>
+              ) : deleteOtpStep === 'otp' ? (
+                <>
+                  <Phone className="h-5 w-5 text-amber-500" />
+                  Enter Verification Code
+                </>
+              ) : deleteOtpStep === 'deleting' ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-red-500" />
+                  Deleting Organization...
+                </>
               ) : deleteDependenciesModal.data?.can_delete ? (
                 <>
                   <CheckCircle className="h-5 w-5 text-green-500" />
@@ -1556,8 +1638,16 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             </DialogTitle>
             {deleteDependenciesModal.data && (
               <DialogDescription>
-                <span className="font-semibold">{deleteDependenciesModal.data.org_name}</span>
-                {' '}({deleteDependenciesModal.data.org_code}) - {deleteDependenciesModal.data.org_type}
+                {deleteOtpStep === 'otp' ? (
+                  <>A 4-digit WhatsApp code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to authorize deletion.</>
+                ) : deleteOtpStep === 'deleting' ? (
+                  'Please wait while the organization is being deleted.'
+                ) : (
+                  <>
+                    <span className="font-semibold">{deleteDependenciesModal.data.org_name}</span>
+                    {' '}({deleteDependenciesModal.data.org_code}) - {deleteDependenciesModal.data.org_type}
+                  </>
+                )}
               </DialogDescription>
             )}
           </DialogHeader>
@@ -1577,25 +1667,59 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </div>
             ) : deleteDependenciesModal.data?.can_delete ? (
               <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-green-700">
-                    This organization has no blocking dependencies and can be safely deleted.
-                  </p>
-                </div>
-                {deleteDependenciesModal.data.blocking_records && deleteDependenciesModal.data.blocking_records.length > 0 && (
+                {deleteOtpStep === 'otp' ? (
                   <div className="space-y-3">
-                    <p className="text-sm text-gray-600">The following will be automatically removed:</p>
-                    {deleteDependenciesModal.data.blocking_records
-                      .filter(r => r.auto_delete)
-                      .map((record, index) => (
-                        <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-gray-700">{record.display_name}</span>
-                            <Badge variant="secondary">{record.count} record(s)</Badge>
-                          </div>
-                          <p className="text-sm text-gray-500 mt-1">{record.action}</p>
-                        </div>
-                      ))}
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <p className="text-amber-700">
+                        For protection, deletion requires a 4-digit WhatsApp verification code sent to the organization phone configured in Settings &gt; Organization.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
+                      <Input
+                        type="text"
+                        maxLength={4}
+                        value={deleteOtpCode}
+                        onChange={(e) => setDeleteOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        placeholder="0000"
+                        className="text-center text-2xl tracking-widest font-mono h-12"
+                        autoFocus
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500 text-center">Code expires in 5 minutes</p>
+                  </div>
+                ) : deleteOtpStep === 'deleting' ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-red-500" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-green-700">
+                        This organization has no blocking dependencies and can be safely deleted.
+                      </p>
+                    </div>
+                    {deleteDependenciesModal.data.blocking_records && deleteDependenciesModal.data.blocking_records.length > 0 && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-gray-600">The following will be automatically removed:</p>
+                        {deleteDependenciesModal.data.blocking_records
+                          .filter(r => r.auto_delete)
+                          .map((record, index) => (
+                            <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-gray-700">{record.display_name}</span>
+                                <Badge variant="secondary">{record.count} record(s)</Badge>
+                              </div>
+                              <p className="text-sm text-gray-500 mt-1">{record.action}</p>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                {deleteOtpError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-600 text-center">{deleteOtpError}</p>
                   </div>
                 )}
               </div>
@@ -1678,24 +1802,43 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           </ScrollArea>
 
           <DialogFooter className="mt-4 pt-4 border-t">
-            <Button variant="outline" onClick={closeDependenciesModal} disabled={deleteDependenciesModal.deleting}>
+            <Button variant="outline" onClick={closeDependenciesModal} disabled={deleteOtpSending || deleteOtpStep === 'deleting'}>
               Cancel
             </Button>
-            {deleteDependenciesModal.data?.can_delete && (
+            {deleteDependenciesModal.data?.can_delete && deleteOtpStep === 'confirm' && (
               <Button
                 variant="destructive"
                 onClick={proceedWithDeletion}
-                disabled={deleteDependenciesModal.deleting}
+                disabled={deleteOtpSending}
               >
-                {deleteDependenciesModal.deleting ? (
+                {deleteOtpSending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Deleting...
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Phone className="h-4 w-4 mr-2" />
+                    Send Verification Code
+                  </>
+                )}
+              </Button>
+            )}
+            {deleteDependenciesModal.data?.can_delete && deleteOtpStep === 'otp' && (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOtpVerify}
+                disabled={deleteOtpSending || deleteOtpCode.length !== 4}
+              >
+                {deleteOtpSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Verifying...
                   </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Organization
+                    Verify & Delete
                   </>
                 )}
               </Button>
