@@ -87,6 +87,7 @@ import AccountingTab from '@/components/settings/AccountingTab'
 // Settings Module Components
 import SettingsTopNav from '@/modules/settings/components/SettingsTopNav'
 import SettingsLandingView from '@/modules/settings/components/SettingsLandingView'
+import NotificationsLandingView from '@/modules/notifications/components/NotificationsLandingView'
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
@@ -341,6 +342,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       return
     }
 
+    if (view === 'notifications') {
+      setCurrentView(view)
+      router.push('/notifications')
+      return
+    }
+
     setCurrentView(view)
   }
 
@@ -542,6 +549,18 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <DocumentTemplateTab userProfile={userProfile} />
       case 'settings/preferences/doc-sequence':
         return <DocSequenceTab userProfile={userProfile} />
+      case 'notifications':
+        return <NotificationsLandingView />
+      case 'notifications/providers':
+        return <NotificationProvidersTab userProfile={userProfile} />
+      case 'notifications/types':
+        return <NotificationTypesTab userProfile={userProfile} />
+      case 'notifications/whatsapp-activity':
+        return <WhatsAppActivityTab userProfile={userProfile} />
+      case 'notifications/delivery-logs':
+        return <WhatsAppActivityTab userProfile={userProfile} />
+      case 'notifications/failed':
+        return <WhatsAppRecoveryCenter userProfile={userProfile} />
       case 'settings/authorization':
         return <AuthorizationTab userProfile={userProfile} />
       case 'settings/ai':
@@ -745,6 +764,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isHrView = currentView === 'hr' || currentView.startsWith('hr/') || currentView.startsWith('hr-')
   const isFinanceView = currentView === 'finance' || currentView.startsWith('finance/')
   const isSettingsView = currentView === 'settings' || currentView.startsWith('settings/')
+  const isNotificationsView = currentView === 'notifications' || currentView.startsWith('notifications/')
   const isSupplyChainView = isSupplyChainViewId(currentView)
   const isLoyaltyView = isLoyaltyViewId(currentView)
   const isCrmView = isCrmViewId(currentView)
@@ -754,7 +774,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isRoadtourView = isRoadtourViewId(currentView)
   // Show Customer & Growth domain top-nav on ALL CG views (landing + child modules + sub-views)
   const showCustomerGrowthTopNav = isCustomerGrowthView
-  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || isRoadtourView || showCustomerGrowthTopNav
+  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isNotificationsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || isRoadtourView || showCustomerGrowthTopNav
 
   const handleHrNavigate = (href: string) => {
     router.push(href)
