@@ -6686,16 +6686,18 @@ export default function PremiumLoyaltyTemplate({
                                                 defaultShopName={pendingSignUpShopRequestName}
                                                 mode="prepare-registration"
                                                 linkUser={false}
-                                                onPrepared={(shopRequest) => {
+                                                verificationOrgId={orgId}
+                                                onCreated={(org) => {
                                                     if (registrationOtpRequested) {
                                                         resetRegistrationVerificationState()
                                                     }
 
+                                                    const displayName = org.org_name + (org.branch ? ` (${org.branch})` : '')
                                                     setIsSignUpShopRequestOpen(false)
                                                     setPendingSignUpShopRequestName('')
-                                                    setSignUpPendingShopRequest(shopRequest)
-                                                    setSignUpShopName(getRegistrationPendingShopDisplayName(shopRequest))
-                                                    setSignUpShopOrganizationId(null)
+                                                    setSignUpPendingShopRequest(null)
+                                                    setSignUpShopName(displayName)
+                                                    setSignUpShopOrganizationId(org.id)
                                                     setSignUpShopTouched(true)
                                                     setSignUpShopError('')
                                                     setLoginError('')

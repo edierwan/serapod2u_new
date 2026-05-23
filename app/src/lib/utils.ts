@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { normalizePhoneE164 } from '@/utils/phone'
+import { isValidMalaysianPhone, normalizePhoneE164 } from '@/utils/phone'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -37,6 +37,22 @@ export function validatePhoneNumber(phone: string): PhoneValidationResult {
   }
   if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
     return { isValid: false, error: 'Invalid phone number format' };
+  }
+  return { isValid: true, formatted: normalized };
+}
+
+export function validateMalaysianMobileNumber(phone: string): PhoneValidationResult {
+  const raw = String(phone || '').trim();
+  if (!raw) {
+    return { isValid: false, error: 'Contact phone is required.' };
+  }
+
+  const normalized = normalizePhone(phone);
+  if (!normalized) {
+    return { isValid: false, error: 'Please enter a valid Malaysia mobile number.' };
+  }
+  if (!isValidMalaysianPhone(normalized)) {
+    return { isValid: false, error: 'Please enter a valid Malaysia mobile number.' };
   }
   return { isValid: true, formatted: normalized };
 }

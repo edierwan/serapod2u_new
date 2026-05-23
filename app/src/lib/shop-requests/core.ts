@@ -1,4 +1,4 @@
-import { normalizePhone, toTitleCaseWords, validatePhoneNumber } from '@/lib/utils'
+import { normalizePhone, toTitleCaseWords, validateMalaysianMobileNumber } from '@/lib/utils'
 import { EMAIL_REGEX } from '@/lib/utils/orgValidation'
 
 export interface ShopRequestFormInput {
@@ -104,6 +104,7 @@ export function sanitizeShopRequestForm(input: ShopRequestFormInput): ShopReques
 
 export function validateShopRequestForm(input: ShopRequestFormInput): ShopRequestValidationResult {
     const form = sanitizeShopRequestForm(input)
+    const rawContactPhone = cleanText(input.contactPhone)
     const errors: string[] = []
 
     if (!form.shopName) {
@@ -114,10 +115,10 @@ export function validateShopRequestForm(input: ShopRequestFormInput): ShopReques
         errors.push('Contact name is required.')
     }
 
-    if (!form.contactPhone) {
+    if (!rawContactPhone) {
         errors.push('Contact phone is required.')
     } else {
-        const validation = validatePhoneNumber(form.contactPhone)
+        const validation = validateMalaysianMobileNumber(rawContactPhone)
         if (!validation.isValid) {
             errors.push(validation.error || 'Contact phone is invalid.')
         }
@@ -165,7 +166,7 @@ export function buildApprovedShopOrganization(input: {
     request: ShopRequestRecord
     parentOrgId?: string | null
     stateId?: string | null
-    createdBy: string
+    createdBy?: string | null
 }) {
     return {
         org_code: buildShopOrgCode(),
@@ -183,7 +184,7 @@ export function buildApprovedShopOrganization(input: {
         sells_sbox: input.request.sellsSbox ?? false,
         sells_sbox_special_edition: input.request.sellsSboxSpecialEdition ?? false,
         is_active: true,
-        created_by: input.createdBy,
-        updated_by: input.createdBy,
+        created_by: input.createdBy || null,
+        updated_by: input.createdBy || null,
     }
 }

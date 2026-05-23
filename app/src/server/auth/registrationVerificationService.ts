@@ -14,6 +14,23 @@ const PURPOSE = 'registration_verification'
 const CHANNEL = 'whatsapp'
 const PROVIDER = 'baileys'
 
+type VerificationPurposeOptions = {
+    purpose?: string
+}
+
+type VerificationRateLimitOptions = VerificationPurposeOptions & {
+    requestEventTypes?: string[]
+    resendEventType?: string
+}
+
+type VerificationMessageOptions = {
+    message?: string
+}
+
+function resolvePurpose(options?: VerificationPurposeOptions) {
+    return options?.purpose || PURPOSE
+}
+
 export function generateOtp(): string {
     const num = crypto.randomInt(0, 10000)
     return num.toString().padStart(OTP_LENGTH, '0')
@@ -62,15 +79,21 @@ export async function checkRegistrationAvailability(
     }
 }
 
-export async function checkSendRateLimit(admin: SupabaseClient, phone: string) {
+export async function checkSendRateLimit(
+    admin: SupabaseClient,
+    phone: string,
+    options?: VerificationRateLimitOptions,
+) {
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const purpose = resolvePurpose(options)
+    const requestEventTypes = options?.requestEventTypes || ['registration_otp_requested', 'registration_otp_resend']
 
     const { count } = await admin
         .from('notification_events')
         .select('id', { count: 'exact', head: true })
         .eq('recipient_phone', phone)
-        .eq('purpose', PURPOSE)
-        .in('event_type', ['registration_otp_requested', 'registration_otp_resend'])
+        .eq('purpose', purpose)
+        .in('event_type', requestEventTypes)
         .gte('created_at', since)
 
     if ((count ?? 0) >= MAX_SEND_ATTEMPTS_PER_15MIN) {
@@ -80,15 +103,21 @@ export async function checkSendRateLimit(admin: SupabaseClient, phone: string) {
     return { allowed: true }
 }
 
-export async function checkResendRateLimit(admin: SupabaseClient, phone: string) {
+export async function checkResendRateLimit(
+    admin: SupabaseClient,
+    phone: string,
+    options?: VerificationRateLimitOptions,
+) {
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const purpose = resolvePurpose(options)
+    const resendEventType = options?.resendEventType || 'registration_otp_resend'
 
     const { count } = await admin
         .from('notification_events')
         .select('id', { count: 'exact', head: true })
         .eq('recipient_phone', phone)
-        .eq('purpose', PURPOSE)
-        .eq('event_type', 'registration_otp_resend')
+        .eq('purpose', purpose)
+        .eq('event_type', resendEventType)
         .gte('created_at', since)
 
     if ((count ?? 0) >= MAX_RESEND_PER_15MIN) {
@@ -98,12 +127,18 @@ export async function checkResendRateLimit(admin: SupabaseClient, phone: string)
     return { allowed: true }
 }
 
-export async function invalidateExistingCodes(admin: SupabaseClient, phone: string) {
+export async function invalidateExistingCodes(
+    admin: SupabaseClient,
+    phone: string,
+    options?: VerificationPurposeOptions,
+) {
+    const purpose = resolvePurpose(options)
+
     await admin
         .from('auth_verification_codes')
         .update({ invalidated_at: new Date().toISOString() })
         .eq('phone_normalized', phone)
-        .eq('purpose', PURPOSE)
+        .eq('purpose', purpose)
         .eq('channel', CHANNEL)
         .is('invalidated_at', null)
         .is('used_at', null)
@@ -116,13 +151,15 @@ export async function createVerificationCode(
     meta: Record<string, any>,
     ip: string | null,
     userAgent: string | null,
+    options?: VerificationPurposeOptions,
 ) {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString()
+    const purpose = resolvePurpose(options)
 
     const { data, error } = await admin
         .from('auth_verification_codes')
         .insert({
-            purpose: PURPOSE,
+            purpose,
             channel: CHANNEL,
             phone_normalized: phone,
             code_hash: codeHash,
@@ -142,12 +179,18 @@ export async function createVerificationCode(
     return data.id as string
 }
 
-export async function findActiveCode(admin: SupabaseClient, phone: string) {
+export async function findActiveCode(
+    admin: SupabaseClient,
+    phone: string,
+    options?: VerificationPurposeOptions,
+) {
+    const purpose = resolvePurpose(options)
+
     const { data, error } = await admin
         .from('auth_verification_codes')
         .select('*')
         .eq('phone_normalized', phone)
-        .eq('purpose', PURPOSE)
+        .eq('purpose', purpose)
         .eq('channel', CHANNEL)
         .is('invalidated_at', null)
         .is('used_at', null)
@@ -185,12 +228,18 @@ export async function markCodeVerified(admin: SupabaseClient, codeId: string) {
     return verificationToken
 }
 
-export async function findCodeByVerificationToken(admin: SupabaseClient, verificationToken: string) {
+export async function findCodeByVerificationToken(
+    admin: SupabaseClient,
+    verificationToken: string,
+    options?: VerificationPurposeOptions,
+) {
+    const purpose = resolvePurpose(options)
+
     const { data } = await admin
         .from('auth_verification_codes')
         .select('*')
         .eq('reset_token', verificationToken)
-        .eq('purpose', PURPOSE)
+        .eq('purpose', purpose)
         .is('used_at', null)
         .is('invalidated_at', null)
         .gt('reset_token_expires', new Date().toISOString())
@@ -200,13 +249,18 @@ export async function findCodeByVerificationToken(admin: SupabaseClient, verific
     return data
 }
 
-export async function markCodeUsed(admin: SupabaseClient, codeId: string, userId: string) {
+export async function markCodeUsed(admin: SupabaseClient, codeId: string, userId?: string | null) {
+    const updateData: Record<string, string> = {
+        used_at: new Date().toISOString(),
+    }
+
+    if (userId) {
+        updateData.user_id = userId
+    }
+
     await admin
         .from('auth_verification_codes')
-        .update({
-            used_at: new Date().toISOString(),
-            user_id: userId,
-        })
+        .update(updateData)
         .eq('id', codeId)
 }
 
@@ -255,6 +309,7 @@ export async function sendOtpViaWhatsApp(
     phone: string,
     code: string,
     orgId: string,
+    options?: VerificationMessageOptions,
 ): Promise<{ success: boolean; providerMessageId?: string | null; error?: string }> {
     const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
 
@@ -268,10 +323,11 @@ export async function sendOtpViaWhatsApp(
         return { success: false, error: 'Invalid phone number' }
     }
     const message =
-        `Serapod2U registration verification code: *${code}*\n\n` +
-        `Please enter this 4-digit code to confirm your mobile number. ` +
-        `This code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\n` +
-        `If you did not request this registration, no further action is required.`
+        options?.message ||
+        (`Serapod2U registration verification code: *${code}*\n\n` +
+            `Please enter this 4-digit code to confirm your mobile number. ` +
+            `This code will expire in ${OTP_EXPIRY_MINUTES} minutes.\n\n` +
+            `If you did not request this registration, no further action is required.`)
 
     try {
         const result = await callGateway(

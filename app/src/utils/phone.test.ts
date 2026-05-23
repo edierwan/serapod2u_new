@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     formatPhoneDisplay,
+    isValidMalaysianPhone,
     jidToPhone,
     maskPhone,
     normalizePhoneE164,
@@ -9,7 +10,7 @@ import {
     phonesEqual,
     toProviderPhone,
 } from './phone'
-import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
+import { normalizePhone, validateMalaysianMobileNumber, validatePhoneNumber } from '@/lib/utils'
 
 describe('phone normalization', () => {
     it('normalizes local and provider inputs to canonical E.164', () => {
@@ -47,6 +48,17 @@ describe('phone normalization', () => {
         expect(validatePhoneNumber('0123456789')).toEqual({
             isValid: true,
             formatted: '+60123456789',
+        })
+    })
+
+    it('accepts only Malaysia mobile numbers for shop contact verification', () => {
+        expect(isValidMalaysianPhone('0123456789')).toBe(true)
+        expect(isValidMalaysianPhone('+60123456789')).toBe(true)
+        expect(isValidMalaysianPhone('+60312345678')).toBe(false)
+        expect(isValidMalaysianPhone('+60912345678')).toBe(false)
+        expect(validateMalaysianMobileNumber('03-1234 5678')).toEqual({
+            isValid: false,
+            error: 'Please enter a valid Malaysia mobile number.',
         })
     })
 })

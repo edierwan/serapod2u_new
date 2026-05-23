@@ -18,7 +18,7 @@ export function normalizePhoneE164(phone: string, defaultCountryCode: string = '
 
 export function isValidMalaysianPhone(phone: string): boolean {
   const normalized = normalizePhoneE164(phone)
-  return /^\+60[1-9][0-9]{7,9}$/.test(normalized)
+  return /^\+601\d{7,9}$/.test(normalized)
 }
 
 export function extractCountryCode(phone: string): string {

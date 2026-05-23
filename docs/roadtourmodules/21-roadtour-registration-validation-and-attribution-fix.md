@@ -246,17 +246,93 @@ What changed:
 - existing shop selection remains authoritative and still requires a real `organization_id`
 - typed-only shop text is still rejected on both the client and the server
 - the empty shop-picker state now exposes a `Create New Shop` CTA
-- the create-shop dialog now has a prepare-only signup mode that validates fields and checks likely duplicates without creating the organization immediately
-- the pending shop draft is carried through the existing WhatsApp OTP verification metadata
-- the actual shop organization is created only after OTP verification succeeds during final registration
-- the newly created shop is then linked back into `users.organization_id` and `users.shop_name`
+- the create-shop dialog now has a two-step public signup mode: Shop Details, then Verify Contact Phone
+- Contact Phone must normalize to a valid Malaysia mobile number before any OTP is sent
+- the dialog sends a separate 4-digit WhatsApp OTP to the shop contact mobile number before creating the organization
+- the actual shop organization is created immediately after that shop-contact OTP verification succeeds
+- the newly created shop is linked back into the registration form as the selected authoritative shop before account creation continues
+- the later user registration OTP flow still runs independently for the registrant's own mobile number
 
 Why this approach was chosen:
-- it reuses the existing registration WhatsApp OTP trust boundary instead of introducing a public unauthenticated create-shop API
-- it preserves the existing authoritative-selection rule for both Reference and Shop
+- it reuses the existing `auth_verification_codes`, `notification_events`, verification-token lifecycle, and WhatsApp gateway integration instead of inventing a second OTP stack
+- it preserves the existing authoritative-selection rule for both Reference and Shop by returning a real created `organization_id`
 - it avoids schema changes, temporary attribution hacks, or free-text-only fallback writes
 
 Operationally important behavior:
-- editing the displayed shop text after selecting an existing shop or preparing a new one invalidates that selection and requires re-selection or re-preparation
-- if a real existing shop id is present, it wins over any stale pending-shop draft
-- duplicate review still happens before the user is allowed to continue with the new-shop path
+- editing the displayed shop text after selecting an existing shop or after a newly created shop is linked invalidates that selection and requires a fresh valid selection
+- the public create flow clears any stale pending-shop draft and keeps the real created shop id authoritative
+- duplicate review still happens before OTP send, and exact duplicate checks run again before final insert
+
+## 13. Create New Shop contact phone validation and OTP verification
+
+Files inspected and changed for this update:
+- `app/src/components/shop-requests/CreateShopDialog.tsx`
+- `app/src/components/journey/templates/PremiumLoyaltyTemplate.tsx`
+- `app/src/lib/utils.ts`
+- `app/src/utils/phone.ts`
+- `app/src/server/auth/registrationVerificationService.ts`
+- `app/src/server/auth/shopContactVerificationService.ts`
+- `app/src/lib/shop-requests/core.ts`
+- `app/src/lib/shop-requests/create-shop.ts`
+- `app/src/app/api/shops/contact-verification/request-code/route.ts`
+- `app/src/app/api/shops/contact-verification/resend-code/route.ts`
+- `app/src/app/api/shops/contact-verification/verify-code/route.ts`
+- `app/src/app/api/shops/contact-verification/create/route.ts`
+- `app/middleware.ts`
+
+Utility reuse and validation rules:
+- canonical phone storage remains E.164 with leading `+`
+- the dialog and server reuse the existing phone normalization path and now enforce a Malaysia mobile rule for shop contact numbers
+- accepted inputs include local and canonical forms such as `0123456789`, `60123456789`, and `+60123456789`
+- obvious landline or malformed inputs such as `03-1234 5678` are rejected with `Please enter a valid Malaysia mobile number.`
+
+OTP lifecycle now implemented:
+- Step 1 validates all required shop fields and runs duplicate checks before any OTP is issued
+- Step 2 sends a 4-digit WhatsApp OTP to the normalized shop contact mobile number using the existing verification code table and gateway
+- the verify route returns a short-lived verification token only after the correct code is entered
+- the create route accepts that verification token, rehydrates the verified `shop_request` from verification metadata, and only then inserts the new `organizations` row
+- after create succeeds, the verification code is marked used and the created shop is returned to the signup form as the authoritative selected shop
+
+Duplicate prevention now enforced:
+- exact normalized `contact_phone` matches on existing active shops hard-block the create flow
+- exact normalized shop identity matches based on `shop_name` plus submitted branch, state, or address also hard-block the create flow where enough location detail is present
+- fuzzy name matches still show likely existing shops and require the user to explicitly continue before an OTP is sent
+- the final create route rechecks exact duplicates again before insert so the shop cannot be created if a matching record appeared after OTP send
+
+Server-side enforcement details:
+- public shop creation is no longer a blind client-side draft handoff
+- the create endpoint requires a verified shop-contact token and ignores any unverified client-authored shop payload at insert time
+- server validation in `shop-requests/core` enforces required fields, Malaysia mobile phone format, and email validation
+- middleware explicitly exposes `/api/shops/contact-verification/*` as public so the anonymous RoadTour registration flow can use these endpoints without opening unrelated protected routes
+
+Link-back behavior in the registration form:
+- after verified shop creation, `PremiumLoyaltyTemplate` stores the created `organization_id` in `signUpShopOrganizationId`
+- the signup form clears any old `signUpPendingShopRequest`
+- the shop display text is updated to the created shop label, so the normal authoritative-selection validation continues to work without special casing
+
+RoadTour context note:
+- this shop-contact OTP flow does not change the existing RoadTour registration attribution boundary
+- RoadTour context still flows only through the separate user-registration OTP metadata already described above
+- no new RoadTour-specific user columns, attribution writes, or schema hacks were introduced by the shop-contact verification change
+
+No SQL / schema confirmation:
+- no SQL migration was added
+- no new table or column was introduced
+- the implementation reuses `auth_verification_codes`, `notification_events`, and existing organization creation helpers only
+
+Focused tests added or updated:
+- `app/src/utils/phone.test.ts`
+- `app/src/lib/shop-requests/core.test.ts`
+- `app/src/components/shop-requests/CreateShopDialog.test.tsx`
+
+Staging validation checklist for this change:
+1. Open a public RoadTour or premium-loyalty signup page, search for a missing shop, and click `Create New Shop`.
+2. Enter a landline or malformed contact number such as `03-1234 5678`. Confirm the dialog shows `Please enter a valid Malaysia mobile number.` and does not proceed.
+3. Enter a valid Malaysia mobile number and complete the remaining required fields. Confirm `Continue` sends a WhatsApp OTP and switches the dialog to the verification step.
+4. Confirm resend is blocked by cooldown, then becomes available again after the countdown.
+5. Enter an invalid 4-digit code. Confirm the dialog shows the verification failure and does not create a shop.
+6. Enter the correct 4-digit code. Confirm the shop is created immediately, the dialog closes, and the signup form now has the created shop selected as the authoritative shop.
+7. Retry with a shop whose exact contact phone or exact normalized name plus location already exists. Confirm creation is blocked and the dialog tells the user to select the existing shop instead.
+8. Retry with only fuzzy name matches. Confirm the dialog shows the likely existing shops and requires explicit continuation before sending OTP.
+9. Finish the normal user-registration OTP flow after the shop is created. Confirm the resulting user is linked to the created `organization_id`.
+10. Confirm no pending-shop-only fallback is left behind for the happy path; the final registration should be using the real created shop id.
