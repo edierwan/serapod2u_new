@@ -5,12 +5,18 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
-import { SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE } from '@/lib/engagement/registration-link-selection'
+import {
+  SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE,
+  getRegistrationPendingShopDisplayName,
+  matchesRegistrationPendingShopSelection,
+  sanitizeRegistrationPendingShopRequest,
+} from '@/lib/engagement/registration-link-selection'
 import { normalizePhoneE164, samePhone } from '@/utils/phone'
 import { checkPermissionForUser } from '@/lib/server/permissions'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
+import { createShopOrganization } from '@/lib/shop-requests/create-shop'
 import {
   findCodeByVerificationToken,
   logNotificationEvent as logRegistrationNotificationEvent,
@@ -714,6 +720,7 @@ export async function registerConsumer(userData: {
     const verifiedReferralPhone = String(verifiedMeta.referral_phone || '').trim()
     const verifiedOrganizationId = String(verifiedMeta.shop_organization_id || '').trim()
     const verifiedShopName = String(verifiedMeta.shop_name || '').trim()
+    const verifiedPendingShopRequest = sanitizeRegistrationPendingShopRequest(verifiedMeta.pending_shop_request)
     const verifiedRoadtourContext = sanitizeRoadtourRegistrationContext(verifiedMeta.roadtour_context)
 
     if (verifiedReferenceUserId && userData.reference_user_id?.trim() && userData.reference_user_id.trim() !== verifiedReferenceUserId) {
@@ -730,6 +737,22 @@ export async function registerConsumer(userData: {
       }
     }
 
+    if (verifiedPendingShopRequest) {
+      if (userData.organization_id?.trim()) {
+        return {
+          success: false,
+          error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+        }
+      }
+
+      if (userData.shop_name?.trim() && !matchesRegistrationPendingShopSelection(userData.shop_name, verifiedPendingShopRequest)) {
+        return {
+          success: false,
+          error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+        }
+      }
+    }
+
     if (verifiedReferralPhone && userData.referral_phone?.trim() && !samePhone(userData.referral_phone, verifiedReferralPhone)) {
       return {
         success: false,
@@ -742,6 +765,7 @@ export async function registerConsumer(userData: {
       shopName: verifiedShopName || userData.shop_name,
       referenceUserId: verifiedReferenceUserId || userData.reference_user_id,
       referralPhone: verifiedReferralPhone || userData.referral_phone,
+      pendingShopRequest: verifiedPendingShopRequest,
     })
 
     if (!linkSelection.ok) {
@@ -750,6 +774,9 @@ export async function registerConsumer(userData: {
         error: 'Your selected reference and shop must be verified again. Please request a new WhatsApp code and try again.'
       }
     }
+
+    let finalOrganizationId = linkSelection.organizationId
+    let finalShopDisplayName = linkSelection.shopDisplayName
 
     // Create user with auto-confirm to bypass rate limits and verification
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
@@ -779,6 +806,29 @@ export async function registerConsumer(userData: {
       }
     }
 
+    if (!finalOrganizationId && linkSelection.pendingShopRequest) {
+      try {
+        const { organization } = await createShopOrganization(adminClient, {
+          form: linkSelection.pendingShopRequest,
+          createdBy: authUser.user.id,
+        })
+
+        finalOrganizationId = organization.id
+        finalShopDisplayName = getRegistrationPendingShopDisplayName(linkSelection.pendingShopRequest)
+      } catch (shopCreateError) {
+        try {
+          await adminClient.auth.admin.deleteUser(authUser.user.id)
+        } catch (deleteError) {
+          console.error('Failed to rollback auth user after shop creation error:', deleteError)
+        }
+
+        return {
+          success: false,
+          error: shopCreateError instanceof Error ? shopCreateError.message : 'Failed to create shop during registration.',
+        }
+      }
+    }
+
     // Explicitly sync user profile to ensure it exists before login
     const { error: syncError } = await adminClient
       .rpc('sync_user_profile', {
@@ -799,8 +849,8 @@ export async function registerConsumer(userData: {
     profileUpdates.reference_user_id = linkSelection.referenceUserId
     profileUpdates.referral_phone = linkSelection.referralPhone
     if (userData.address) profileUpdates.address = userData.address
-    profileUpdates.organization_id = linkSelection.organizationId
-    profileUpdates.shop_name = linkSelection.shopDisplayName
+    profileUpdates.organization_id = finalOrganizationId
+    profileUpdates.shop_name = finalShopDisplayName
 
     if (Object.keys(profileUpdates).length > 0) {
       const { error: profileError } = await adminClient
@@ -911,7 +961,7 @@ export async function registerConsumer(userData: {
         email: normalizedEmail,
         org_id: userData.registration_org_id || null,
         reference_user_id: linkSelection.referenceUserId,
-        shop_organization_id: linkSelection.organizationId,
+        shop_organization_id: finalOrganizationId,
         registration_source: verifiedRoadtourContext ? 'roadtour' : 'premium_loyalty',
         roadtour_context: verifiedRoadtourContext,
       },

@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         const referralPhone = String(body?.referralPhone || '').trim()
         const shopOrganizationId = String(body?.shopOrganizationId || '').trim()
         const shopName = String(body?.shopName || '').trim()
+        const pendingShopRequest = body?.pendingShopRequest || null
         const password = String(body?.password || '')
         const confirmPassword = String(body?.confirmPassword || '')
         const roadtourContext = sanitizeRoadtourRegistrationContext(body?.roadtourContext)
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
             shopName,
             referenceUserId,
             referralPhone,
+            pendingShopRequest,
         })
 
         if (!linkSelection.ok) {
@@ -106,6 +108,7 @@ export async function POST(req: NextRequest) {
                 referral_phone: linkSelection.referralPhone,
                 shop_organization_id: linkSelection.organizationId,
                 shop_name: linkSelection.shopDisplayName,
+                pending_shop_request: linkSelection.pendingShopRequest,
                 registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
                 roadtour_context: roadtourContext,
             },
@@ -127,6 +130,7 @@ export async function POST(req: NextRequest) {
                     org_id: orgId,
                     reference_user_id: linkSelection.referenceUserId,
                     shop_organization_id: linkSelection.organizationId,
+                    pending_shop_request: Boolean(linkSelection.pendingShopRequest),
                     registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
                     roadtour_context: roadtourContext,
                 },
@@ -144,6 +148,7 @@ export async function POST(req: NextRequest) {
                     org_id: orgId,
                     reference_user_id: linkSelection.referenceUserId,
                     shop_organization_id: linkSelection.organizationId,
+                    pending_shop_request: Boolean(linkSelection.pendingShopRequest),
                     registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
                     roadtour_context: roadtourContext,
                 },
@@ -165,6 +170,7 @@ export async function POST(req: NextRequest) {
                 org_id: orgId,
                 reference_user_id: linkSelection.referenceUserId,
                 shop_organization_id: linkSelection.organizationId,
+                pending_shop_request: Boolean(linkSelection.pendingShopRequest),
                 registration_source: roadtourContext ? 'roadtour' : 'premium_loyalty',
                 roadtour_context: roadtourContext,
             },

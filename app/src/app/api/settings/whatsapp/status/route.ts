@@ -11,6 +11,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils';
 
+async function hasGatewayQr(config: { baseUrl: string; apiKey: string | undefined; tenantId: string }) {
+  try {
+    const qrStatus = await callGateway(
+      config.baseUrl,
+      config.apiKey,
+      'GET',
+      '/session/qr',
+      undefined,
+      config.tenantId
+    );
+
+    return Boolean(qrStatus?.available || qrStatus?.qr || qrStatus?.qr_png_base64);
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -78,8 +95,11 @@ export async function GET(request: NextRequest) {
       const phoneNumber = isGetouch
         ? gatewayStatus.phone || null
         : gatewayStatus.phone_number || null;
+      const qrAvailable = isGetouch && !connected
+        ? await hasGatewayQr(config)
+        : Boolean(gatewayStatus.has_qr);
       const pairingState = isGetouch
-        ? (connected ? 'connected' : gatewayStatus.state || 'disconnected')
+        ? (connected ? 'connected' : qrAvailable ? 'waiting_qr' : gatewayStatus.state || 'disconnected')
         : gatewayStatus.pairing_state;
 
       return NextResponse.json({
@@ -92,7 +112,7 @@ export async function GET(request: NextRequest) {
         last_error: gatewayStatus.last_error || null,
         last_disconnect_code: gatewayStatus.last_disconnect_code || null,
         last_disconnect_reason: gatewayStatus.last_disconnect_reason || null,
-        has_qr: gatewayStatus.has_qr,
+        has_qr: qrAvailable,
         tenant_id: gatewayStatus.tenant_id,
       }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (gatewayError: any) {

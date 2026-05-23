@@ -88,6 +88,7 @@ import { CreateShopDialog } from '@/components/shop-requests/CreateShopDialog'
 import { hasValidLinkedShop, hasValidReferenceLink, resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { INVALID_REFERENCE_WARNING_MESSAGE, INVALID_SHOP_WARNING_MESSAGE } from '@/lib/engagement/profile-link-validation'
 import {
+    getRegistrationPendingShopDisplayName,
     getRegistrationReferenceSelectionError,
     getRegistrationShopSelectionError,
     SIGNUP_CONFIRM_PASSWORD_REQUIRED_MESSAGE,
@@ -95,6 +96,8 @@ import {
     SIGNUP_PASSWORD_REQUIRED_MESSAGE,
     SIGNUP_PASSWORDS_DO_NOT_MATCH_MESSAGE,
     SIGNUP_PASSWORDS_MATCH_MESSAGE,
+    type RegistrationPendingShopRequest,
+    validateRegistrationLinkSelections,
     validateRegistrationPasswordFields,
 } from '@/lib/engagement/registration-link-selection'
 import { getRoadtourShopSurveyField, getRoadtourShopSurveyPrefillValues, type RoadtourShopSurveySource } from '@/lib/roadtour/survey'
@@ -629,6 +632,8 @@ export default function PremiumLoyaltyTemplate({
     const [pendingCollectResumeError, setPendingCollectResumeError] = useState('')
     const [isShopRequestOpen, setIsShopRequestOpen] = useState(false)
     const [pendingShopRequestName, setPendingShopRequestName] = useState('')
+    const [isSignUpShopRequestOpen, setIsSignUpShopRequestOpen] = useState(false)
+    const [pendingSignUpShopRequestName, setPendingSignUpShopRequestName] = useState('')
     const [consumerClaimConfirmed, setConsumerClaimConfirmed] = useState(false)
     const [qrClaimMode, setQrClaimMode] = useState<'single_shop' | 'dual'>('single_shop')
     const [qrShopLaneCollected, setQrShopLaneCollected] = useState(false)
@@ -732,6 +737,7 @@ export default function PremiumLoyaltyTemplate({
     const [signUpShopName, setSignUpShopName] = useState('')
     const [signUpReferenceUserId, setSignUpReferenceUserId] = useState<string | null>(null)
     const [signUpShopOrganizationId, setSignUpShopOrganizationId] = useState<string | null>(null)
+    const [signUpPendingShopRequest, setSignUpPendingShopRequest] = useState<RegistrationPendingShopRequest | null>(null)
     const [signUpReferenceError, setSignUpReferenceError] = useState('')
     const [signUpShopError, setSignUpShopError] = useState('')
     const [signUpPasswordError, setSignUpPasswordError] = useState('')
@@ -2269,6 +2275,7 @@ export default function PremiumLoyaltyTemplate({
         setSignUpShopName('')
         setSignUpReferenceUserId(null)
         setSignUpShopOrganizationId(null)
+        setSignUpPendingShopRequest(null)
         setSignUpReferenceError('')
         setSignUpShopError('')
         setSignUpPasswordError('')
@@ -2283,6 +2290,8 @@ export default function PremiumLoyaltyTemplate({
         setPhoneError('')
         setSignUpEmailStatus('idle')
         setSignUpPhoneStatus('idle')
+        setIsSignUpShopRequestOpen(false)
+        setPendingSignUpShopRequestName('')
         resetRegistrationVerificationState()
     }
 
@@ -2296,7 +2305,22 @@ export default function PremiumLoyaltyTemplate({
     }
 
     const resolveSignUpShopError = (value: string, shopOrganizationId: string | null) => {
-        return getRegistrationShopSelectionError(value, shopOrganizationId) || ''
+        return getRegistrationShopSelectionError(value, shopOrganizationId, signUpPendingShopRequest) || ''
+    }
+
+    const validateSignUpLinkSelections = () => {
+        const validation = validateRegistrationLinkSelections({
+            referenceValue: signUpReference,
+            referenceUserId: signUpReferenceUserId,
+            shopValue: signUpShopName,
+            shopOrganizationId: signUpShopOrganizationId,
+            pendingShopRequest: signUpPendingShopRequest,
+        })
+
+        setSignUpReferenceError(validation.referenceError || '')
+        setSignUpShopError(validation.shopError || '')
+
+        return validation.isValid
     }
 
     const applySignUpPasswordValidation = (options?: {
@@ -2492,6 +2516,7 @@ export default function PremiumLoyaltyTemplate({
                     referralPhone: signUpReference.trim(),
                     shopOrganizationId: signUpShopOrganizationId,
                     shopName: signUpShopName.trim(),
+                    pendingShopRequest: signUpPendingShopRequest,
                     password: loginPassword,
                     confirmPassword: signUpConfirmPassword,
                     roadtourContext: roadtourContext
@@ -6606,16 +6631,24 @@ export default function PremiumLoyaltyTemplate({
                                                 value={signUpShopName}
                                                 onSelect={(shop: ShopResult | null, displayName: string) => {
                                                     setLoginError('')
-                                                    const hadSelectedShop = Boolean(signUpShopOrganizationId)
+                                                    const hadSelectedShop = Boolean(signUpShopOrganizationId || signUpPendingShopRequest)
                                                     const nextShopOrganizationId = shop?.org_id || null
+
+                                                    if (registrationOtpRequested && (nextShopOrganizationId !== signUpShopOrganizationId || Boolean(signUpPendingShopRequest))) {
+                                                        resetRegistrationVerificationState()
+                                                    }
+
                                                     setSignUpShopName(displayName)
                                                     setSignUpShopOrganizationId(nextShopOrganizationId)
 
                                                     if (shop) {
+                                                        setSignUpPendingShopRequest(null)
                                                         setSignUpShopTouched(true)
                                                         setSignUpShopError('')
                                                         return
                                                     }
+
+                                                    setSignUpPendingShopRequest(null)
 
                                                     if (!displayName) {
                                                         setSignUpShopError(signUpShopTouched || signUpValidationAttempted ? resolveSignUpShopError('', null) : '')
@@ -6632,12 +6665,42 @@ export default function PremiumLoyaltyTemplate({
                                                     setSignUpShopTouched(true)
                                                     setSignUpShopError(resolveSignUpShopError(value, hasSelection ? signUpShopOrganizationId : null))
                                                 }}
+                                                onCreateRequest={(shopName) => {
+                                                    setPendingSignUpShopRequestName(toTitleCaseWords(shopName.trim()))
+                                                    setIsSignUpShopRequestOpen(true)
+                                                }}
                                                 placeholder="Search shop by name..."
                                                 maxLength={50}
                                             />
                                             {signUpShopError && (
                                                 <p className="text-xs text-red-500 mt-1">{signUpShopError}</p>
                                             )}
+                                            <CreateShopDialog
+                                                open={isSignUpShopRequestOpen}
+                                                onOpenChange={(open) => {
+                                                    setIsSignUpShopRequestOpen(open)
+                                                    if (!open) {
+                                                        setPendingSignUpShopRequestName('')
+                                                    }
+                                                }}
+                                                defaultShopName={pendingSignUpShopRequestName}
+                                                mode="prepare-registration"
+                                                linkUser={false}
+                                                onPrepared={(shopRequest) => {
+                                                    if (registrationOtpRequested) {
+                                                        resetRegistrationVerificationState()
+                                                    }
+
+                                                    setIsSignUpShopRequestOpen(false)
+                                                    setPendingSignUpShopRequestName('')
+                                                    setSignUpPendingShopRequest(shopRequest)
+                                                    setSignUpShopName(getRegistrationPendingShopDisplayName(shopRequest))
+                                                    setSignUpShopOrganizationId(null)
+                                                    setSignUpShopTouched(true)
+                                                    setSignUpShopError('')
+                                                    setLoginError('')
+                                                }}
+                                            />
                                         </div>
                                     </>
                                 )}

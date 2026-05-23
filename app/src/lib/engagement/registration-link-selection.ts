@@ -1,3 +1,5 @@
+import { sanitizeShopRequestForm, type ShopRequestFormInput } from '@/lib/shop-requests/core'
+
 export const SIGNUP_REFERENCE_REQUIRED_MESSAGE = 'Reference is required.'
 export const INVALID_SIGNUP_REFERENCE_SELECTION_MESSAGE = 'Please select a valid reference from the list.'
 export const SIGNUP_SHOP_REQUIRED_MESSAGE = 'Shop name is required.'
@@ -13,6 +15,50 @@ interface RegistrationLinkSelectionInput {
   referenceUserId?: string | null
   shopValue?: string | null
   shopOrganizationId?: string | null
+  pendingShopRequest?: ShopRequestFormInput | null
+}
+
+export interface RegistrationPendingShopRequest extends ShopRequestFormInput {}
+
+function normalizeLabel(value?: string | null) {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+export function sanitizeRegistrationPendingShopRequest(
+  pendingShopRequest?: RegistrationPendingShopRequest | null,
+) {
+  if (!pendingShopRequest) return null
+
+  const form = sanitizeShopRequestForm(pendingShopRequest)
+  return form.shopName ? form : null
+}
+
+export function getRegistrationPendingShopDisplayName(
+  pendingShopRequest?: RegistrationPendingShopRequest | null,
+) {
+  const form = sanitizeRegistrationPendingShopRequest(pendingShopRequest)
+  if (!form) return ''
+
+  return form.branch ? `${form.shopName} (${form.branch})` : form.shopName
+}
+
+export function matchesRegistrationPendingShopSelection(
+  shopValue?: string | null,
+  pendingShopRequest?: RegistrationPendingShopRequest | null,
+) {
+  const form = sanitizeRegistrationPendingShopRequest(pendingShopRequest)
+  if (!form) return false
+
+  const normalizedShopValue = normalizeLabel(shopValue)
+  if (!normalizedShopValue) return false
+
+  const displayName = getRegistrationPendingShopDisplayName(form)
+  const allowedShopNames = new Set([
+    normalizeLabel(displayName),
+    normalizeLabel(form.shopName),
+  ].filter(Boolean))
+
+  return allowedShopNames.has(normalizedShopValue)
 }
 
 export function getRegistrationReferenceSelectionError(
@@ -31,14 +77,18 @@ export function getRegistrationReferenceSelectionError(
 export function getRegistrationShopSelectionError(
   shopValue?: string | null,
   shopOrganizationId?: string | null,
+  pendingShopRequest?: RegistrationPendingShopRequest | null,
 ) {
   const normalizedShopValue = shopValue?.trim() || ''
   const normalizedShopOrganizationId = shopOrganizationId?.trim() || ''
+  const sanitizedPendingShopRequest = sanitizeRegistrationPendingShopRequest(pendingShopRequest)
 
-  if (!normalizedShopValue) return SIGNUP_SHOP_REQUIRED_MESSAGE
-  if (!normalizedShopOrganizationId) return INVALID_SIGNUP_SHOP_SELECTION_MESSAGE
+  if (!normalizedShopValue && !sanitizedPendingShopRequest) return SIGNUP_SHOP_REQUIRED_MESSAGE
 
-  return null
+  if (normalizedShopOrganizationId) return null
+  if (matchesRegistrationPendingShopSelection(shopValue, sanitizedPendingShopRequest)) return null
+
+  return INVALID_SIGNUP_SHOP_SELECTION_MESSAGE
 }
 
 export function validateRegistrationPasswordFields(
@@ -80,6 +130,7 @@ export function validateRegistrationLinkSelections(input: RegistrationLinkSelect
   const shopError = getRegistrationShopSelectionError(
     input.shopValue,
     input.shopOrganizationId,
+    input.pendingShopRequest,
   )
 
   return {

@@ -105,10 +105,10 @@ describe('ShopPicker', () => {
         })
 
         await waitFor(() => {
-            expect(screen.getByText('My shop name is not found. Create new.')).toBeTruthy()
+            expect(screen.getByText('Create New Shop')).toBeTruthy()
         })
 
-        await user.click(screen.getByText('My shop name is not found. Create new.'))
+        await user.click(screen.getByText('Create New Shop'))
         expect(onCreateRequest).toHaveBeenCalledWith('Kedai Baru')
     })
 
