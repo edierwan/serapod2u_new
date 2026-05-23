@@ -8,21 +8,31 @@ export const dynamic = 'force-dynamic'
 
 const PURPOSE = 'organization_deletion'
 
-function getRoleLevel(profile: any) {
-  if (Array.isArray(profile?.roles)) {
-    return profile.roles[0]?.role_level ?? null
-  }
+function getJoinedRole(profile: any) {
+  return Array.isArray(profile?.roles) ? profile.roles[0] : profile?.roles
+}
 
-  return profile?.roles?.role_level ?? null
+function getRoleLevel(profile: any) {
+  const rawLevel = getJoinedRole(profile)?.role_level
+  const roleLevel = typeof rawLevel === 'number' ? rawLevel : Number(rawLevel)
+
+  return Number.isFinite(roleLevel) ? roleLevel : null
+}
+
+function getRoleCodes(profile: any) {
+  const joinedRole = getJoinedRole(profile)
+
+  return [profile?.role_code, joinedRole?.role_code]
+    .filter(Boolean)
+    .map((code) => String(code).trim().toLowerCase())
 }
 
 function canDeleteOrganizations(profile: any) {
   const roleLevel = getRoleLevel(profile)
-  const roleCode = String(profile?.role_code || '').trim().toLowerCase()
+  const roleCodes = getRoleCodes(profile)
 
-  return (typeof roleLevel === 'number' && roleLevel <= 10) ||
-    profile?.is_super_admin === true ||
-    ['super_admin', 'superadmin', 'sa', 'super', 'hq_admin', 'hq', 'admin', 'admin_hq'].includes(roleCode)
+  return (roleLevel !== null && roleLevel <= 10) ||
+    roleCodes.some((roleCode) => ['super_admin', 'superadmin', 'sa', 'super', 'hq_admin', 'hq', 'admin_hq'].includes(roleCode))
 }
 
 export async function POST(request: NextRequest) {
@@ -38,13 +48,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: profile } = await admin
+    const { data: profile, error: profileError } = await admin
       .from('users')
-      .select('organization_id, role_code, is_super_admin, roles(role_level)')
+      .select('organization_id, role_code, roles(role_level, role_code)')
       .eq('id', user.id)
       .single()
 
-    if (!canDeleteOrganizations(profile)) {
+    if (profileError || !canDeleteOrganizations(profile)) {
       return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
     }
 
@@ -103,6 +113,29 @@ export async function POST(request: NextRequest) {
 
     if (codeRow.user_id && codeRow.user_id !== user.id) {
       return NextResponse.json({ error: 'This code was requested by a different admin.' }, { status: 403 })
+    }
+
+    const { data: dependencyCheck, error: dependencyError } = await admin
+      .rpc('check_organization_dependencies', { p_org_id: orgId })
+
+    if (dependencyError) {
+      console.error('check_organization_dependencies RPC error before delete:', dependencyError)
+      return NextResponse.json({ error: 'Failed to verify organization dependencies.' }, { status: 500 })
+    }
+
+    if (!dependencyCheck?.can_delete) {
+      await logOrganizationDeletionAudit(admin, {
+        operation: 'delete_organization_execute',
+        userId: user.id,
+        userEmail: user.email || null,
+        allowed: false,
+        reason: `Dependency check blocked delete for ${orgId}`,
+        ip,
+      })
+      return NextResponse.json(
+        { error: dependencyCheck?.error || 'Organization has blocking dependencies and cannot be deleted.' },
+        { status: 400 },
+      )
     }
 
     await db
