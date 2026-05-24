@@ -29,6 +29,8 @@ import {
 import { toast } from '@/components/ui/use-toast'
 import {
     DUPLICATE_POLICY_LABEL,
+    POINT_RELEASE_RULE_LABEL,
+    PRODUCT_QR_COUNTING_PERIOD_LABEL,
     fetchRoadtourRuns,
     type RoadtourRun,
 } from '@/lib/roadtour/events'
@@ -972,9 +974,20 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             )}
                         </div>
                         {selectedRun && (
-                            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                                Duplicate protection: {DUPLICATE_POLICY_LABEL[selectedRun.duplicate_policy]}
+                            <div className="flex flex-col gap-2 text-xs lg:items-end">
+                                <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5">
+                                    <ShieldCheck className="h-3.5 w-3.5" />
+                                    Duplicate protection: {DUPLICATE_POLICY_LABEL[selectedRun.duplicate_policy]}
+                                </div>
+                                <div className="flex items-center gap-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5">
+                                    <Gift className="h-3.5 w-3.5" />
+                                    Reward release: {POINT_RELEASE_RULE_LABEL[selectedRun.point_release_rule]}
+                                    {selectedRun.point_release_rule === 'product_qr_scan_target_once' && selectedRun.required_product_qr_scans && selectedRun.product_qr_counting_period ? (
+                                        <span className="text-blue-600">
+                                            ({selectedRun.required_product_qr_scans} unique scans, {PRODUCT_QR_COUNTING_PERIOD_LABEL[selectedRun.product_qr_counting_period]})
+                                        </span>
+                                    ) : null}
+                                </div>
                             </div>
                         )}
                     </CardContent>

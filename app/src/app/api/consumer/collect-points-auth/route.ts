@@ -8,6 +8,7 @@ import {
 } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
+import { getConsumerCollectScanId, recordRoadtourProductQrMilestoneProgress } from '@/lib/roadtour/milestone'
 import { reportScanIssue } from '@/lib/server/scan-issues/logger'
 
 /**
@@ -448,6 +449,25 @@ export async function POST(request: NextRequest) {
 
     if (!result.success) {
       if (result.already_collected) {
+        let roadtourMilestone = null
+        const { data: existingProductScan } = await supabaseAdmin
+          .from('consumer_qr_scans')
+          .select('id')
+          .eq('qr_code_id', qrCodeData.id)
+          .eq('consumer_id', user.id)
+          .eq('collected_points', true)
+          .order('points_collected_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (existingProductScan?.id) {
+          try {
+            roadtourMilestone = await recordRoadtourProductQrMilestoneProgress(supabaseAdmin, existingProductScan.id)
+          } catch (milestoneError) {
+            console.error('RoadTour milestone duplicate evaluation failed:', milestoneError)
+          }
+        }
+
         const totalBalance = await resolveTrustedPointsBalance(supabaseAdmin, {
           userId: user.id,
           roleCode: shopUser.role_code,
@@ -477,7 +497,9 @@ export async function POST(request: NextRequest) {
             balance_source: totalBalance.source,
             claim_mode: pointClaimSettings.claimMode,
             claim_lane: claimLane,
-            remaining_lane_available: remainingLane
+            remaining_lane_available: remainingLane,
+            roadtour_milestone: roadtourMilestone,
+            roadtour_duplicate_product_qr: roadtourMilestone?.duplicate_product_qr === true,
           },
           { status: 409 }
         )
@@ -497,6 +519,16 @@ export async function POST(request: NextRequest) {
       }
     } catch (bonusError) {
       console.warn('Registration bonus evaluation skipped:', bonusError)
+    }
+
+    let roadtourMilestone = null
+    const productScanId = getConsumerCollectScanId(result)
+    if (productScanId) {
+      try {
+        roadtourMilestone = await recordRoadtourProductQrMilestoneProgress(supabaseAdmin, productScanId)
+      } catch (milestoneError) {
+        console.error('RoadTour milestone progress evaluation failed:', milestoneError)
+      }
     }
 
     const totalBalance = await resolveTrustedPointsBalance(supabaseAdmin, {
@@ -545,7 +577,10 @@ export async function POST(request: NextRequest) {
       avatar_url: shopUser.avatar_url,
       claim_mode: pointClaimSettings.claimMode,
       claim_lane: claimLane,
-      consumer_claim_confirmed_at: shopUser.consumer_claim_confirmed_at || null
+      consumer_claim_confirmed_at: shopUser.consumer_claim_confirmed_at || null,
+      roadtour_milestone: roadtourMilestone,
+      roadtour_duplicate_product_qr: roadtourMilestone?.duplicate_product_qr === true,
+      roadtour_milestone_awarded: roadtourMilestone?.milestone_awarded === true,
     })
 
   } catch (error) {

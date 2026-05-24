@@ -11,8 +11,10 @@ import {
     normalizeRoadtourParticipantPhone,
 } from '@/lib/roadtour/duplicate-protection'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
+import { buildMilestoneClaimResponse, createRoadtourParticipantMission, missionRowToMilestoneMission, type RoadtourPointReleaseRule } from '@/lib/roadtour/milestone'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
+import { normalizePhoneE164 } from '@/utils/phone'
 
 function isMissingConsumerPhoneColumnError(error: any) {
     const combined = [error?.message, error?.details, error?.hint]
@@ -106,6 +108,50 @@ type RoadtourSurveyResponseItemInsert = {
     answer_json?: unknown
     answer_number?: number
     media_url?: string | null
+}
+
+function normalizeParticipantPhoneKey(phone?: string | null) {
+    const normalized = normalizePhoneE164(phone || '').replace(/^\+/, '')
+    return normalized || null
+}
+
+function normalizePointReleaseRule(value: unknown): RoadtourPointReleaseRule {
+    return value === 'product_qr_scan_target_once'
+        ? 'product_qr_scan_target_once'
+        : 'immediate_after_roadtour_claim'
+}
+
+function getSingleRelation<T>(relation: T | T[] | null | undefined): T | null {
+    if (Array.isArray(relation)) return relation[0] ?? null
+    return relation ?? null
+}
+
+async function findActiveRoadtourMission(params: {
+    supabase: ReturnType<typeof createAdminClient>
+    roadtourEventId: string
+    roadtourCampaignId: string
+    participantUserId: string
+    participantPhoneNormalized: string | null
+}) {
+    let query = params.supabase
+        .from('roadtour_participant_missions')
+        .select('*')
+        .eq('roadtour_event_id', params.roadtourEventId)
+        .eq('roadtour_campaign_id', params.roadtourCampaignId)
+        .in('reward_status', ['pending', 'completed', 'awarded'])
+        .gt('effective_period_end', new Date().toISOString())
+        .order('enrolled_at', { ascending: false })
+        .limit(1)
+
+    if (params.participantPhoneNormalized) {
+        query = query.or(`participant_user_id.eq.${params.participantUserId},participant_phone_normalized.eq.${params.participantPhoneNormalized}`)
+    } else {
+        query = query.eq('participant_user_id', params.participantUserId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data?.[0] ? missionRowToMilestoneMission(data[0]) : null
 }
 
 function buildRoadtourSurveyResponseItem(params: {
@@ -405,18 +451,20 @@ export async function POST(request: NextRequest) {
         let roadtour_run_id: string | null = null
         let runDuplicatePolicy: string | null = null
         let roadtourRunName: string | null = null
+        let pointReleaseRule: RoadtourPointReleaseRule = 'immediate_after_roadtour_claim'
         try {
             const { data: campaignRow } = await (supabase as any)
                 .from('roadtour_campaigns')
-                .select('roadtour_run_id, roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(id,name,duplicate_policy)')
+                .select('roadtour_run_id, roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(id,name,duplicate_policy,point_release_rule,required_product_qr_scans,product_qr_counting_period,unique_product_qr_only,active_reward_rule_version_id)')
                 .eq('id', campaign_id)
                 .maybeSingle()
             if (campaignRow) {
                 roadtour_run_id = campaignRow.roadtour_run_id || null
-                const runRel: any = (campaignRow as any).roadtour_runs
+                const runRel = getSingleRelation((campaignRow as any).roadtour_runs)
                 if (runRel) {
                     runDuplicatePolicy = runRel.duplicate_policy || null
                     roadtourRunName = runRel.name || null
+                    pointReleaseRule = normalizePointReleaseRule(runRel.point_release_rule)
                 }
             }
         } catch (runLookupError) {
@@ -546,6 +594,8 @@ export async function POST(request: NextRequest) {
         const explicitShopId = shop_id || null
         const resolvedScanShopId = explicitShopId || qrShopId
         const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
+        const isMilestoneRelease = pointReleaseRule === 'product_qr_scan_target_once' && !!roadtour_run_id
+        const participantPhoneNormalized = normalizeParticipantPhoneKey(userPhone)
 
         // RoadTour does NOT use the product dual-claim lane selection.
         // Users without a shop will be caught by SHOP_REQUIRED / PROFILE_INCOMPLETE gates below.
@@ -602,6 +652,27 @@ export async function POST(request: NextRequest) {
                 },
                 { status: 400 }
             )
+        }
+
+        if (isMilestoneRelease && roadtour_run_id && userId) {
+            const existingMission = await findActiveRoadtourMission({
+                supabase,
+                roadtourEventId: roadtour_run_id,
+                roadtourCampaignId: campaign_id,
+                participantUserId: userId,
+                participantPhoneNormalized,
+            })
+
+            if (existingMission) {
+                const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
+                return NextResponse.json({
+                    ...buildMilestoneClaimResponse(existingMission),
+                    total_balance: totalBalance,
+                    balance_after: totalBalance,
+                    scan_event_id: null,
+                    survey_response_id: null,
+                })
+            }
         }
 
         const alreadyClaimed = await hasExistingRoadtourReward({
@@ -812,6 +883,54 @@ export async function POST(request: NextRequest) {
                     return NextResponse.json({ message: 'Failed to save survey answers.', detail: itemsErr.message }, { status: 500 })
                 }
             }
+        }
+
+        if (isMilestoneRelease && roadtour_run_id && userId) {
+            const missionResult = await createRoadtourParticipantMission(supabase, {
+                roadtourEventId: roadtour_run_id,
+                roadtourCampaignId: campaign_id,
+                participantUserId: userId,
+                participantPhone: userPhone || '',
+                enrollmentScanEventId: scanEvent.id,
+                shopId: resolvedRewardShopId,
+                createdBy: userId,
+            })
+
+            if (!missionResult.success || !missionResult.mission) {
+                return NextResponse.json(
+                    {
+                        message: missionResult.message || 'Failed to start RoadTour Product QR mission.',
+                        code: missionResult.code || 'MILESTONE_START_FAILED',
+                    },
+                    { status: 500 },
+                )
+            }
+
+            const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
+            await notifyClaim({
+                scanEventId: scanEvent.id,
+                campaignId: campaign_id,
+                qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id,
+                notificationType: 'success',
+                campaignName,
+                referenceName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
+                pointsAwarded: 0,
+                balanceAfter: totalBalance,
+                canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel,
+                message: missionResult.mission.message,
+            })
+
+            return NextResponse.json({
+                ...buildMilestoneClaimResponse(missionResult.mission),
+                total_balance: totalBalance,
+                balance_after: totalBalance,
+                scan_event_id: scanEvent.id,
+                survey_response_id: surveyResponseId,
+            })
         }
 
         // 5. Record reward using the DB function

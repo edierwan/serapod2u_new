@@ -279,6 +279,35 @@ interface RoadtourSurveyField {
     sort_order: number
 }
 
+interface RoadtourMilestoneSummary {
+    reward_status: 'pending' | 'completed' | 'awarded' | 'expired' | 'cancelled'
+    current_valid_product_scan_count: number
+    required_product_qr_scans: number
+    remaining_product_qr_scans: number
+    campaign_reward_points: number
+}
+
+interface RoadtourClaimResponse {
+    code?: string
+    message?: string
+    error?: string
+    requiresLogin?: boolean
+    requiresConsumerConfirmation?: boolean
+    requiresProfileUpdate?: boolean
+    modalMessage?: string
+    points_awarded?: number
+    total_balance?: number
+    balance_after?: number
+    roadtour_reward_deferred?: boolean
+    roadtour_milestone?: RoadtourMilestoneSummary | null
+}
+
+interface RoadtourProductQrProgressNotice {
+    roadtour_milestone?: RoadtourMilestoneSummary | null
+    roadtour_duplicate_product_qr?: boolean
+    roadtour_milestone_awarded?: boolean
+}
+
 function normalizeRoadtourSurveyOptions(value: unknown) {
     if (!Array.isArray(value)) return null
 
@@ -643,6 +672,7 @@ export default function PremiumLoyaltyTemplate({
     const [roadtourSurveyAnswers, setRoadtourSurveyAnswers] = useState<Record<string, string>>({})
     const [roadtourSurveyShopName, setRoadtourSurveyShopName] = useState('')
     const [roadtourSurveyLoading, setRoadtourSurveyLoading] = useState(false)
+    const [roadtourMilestone, setRoadtourMilestone] = useState<RoadtourMilestoneSummary | null>(null)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -970,7 +1000,26 @@ export default function PremiumLoyaltyTemplate({
         setRoadtourSurveyAnswers({})
         setRoadtourSurveyShopName('')
         setRoadtourSurveyLoading(false)
+        setRoadtourMilestone(null)
     }, [roadtourContext?.token])
+
+    function showRoadtourProductQrProgressNotice(data: RoadtourProductQrProgressNotice) {
+        const milestone = data.roadtour_milestone
+        if (!milestone) return
+
+        const title = data.roadtour_milestone_awarded
+            ? 'RoadTour milestone completed'
+            : data.roadtour_duplicate_product_qr
+                ? 'RoadTour QR already counted'
+                : 'RoadTour progress updated'
+        const description = data.roadtour_milestone_awarded
+            ? `${milestone.campaign_reward_points} RoadTour points have been awarded.`
+            : data.roadtour_duplicate_product_qr
+                ? `This Product QR was already counted. Progress remains ${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans}.`
+                : `${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans} Product QR scans counted for your RoadTour reward.`
+
+        toast({ title, description })
+    }
 
     const loadRoadtourSurveyTemplate = async (templateId: string) => {
         setRoadtourSurveyLoading(true)
@@ -1799,7 +1848,7 @@ export default function PremiumLoyaltyTemplate({
 
         try {
             const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
-            const data = await response.json()
+            const data = await response.json() as RoadtourClaimResponse
 
             if (data.success) {
                 return {
@@ -3868,6 +3917,7 @@ export default function PremiumLoyaltyTemplate({
                     setShowPointsLoginModal(false)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    showRoadtourProductQrProgressNotice(data)
                     resetPendingCollectFlowState()
                     return { success: true, alreadyCollected: true }
                 } else {
@@ -3899,6 +3949,7 @@ export default function PremiumLoyaltyTemplate({
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
             }
+            showRoadtourProductQrProgressNotice(data)
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
             setPointsErrorAction(null)
@@ -4046,6 +4097,7 @@ export default function PremiumLoyaltyTemplate({
                     setPointsCollected(true)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
+                    showRoadtourProductQrProgressNotice(data)
                     resetPendingCollectFlowState()
                     return { success: true, alreadyCollected: true }
                 } else {
@@ -4077,6 +4129,7 @@ export default function PremiumLoyaltyTemplate({
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
             }
+            showRoadtourProductQrProgressNotice(data)
             setShowPointsSuccessModal(true)
             setPointsErrorAction(null)
             if (data.avatar_url) setUserAvatarUrl(data.avatar_url)
@@ -4151,8 +4204,25 @@ export default function PremiumLoyaltyTemplate({
                 }
                 throw new Error(data.message || 'Failed to claim reward')
             }
+            if (data.roadtour_reward_deferred && data.roadtour_milestone) {
+                const balance = data.total_balance ?? data.balance_after ?? 0
+                setRoadtourMilestone(data.roadtour_milestone)
+                setPreviousBalance(balance)
+                setPointsEarned(0)
+                setLastEarnedPoints(0)
+                setTotalBalance(balance)
+                setUserPoints(balance)
+                setPointsCollected(true)
+                setRoadtourSurveyFields([])
+                setRoadtourSurveyAnswers({})
+                setRoadtourSurveyShopName('')
+                setShowPointsLoginModal(false)
+                setShowPointsSuccessModal(false)
+                return
+            }
+
             // Success
-            const earned = data.points_awarded || roadtourContext.default_points || 0
+            const earned = data.points_awarded ?? roadtourContext.default_points ?? 0
             const balance = data.total_balance ?? data.balance_after ?? earned
             setPreviousBalance(balance - earned)
             setPointsEarned(earned)
@@ -4160,6 +4230,7 @@ export default function PremiumLoyaltyTemplate({
             setTotalBalance(balance)
             setUserPoints(balance)
             setPointsCollected(true)
+            setRoadtourMilestone(null)
             setRoadtourSurveyFields([])
             setRoadtourSurveyAnswers({})
             setRoadtourSurveyShopName('')
@@ -4212,7 +4283,7 @@ export default function PremiumLoyaltyTemplate({
                     survey_answers: options.surveyAnswers && Object.keys(options.surveyAnswers).length > 0 ? options.surveyAnswers : null,
                 }),
             })
-            const data = await response.json()
+            const data = await response.json() as RoadtourClaimResponse
             if (data.code === 'SHOP_REQUIRED') {
                 openRoadtourShopOnlyPrompt(data.message)
                 return
@@ -4236,7 +4307,25 @@ export default function PremiumLoyaltyTemplate({
                 }
                 throw new Error(data.message || 'Failed to claim reward')
             }
-            const earned = data.points_awarded || roadtourContext.default_points || 0
+            if (data.roadtour_reward_deferred && data.roadtour_milestone) {
+                const balance = data.total_balance ?? data.balance_after ?? 0
+                setRoadtourMilestone(data.roadtour_milestone)
+                setPreviousBalance(balance)
+                setPointsEarned(0)
+                setLastEarnedPoints(0)
+                setTotalBalance(balance)
+                setUserPoints(balance)
+                setPointsCollected(true)
+                setRoadtourSurveyFields([])
+                setRoadtourSurveyAnswers({})
+                setRoadtourSurveyShopName('')
+                setShowPointsLoginModal(false)
+                setShowPointsSuccessModal(false)
+                setShopId(''); setShopPassword('')
+                return
+            }
+
+            const earned = data.points_awarded ?? roadtourContext.default_points ?? 0
             const balance = data.total_balance ?? data.balance_after ?? earned
             setPreviousBalance(balance - earned)
             setPointsEarned(earned)
@@ -4244,6 +4333,7 @@ export default function PremiumLoyaltyTemplate({
             setTotalBalance(balance)
             setUserPoints(balance)
             setPointsCollected(true)
+            setRoadtourMilestone(null)
             setRoadtourSurveyFields([])
             setRoadtourSurveyAnswers({})
             setRoadtourSurveyShopName('')
@@ -8168,9 +8258,41 @@ export default function PremiumLoyaltyTemplate({
                 onClose={() => setShowShopLinkCelebration(false)}
             />
 
+            {roadtourMilestone && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+                        <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
+                        <h3 className="mt-3 text-xl font-bold text-gray-900">RoadTour Progress Started</h3>
+                        <p className="mt-2 text-3xl font-black" style={{ color: config.button_color }}>
+                            {roadtourMilestone.current_valid_product_scan_count}/{roadtourMilestone.required_product_qr_scans}
+                        </p>
+                        <p className="mt-2 text-sm text-gray-600">
+                            You will be entitled to {roadtourMilestone.campaign_reward_points} points after scanning {roadtourMilestone.required_product_qr_scans} unique Product QR codes.
+                        </p>
+                        <p className="mt-2 text-xs text-gray-500">
+                            {roadtourMilestone.remaining_product_qr_scans > 0
+                                ? `${roadtourMilestone.remaining_product_qr_scans} more Product QR scan${roadtourMilestone.remaining_product_qr_scans === 1 ? '' : 's'} to unlock this RoadTour reward.`
+                                : 'Milestone completed. Your reward will be reflected in your points balance.'}
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setRoadtourMilestone(null)
+                                setShowPointsLoginModal(false)
+                                setCollectPointsStep('login')
+                            }}
+                            className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-bold text-white"
+                            style={{ backgroundColor: config.button_color }}
+                        >
+                            Got it
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Collect Points Success Animation */}
             <PointEarnedAnimation
-                isOpen={showPointsSuccessModal}
+                isOpen={showPointsSuccessModal && !roadtourMilestone}
                 pointsEarned={pointsEarned}
                 totalBalance={totalBalance}
                 previousBalance={previousBalance}

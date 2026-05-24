@@ -22,6 +22,8 @@ const ALLOWED_DUPLICATE_POLICIES = new Set([
 ])
 
 const ALLOWED_STATUSES = new Set(['draft', 'active', 'completed', 'cancelled'])
+const ALLOWED_POINT_RELEASE_RULES = new Set(['immediate_after_roadtour_claim', 'product_qr_scan_target_once'])
+const ALLOWED_PRODUCT_QR_COUNTING_PERIODS = new Set(['rolling_1_month', 'rolling_2_months', 'open_period'])
 
 async function resolveAuthorizedEventAccess(eventId: string) {
     const supabase = await createClient()
@@ -104,6 +106,7 @@ export async function PATCH(
         const endDate = String(body?.end_date || '').trim()
         const status = String(body?.status || '').trim()
         const duplicatePolicy = String(body?.duplicate_policy || '').trim()
+        const pointReleaseRule = String(body?.point_release_rule || 'immediate_after_roadtour_claim').trim()
 
         if (!name) {
             return NextResponse.json({ success: false, error: 'Event name is required.' }, { status: 400 })
@@ -125,6 +128,29 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'Invalid duplicate protection policy.' }, { status: 400 })
         }
 
+        if (!ALLOWED_POINT_RELEASE_RULES.has(pointReleaseRule)) {
+            return NextResponse.json({ success: false, error: 'Invalid point release rule.' }, { status: 400 })
+        }
+
+        let requiredProductQrScans: number | null = null
+        let productQrCountingPeriod: string | null = null
+
+        if (pointReleaseRule === 'product_qr_scan_target_once') {
+            const scanCount = Number(body?.required_product_qr_scans)
+            const countingPeriod = String(body?.product_qr_counting_period || '').trim()
+
+            if (!Number.isInteger(scanCount) || scanCount < 1) {
+                return NextResponse.json({ success: false, error: 'Required Product QR scans must be at least 1.' }, { status: 400 })
+            }
+
+            if (!ALLOWED_PRODUCT_QR_COUNTING_PERIODS.has(countingPeriod)) {
+                return NextResponse.json({ success: false, error: 'Product QR counting period is required.' }, { status: 400 })
+            }
+
+            requiredProductQrScans = scanCount
+            productQrCountingPeriod = countingPeriod
+        }
+
         const access = await resolveAuthorizedEventAccess(eventId)
         if ('response' in access) return access.response
 
@@ -137,6 +163,10 @@ export async function PATCH(
                 end_date: endDate,
                 status,
                 duplicate_policy: duplicatePolicy,
+                point_release_rule: pointReleaseRule,
+                required_product_qr_scans: requiredProductQrScans,
+                product_qr_counting_period: productQrCountingPeriod,
+                unique_product_qr_only: true,
                 updated_by: access.profile.id,
                 updated_at: new Date().toISOString(),
             })
