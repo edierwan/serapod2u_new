@@ -147,6 +147,70 @@ const getUserDisplayName = (user: Pick<User, "call_name" | "full_name" | "email"
   return user.call_name?.trim() || user.full_name?.trim() || user.email || "No Name";
 };
 
+const normalizeComparableField = (value: unknown, field?: string) => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (field === "employment_status" && trimmed === "active") {
+      return null;
+    }
+
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return value ?? null;
+};
+
+const hasMeaningfulUserChanges = (
+  existingUser: User,
+  userData: Partial<UserType> & Record<string, any>,
+) => {
+  const comparableFields = [
+    "full_name",
+    "call_name",
+    "role_code",
+    "organization_id",
+    "shop_name",
+    "address",
+    "referral_phone",
+    "bank_id",
+    "bank_account_number",
+    "bank_account_holder_name",
+    "department_id",
+    "manager_user_id",
+    "position_id",
+    "employment_type",
+    "join_date",
+    "employment_status",
+  ] as const;
+
+  for (const field of comparableFields) {
+    if (normalizeComparableField(userData[field], field) !== normalizeComparableField((existingUser as any)[field], field)) {
+      return true;
+    }
+  }
+
+  if (Boolean(userData.is_active ?? true) !== Boolean(existingUser.is_active)) {
+    return true;
+  }
+
+  if (Boolean(userData.can_be_reference) !== Boolean((existingUser as any).can_be_reference)) {
+    return true;
+  }
+
+  const nextPhone = userData.phone || null;
+  const currentPhone = existingUser.phone || null;
+  if ((nextPhone || currentPhone) && !samePhone(nextPhone, currentPhone)) {
+    return true;
+  }
+
+  return false;
+};
+
 export default function UserManagementNew({
   userProfile,
 }: {
@@ -562,6 +626,9 @@ export default function UserManagementNew({
           is_active: userData.is_active ?? true,
         };
 
+        const hasNonPasswordChanges = hasMeaningfulUserChanges(editingUser, userData) || Boolean(avatarFile);
+        let passwordResetSucceeded = false;
+
         // Include end user / independent user fields if present
         if ("shop_name" in userData) updateData.shop_name = (userData as any).shop_name || null;
         if ("address" in userData) updateData.address = (userData as any).address || null;
@@ -591,6 +658,7 @@ export default function UserManagementNew({
               description: "User password has been reset successfully",
               variant: "default",
             });
+            passwordResetSucceeded = true;
           } catch (resetError: any) {
             console.error("Password reset error:", resetError);
             toast({
@@ -598,8 +666,20 @@ export default function UserManagementNew({
               description: resetError.message || "Failed to reset password",
               variant: "destructive",
             });
+
+            if (!hasNonPasswordChanges) {
+              return;
+            }
+
             // Don't throw - continue with other updates
           }
+        }
+
+        if (resetPassword && resetPassword.password && passwordResetSucceeded && !hasNonPasswordChanges) {
+          setDialogOpen(false);
+          setEditingUser(null);
+          await loadUsers();
+          return;
         }
 
         // Handle Bank Details Update (if provided)
