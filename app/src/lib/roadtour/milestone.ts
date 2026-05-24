@@ -138,8 +138,8 @@ export function missionRowToMilestoneMission(row: RoadtourMissionRow): RoadtourM
 export function buildMilestoneClaimResponse(mission: RoadtourMilestoneMission) {
     return {
         message: mission.message,
-        points_awarded: mission.reward_status === 'awarded' ? mission.campaign_reward_points : 0,
-        roadtour_reward_deferred: mission.reward_status !== 'awarded',
+        points_awarded: 0,
+        roadtour_reward_deferred: true,
         roadtour_milestone: mission,
         milestone_progress: {
             current: mission.current_valid_product_scan_count,

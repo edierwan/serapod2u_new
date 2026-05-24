@@ -885,12 +885,20 @@ export default function RoadtourScanPage() {
                         <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
                         {roadtourMilestone ? (
                             <>
-                                <h2 className="text-xl font-bold mt-3">RoadTour Progress Started</h2>
+                                <h2 className="text-xl font-bold mt-3">
+                                    {roadtourMilestone.reward_status === 'awarded'
+                                        ? 'RoadTour Milestone Completed'
+                                        : roadtourMilestone.current_valid_product_scan_count > 0
+                                            ? 'RoadTour Progress Updated'
+                                            : 'RoadTour Progress Started'}
+                                </h2>
                                 <p className="text-3xl font-bold text-emerald-600 mt-2">
                                     {roadtourMilestone.current_valid_product_scan_count}/{roadtourMilestone.required_product_qr_scans}
                                 </p>
                                 <p className="text-sm text-gray-500 mt-2">
-                                    You will be entitled to {roadtourMilestone.campaign_reward_points} points after scanning {roadtourMilestone.required_product_qr_scans} unique Product QR codes.
+                                    {roadtourMilestone.reward_status === 'awarded'
+                                        ? `${roadtourMilestone.campaign_reward_points} RoadTour points have been awarded after completing the Product QR requirement.`
+                                        : `You will be entitled to ${roadtourMilestone.campaign_reward_points} points after scanning ${roadtourMilestone.required_product_qr_scans} unique Product QR codes.`}
                                 </p>
                                 <p className="text-xs text-gray-400 mt-2">
                                     {roadtourMilestone.remaining_product_qr_scans > 0

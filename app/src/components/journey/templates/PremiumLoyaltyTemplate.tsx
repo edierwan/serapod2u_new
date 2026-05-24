@@ -8262,12 +8262,20 @@ export default function PremiumLoyaltyTemplate({
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
                         <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" />
-                        <h3 className="mt-3 text-xl font-bold text-gray-900">RoadTour Progress Started</h3>
+                        <h3 className="mt-3 text-xl font-bold text-gray-900">
+                            {roadtourMilestone.reward_status === 'awarded'
+                                ? 'RoadTour Milestone Completed'
+                                : roadtourMilestone.current_valid_product_scan_count > 0
+                                    ? 'RoadTour Progress Updated'
+                                    : 'RoadTour Progress Started'}
+                        </h3>
                         <p className="mt-2 text-3xl font-black" style={{ color: config.button_color }}>
                             {roadtourMilestone.current_valid_product_scan_count}/{roadtourMilestone.required_product_qr_scans}
                         </p>
                         <p className="mt-2 text-sm text-gray-600">
-                            You will be entitled to {roadtourMilestone.campaign_reward_points} points after scanning {roadtourMilestone.required_product_qr_scans} unique Product QR codes.
+                            {roadtourMilestone.reward_status === 'awarded'
+                                ? `${roadtourMilestone.campaign_reward_points} RoadTour points have been awarded after completing the Product QR requirement.`
+                                : `You will be entitled to ${roadtourMilestone.campaign_reward_points} points after scanning ${roadtourMilestone.required_product_qr_scans} unique Product QR codes.`}
                         </p>
                         <p className="mt-2 text-xs text-gray-500">
                             {roadtourMilestone.remaining_product_qr_scans > 0

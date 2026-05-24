@@ -32,7 +32,7 @@ describe('RoadTour milestone normalization', () => {
         expect(normalizeRoadtourMilestoneMission({ ...missionPayload, required_product_qr_scans: '3' })).toBeNull()
     })
 
-    it('builds a deferred claim response until the mission is awarded', () => {
+    it('builds a milestone claim response without newly awarded RoadTour QR points', () => {
         const mission = normalizeRoadtourMilestoneMission(missionPayload)
         expect(mission).not.toBeNull()
 
@@ -40,6 +40,22 @@ describe('RoadTour milestone normalization', () => {
         expect(response.points_awarded).toBe(0)
         expect(response.roadtour_reward_deferred).toBe(true)
         expect(response.milestone_progress).toEqual({ current: 1, required: 3, remaining: 2 })
+
+        const awardedMission = normalizeRoadtourMilestoneMission({
+            ...missionPayload,
+            reward_status: 'awarded',
+            current_valid_product_scan_count: 3,
+            remaining_product_qr_scans: 0,
+            completed_at: '2026-05-25T00:00:00+08:00',
+            awarded_at: '2026-05-25T00:00:00+08:00',
+            message: 'Milestone completed. 80 points awarded.',
+        })
+        expect(awardedMission).not.toBeNull()
+
+        const awardedResponse = buildMilestoneClaimResponse(awardedMission!)
+        expect(awardedResponse.points_awarded).toBe(0)
+        expect(awardedResponse.roadtour_reward_deferred).toBe(true)
+        expect(awardedResponse.milestone_progress).toEqual({ current: 3, required: 3, remaining: 0 })
     })
 
     it('filters invalid missions from product QR progress responses', () => {
