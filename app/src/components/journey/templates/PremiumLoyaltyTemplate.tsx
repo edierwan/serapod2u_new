@@ -4888,24 +4888,24 @@ export default function PremiumLoyaltyTemplate({
                     {config.points_enabled && (
                         <button
                             onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
-                            disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                            disabled={qrCode ? (collectingPoints || pointsCollected || checkingQrStatus) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && pointsCollected ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                                 }`}
                         >
                             <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                style={{ backgroundColor: (qrCode && (pointsCollected || qrPointsCollected)) ? '#dcfce7' : `${config.primary_color}15` }}
+                                style={{ backgroundColor: (qrCode && pointsCollected) ? '#dcfce7' : `${config.primary_color}15` }}
                             >
                                 {qrCode && (collectingPoints || checkingQrStatus) ? (
                                     <Loader2 className="w-5 h-5 animate-spin" style={{ color: config.primary_color }} />
-                                ) : (qrCode && (pointsCollected || qrPointsCollected)) ? (
+                                ) : (qrCode && pointsCollected) ? (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
                                     <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
                                 )}
                             </div>
                             <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
-                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : roadtourContext ? 'RoadTour Rewards' : 'Collect'}
+                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : pointsCollected ? 'Collected' : roadtourContext ? 'RoadTour Rewards' : 'Collect'}
                             </span>
                         </button>
                     )}
