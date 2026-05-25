@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
     buildMilestoneClaimResponse,
     getConsumerCollectScanId,
+    getPrimaryRoadtourProgressMission,
     normalizeCreateMissionResult,
     normalizeProgressResult,
     normalizeRoadtourMilestoneMission,
@@ -72,6 +73,32 @@ describe('RoadTour milestone normalization', () => {
         expect(result.duplicate_product_qr).toBe(true)
         expect(result.missions).toHaveLength(1)
         expect(result.missions[0]?.mission_id).toBe('mission-1')
+        expect(getPrimaryRoadtourProgressMission(result)?.mission_id).toBe('mission-1')
+    })
+
+    it('prefers the awarded mission when multiple RoadTour missions are returned', () => {
+        const result = normalizeProgressResult({
+            success: true,
+            milestone_evaluated: true,
+            milestone_awarded: true,
+            duplicate_product_qr: false,
+            reason: null,
+            missions: [
+                missionPayload,
+                {
+                    ...missionPayload,
+                    mission_id: 'mission-2',
+                    reward_status: 'awarded',
+                    current_valid_product_scan_count: 3,
+                    remaining_product_qr_scans: 0,
+                    completed_at: '2026-05-25T00:00:00+08:00',
+                    awarded_at: '2026-05-25T00:00:00+08:00',
+                    message: 'Milestone completed. 80 points awarded.',
+                },
+            ],
+        })
+
+        expect(getPrimaryRoadtourProgressMission(result)?.mission_id).toBe('mission-2')
     })
 
     it('guards invalid RPC responses and extracts collect scan ids', () => {

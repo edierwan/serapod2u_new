@@ -7,7 +7,7 @@ import {
 } from '@/lib/engagement/point-claim-settings'
 import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-completion'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
-import { getConsumerCollectScanId, recordRoadtourProductQrMilestoneProgress } from '@/lib/roadtour/milestone'
+import { getConsumerCollectScanId, getPrimaryRoadtourProgressMission, recordRoadtourProductQrMilestoneProgress } from '@/lib/roadtour/milestone'
 import { reportScanIssue } from '@/lib/server/scan-issues/logger'
 
 /**
@@ -611,6 +611,7 @@ export async function POST(request: NextRequest) {
     if (!result.success) {
       if (result.already_collected) {
         let roadtourMilestone = null
+        let roadtourMilestoneMission = null
         const { data: existingProductScan } = await supabaseAdmin
           .from('consumer_qr_scans')
           .select('id')
@@ -624,6 +625,7 @@ export async function POST(request: NextRequest) {
         if (existingProductScan?.id) {
           try {
             roadtourMilestone = await recordRoadtourProductQrMilestoneProgress(supabaseAdmin, existingProductScan.id)
+            roadtourMilestoneMission = getPrimaryRoadtourProgressMission(roadtourMilestone)
           } catch (milestoneError) {
             console.error('RoadTour milestone duplicate evaluation failed:', milestoneError)
           }
@@ -658,7 +660,7 @@ export async function POST(request: NextRequest) {
             claim_lane: claimLane,
             remaining_lane_available: remainingLane,
             consumer_claim_confirmed_at: shopUser.consumer_claim_confirmed_at || null,
-            roadtour_milestone: roadtourMilestone,
+            roadtour_milestone: roadtourMilestoneMission,
             roadtour_duplicate_product_qr: roadtourMilestone?.duplicate_product_qr === true,
           },
           { status: 409 }
@@ -689,10 +691,12 @@ export async function POST(request: NextRequest) {
     }
 
     let roadtourMilestone = null
+    let roadtourMilestoneMission = null
     const productScanId = getConsumerCollectScanId(result)
     if (productScanId) {
       try {
         roadtourMilestone = await recordRoadtourProductQrMilestoneProgress(supabaseAdmin, productScanId)
+        roadtourMilestoneMission = getPrimaryRoadtourProgressMission(roadtourMilestone)
       } catch (milestoneError) {
         console.error('RoadTour milestone progress evaluation failed:', milestoneError)
       }
@@ -742,7 +746,7 @@ export async function POST(request: NextRequest) {
       claim_mode: pointClaimSettings.claimMode,
       claim_lane: claimLane,
       consumer_claim_confirmed_at: shopUser.consumer_claim_confirmed_at || null,
-      roadtour_milestone: roadtourMilestone,
+      roadtour_milestone: roadtourMilestoneMission,
       roadtour_duplicate_product_qr: roadtourMilestone?.duplicate_product_qr === true,
       roadtour_milestone_awarded: roadtourMilestone?.milestone_awarded === true,
     })

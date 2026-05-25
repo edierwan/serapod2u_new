@@ -196,6 +196,16 @@ export function normalizeProgressResult(value: Json | null): RoadtourProductQrPr
     }
 }
 
+export function getPrimaryRoadtourProgressMission(
+    value: RoadtourProductQrProgressResult | null | undefined,
+): RoadtourMilestoneMission | null {
+    if (!value || value.missions.length === 0) return null
+
+    return value.missions.find((mission) => mission.reward_status === 'awarded')
+        ?? value.missions[0]
+        ?? null
+}
+
 export function getConsumerCollectScanId(value: Json | null): string | null {
     if (!isRecord(value)) return null
     return stringValue(value.scan_id)
