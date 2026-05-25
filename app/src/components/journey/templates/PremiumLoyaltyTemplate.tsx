@@ -308,6 +308,12 @@ interface RoadtourProductQrProgressNotice {
     roadtour_milestone_awarded?: boolean
 }
 
+interface RoadtourProductQrProgressCopy {
+    title: string
+    description: string
+    successNote: string | null
+}
+
 function normalizeRoadtourSurveyOptions(value: unknown) {
     if (!Array.isArray(value)) return null
 
@@ -673,6 +679,7 @@ export default function PremiumLoyaltyTemplate({
     const [roadtourSurveyShopName, setRoadtourSurveyShopName] = useState('')
     const [roadtourSurveyLoading, setRoadtourSurveyLoading] = useState(false)
     const [roadtourMilestone, setRoadtourMilestone] = useState<RoadtourMilestoneSummary | null>(null)
+    const [roadtourProductQrSuccessNote, setRoadtourProductQrSuccessNote] = useState<string | null>(null)
 
     // Auth states (for profile login)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -1001,24 +1008,49 @@ export default function PremiumLoyaltyTemplate({
         setRoadtourSurveyShopName('')
         setRoadtourSurveyLoading(false)
         setRoadtourMilestone(null)
+        setRoadtourProductQrSuccessNote(null)
     }, [roadtourContext?.token])
 
-    function showRoadtourProductQrProgressNotice(data: RoadtourProductQrProgressNotice) {
+    function formatCountLabel(value: number, noun: string) {
+        return `${value} ${noun}${value === 1 ? '' : 's'}`
+    }
+
+    function buildRoadtourProductQrProgressCopy(data: RoadtourProductQrProgressNotice): RoadtourProductQrProgressCopy | null {
         const milestone = data.roadtour_milestone
-        if (!milestone) return
+        if (!milestone) return null
 
-        const title = data.roadtour_milestone_awarded
-            ? 'RoadTour milestone completed'
-            : data.roadtour_duplicate_product_qr
-                ? 'RoadTour QR already counted'
-                : 'RoadTour progress updated'
-        const description = data.roadtour_milestone_awarded
-            ? `${milestone.campaign_reward_points} RoadTour points have been awarded.`
-            : data.roadtour_duplicate_product_qr
-                ? `This Product QR was already counted. Progress remains ${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans}.`
-                : `${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans} Product QR scans counted for your RoadTour reward.`
+        const rewardPointsLabel = `${milestone.campaign_reward_points} additional point${milestone.campaign_reward_points === 1 ? '' : 's'}`
+        const remainingScanLabel = formatCountLabel(milestone.remaining_product_qr_scans, 'more Product QR scan')
 
-        toast({ title, description })
+        if (data.roadtour_milestone_awarded || milestone.reward_status === 'awarded') {
+            const completionMessage = `Congratulations. You have completed the RoadTour requirement and ${rewardPointsLabel} have been added to your wallet.`
+            return {
+                title: 'RoadTour bonus unlocked',
+                description: completionMessage,
+                successNote: completionMessage,
+            }
+        }
+
+        if (data.roadtour_duplicate_product_qr) {
+            return {
+                title: 'RoadTour QR already counted',
+                description: `This Product QR was already counted. Your RoadTour progress remains ${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans}.`,
+                successNote: null,
+            }
+        }
+
+        return {
+            title: 'RoadTour bonus in progress',
+            description: `${milestone.current_valid_product_scan_count}/${milestone.required_product_qr_scans} Product QR scans counted. Scan ${remainingScanLabel} to unlock ${rewardPointsLabel}.`,
+            successNote: `RoadTour bonus in progress. Scan ${remainingScanLabel} and we will add ${rewardPointsLabel} after you complete this requirement.`,
+        }
+    }
+
+    function showRoadtourProductQrProgressNotice(data: RoadtourProductQrProgressNotice) {
+        const progressCopy = buildRoadtourProductQrProgressCopy(data)
+        if (!progressCopy) return
+
+        toast({ title: progressCopy.title, description: progressCopy.description })
     }
 
     const loadRoadtourSurveyTemplate = async (templateId: string) => {
@@ -3838,6 +3870,7 @@ export default function PremiumLoyaltyTemplate({
 
         setCollectingPoints(true)
         setPointsError('')
+        setRoadtourProductQrSuccessNote(null)
 
         try {
             console.log('🔐 handleCollectPoints - Starting...')
@@ -3914,6 +3947,7 @@ export default function PremiumLoyaltyTemplate({
                     setPreviousBalance(data.total_balance || 0)
                     setTotalBalance(data.total_balance || 0)
                     setPointsCollected(true)
+                    setRoadtourProductQrSuccessNote(null)
                     setShowPointsLoginModal(false)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
@@ -3949,6 +3983,7 @@ export default function PremiumLoyaltyTemplate({
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
             }
+            setRoadtourProductQrSuccessNote(buildRoadtourProductQrProgressCopy(data)?.successNote ?? null)
             showRoadtourProductQrProgressNotice(data)
             setShowPointsLoginModal(false)
             setShowPointsSuccessModal(true)
@@ -4030,6 +4065,7 @@ export default function PremiumLoyaltyTemplate({
 
         setCollectingPoints(true)
         setPointsError('')
+        setRoadtourProductQrSuccessNote(null)
         if (options.resumeAfterProfileSave) {
             setPendingCollectResumeError('')
         }
@@ -4095,6 +4131,7 @@ export default function PremiumLoyaltyTemplate({
                     setPreviousBalance(data.total_balance || 0)
                     setTotalBalance(data.total_balance || 0)
                     setPointsCollected(true)
+                    setRoadtourProductQrSuccessNote(null)
                     setShowPointsSuccessModal(true)
                     setPointsError('')
                     showRoadtourProductQrProgressNotice(data)
@@ -4129,6 +4166,7 @@ export default function PremiumLoyaltyTemplate({
             if (data.consumer_claim_confirmed_at) {
                 setConsumerClaimConfirmed(true)
             }
+            setRoadtourProductQrSuccessNote(buildRoadtourProductQrProgressCopy(data)?.successNote ?? null)
             showRoadtourProductQrProgressNotice(data)
             setShowPointsSuccessModal(true)
             setPointsErrorAction(null)
@@ -8304,11 +8342,13 @@ export default function PremiumLoyaltyTemplate({
                 pointsEarned={pointsEarned}
                 totalBalance={totalBalance}
                 previousBalance={previousBalance}
+                additionalNote={roadtourProductQrSuccessNote || undefined}
                 primaryColor={config.button_color}
                 autoCloseDelay={3500}
                 onClose={() => {
                     setShowPointsSuccessModal(false)
                     setShowPointsLoginModal(false)
+                    setRoadtourProductQrSuccessNote(null)
                     setPointsEarned(0)
                     setShopId('')
                     setShopPassword('')

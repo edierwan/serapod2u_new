@@ -10,6 +10,7 @@ interface PointEarnedAnimationProps {
   pointsEarned: number
   totalBalance: number
   previousBalance?: number
+  additionalNote?: string
   onClose: () => void
   autoCloseDelay?: number // milliseconds, default 2500
   primaryColor?: string
@@ -99,6 +100,7 @@ export function PointEarnedAnimation({
   pointsEarned,
   totalBalance,
   previousBalance = 0,
+  additionalNote,
   onClose,
   autoCloseDelay = 3500,
   primaryColor = '#22c55e'
@@ -321,6 +323,18 @@ export function PointEarnedAnimation({
                   </span>
                 </div>
               </motion.div>
+
+              {additionalNote && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.65 }}
+                  className="mb-4 rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3 text-left"
+                >
+                  <p className="text-sm font-semibold text-gray-900">RoadTour Bonus</p>
+                  <p className="mt-1 text-sm leading-6 text-gray-600">{additionalNote}</p>
+                </motion.div>
+              )}
 
               {/* Done button */}
               <motion.button
