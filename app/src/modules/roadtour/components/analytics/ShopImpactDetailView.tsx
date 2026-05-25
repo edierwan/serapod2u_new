@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     LineChart, Line,
@@ -16,7 +15,9 @@ import {
     formatLiftPercent, formatNumber, PageHeader,
 } from './shared'
 import { useImpactDataset } from '@/modules/roadtour/lib/analytics/useImpactDataset'
+import { resolveShopImpactParticipantDisplay } from '@/modules/roadtour/lib/analytics/shopImpactDetail'
 import type { ImpactStatus, VisitImpactRow } from '@/modules/roadtour/types/analytics'
+import { RoadtourStateFlag } from '../RoadtourStateFlag'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -117,9 +118,9 @@ export function ShopImpactDetailView({ userProfile }: Props) {
                                             <TableHeader>
                                                 <TableRow>
                                                     <TableHead>Shop</TableHead>
-                                                    <TableHead>Region</TableHead>
+                                                    <TableHead>Participant</TableHead>
+                                                    <TableHead className="w-[84px] text-center">Region</TableHead>
                                                     <TableHead>Campaign</TableHead>
-                                                    <TableHead>AM</TableHead>
                                                     <TableHead>Visit Date</TableHead>
                                                     <TableHead className="text-right">Before {w}D</TableHead>
                                                     <TableHead className="text-right">After {w}D</TableHead>
@@ -131,31 +132,57 @@ export function ShopImpactDetailView({ userProfile }: Props) {
                                             <TableBody>
                                                 {pageRows.length === 0 && (
                                                     <TableRow>
-                                                        <TableCell colSpan={10}>
+                                                        <TableCell colSpan={9}>
                                                             <EmptyBlock title="No shops matched the filters." />
                                                         </TableCell>
                                                     </TableRow>
                                                 )}
-                                                {pageRows.map((row) => (
-                                                    <TableRow
-                                                        key={row.visit_id}
-                                                        className={`cursor-pointer ${selectedId === row.visit_id ? 'bg-accent' : ''}`}
-                                                        onClick={() => setSelectedId(row.visit_id)}
-                                                    >
-                                                        <TableCell className="font-medium">{row.shop_name}</TableCell>
-                                                        <TableCell>{row.shop_region || '—'}</TableCell>
-                                                        <TableCell>{row.campaign_name}</TableCell>
-                                                        <TableCell>{row.account_manager_name}</TableCell>
-                                                        <TableCell>{row.visit_date}</TableCell>
-                                                        <TableCell className="text-right">{row.before_scans}</TableCell>
-                                                        <TableCell className="text-right">{row.after_scans}</TableCell>
-                                                        <TableCell className={`text-right font-semibold ${row.scan_lift_percent === null ? 'text-violet-600' : row.scan_lift_percent >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                                            {row.status === 'newly_activated' ? 'NEW' : formatLiftPercent(row.scan_lift_percent)}
-                                                        </TableCell>
-                                                        <TableCell>{row.last_scan_after_at ? new Date(row.last_scan_after_at).toLocaleString() : '—'}</TableCell>
-                                                        <TableCell><StatusPill status={row.status} /></TableCell>
-                                                    </TableRow>
-                                                ))}
+                                                {pageRows.map((row) => {
+                                                    const participantDisplay = resolveShopImpactParticipantDisplay({
+                                                        participantCount: row.participant_count,
+                                                        latestParticipantName: row.latest_participant_name,
+                                                        latestParticipantPhone: row.latest_participant_phone,
+                                                    })
+
+                                                    return (
+                                                        <TableRow
+                                                            key={row.visit_id}
+                                                            className={`cursor-pointer ${selectedId === row.visit_id ? 'bg-accent' : ''}`}
+                                                            onClick={() => setSelectedId(row.visit_id)}
+                                                        >
+                                                            <TableCell>
+                                                                <div className="min-w-[180px]">
+                                                                    <div className="font-medium">{row.shop_name_primary}</div>
+                                                                    {row.shop_branch_label && (
+                                                                        <div className="text-xs text-muted-foreground">{row.shop_branch_label}</div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="min-w-[160px]">
+                                                                    <div className={`font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</div>
+                                                                    {participantDisplay.secondary && (
+                                                                        <div className="text-xs text-muted-foreground">{participantDisplay.secondary}</div>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-center">
+                                                                <div className="flex justify-center">
+                                                                    <RoadtourStateFlag stateName={row.shop_region} size="md" fallback="badge" />
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>{row.campaign_name}</TableCell>
+                                                            <TableCell>{row.visit_date}</TableCell>
+                                                            <TableCell className="text-right">{row.before_scans}</TableCell>
+                                                            <TableCell className="text-right">{row.after_scans}</TableCell>
+                                                            <TableCell className={`text-right font-semibold ${row.scan_lift_percent === null ? 'text-violet-600' : row.scan_lift_percent >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                                                {row.status === 'newly_activated' ? 'NEW' : formatLiftPercent(row.scan_lift_percent)}
+                                                            </TableCell>
+                                                            <TableCell>{row.last_scan_after_at ? new Date(row.last_scan_after_at).toLocaleString() : '—'}</TableCell>
+                                                            <TableCell><StatusPill status={row.status} /></TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
                                             </TableBody>
                                         </Table>
                                     </div>
@@ -190,6 +217,11 @@ function ShopSnapshotPanel({ row, windowDays, onClose }: { row: VisitImpactRow |
             </Card>
         )
     }
+    const participantDisplay = resolveShopImpactParticipantDisplay({
+        participantCount: row.participant_count,
+        latestParticipantName: row.latest_participant_name,
+        latestParticipantPhone: row.latest_participant_phone,
+    })
     const trend = [
         ...row.daily_before.map((d) => ({ label: `D${d.day}`, count: d.count })),
         ...row.daily_after.map((d) => ({ label: `D+${d.day}`, count: d.count })),
@@ -202,9 +234,11 @@ function ShopSnapshotPanel({ row, windowDays, onClose }: { row: VisitImpactRow |
             </CardHeader>
             <CardContent className="space-y-3">
                 <div>
-                    <div className="text-sm font-semibold">{row.shop_name}</div>
+                    <div className="text-sm font-semibold">{row.shop_name_primary}</div>
+                    {row.shop_branch_label && <div className="text-xs text-muted-foreground">{row.shop_branch_label}</div>}
                     {row.shop_code && <div className="text-xs text-muted-foreground">Code: {row.shop_code}</div>}
                     {row.shop_region && <div className="text-xs text-muted-foreground">Region: {row.shop_region}</div>}
+                    <div className="text-xs text-muted-foreground">Participant: {participantDisplay.primary}{participantDisplay.secondary ? ` • ${participantDisplay.secondary}` : ''}</div>
                     <div className="mt-1"><StatusPill status={row.status} /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-center">

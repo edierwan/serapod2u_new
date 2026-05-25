@@ -21,8 +21,13 @@ export interface VisitImpactRow {
     account_manager_name: string
     shop_id: string
     shop_name: string
+    shop_name_primary: string
+    shop_branch_label: string | null
     shop_code: string | null
     shop_region: string | null
+    latest_participant_name: string | null
+    latest_participant_phone: string | null
+    participant_count: number
     before_scans: number
     after_scans: number
     scan_lift: number
