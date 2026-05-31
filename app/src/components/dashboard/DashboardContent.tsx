@@ -635,7 +635,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'hr/attendance/timesheets':
         return <HrAttendanceTimesheetsView userProfile={userProfile} />
       case 'hr/leave/types':
-        return <HrLeaveTypesView />
+        return (
+          <HrLeaveTypesView
+            organizationId={userProfile.organizations.id}
+            userId={userProfile.id}
+          />
+        )
       case 'hr/leave/requests':
         return (
           <HrLeaveRequestsView

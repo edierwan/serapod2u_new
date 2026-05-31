@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { seedPermissionsCatalog, seedTemplateGroups } from '@/lib/server/hr/seedPermissions'
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -584,25 +585,14 @@ export async function POST(request: Request) {
         }
 
         if (action === 'default_access_groups') {
-            // Create default HR Admin + Manager access groups
-            const groups = [
-                { name: 'HR Admin', description: 'Full HR module access', permissions: JSON.stringify(['hr.*']) },
-                { name: 'HR Manager', description: 'Department-level HR access', permissions: JSON.stringify(['hr.view', 'hr.attendance', 'hr.leave.approve']) },
-                { name: 'HR Viewer', description: 'Read-only HR access', permissions: JSON.stringify(['hr.view']) },
-            ]
+            // Use the canonical permissions/group seeding logic (single source
+            // of truth shared with /api/hr/settings/permissions) so there is no
+            // divergent seed path. Seeds the global permission catalog, then the
+            // template access groups with their permission mappings.
+            await seedPermissionsCatalog(supabase)
+            const created = await seedTemplateGroups(supabase, ctx.orgId)
 
-            for (const g of groups) {
-                await supabase
-                    .from('hr_access_groups')
-                    .upsert({
-                        organization_id: ctx.orgId,
-                        name: g.name,
-                        description: g.description,
-                        permissions: g.permissions,
-                    }, { onConflict: 'organization_id,name' })
-            }
-
-            return NextResponse.json({ success: true, message: '3 default HR access groups created (Admin, Manager, Viewer)' })
+            return NextResponse.json({ success: true, message: `${created} default HR access groups created with permissions` })
         }
 
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
