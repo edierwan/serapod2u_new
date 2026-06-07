@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Loader2 } from 'lucide-react'
 import type { ImpactStatus, FollowUpPriority } from '@/modules/roadtour/types/analytics'
 
-export function KpiCard({ label, value, sub, icon: Icon, accent }: {
+export function KpiCard({ label, value, sub, icon: Icon, accent, onClick }: {
     label: string
     value: React.ReactNode
     sub?: React.ReactNode
