@@ -3,10 +3,9 @@
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
-import type { ImpactDataset, ImpactStatus, ImpactWindow } from '@/modules/roadtour/types/analytics'
+import type { ImpactDataset, ImpactStatus } from '@/modules/roadtour/types/analytics'
 import type { ImpactFilters } from '@/modules/roadtour/lib/analytics/useImpactDataset'
-import { defaultDateRange } from '@/modules/roadtour/lib/analytics/useImpactDataset'
+import { RoadtourWindowSelector } from './RoadtourWindowSelector'
 
 interface BaseProps {
     filters: ImpactFilters
@@ -26,13 +25,13 @@ export function AnalyticsFilterBar({
     showStatus, statusValue, onStatusChange,
     showShopSearch, shopSearchValue, onShopSearchChange,
 }: BaseProps) {
-    const setWindow = (w: ImpactWindow) => {
-        const dr = defaultDateRange(w)
-        setFilters((prev) => ({ ...prev, windowDays: w, dateFrom: dr.dateFrom, dateTo: dr.dateTo }))
+    const setWindow = (windowDays: number) => {
+        setFilters((prev) => ({ ...prev, windowDays }))
     }
+
     return (
         <Card className="p-3 sm:p-4 mb-4">
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
                 <div>
                     <label className="text-xs font-medium text-muted-foreground">Campaign</label>
                     <Select value={filters.campaignId ?? 'all'} onValueChange={(v) => setFilters((p) => ({ ...p, campaignId: v === 'all' ? null : v }))}>
@@ -85,7 +84,7 @@ export function AnalyticsFilterBar({
                         <Input placeholder="Search shop name or code" value={shopSearchValue ?? ''} onChange={(e) => onShopSearchChange?.(e.target.value)} />
                     </div>
                 )}
-                <div className="md:col-span-2 lg:col-span-2 xl:col-span-2 flex flex-col">
+                <div className="md:col-span-2 lg:col-span-2 flex flex-col">
                     <label className="text-xs font-medium text-muted-foreground">Date Range</label>
                     <div className="flex gap-2 items-center">
                         <Input type="date" value={filters.dateFrom ?? ''} onChange={(e) => setFilters((p) => ({ ...p, dateFrom: e.target.value || null }))} />
@@ -93,20 +92,9 @@ export function AnalyticsFilterBar({
                         <Input type="date" value={filters.dateTo ?? ''} onChange={(e) => setFilters((p) => ({ ...p, dateTo: e.target.value || null }))} />
                     </div>
                 </div>
-                <div className="flex flex-col">
+                <div className="md:col-span-2 lg:col-span-3 flex flex-col">
                     <label className="text-xs font-medium text-muted-foreground">Window</label>
-                    <div className="flex gap-1">
-                        {[3, 7, 30].map((w) => (
-                            <Button
-                                key={w}
-                                type="button"
-                                variant={filters.windowDays === w ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => setWindow(w as ImpactWindow)}
-                                className="flex-1"
-                            >{w}D</Button>
-                        ))}
-                    </div>
+                    <RoadtourWindowSelector windowDays={filters.windowDays} onWindowChange={setWindow} />
                 </div>
                 {extra}
             </div>

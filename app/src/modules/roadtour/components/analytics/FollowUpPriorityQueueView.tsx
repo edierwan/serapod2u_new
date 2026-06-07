@@ -38,7 +38,7 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
     const annotated = useMemo(() => {
         if (!dataset) return []
         return dataset.visits.map((v) => {
-            const priority = classifyFollowUpPriority(v)
+            const priority = classifyFollowUpPriority(v, dataset.windowDays)
             return {
                 ...v,
                 priority,
@@ -64,12 +64,12 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
         for (const v of annotated) counts[v.priority]++
         const total = annotated.length || 1
         return [
-            { key: 'high' as const, label: 'High Priority', desc: 'No scan in 7D or drop >50%', count: counts.high, pct: (counts.high / total) * 100, color: 'bg-rose-500', text: 'text-rose-700' },
-            { key: 'medium' as const, label: 'Follow Up Soon', desc: '3-7 days since visit', count: counts.medium, pct: (counts.medium / total) * 100, color: 'bg-amber-500', text: 'text-amber-700' },
+            { key: 'high' as const, label: 'High Priority', desc: dataset ? `No scan in ${dataset.windowDays}D or drop >50%` : 'No scan in selected window or drop >50%', count: counts.high, pct: (counts.high / total) * 100, color: 'bg-rose-500', text: 'text-rose-700' },
+            { key: 'medium' as const, label: 'Follow Up Soon', desc: dataset ? `No scan yet inside the ${dataset.windowDays}D window` : 'No scan yet inside the selected window', count: counts.medium, pct: (counts.medium / total) * 100, color: 'bg-amber-500', text: 'text-amber-700' },
             { key: 'low' as const, label: 'Monitor', desc: 'Low response, watch trend', count: counts.low, pct: (counts.low / total) * 100, color: 'bg-slate-400', text: 'text-slate-700' },
             { key: 'healthy' as const, label: 'Healthy', desc: 'Good engagement', count: counts.healthy, pct: (counts.healthy / total) * 100, color: 'bg-emerald-500', text: 'text-emerald-700' },
         ]
-    }, [annotated])
+    }, [annotated, dataset])
 
     const donut = buckets.map((b) => ({ name: b.label, value: b.count, key: b.key }))
 
@@ -81,11 +81,13 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
 
     const kpis = useMemo(() => {
         const highPriority = buckets.find((b) => b.key === 'high')?.count ?? 0
-        const noResp7d = annotated.filter((v) => v.status === 'no_response' && v.days_since_visit >= 7).length
+        const noResponseCount = dataset
+            ? annotated.filter((v) => v.status === 'no_response' && v.days_since_visit >= dataset.windowDays).length
+            : 0
         const lowResp = annotated.filter((v) => v.after_scans > 0 && v.before_scans > 0 && v.after_scans <= v.before_scans).length
         const newlyActivated = annotated.filter((v) => v.status === 'newly_activated').length
-        return { highPriority, noResp7d, lowResp, newlyActivated, dueToday: dueToday.length }
-    }, [annotated, buckets, dueToday])
+        return { highPriority, noResponseCount, lowResp, newlyActivated, dueToday: dueToday.length }
+    }, [annotated, buckets, dataset, dueToday])
 
     const exportCsv = () => {
         const header = ['Shop', 'Region', 'Account Manager', 'Visit Date', 'Days Since Visit', `After ${dataset?.windowDays}D Scans`, 'Status', 'Priority', 'Recommended Action', 'Next Follow-Up']
@@ -154,7 +156,7 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
 
                     <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
                         <KpiCard label="High Priority Shops" value={formatNumber(kpis.highPriority)} icon={Flag} accent="rose" />
-                        <KpiCard label={`No Response in ${dataset.windowDays}D`} value={formatNumber(kpis.noResp7d)} icon={Clock} accent="amber" />
+                        <KpiCard label={`No Response in ${dataset.windowDays}D`} value={formatNumber(kpis.noResponseCount)} icon={Clock} accent="amber" />
                         <KpiCard label="Low Response Shops" value={formatNumber(kpis.lowResp)} icon={BarChart3} accent="slate" />
                         <KpiCard label="Newly Activated" value={formatNumber(kpis.newlyActivated)} icon={UserPlus} accent="violet" />
                         <KpiCard label="Follow-Up Due Today" value={formatNumber(kpis.dueToday)} icon={Calendar} accent="cyan" />
@@ -242,8 +244,8 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
                                 <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-1.5"><Lightbulb className="h-4 w-4 text-amber-500" />Recommended Actions</CardTitle></CardHeader>
                                 <CardContent>
                                     <ul className="text-xs space-y-2">
-                                        <li><span className="font-semibold text-rose-700">No Scan in 7 Days:</span> Immediate follow-up required. Priority: High</li>
-                                        <li><span className="font-semibold text-amber-700">No Scan in 3 Days:</span> Follow-up within 48 hours. Priority: Medium</li>
+                                        <li><span className="font-semibold text-rose-700">No Scan in Selected Window:</span> Immediate follow-up required. Priority: High</li>
+                                        <li><span className="font-semibold text-amber-700">No Scan Yet:</span> Follow up before the selected window closes. Priority: Medium</li>
                                         <li><span className="font-semibold text-rose-700">Scan Drop &gt; 50%:</span> Address issues and re-engage. Priority: High</li>
                                         <li><span className="font-semibold text-violet-700">Newly Activated:</span> Nurture early engagement. Priority: Medium</li>
                                         <li><span className="font-semibold text-emerald-700">Follow-Up Due Today:</span> Schedule visit or call today. Priority: High</li>

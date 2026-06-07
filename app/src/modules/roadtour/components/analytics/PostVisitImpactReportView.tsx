@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
@@ -13,7 +13,12 @@ import {
     KpiCard, LoadingBlock, EmptyBlock, StatusPill,
     formatLiftPercent, formatNumber, PageHeader,
 } from './shared'
+import {
+    formatImpactWindowComparison,
+} from '@/modules/roadtour/lib/analytics/windowDays'
 import { useImpactDataset } from '@/modules/roadtour/lib/analytics/useImpactDataset'
+import { getLatestVisitRowsByShop } from '@/modules/roadtour/types/analytics'
+import { ImpactMetricDrilldownDialog, type ImpactDrilldownMetric } from './ImpactMetricDrilldownDialog'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -25,6 +30,9 @@ const STATUS_COLORS: Record<string, string> = {
 export function PostVisitImpactReportView({ userProfile }: Props) {
     const companyId = userProfile?.organizations?.id
     const { dataset, loading, filters, setFilters } = useImpactDataset(companyId)
+    const [activeMetric, setActiveMetric] = useState<ImpactDrilldownMetric | null>(null)
+
+    const latestShopRows = useMemo(() => (dataset ? getLatestVisitRowsByShop(dataset.visits) : []), [dataset])
 
     const aggregatedDaily = useMemo(() => {
         if (!dataset) return []
@@ -70,12 +78,26 @@ export function PostVisitImpactReportView({ userProfile }: Props) {
     }, [dataset])
 
     const topImpacted = useMemo(() => {
-        if (!dataset) return []
-        return [...dataset.visits]
+        return [...latestShopRows]
             .filter((v) => v.scan_lift_percent !== null)
             .sort((a, b) => (b.scan_lift_percent ?? 0) - (a.scan_lift_percent ?? 0))
             .slice(0, 10)
-    }, [dataset])
+    }, [latestShopRows])
+
+    const drilldownRows = useMemo(() => {
+        switch (activeMetric) {
+            case 'visited_shops':
+                return latestShopRows
+            case 'improved_shops':
+                return latestShopRows.filter((row) => row.status === 'improved')
+            case 'newly_activated':
+                return latestShopRows.filter((row) => row.status === 'newly_activated')
+            case 'no_response':
+                return latestShopRows.filter((row) => row.status === 'no_response')
+            default:
+                return []
+        }
+    }, [activeMetric, latestShopRows])
 
     const s = dataset?.summary
     const w = dataset?.windowDays ?? filters.windowDays
@@ -101,17 +123,17 @@ export function PostVisitImpactReportView({ userProfile }: Props) {
                     )}
 
                     <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
-                        <KpiCard label="Visited Shops" value={formatNumber(s!.visited_shops)} icon={Store} accent="blue" />
-                        <KpiCard label="Improved Shops" value={formatNumber(s!.improved_shops)} icon={TrendingUp} accent="green" />
-                        <KpiCard label="Newly Activated" value={formatNumber(s!.newly_activated_shops)} icon={UserPlus} accent="violet" />
-                        <KpiCard label="No Response" value={formatNumber(s!.no_response_shops)} icon={AlertCircle} accent="amber" />
+                        <KpiCard label="Visited Shops" value={formatNumber(s!.visited_shops)} icon={Store} accent="blue" onClick={() => setActiveMetric('visited_shops')} />
+                        <KpiCard label="Improved Shops" value={formatNumber(s!.improved_shops)} icon={TrendingUp} accent="green" onClick={() => setActiveMetric('improved_shops')} />
+                        <KpiCard label="Newly Activated" value={formatNumber(s!.newly_activated_shops)} icon={UserPlus} accent="violet" onClick={() => setActiveMetric('newly_activated')} />
+                        <KpiCard label="No Response" value={formatNumber(s!.no_response_shops)} icon={AlertCircle} accent="amber" onClick={() => setActiveMetric('no_response')} />
                         <KpiCard label="Average QR Scan Lift" value={formatLiftPercent(s!.avg_scan_lift_percent)} icon={Scan} accent="cyan" />
                         <KpiCard label="Visit-to-Scan Conversion" value={`${(s!.visit_to_scan_conversion * 100).toFixed(1)}%`} icon={Target} accent="rose" />
                     </div>
 
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-base">QR Scans: {w} Days Before vs {w} Days After Visit</CardTitle>
+                            <CardTitle className="text-base">QR Scans: {formatImpactWindowComparison(w)}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             {aggregatedDaily.length === 0 ? (
@@ -233,6 +255,16 @@ export function PostVisitImpactReportView({ userProfile }: Props) {
                             </ul>
                         </CardContent>
                     </Card>
+
+                    <ImpactMetricDrilldownDialog
+                        open={activeMetric !== null}
+                        metric={activeMetric}
+                        rows={drilldownRows}
+                        windowDays={w}
+                        onOpenChange={(open) => {
+                            if (!open) setActiveMetric(null)
+                        }}
+                    />
                 </>
             )}
         </div>

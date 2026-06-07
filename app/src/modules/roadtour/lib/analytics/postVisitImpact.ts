@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
     classifyImpactStatus,
     computeScanLiftPercent,
+    getLatestVisitRowsByShop,
     type ImpactDataset,
     type ImpactSummary,
     type ImpactWindow,
@@ -184,6 +185,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
         const beforeMap = new Map(daily_before.map((d) => [d.day, d]))
         const afterMap = new Map(daily_after.map((d) => [d.day, d]))
 
+        let firstAfter: string | null = null
         let lastAfter: string | null = null
         for (const s of shopScans) {
             const t = new Date(s.scanned_at)
@@ -198,6 +200,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
                 after++
                 const bucket = afterMap.get(diffDays)
                 if (bucket) bucket.count++
+                if (!firstAfter) firstAfter = s.scanned_at
                 lastAfter = s.scanned_at
             } else if (diffDays === 0) {
                 // visit day itself — exclude from before, count toward after if at/after anchor time
@@ -205,6 +208,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
                 after++
                 const bucket = afterMap.get(1)
                 if (bucket) bucket.count++
+                if (!firstAfter) firstAfter = s.scanned_at
                 lastAfter = s.scanned_at
             }
         }
@@ -230,6 +234,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
             scan_lift_percent: liftPct,
             status,
             days_since_visit: ds < 0 ? 0 : ds,
+            first_scan_after_at: firstAfter,
             last_scan_after_at: lastAfter,
             daily_before,
             daily_after,
@@ -278,12 +283,7 @@ function emptyDataset(windowDays: ImpactWindow, dateFrom: string | null, dateTo:
 
 export function buildSummary(rows: VisitImpactRow[]): ImpactSummary {
     // shop-level aggregation: a shop visited multiple times still counts once for shop-based metrics
-    const shopLatest = new Map<string, VisitImpactRow>()
-    for (const r of rows) {
-        const existing = shopLatest.get(r.shop_id)
-        if (!existing || existing.visit_date < r.visit_date) shopLatest.set(r.shop_id, r)
-    }
-    const shopRows = Array.from(shopLatest.values())
+    const shopRows = getLatestVisitRowsByShop(rows)
 
     const visited_shops = shopRows.length
     const improved_shops = shopRows.filter((r) => r.status === 'improved').length

@@ -11,6 +11,7 @@ export function KpiCard({ label, value, sub, icon: Icon, accent }: {
     sub?: React.ReactNode
     icon?: any
     accent?: 'blue' | 'green' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate'
+    onClick?: () => void
 }) {
     const accentMap: Record<string, string> = {
         blue: 'bg-blue-50 text-blue-700',
@@ -22,8 +23,20 @@ export function KpiCard({ label, value, sub, icon: Icon, accent }: {
         slate: 'bg-slate-50 text-slate-700',
     }
     const accentClass = accent ? accentMap[accent] : 'bg-muted text-foreground'
+    const isInteractive = typeof onClick === 'function'
     return (
-        <Card className="p-4 flex items-start gap-3">
+        <Card
+            className={`p-4 flex items-start gap-3 ${isInteractive ? 'cursor-pointer transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2' : ''}`}
+            onClick={onClick}
+            onKeyDown={isInteractive ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onClick?.()
+                }
+            } : undefined}
+            role={isInteractive ? 'button' : undefined}
+            tabIndex={isInteractive ? 0 : undefined}
+        >
             {Icon && (
                 <div className={`rounded-lg p-2 ${accentClass}`}>
                     <Icon className="h-5 w-5" />
