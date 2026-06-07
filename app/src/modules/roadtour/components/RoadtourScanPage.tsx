@@ -777,7 +777,7 @@ export default function RoadtourScanPage() {
 
                 {/* ======================== SURVEY ======================== */}
                 {step === 'survey' && (
-                    <div className="bg-white rounded-2xl shadow-sm p-5">
+                    <div className="bg-white rounded-2xl shadow-sm p-5 pb-[calc(20px+env(safe-area-inset-bottom))]">
                         <div className="flex items-center gap-2 mb-3">
                             <QrCode className="h-5 w-5" style={{ color: primaryColor }} />
                             <h2 className="text-lg font-semibold">Quick Survey</h2>
@@ -867,7 +867,7 @@ export default function RoadtourScanPage() {
                         <button
                             onClick={claimReward}
                             disabled={processing}
-                            className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50 mt-2"
+                            className="mt-2 min-h-[44px] w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50"
                             style={{ backgroundColor: primaryColor }}
                         >
                             {processing ? (

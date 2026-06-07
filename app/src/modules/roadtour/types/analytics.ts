@@ -1,7 +1,7 @@
 // RoadTour Post-Visit Impact Analytics — shared types.
 // See docs/roadtourmodules/22-post-visit-impact-reporting-ui-implementation.md
 
-export type ImpactWindow = 3 | 7 | 30
+export type ImpactWindow = number
 
 export type ImpactStatus =
     | 'improved'
@@ -21,19 +21,15 @@ export interface VisitImpactRow {
     account_manager_name: string
     shop_id: string
     shop_name: string
-    shop_name_primary: string
-    shop_branch_label: string | null
     shop_code: string | null
     shop_region: string | null
-    latest_participant_name: string | null
-    latest_participant_phone: string | null
-    participant_count: number
     before_scans: number
     after_scans: number
     scan_lift: number
     scan_lift_percent: number | null
     status: ImpactStatus
     days_since_visit: number
+    first_scan_after_at: string | null
     last_scan_after_at: string | null
     daily_before: { day: number; count: number }[] // day offsets -window..-1
     daily_after: { day: number; count: number }[] // day offsets 1..+window
@@ -88,13 +84,32 @@ export function computeScanLiftPercent(before: number, after: number): number | 
     return null
 }
 
-export function classifyFollowUpPriority(row: Pick<VisitImpactRow, 'before_scans' | 'after_scans' | 'days_since_visit' | 'status'>): FollowUpPriority {
+export function getLatestVisitRowsByShop(rows: VisitImpactRow[]): VisitImpactRow[] {
+    const latestByShop = new Map<string, VisitImpactRow>()
+
+    for (const row of rows) {
+        const existing = latestByShop.get(row.shop_id)
+        if (!existing || existing.visit_date < row.visit_date) {
+            latestByShop.set(row.shop_id, row)
+        }
+    }
+
+    return Array.from(latestByShop.values())
+}
+
+export function classifyFollowUpPriority(
+    row: Pick<VisitImpactRow, 'before_scans' | 'after_scans' | 'days_since_visit' | 'status'>,
+    windowDays = 7,
+): FollowUpPriority {
     const { before_scans, after_scans, days_since_visit, status } = row
-    // High priority: no scan in 7+ days OR drop > 50%
-    if (after_scans === 0 && days_since_visit >= 7) return 'high'
+    const responseWindowDays = Math.max(1, Math.trunc(windowDays))
+    const mediumWindowStart = Math.min(3, responseWindowDays)
+
+    // High priority: no scan across the selected window OR drop > 50%
+    if (after_scans === 0 && days_since_visit >= responseWindowDays) return 'high'
     if (before_scans > 0 && after_scans < before_scans && (before_scans - after_scans) / before_scans > 0.5) return 'high'
-    // Medium: no scan 3-6 days, low response after visit, or newly activated needing nurture
-    if (after_scans === 0 && days_since_visit >= 3 && days_since_visit < 7) return 'medium'
+    // Medium: no scan in the early part of the selected window, low response after visit, or newly activated needing nurture
+    if (after_scans === 0 && days_since_visit >= mediumWindowStart && days_since_visit < responseWindowDays) return 'medium'
     if (status === 'newly_activated') return 'medium'
     if (status === 'dropped') return 'medium'
     if (status === 'maintained' && after_scans <= 1) return 'medium'

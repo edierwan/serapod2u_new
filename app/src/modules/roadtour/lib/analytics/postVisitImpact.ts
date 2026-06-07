@@ -6,12 +6,12 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
     classifyImpactStatus,
     computeScanLiftPercent,
+    getLatestVisitRowsByShop,
     type ImpactDataset,
     type ImpactSummary,
     type ImpactWindow,
     type VisitImpactRow,
 } from '@/modules/roadtour/types/analytics'
-import { resolveShopImpactDisplay } from '@/modules/roadtour/lib/analytics/shopImpactDetail'
 
 export interface LoadImpactParams {
     supabase: SupabaseClient<any, any, any>
@@ -43,12 +43,6 @@ function median(values: number[]): number | null {
     const sorted = [...values].sort((a, b) => a - b)
     const m = Math.floor(sorted.length / 2)
     return sorted.length % 2 === 0 ? (sorted[m - 1] + sorted[m]) / 2 : sorted[m]
-}
-
-function normalizeParticipantKey(value: string | null | undefined): string | null {
-    if (typeof value !== 'string') return null
-    const digits = value.replace(/\D+/g, '')
-    return digits.length > 0 ? digits : null
 }
 
 export async function loadPostVisitImpact(params: LoadImpactParams): Promise<ImpactDataset> {
@@ -138,14 +132,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
     const targetShopIds = Array.from(new Set(filteredVisits.map((v) => v.shop_id)))
 
     // 5) Bulk fetch scan rows for the relevant shops + range. Chunk by shop ids if needed.
-    type ScanRow = {
-        id: string
-        shop_id: string
-        scanned_at: string
-        consumer_id: string | null
-        consumer_name: string | null
-        consumer_phone: string | null
-    }
+    type ScanRow = { id: string; shop_id: string; scanned_at: string }
     const scanRows: ScanRow[] = []
     const chunkSize = 200
     let missingNote: string | null = null
@@ -154,7 +141,7 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
             const chunk = targetShopIds.slice(i, i + chunkSize)
             const { data, error } = await supa
                 .from('consumer_qr_scans')
-                .select('id, shop_id, scanned_at, consumer_id, consumer_name, consumer_phone')
+                .select('id, shop_id, scanned_at')
                 .in('shop_id', chunk)
                 .gte('scanned_at', `${fetchFrom}T00:00:00`)
                 .lte('scanned_at', `${fetchTo}T23:59:59.999`)
@@ -180,45 +167,12 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
         list.sort((a, b) => a.scanned_at.localeCompare(b.scanned_at))
     }
 
-    const consumerIds = Array.from(new Set(scanRows.map((scan) => scan.consumer_id).filter((value): value is string => Boolean(value))))
-    const consumersById = new Map<string, { full_name: string | null; phone: string | null }>()
-
-    if (consumerIds.length > 0) {
-        try {
-            for (let i = 0; i < consumerIds.length; i += chunkSize) {
-                const chunk = consumerIds.slice(i, i + chunkSize)
-                const { data, error } = await supa
-                    .from('users')
-                    .select('id, full_name, phone')
-                    .in('id', chunk)
-
-                if (error) throw error
-
-                for (const user of (data || []) as Array<{ id: string; full_name: string | null; phone: string | null }>) {
-                    consumersById.set(user.id, {
-                        full_name: user.full_name ?? null,
-                        phone: user.phone ?? null,
-                    })
-                }
-            }
-        } catch (err) {
-            console.warn('[postVisitImpact] consumer lookup failed; participant names will fall back to scan snapshots', err)
-        }
-    }
-
     const now = new Date()
     const todayIso = isoDate(now)
 
     const rows: VisitImpactRow[] = filteredVisits.map((v) => {
         const shop = shopsById.get(v.shop_id)
         const shopScans = scansByShop.get(v.shop_id) || []
-        const shopDisplay = resolveShopImpactDisplay({
-            fullLabel: shop ? `${shop.org_name}${shop.branch ? ` (${shop.branch})` : ''}` : '—',
-            shopName: shop?.org_name || null,
-            branch: shop?.branch || null,
-            city: shop?.city || null,
-            region: shop?.state_name || null,
-        })
         const anchor = new Date(v.visit_date + 'T00:00:00Z')
         const beforeStart = new Date(anchor); beforeStart.setUTCDate(beforeStart.getUTCDate() - windowDays)
         const afterEnd = new Date(anchor); afterEnd.setUTCDate(afterEnd.getUTCDate() + windowDays); afterEnd.setUTCHours(23, 59, 59, 999)
@@ -231,22 +185,13 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
         const beforeMap = new Map(daily_before.map((d) => [d.day, d]))
         const afterMap = new Map(daily_after.map((d) => [d.day, d]))
 
+        let firstAfter: string | null = null
         let lastAfter: string | null = null
-        let latestParticipantName: string | null = null
-        let latestParticipantPhone: string | null = null
-        let latestParticipantScanAt: string | null = null
-        const afterParticipantKeys = new Set<string>()
         for (const s of shopScans) {
             const t = new Date(s.scanned_at)
             if (t < beforeStart || t > afterEnd) continue
             const diffMs = t.getTime() - anchor.getTime()
             const diffDays = Math.floor(diffMs / 86400000)
-
-            const consumerProfile = s.consumer_id ? consumersById.get(s.consumer_id) : null
-            const participantName = consumerProfile?.full_name?.trim() || s.consumer_name?.trim() || null
-            const participantPhone = consumerProfile?.phone?.trim() || s.consumer_phone?.trim() || null
-            const participantKey = s.consumer_id || normalizeParticipantKey(participantPhone) || `scan:${s.id}`
-
             if (diffDays < 0 && diffDays >= -windowDays) {
                 before++
                 const bucket = beforeMap.get(diffDays)
@@ -255,26 +200,16 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
                 after++
                 const bucket = afterMap.get(diffDays)
                 if (bucket) bucket.count++
+                if (!firstAfter) firstAfter = s.scanned_at
                 lastAfter = s.scanned_at
-                afterParticipantKeys.add(participantKey)
-                if (!latestParticipantScanAt || s.scanned_at > latestParticipantScanAt) {
-                    latestParticipantScanAt = s.scanned_at
-                    latestParticipantName = participantName
-                    latestParticipantPhone = participantPhone
-                }
             } else if (diffDays === 0) {
                 // visit day itself — exclude from before, count toward after if at/after anchor time
                 // Treat as part of after period to match "after visit" intent.
                 after++
                 const bucket = afterMap.get(1)
                 if (bucket) bucket.count++
+                if (!firstAfter) firstAfter = s.scanned_at
                 lastAfter = s.scanned_at
-                afterParticipantKeys.add(participantKey)
-                if (!latestParticipantScanAt || s.scanned_at > latestParticipantScanAt) {
-                    latestParticipantScanAt = s.scanned_at
-                    latestParticipantName = participantName
-                    latestParticipantPhone = participantPhone
-                }
             }
         }
 
@@ -291,19 +226,15 @@ export async function loadPostVisitImpact(params: LoadImpactParams): Promise<Imp
             account_manager_name: amsById.get(v.account_manager_user_id) || '—',
             shop_id: v.shop_id,
             shop_name: shop ? `${shop.org_name}${shop.branch ? ` (${shop.branch})` : ''}` : '—',
-            shop_name_primary: shopDisplay.primaryName,
-            shop_branch_label: shopDisplay.branchLabel,
             shop_code: shop?.code || null,
             shop_region: shop?.state_name || shop?.city || null,
-            latest_participant_name: latestParticipantName,
-            latest_participant_phone: latestParticipantPhone,
-            participant_count: afterParticipantKeys.size,
             before_scans: before,
             after_scans: after,
             scan_lift: after - before,
             scan_lift_percent: liftPct,
             status,
             days_since_visit: ds < 0 ? 0 : ds,
+            first_scan_after_at: firstAfter,
             last_scan_after_at: lastAfter,
             daily_before,
             daily_after,
@@ -352,12 +283,7 @@ function emptyDataset(windowDays: ImpactWindow, dateFrom: string | null, dateTo:
 
 export function buildSummary(rows: VisitImpactRow[]): ImpactSummary {
     // shop-level aggregation: a shop visited multiple times still counts once for shop-based metrics
-    const shopLatest = new Map<string, VisitImpactRow>()
-    for (const r of rows) {
-        const existing = shopLatest.get(r.shop_id)
-        if (!existing || existing.visit_date < r.visit_date) shopLatest.set(r.shop_id, r)
-    }
-    const shopRows = Array.from(shopLatest.values())
+    const shopRows = getLatestVisitRowsByShop(rows)
 
     const visited_shops = shopRows.length
     const improved_shops = shopRows.filter((r) => r.status === 'improved').length

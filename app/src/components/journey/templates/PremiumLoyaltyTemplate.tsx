@@ -7848,9 +7848,9 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Collect Points Login Modal */}
             {showPointsLoginModal && !showPointsSuccessModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
-                        <div className="flex justify-end">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4">
+                    <div className="flex max-h-[calc(100dvh-24px)] w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-white p-4 shadow-xl sm:p-6">
+                        <div className="flex shrink-0 justify-end">
                             <button
                                 type="button"
                                 onClick={closeCollectPointsModal}
@@ -7860,7 +7860,7 @@ export default function PremiumLoyaltyTemplate({
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="text-center">
+                        <div className="shrink-0 text-center">
                             <div
                                 className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
                                 style={{ backgroundColor: `${config.primary_color}15` }}
@@ -8006,7 +8006,7 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </>
                         ) : collectPointsStep === 'roadtour-survey' ? (
-                            <>
+                            <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-4">
                                 {roadtourSurveyShopName && (
                                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl">
                                         <p className="text-sm text-orange-700 text-center">
@@ -8021,7 +8021,7 @@ export default function PremiumLoyaltyTemplate({
                                     </div>
                                 )}
 
-                                <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
+                                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-4">
                                     {roadtourSurveyLoading ? (
                                         <div className="py-6 text-center text-sm text-gray-500">
                                             <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
@@ -8137,10 +8137,10 @@ export default function PremiumLoyaltyTemplate({
                                     ))}
                                 </div>
 
-                                <div className="flex gap-3 pt-2">
+                                <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-gray-100 bg-white pt-3 pb-[calc(16px+env(safe-area-inset-bottom))]">
                                     <button
                                         onClick={closeCollectPointsModal}
-                                        className="flex-1 py-3 px-4 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                        className="min-h-[44px] px-4 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                                         disabled={collectingPoints}
                                     >
                                         Back
@@ -8148,7 +8148,7 @@ export default function PremiumLoyaltyTemplate({
                                     <button
                                         onClick={() => { void submitRoadtourSurveyClaim() }}
                                         disabled={collectingPoints || roadtourSurveyLoading || roadtourSurveyFields.length === 0}
-                                        className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
+                                        className="min-h-[44px] px-4 py-3 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                                         style={{ backgroundColor: config.button_color }}
                                     >
                                         {collectingPoints ? (
@@ -8159,7 +8159,7 @@ export default function PremiumLoyaltyTemplate({
                                         ) : 'Submit & Claim Reward'}
                                     </button>
                                 </div>
-                            </>
+                            </div>
                         ) : (
                             <>
                                 {/* Login Step */}
