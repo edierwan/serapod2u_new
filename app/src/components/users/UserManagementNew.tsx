@@ -194,6 +194,8 @@ export default function UserManagementNew({
     return 999;
   };
 
+  const canManageUserDeletion = () => resolveCurrentUserLevel() <= 10;
+
   const currentUserLevel = resolveCurrentUserLevel();
 
   useEffect(() => {
@@ -455,10 +457,10 @@ export default function UserManagementNew({
 
     // Validate levels before proceeding
     const currentUserLevel = resolveCurrentUserLevel();
-    if (currentUserLevel !== 1) {
+    if (!canManageUserDeletion()) {
       toast({
         title: "Access Denied",
-        description: "Only Super Admin can delete users.",
+        description: "Only HQ Admin or Super Admin can delete users.",
         variant: "destructive",
       });
       return;
@@ -971,9 +973,8 @@ export default function UserManagementNew({
   const [deleteOtpSending, setDeleteOtpSending] = useState(false);
 
   const handleDeleteUser = async (userId: string, userName: string) => {
-    const currentUserLevel = resolveCurrentUserLevel();
-    if (currentUserLevel !== 1) {
-      toast({ title: "Access Denied", description: "Only Super Admin can delete users.", variant: "destructive" });
+    if (!canManageUserDeletion()) {
+      toast({ title: "Access Denied", description: "Only HQ Admin or Super Admin can delete users.", variant: "destructive" });
       return;
     }
     if (userId === userProfile.id) {
@@ -1463,7 +1464,7 @@ export default function UserManagementNew({
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                {resolveCurrentUserLevel() === 1
+                {canManageUserDeletion()
                   ? selectedUsers.size === 1
                     ? "Delete Selected User (OTP)"
                     : "Delete One User at a Time"
@@ -1770,7 +1771,7 @@ export default function UserManagementNew({
                               >
                                 <Edit className="w-4 h-4" />
                               </Button>
-                              {resolveCurrentUserLevel() === 1 && (
+                              {canManageUserDeletion() && (
                                 <Button
                                   variant="ghost"
                                   size="sm"

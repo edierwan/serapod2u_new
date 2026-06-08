@@ -14,14 +14,14 @@ const MAX_SENDS_PER_15MIN = 3
 /**
  * POST /api/admin/delete-user-otp/request
  * 
- * Step 1: Super Admin requests a deletion OTP.
+ * Step 1: HQ Admin or Super Admin requests a deletion OTP.
  * OTP is sent to the ORGANIZATION's registered phone number (not the user's).
  * 
  * Body: { targetUserId: string }
  * 
  * Security layers:
  * - Must be authenticated
- * - Must be role_level === 1 (Super Admin)
+ * - Must be role_level <= 10 (HQ Admin / Super Admin)
  * - OTP sent to org phone (separate physical device)
  * - Rate limited (3 per 15 min)
  * - Full audit trail
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        // --- Gate 2: Super Admin (role_level === 1) ---
+        // --- Gate 2: HQ Admin / Super Admin (role_level <= 10) ---
         const { data: profile } = await supabase
             .from('users')
             .select('role_code, organization_id, roles(role_level)')
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
             .single()
 
         const roleLevel = (profile as any)?.roles?.role_level
-        if (roleLevel !== 1) {
+        if (typeof roleLevel !== 'number' || roleLevel > 10) {
             await logDeletionAudit(admin, {
                 operation: 'delete_user_otp_request',
                 userId: user.id,
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
                 ip,
             })
             return NextResponse.json(
-                { error: 'Access denied. Super Admin only.' },
+                { error: 'Access denied. HQ Admin or Super Admin only.' },
                 { status: 403 }
             )
         }
@@ -125,12 +125,28 @@ export async function POST(request: NextRequest) {
         // --- Get target user info for audit ---
         const { data: targetUser } = await admin
             .from('users')
-            .select('full_name, email, phone')
+            .select('full_name, email, phone, role_code, roles:role_code(role_level)')
             .eq('id', targetUserId)
             .single()
 
         if (!targetUser) {
             return NextResponse.json({ error: 'Target user not found' }, { status: 404 })
+        }
+
+        const targetRoleLevel = (targetUser as any)?.roles?.role_level
+        if (typeof targetRoleLevel === 'number' && targetRoleLevel < roleLevel) {
+            await logDeletionAudit(admin, {
+                operation: 'delete_user_otp_request',
+                userId: user.id,
+                userEmail: user.email || null,
+                allowed: false,
+                reason: `Target has higher privilege (target role_level=${targetRoleLevel}, requester role_level=${roleLevel})`,
+                ip,
+            })
+            return NextResponse.json(
+                { error: 'You cannot delete a user with higher privileges than your own.' },
+                { status: 403 }
+            )
         }
 
         // --- Generate & send OTP ---
