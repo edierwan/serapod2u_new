@@ -13,7 +13,7 @@ const PURPOSE = 'user_deletion'
  * Body: { targetUserId: string, code: string, codeId: string }
  * 
  * Security:
- * - Must be authenticated Super Admin (role_level === 1)
+ * - Must be authenticated HQ Admin / Super Admin (role_level <= 10)
  * - OTP must match (hashed comparison)
  * - OTP must not be expired, used, or invalidated
  * - Max 5 attempts per OTP
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         // Untyped alias for tables not in generated Database types
         const db: any = admin
 
-        // --- Auth + Super Admin check ---
+        // --- Auth + HQ Admin / Super Admin check ---
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,8 +42,8 @@ export async function POST(request: NextRequest) {
             .single()
 
         const roleLevel = (profile as any)?.roles?.role_level
-        if (roleLevel !== 1) {
-            return NextResponse.json({ error: 'Access denied. Super Admin only.' }, { status: 403 })
+        if (typeof roleLevel !== 'number' || roleLevel > 10) {
+            return NextResponse.json({ error: 'Access denied. HQ Admin or Super Admin only.' }, { status: 403 })
         }
 
         const { targetUserId, code, codeId } = await request.json()
@@ -123,12 +123,20 @@ export async function POST(request: NextRequest) {
         // Get target user info
         const { data: targetUser } = await admin
             .from('users')
-            .select('email, phone, full_name')
+            .select('email, phone, full_name, role_code, roles:role_code(role_level)')
             .eq('id', targetUserId)
             .single()
 
         if (!targetUser) {
             return NextResponse.json({ error: 'Target user not found' }, { status: 404 })
+        }
+
+        const targetRoleLevel = (targetUser as any)?.roles?.role_level
+        if (typeof targetRoleLevel === 'number' && targetRoleLevel < roleLevel) {
+            return NextResponse.json(
+                { error: 'You cannot delete a user with higher privileges than your own.' },
+                { status: 403 }
+            )
         }
 
         // --- Cascading cleanup (same as deleteUserWithAuth but more thorough) ---
