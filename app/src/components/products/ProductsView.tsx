@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { getStorageUrl } from '@/lib/utils'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -57,6 +58,7 @@ interface ProductsViewProps {
 export default function ProductsView({ userProfile, onViewChange }: ProductsViewProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [failedImageKeys, setFailedImageKeys] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [brandFilter, setBrandFilter] = useState('all')
@@ -75,6 +77,28 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
   const itemsPerPage = 10
+
+  const resolveProductImageUrl = (imageUrl?: string | null) => {
+    const normalizedImageUrl = imageUrl?.trim()
+
+    if (!normalizedImageUrl) return ''
+    if (normalizedImageUrl.startsWith('http') || normalizedImageUrl.startsWith('/')) {
+      return normalizedImageUrl
+    }
+
+    return getStorageUrl(normalizedImageUrl)
+  }
+
+  const markImageFailed = (imageKey: string) => {
+    setFailedImageKeys((current) => {
+      if (current[imageKey]) return current
+
+      return {
+        ...current,
+        [imageKey]: true
+      }
+    })
+  }
 
   useEffect(() => {
     if (isReady) {
@@ -551,6 +575,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
             products.map((product) => {
               const primaryImage = product.product_images?.find(img => img.is_primary)?.image_url ||
                                  product.product_images?.[0]?.image_url
+              const resolvedPrimaryImage = resolveProductImageUrl(primaryImage)
+              const imageKey = `${product.id}:${resolvedPrimaryImage || 'no-image'}`
               const initials = product.product_name
                 .split(' ')
                 .map(word => word[0])
@@ -562,12 +588,16 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 <Card key={product.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between mb-3">
-                      {primaryImage ? (
+                      {resolvedPrimaryImage && !failedImageKeys[imageKey] ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={primaryImage}
+                          src={resolvedPrimaryImage}
                           alt={product.product_name}
                           className="h-32 w-full object-cover rounded-lg"
+                          onError={(event) => {
+                            event.currentTarget.style.display = 'none'
+                            markImageFailed(imageKey)
+                          }}
                         />
                       ) : (
                         <div className="h-32 w-full rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
@@ -808,6 +838,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                   // Get primary image or first image
                   const primaryImage = product.product_images?.find(img => img.is_primary)?.image_url ||
                                      product.product_images?.[0]?.image_url
+                  const resolvedPrimaryImage = resolveProductImageUrl(primaryImage)
+                  const imageKey = `${product.id}:${resolvedPrimaryImage || 'no-image'}`
                   // Get initials for avatar if no image
                   const initials = product.product_name
                     .split(' ')
@@ -822,12 +854,16 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                       <div className="flex items-center gap-3">
                         {/* Avatar/Image */}
                         <div className="relative">
-                          {primaryImage ? (
+                          {resolvedPrimaryImage && !failedImageKeys[imageKey] ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={primaryImage}
+                              src={resolvedPrimaryImage}
                               alt={product.product_name}
                               className="h-10 w-10 rounded-lg object-cover"
+                              onError={(event) => {
+                                event.currentTarget.style.display = 'none'
+                                markImageFailed(imageKey)
+                              }}
                             />
                           ) : (
                             <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
