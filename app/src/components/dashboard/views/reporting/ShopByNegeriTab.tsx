@@ -26,7 +26,10 @@ import {
   type NegeriStateRow,
   type NegeriRegionRow,
 } from '@/lib/reporting/shop-by-negeri'
+import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
+import MalaysiaStateMap, { type StateMapMetric } from './MalaysiaStateMap'
+import StateFlag from './StateFlag'
 
 interface ShopByNegeriTabProps {
   userProfile: any
@@ -189,6 +192,25 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
     [report.topShops, activeStateId]
   )
 
+  // Canonical-key metrics for the Malaysia map (covers every state, zero-filled,
+  // then overlaid with the filtered ranking metrics).
+  const canonical = (name?: string | null) => getStateFromCapturedLocation(name) || (name || '').trim()
+  const metricsByKey = useMemo(() => {
+    const m = new Map<string, StateMapMetric>()
+    for (const s of states) {
+      const key = canonical(s.state_name)
+      if (!key || m.has(key)) continue
+      m.set(key, { stateId: s.id, negeri: s.state_name, shops: 0, scans: 0, consumers: 0, avgPerShop: 0 })
+    }
+    for (const r of report.ranking) {
+      const key = canonical(r.negeri)
+      if (!key) continue
+      m.set(key, { stateId: r.stateId, negeri: r.negeri, shops: r.shops, scans: r.scans, consumers: r.consumers, avgPerShop: r.avgPerShop })
+    }
+    return m
+  }, [states, report.ranking])
+  const selectedKey = activeStateId ? canonical(activeStateName) : null
+
   // States within the currently selected region (for the negeri dropdown)
   const negeriOptions = useMemo(() => {
     if (draftRegion === 'all') return states
@@ -320,7 +342,12 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                 <SelectContent>
                   <SelectItem value="all">All States</SelectItem>
                   {negeriOptions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.state_name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <StateFlag stateName={s.state_name} />
+                        {s.state_name}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -411,7 +438,12 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                 <Crown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
             </div>
-            <ExecutiveKpiValue>{kpis.topNegeri}</ExecutiveKpiValue>
+            <ExecutiveKpiValue>
+              <span className="inline-flex items-center gap-1.5">
+                <StateFlag stateName={kpis.topNegeri} />
+                {kpis.topNegeri}
+              </span>
+            </ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">{kpis.topNegeriScans.toLocaleString()} scans</p>
           </CardContent>
         </Card>
@@ -419,32 +451,40 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
 
       {/* Main panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Performance by Negeri (clean bar visual) */}
+        {/* Performance by Negeri (Malaysia map; bar chart fallback) */}
         <Card className="border-0 shadow-sm bg-card/80 backdrop-blur lg:col-span-2">
           <CardContent className="p-5">
             <div className="mb-4">
               <h4 className="font-semibold">Performance by Negeri</h4>
               <p className="text-sm text-muted-foreground">Total scans intensity by state</p>
             </div>
-            {rankingChartData.length === 0 ? (
-              <div className="h-72 flex items-center justify-center text-sm text-muted-foreground">
-                No scan activity for the selected filters.
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={rankingChartData} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} horizontal={false} />
-                  <XAxis type="number" tick={{ fill: chartTickColor, fontSize: 12 }} tickFormatter={formatNum} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fill: chartTickColor, fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), 'Scans']} />
-                  <Bar dataKey="scans" radius={[0, 6, 6, 0]}>
-                    {rankingChartData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+            <MalaysiaStateMap
+              metricsByKey={metricsByKey}
+              selectedKey={selectedKey}
+              onSelectState={(stateId) => setSelectedStateId(stateId)}
+              isDark={isDark}
+              fallback={
+                rankingChartData.length === 0 ? (
+                  <div className="h-72 flex items-center justify-center text-sm text-muted-foreground">
+                    No scan activity for the selected filters.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={320}>
+                    <BarChart data={rankingChartData} layout="vertical" margin={{ left: 8, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} horizontal={false} />
+                      <XAxis type="number" tick={{ fill: chartTickColor, fontSize: 12 }} tickFormatter={formatNum} />
+                      <YAxis type="category" dataKey="name" width={90} tick={{ fill: chartTickColor, fontSize: 12 }} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: any) => [Number(v).toLocaleString(), 'Scans']} />
+                      <Bar dataKey="scans" radius={[0, 6, 6, 0]}>
+                        {rankingChartData.map((_, i) => (
+                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )
+              }
+            />
           </CardContent>
         </Card>
 
@@ -457,7 +497,12 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                 <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   {ranking.map((r) => (
-                    <SelectItem key={r.stateId} value={r.stateId}>{r.negeri}</SelectItem>
+                    <SelectItem key={r.stateId} value={r.stateId}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <StateFlag stateName={r.negeri} />
+                        {r.negeri}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -469,7 +514,10 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
               </div>
             ) : (
               <>
-                <p className="text-sm font-medium mb-1">{activeStateName} Overview</p>
+                <p className="text-sm font-medium mb-1 flex items-center gap-1.5">
+                  <StateFlag stateName={activeStateName} />
+                  {activeStateName} Overview
+                </p>
                 <p className="text-xs text-muted-foreground mb-3">Top performing state in this period</p>
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="rounded-lg border border-border p-3">
@@ -491,7 +539,10 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                 </div>
 
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Top Shops in {activeStateName}</p>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <StateFlag stateName={activeStateName} />
+                    Top Shops in {activeStateName}
+                  </p>
                 </div>
                 {activeTopShops.length === 0 ? (
                   <p className="text-xs text-muted-foreground py-4 text-center">No shops with scans.</p>
@@ -552,7 +603,12 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                         className={`border-b border-border/60 hover:bg-muted/40 transition-colors ${activeStateId === r.stateId ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}
                       >
                         <td className="py-2.5 pr-2 text-muted-foreground">{r.rank}</td>
-                        <td className="py-2.5 pr-2 font-medium">{r.negeri}</td>
+                        <td className="py-2.5 pr-2 font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            <StateFlag stateName={r.negeri} />
+                            {r.negeri}
+                          </span>
+                        </td>
                         <td className="py-2.5 pr-2 text-right">{r.shops.toLocaleString()}</td>
                         <td className="py-2.5 pr-2 text-right">{r.scans.toLocaleString()}</td>
                         <td className="py-2.5 pr-2 text-right">{r.consumers.toLocaleString()}</td>
