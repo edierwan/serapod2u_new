@@ -3,6 +3,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import LoginPageClient from '@/components/auth/LoginPageClient'
 import { listLoginHeroBanners } from '@/lib/storefront/banners'
+import { getStorageUrl } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -29,11 +30,15 @@ export default async function LoginPage() {
     if (logoUrl) {
       const trimmedLogo = logoUrl.trim()
       if (trimmedLogo) {
-        if (/^https?:/i.test(trimmedLogo)) {
+        const resolvedLogoUrl = getStorageUrl(trimmedLogo) || trimmedLogo
+
+        if (/^https?:/i.test(resolvedLogoUrl)) {
           const version = updatedAt ? new Date(updatedAt).getTime() : Date.now()
-          branding.logoUrl = `${trimmedLogo.split('?')[0]}?t=${version}`
+          const parsedLogoUrl = new URL(resolvedLogoUrl)
+          parsedLogoUrl.searchParams.set('t', String(version))
+          branding.logoUrl = parsedLogoUrl.toString()
         } else {
-          branding.logoUrl = trimmedLogo
+          branding.logoUrl = resolvedLogoUrl
         }
       }
     }
