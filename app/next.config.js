@@ -68,6 +68,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'sb-stg-serapod.getouch.co',
       },
+      {
+        protocol: 'https',
+        hostname: 'supabase-stg-serapod.getouch.cloud',
+      },
     ],
   },
 

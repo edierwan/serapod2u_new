@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatStorefrontError } from '@/lib/storefront/error'
 
 /**
  * Resolve a variant image/media URL to a full public URL.
@@ -11,7 +12,7 @@ function toStorefrontMediaUrl(rawPath: string | null): string | null {
   if (!rawPath) return null
   if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_PUBLIC_URL || process.env.SUPABASE_URL
   if (!supabaseUrl) return rawPath
 
   const cleanPath = rawPath.replace(/^\/+/, '')
@@ -175,7 +176,7 @@ export async function listProducts(params: ListProductsParams = {}) {
   const { data, error, count } = await query
 
   if (error) {
-    console.error('Error fetching products:', error)
+    console.error('Error fetching products:', formatStorefrontError(error))
     return { products: [], total: 0, page, limit }
   }
 
@@ -276,7 +277,7 @@ export async function getProductDetail(productId: string): Promise<StorefrontPro
     .single()
 
   if (error || !data) {
-    console.error('Error fetching product detail:', error)
+    console.error('Error fetching product detail:', formatStorefrontError(error))
     return null
   }
 
@@ -353,7 +354,7 @@ export async function listCategories(): Promise<StorefrontCategory[]> {
     .order('category_name', { ascending: true })
 
   if (error) {
-    console.error('Error fetching categories:', error)
+    console.error('Error fetching categories:', formatStorefrontError(error))
     return []
   }
 

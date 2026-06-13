@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { formatStorefrontError } from '@/lib/storefront/error'
 
 export interface StoreBanner {
   id: string
@@ -44,7 +45,7 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
       .limit(10)
 
     if (error) {
-      console.error(`[listActiveStoreBanners] Error (type=${bannerType}):`, error.message)
+      console.error(`[listActiveStoreBanners] Error (type=${bannerType}):`, formatStorefrontError(error))
       // Fallback: try without banner_type filter for backward compatibility
       if (bannerType === 'store') {
         const { data: fallbackData, error: fallbackError } = await supabase
@@ -53,6 +54,10 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
           .eq('is_active', true)
           .order('sort_order', { ascending: true })
           .limit(10)
+
+        if (fallbackError) {
+          console.error(`[listActiveStoreBanners] Fallback error (type=${bannerType}):`, formatStorefrontError(fallbackError))
+        }
 
         if (!fallbackError && fallbackData) {
           return ((fallbackData as any[]) ?? []).map((b) => ({
@@ -69,7 +74,7 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
       layout_slot: b.layout_slot || 'carousel',
     })) as StoreBanner[]
   } catch (err) {
-    console.error('[listActiveStoreBanners] Unexpected error:', err)
+    console.error('[listActiveStoreBanners] Unexpected error:', formatStorefrontError(err))
     return []
   }
 }
