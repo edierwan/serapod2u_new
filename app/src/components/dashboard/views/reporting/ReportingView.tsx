@@ -64,7 +64,7 @@ import DistributorReportsTab from './DistributorReportsTab'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
 import OperationsTab from './OperationsTab'
 import ProductsTab from './ProductsTab'
-import ShopPerformanceTab from './ShopPerformanceTab'
+import ShopReportsTab from './ShopReportsTab'
 
 interface ReportingViewProps {
     userProfile: any
@@ -914,7 +914,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                     {/* Shop Performance Tab */}
                     <TabsContent value="shop-performance" className="space-y-6 animate-in fade-in-50 duration-500">
-                        <ShopPerformanceTab
+                        <ShopReportsTab
                             userProfile={userProfile}
                             chartGridColor={chartGridColor}
                             chartTickColor={chartTickColor}
