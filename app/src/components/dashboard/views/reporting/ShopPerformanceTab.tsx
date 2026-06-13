@@ -65,6 +65,13 @@ interface ContactLines {
   email: string
 }
 
+function formatContactLines(phone?: string | null, email?: string | null): ContactLines {
+  return {
+    phone: phone || '-',
+    email: email || '-',
+  }
+}
+
 // ── Constants ──────────────────────────────────────────────────────────
 const COLORS = {
   primary: '#3b82f6',
@@ -363,11 +370,6 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     () => PERIOD_OPTIONS.find((option) => option.value === period)?.label || 'Selected Period',
     [period]
   )
-
-  const formatContactLines = (phone?: string | null, email?: string | null): ContactLines => ({
-    phone: phone || '-',
-    email: email || '-',
-  })
 
   const activeShopRows = useMemo(() => {
     const shopMap = new Map<string, {
@@ -710,7 +712,10 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
                     />
                     <Tooltip contentStyle={tooltipStyle} formatter={(value: number) => [value.toLocaleString(), 'Scans']} />
                     <Bar dataKey="scans" radius={[0, 8, 8, 0]} barSize={22} cursor="pointer"
-                      onClick={(data: any) => { if (data?.shopId) setDrillShopId(data.shopId) }}
+                      onClick={(data: any) => {
+                        const shopId = data?.shopId || data?.payload?.shopId
+                        if (typeof shopId === 'string' && shopId) setDrillShopId(shopId)
+                      }}
                     >
                       {top10Shops.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
