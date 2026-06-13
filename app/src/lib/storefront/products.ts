@@ -1,34 +1,15 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatStorefrontError } from '@/lib/storefront/error'
+import { getStorageUrl } from '@/lib/utils'
 
 /**
  * Resolve a variant image/media URL to a full public URL.
- * Handles:
- * - Full URLs (https://...) → returned as-is
- * - Relative paths → resolved against known Supabase storage buckets
- * - Tries 'avatars' bucket first (admin upload default), then 'product-variants'
+ * Uses the shared storage helper so stale Supabase hosts are rewritten and
+ * self-hosted storage URLs include the required anon apikey.
  */
 function toStorefrontMediaUrl(rawPath: string | null): string | null {
   if (!rawPath) return null
-  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) return rawPath
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_PUBLIC_URL || process.env.SUPABASE_URL
-  if (!supabaseUrl) return rawPath
-
-  const cleanPath = rawPath.replace(/^\/+/, '')
-
-  // Detect bucket from path prefix
-  const knownBuckets = ['product-variants', 'avatars']
-  for (const bucket of knownBuckets) {
-    if (cleanPath.startsWith(`${bucket}/`)) {
-      const objectPath = cleanPath.slice(bucket.length + 1)
-      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${objectPath}`
-    }
-  }
-
-  // Default to avatars bucket (admin uploads go there)
-  const defaultBucket = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'avatars'
-  return `${supabaseUrl}/storage/v1/object/public/${defaultBucket}/${cleanPath}`
+  return getStorageUrl(rawPath) || rawPath
 }
 
 /** @deprecated Use toStorefrontMediaUrl instead */
