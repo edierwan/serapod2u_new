@@ -67,6 +67,45 @@ import {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 
+const CREATE_USER_FRIENDLY_MESSAGES: Record<string, string> = {
+  PERMISSION_DENIED: "You don't have permission to create users. Please contact system admin.",
+  EMAIL_EXISTS: "This email is already registered.",
+  PHONE_EXISTS: "This phone number is already registered.",
+  MISSING_ROLE: "Please select a valid role before creating user.",
+  AUTH_CREATE_FAILED: "Unable to create login account. Please try again or contact admin.",
+  SERVER_CONFIG_ERROR: "User creation is not configured correctly on server. Please check staging environment.",
+  PROFILE_SYNC_FAILED: "Unable to save user profile. Please try again or contact admin.",
+  UNAUTHORIZED: "Please sign in again before creating user."
+};
+
+const getCreateUserErrorMessage = (
+  result: { error?: string | null; message?: string | null; code?: string | null },
+  email?: string
+) => {
+  if (result.code && CREATE_USER_FRIENDLY_MESSAGES[result.code]) {
+    return CREATE_USER_FRIENDLY_MESSAGES[result.code];
+  }
+
+  const fallback = result.message || result.error || "Failed to create user";
+  const normalized = fallback.toLowerCase();
+
+  if (
+    normalized.includes("already been registered") ||
+    normalized.includes("already exists") ||
+    normalized.includes("duplicate")
+  ) {
+    return email
+      ? `The email address "${email}" is already registered in the system. Please use a different email address.`
+      : "This email is already registered.";
+  }
+
+  if (normalized === "forbidden") {
+    return CREATE_USER_FRIENDLY_MESSAGES.PERMISSION_DENIED;
+  }
+
+  return fallback;
+};
+
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return "Never";
   try {
@@ -987,18 +1026,7 @@ export default function UserManagementNew({
         });
 
         if (!result.success) {
-          // Provide friendly error messages for common errors
-          let errorMessage = result.error || "Failed to create user";
-
-          if (
-            errorMessage.toLowerCase().includes("already been registered") ||
-            errorMessage.toLowerCase().includes("already exists") ||
-            errorMessage.toLowerCase().includes("duplicate")
-          ) {
-            errorMessage = `The email address "${userData.email}" is already registered in the system. Please use a different email address.`;
-          }
-
-          throw new Error(errorMessage);
+          throw new Error(getCreateUserErrorMessage(result, userData.email));
         }
 
         const hrPayload = buildHrPayload();
