@@ -82,11 +82,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
     const normalizedImageUrl = imageUrl?.trim()
 
     if (!normalizedImageUrl) return ''
-    if (normalizedImageUrl.startsWith('http') || normalizedImageUrl.startsWith('/')) {
+    if (normalizedImageUrl.startsWith('/')) {
       return normalizedImageUrl
     }
 
-    return getStorageUrl(normalizedImageUrl)
+    return getStorageUrl(normalizedImageUrl, 'product-images')
   }
 
   const markImageFailed = (imageKey: string) => {
