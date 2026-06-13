@@ -36,11 +36,13 @@ import {
   ArrowUp,
   ArrowDown,
   Power,
+  Save,
   ChevronLeft,
   ChevronRight,
   Circle,
   AlertTriangle,
   Shield,
+  Building2,
 } from "lucide-react";
 import {
   Dialog,
@@ -132,6 +134,27 @@ interface UserProfile {
   organization_id: string;
   roles: { role_level: number };
 }
+
+type MasterOrganization = Organization & {
+  contact_name?: string | null;
+  contact_title?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  address?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state_id?: string | null;
+  district_id?: string | null;
+  postal_code?: string | null;
+  country_code?: string | null;
+  website?: string | null;
+  hot_flavour_brands?: string | null;
+  sells_serapod_flavour?: boolean | null;
+  sells_sbox?: boolean | null;
+  sells_sbox_special_edition?: boolean | null;
+  is_active?: boolean | null;
+  updated_at?: string | null;
+};
 
 type SortField =
   | "full_name"
@@ -233,6 +256,12 @@ export default function UserManagementNew({
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(20);
+  const [organizationDialogOpen, setOrganizationDialogOpen] = useState(false);
+  const [organizationLoading, setOrganizationLoading] = useState(false);
+  const [organizationSaving, setOrganizationSaving] = useState(false);
+  const [selectedOrganization, setSelectedOrganization] = useState<MasterOrganization | null>(null);
+  const [organizationForm, setOrganizationForm] = useState<Partial<MasterOrganization>>({});
+  const [organizationDialogUser, setOrganizationDialogUser] = useState<User | null>(null);
 
   // Delete progress state
   const [deleteProgress, setDeleteProgress] = useState<{
@@ -261,6 +290,10 @@ export default function UserManagementNew({
   const canManageUserDeletion = () => resolveCurrentUserLevel() <= 10;
 
   const currentUserLevel = resolveCurrentUserLevel();
+  const canEditSelectedOrganization =
+    currentUserLevel === 1 &&
+    selectedOrganization?.org_type_code === "SHOP" &&
+    organizationDialogUser?.organization_id === selectedOrganization?.id;
 
   useEffect(() => {
     if (isReady) {
@@ -394,6 +427,113 @@ export default function UserManagementNew({
       setOrganizations((data || []) as Organization[]);
     } catch (error) {
       console.error("Error loading organizations:", error);
+    }
+  };
+
+  const handleOrganizationFieldChange = (field: keyof MasterOrganization, value: any) => {
+    setOrganizationForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleOpenOrganizationDialog = async (user: User, organization: Organization) => {
+    setOrganizationDialogUser(user);
+    setSelectedOrganization(null);
+    setOrganizationForm({});
+    setOrganizationDialogOpen(true);
+    setOrganizationLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("*")
+        .eq("id", organization.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) throw new Error("Organization not found.");
+
+      const org = data as MasterOrganization;
+      setSelectedOrganization(org);
+      setOrganizationForm(org);
+    } catch (error) {
+      console.error("Error loading organization:", error);
+      toast({
+        title: "Load Failed",
+        description: error instanceof Error ? error.message : "Could not load organization master data.",
+        variant: "destructive",
+      });
+      setOrganizationDialogOpen(false);
+    } finally {
+      setOrganizationLoading(false);
+    }
+  };
+
+  const handleSaveOrganization = async () => {
+    if (!selectedOrganization || !canEditSelectedOrganization) return;
+
+    try {
+      setOrganizationSaving(true);
+
+      const updatePayload = {
+        org_name: organizationForm.org_name?.trim() || selectedOrganization.org_name,
+        branch: organizationForm.branch?.trim() || null,
+        contact_name: organizationForm.contact_name?.trim() || null,
+        contact_title: organizationForm.contact_title?.trim() || null,
+        contact_phone: organizationForm.contact_phone?.trim() || null,
+        contact_email: organizationForm.contact_email?.trim() || null,
+        address: organizationForm.address?.trim() || null,
+        address_line2: organizationForm.address_line2?.trim() || null,
+        city: organizationForm.city?.trim() || null,
+        postal_code: organizationForm.postal_code?.trim() || null,
+        country_code: organizationForm.country_code?.trim() || null,
+        website: organizationForm.website?.trim() || null,
+        hot_flavour_brands: organizationForm.hot_flavour_brands?.trim() || null,
+        sells_serapod_flavour: Boolean(organizationForm.sells_serapod_flavour),
+        sells_sbox: Boolean(organizationForm.sells_sbox),
+        sells_sbox_special_edition: Boolean(organizationForm.sells_sbox_special_edition),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await (supabase as any)
+        .from("organizations")
+        .update(updatePayload)
+        .eq("id", selectedOrganization.id)
+        .eq("org_type_code", "SHOP")
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) throw new Error("Organization update was not applied.");
+
+      const updated = data as MasterOrganization;
+      setSelectedOrganization(updated);
+      setOrganizationForm(updated);
+      setOrganizations((prev) =>
+        prev.map((org) =>
+          org.id === updated.id
+            ? {
+              ...org,
+              org_name: updated.org_name,
+              org_code: updated.org_code,
+              org_type_code: updated.org_type_code,
+              branch: updated.branch,
+            }
+            : org,
+        ),
+      );
+
+      toast({
+        title: "Organization Updated",
+        description: `${updated.org_name} master data has been saved.`,
+      });
+    } catch (error) {
+      console.error("Error saving organization:", error);
+      toast({
+        title: "Save Failed",
+        description: error instanceof Error ? error.message : "Could not save organization master data.",
+        variant: "destructive",
+      });
+    } finally {
+      setOrganizationSaving(false);
     }
   };
 
@@ -1323,6 +1463,212 @@ export default function UserManagementNew({
         onSave={handleSaveUser}
       />
 
+      <Dialog open={organizationDialogOpen} onOpenChange={(open) => {
+        if (!organizationSaving) setOrganizationDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-blue-600" />
+              Organization Master Data
+            </DialogTitle>
+            <DialogDescription>
+              {organizationLoading
+                ? "Loading organization details..."
+                : canEditSelectedOrganization
+                  ? "Super Admin can update this shop organization from User Management."
+                  : "View-only. Editing is available only to Super Admin for users attached to a shop organization."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {organizationLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+            </div>
+          ) : selectedOrganization ? (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Code</label>
+                  <Input value={selectedOrganization.org_code || ""} disabled />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Type</label>
+                  <Input value={getOrgTypeName(selectedOrganization.org_type_code || "")} disabled />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <Input value={selectedOrganization.is_active === false ? "Inactive" : "Active"} disabled />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
+                  <Input
+                    value={organizationForm.org_name || ""}
+                    onChange={(event) => handleOrganizationFieldChange("org_name", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                  <Input
+                    value={organizationForm.branch || ""}
+                    onChange={(event) => handleOrganizationFieldChange("branch", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                  <Input
+                    value={organizationForm.contact_name || ""}
+                    onChange={(event) => handleOrganizationFieldChange("contact_name", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Title</label>
+                  <Input
+                    value={organizationForm.contact_title || ""}
+                    onChange={(event) => handleOrganizationFieldChange("contact_title", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
+                  <Input
+                    value={organizationForm.contact_phone || ""}
+                    onChange={(event) => handleOrganizationFieldChange("contact_phone", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                  <Input
+                    value={organizationForm.contact_email || ""}
+                    onChange={(event) => handleOrganizationFieldChange("contact_email", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                  <textarea
+                    value={organizationForm.address || ""}
+                    onChange={(event) => handleOrganizationFieldChange("address", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                    className="min-h-[84px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                  <textarea
+                    value={organizationForm.address_line2 || ""}
+                    onChange={(event) => handleOrganizationFieldChange("address_line2", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                    className="min-h-[84px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <Input
+                    value={organizationForm.city || ""}
+                    onChange={(event) => handleOrganizationFieldChange("city", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                  <Input
+                    value={organizationForm.postal_code || ""}
+                    onChange={(event) => handleOrganizationFieldChange("postal_code", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country Code</label>
+                  <Input
+                    value={organizationForm.country_code || ""}
+                    onChange={(event) => handleOrganizationFieldChange("country_code", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                  <Input
+                    value={organizationForm.website || ""}
+                    onChange={(event) => handleOrganizationFieldChange("website", event.target.value)}
+                    disabled={!canEditSelectedOrganization}
+                  />
+                </div>
+              </div>
+
+              {selectedOrganization.org_type_code === "SHOP" && (
+                <div className="rounded-lg border p-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Hot Flavour Brands</label>
+                    <Input
+                      value={organizationForm.hot_flavour_brands || ""}
+                      onChange={(event) => handleOrganizationFieldChange("hot_flavour_brands", event.target.value)}
+                      disabled={!canEditSelectedOrganization}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <Checkbox
+                        checked={Boolean(organizationForm.sells_serapod_flavour)}
+                        onCheckedChange={(checked) => handleOrganizationFieldChange("sells_serapod_flavour", checked === true)}
+                        disabled={!canEditSelectedOrganization}
+                      />
+                      Sells Serapod Flavour
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <Checkbox
+                        checked={Boolean(organizationForm.sells_sbox)}
+                        onCheckedChange={(checked) => handleOrganizationFieldChange("sells_sbox", checked === true)}
+                        disabled={!canEditSelectedOrganization}
+                      />
+                      Sells S.Box
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <Checkbox
+                        checked={Boolean(organizationForm.sells_sbox_special_edition)}
+                        onCheckedChange={(checked) => handleOrganizationFieldChange("sells_sbox_special_edition", checked === true)}
+                        disabled={!canEditSelectedOrganization}
+                      />
+                      Sells S.Box Special Edition
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOrganizationDialogOpen(false)}
+              disabled={organizationSaving}
+            >
+              Close
+            </Button>
+            {canEditSelectedOrganization && (
+              <Button onClick={handleSaveOrganization} disabled={organizationSaving}>
+                {organizationSaving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                Save Organization
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -1741,12 +2087,28 @@ export default function UserManagementNew({
                               if (org.org_type_code === 'SHOP') {
                                 return (
                                   <div>
-                                    <span className="text-gray-900 font-medium">{org.org_name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenOrganizationDialog(user, org)}
+                                      className="text-left text-gray-900 font-medium hover:text-blue-600 hover:underline"
+                                      title="View organization master data"
+                                    >
+                                      {org.org_name}
+                                    </button>
                                     {org.branch && <span className="text-gray-500 text-xs ml-1">({org.branch})</span>}
                                   </div>
                                 );
                               }
-                              return <span className="text-gray-900">{getOrgTypeName(org.org_type_code || "")}</span>;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenOrganizationDialog(user, org)}
+                                  className="text-left text-gray-900 hover:text-blue-600 hover:underline"
+                                  title="View organization master data"
+                                >
+                                  {getOrgTypeName(org.org_type_code || "")}
+                                </button>
+                              );
                             })()}
                           </div>
                         </TableCell>
