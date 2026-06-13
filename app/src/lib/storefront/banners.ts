@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatStorefrontError } from '@/lib/storefront/error'
+import { getStorageUrl } from '@/lib/utils'
 
 export interface StoreBanner {
   id: string
@@ -62,6 +63,7 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
         if (!fallbackError && fallbackData) {
           return ((fallbackData as any[]) ?? []).map((b) => ({
             ...b,
+            image_url: getStorageUrl(b.image_url) || b.image_url,
             layout_slot: b.layout_slot || 'carousel',
           })) as StoreBanner[]
         }
@@ -71,6 +73,7 @@ export async function listActiveStoreBanners(bannerType: 'store' | 'login' = 'st
 
     return ((data as any[]) ?? []).map((b) => ({
       ...b,
+      image_url: getStorageUrl(b.image_url) || b.image_url,
       layout_slot: b.layout_slot || 'carousel',
     })) as StoreBanner[]
   } catch (err) {
