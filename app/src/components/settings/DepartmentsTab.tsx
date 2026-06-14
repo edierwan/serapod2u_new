@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Table,
@@ -55,7 +56,12 @@ import {
   Search,
   UserX,
   ArrowRight,
-  Network
+  Network,
+  ArrowLeft,
+  X,
+  FileText,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import UserDialogNew from '@/components/users/UserDialogNew'
@@ -97,13 +103,64 @@ interface OrgUser {
   email: string
 }
 
+type DepartmentCreateStep = 'list' | 'create' | 'success'
+type DepartmentCreateStatus = 'active' | 'disabled' | 'draft'
+
+interface DepartmentCreateForm {
+  dept_code: string
+  dept_name: string
+  manager_user_id: string
+  sort_order: string
+  parent_department_id: string
+  status: DepartmentCreateStatus
+  notes: string
+}
+
+const emptyDepartmentCreateForm = (): DepartmentCreateForm => ({
+  dept_code: '',
+  dept_name: '',
+  manager_user_id: '',
+  sort_order: '',
+  parent_department_id: '',
+  status: 'active',
+  notes: ''
+})
+
+const suggestDepartmentCode = (name: string) => {
+  const cleaned = name.trim().replace(/&/g, ' and ').replace(/[^a-zA-Z0-9\s]/g, ' ')
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  if (!words.length) return ''
+
+  const normalized = words.map(word => word.toLowerCase())
+  if (normalized.includes('human') && normalized.includes('resources')) return 'HR'
+  if (normalized.includes('information') && normalized.includes('technology')) return 'IT'
+  if (normalized.includes('finance') && normalized.includes('accounting')) return 'FIN'
+  if (normalized.includes('operations')) return 'OPS'
+  if (normalized.includes('warehouse')) return 'WH'
+  if (normalized.includes('sales')) return 'SALES'
+
+  if (words.length === 1) return words[0].slice(0, 4).toUpperCase()
+  return words.map(word => word[0]).join('').slice(0, 5).toUpperCase()
+}
+
+const departmentStatusLabel = (status: DepartmentCreateStatus) => {
+  if (status === 'disabled') return 'Disabled'
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
 export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOrgChart }: DepartmentsTabProps) {
-  const { isReady, supabase, userProfile } = useSupabaseAuth()
+  const { isReady, supabase, userProfile } = useSupabaseAuth() as ReturnType<typeof useSupabaseAuth> & {
+    userProfile?: { id: string; role_code: string } | null
+  }
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null)
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [showDisabled, setShowDisabled] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [createStep, setCreateStep] = useState<DepartmentCreateStep>('list')
+  const [createForm, setCreateForm] = useState<DepartmentCreateForm>(() => emptyDepartmentCreateForm())
+  const [createdDepartment, setCreatedDepartment] = useState<Department | null>(null)
+  const [createdSummary, setCreatedSummary] = useState<DepartmentCreateForm | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingDept, setEditingDept] = useState<Department | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -361,6 +418,130 @@ export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOr
 
   const activeDepartments = useMemo(() => departments.filter(d => d.is_active), [departments])
 
+  const selectedCreateManager = useMemo(() => (
+    orgUsers.find(user => user.id === createForm.manager_user_id) || null
+  ), [orgUsers, createForm.manager_user_id])
+
+  const selectedCreateParent = useMemo(() => (
+    departments.find(dept => dept.id === createForm.parent_department_id) || null
+  ), [departments, createForm.parent_department_id])
+
+  const createDeptErrors = useMemo(() => {
+    const code = createForm.dept_code.trim().toUpperCase()
+    const name = createForm.dept_name.trim()
+    const duplicateCode = code
+      ? departments.some(dept => (dept.dept_code || '').toUpperCase() === code)
+      : false
+    const duplicateName = name
+      ? departments.some(dept => dept.dept_name.trim().toLowerCase() === name.toLowerCase())
+      : false
+    const sortOrderInvalid = createForm.sort_order.trim() !== '' && Number.isNaN(Number(createForm.sort_order))
+
+    return {
+      dept_name: !name
+        ? 'Department name is required.'
+        : duplicateName
+          ? 'A department with this name already exists.'
+          : '',
+      dept_code: duplicateCode ? 'A department with this code already exists.' : '',
+      sort_order: sortOrderInvalid ? 'Sort order must be a number.' : ''
+    }
+  }, [createForm.dept_code, createForm.dept_name, createForm.sort_order, departments])
+
+  const canCreateDepartment = !createDeptErrors.dept_name && !createDeptErrors.dept_code && !createDeptErrors.sort_order
+
+  const updateCreateForm = (updates: Partial<DepartmentCreateForm>) => {
+    setCreateForm(prev => ({ ...prev, ...updates }))
+  }
+
+  const resetCreateFlow = () => {
+    setCreateForm(emptyDepartmentCreateForm())
+    setCreatedDepartment(null)
+    setCreatedSummary(null)
+  }
+
+  const handleOpenCreate = () => {
+    resetCreateFlow()
+    setCreateStep('create')
+  }
+
+  const handleCreateNameChange = (deptName: string) => {
+    setCreateForm(prev => ({
+      ...prev,
+      dept_name: deptName,
+      dept_code: prev.dept_code ? prev.dept_code : suggestDepartmentCode(deptName)
+    }))
+  }
+
+  const handleSuggestCode = () => {
+    updateCreateForm({ dept_code: suggestDepartmentCode(createForm.dept_name) })
+  }
+
+  const handleCancelCreate = () => {
+    resetCreateFlow()
+    setCreateStep('list')
+  }
+
+  const handleCreateAnother = () => {
+    resetCreateFlow()
+    setCreateStep('create')
+  }
+
+  const handleGoToDepartments = () => {
+    resetCreateFlow()
+    setCreateStep('list')
+    loadDepartments()
+  }
+
+  const handleViewDepartment = () => {
+    if (createdDepartment) {
+      setSearchQuery(createdDepartment.dept_code || createdDepartment.dept_name)
+    }
+    handleGoToDepartments()
+  }
+
+  const handleCreateDepartment = async (statusOverride?: DepartmentCreateStatus) => {
+    const nextStatus = statusOverride || createForm.status
+    if (!canCreateDepartment) {
+      toast({
+        title: 'Validation Error',
+        description: createDeptErrors.dept_name || createDeptErrors.dept_code || createDeptErrors.sort_order,
+        variant: 'destructive'
+      })
+      return
+    }
+
+    const summary = { ...createForm, status: nextStatus }
+    const payload: CreateDepartmentPayload = {
+      dept_code: createForm.dept_code.trim() ? createForm.dept_code.trim().toUpperCase() : null,
+      dept_name: createForm.dept_name.trim(),
+      manager_user_id: createForm.manager_user_id || null,
+      sort_order: createForm.sort_order.trim() ? Number(createForm.sort_order) : null,
+      parent_department_id: createForm.parent_department_id || null,
+      is_active: nextStatus === 'active'
+    }
+
+    setIsSaving(true)
+    try {
+      const result = await createDepartment(organizationId, payload)
+
+      if (result.success && result.data) {
+        setCreatedDepartment(result.data)
+        setCreatedSummary(summary)
+        setCreateStep('success')
+        loadDepartments()
+      } else {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to create department',
+          variant: 'destructive'
+        })
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const filteredBulkUsers = useMemo(() => {
     const search = bulkSearch.toLowerCase()
     return orgMembers.filter(user => {
@@ -507,7 +688,7 @@ export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOr
       })
 
       if (!result.success || !result.user_id) {
-        throw new Error(result.error || "Failed to create user")
+        throw new Error(!result.success ? result.error : "Failed to create user")
       }
 
       const userId = result.user_id
@@ -588,6 +769,342 @@ export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOr
     )
   })
 
+  if (createStep === 'create') {
+    const previewCode = createForm.dept_code.trim().toUpperCase() || 'DEPT'
+    const previewName = createForm.dept_name.trim() || 'New Department'
+    const previewManager = selectedCreateManager?.full_name || selectedCreateManager?.email || 'Not assigned'
+    const previewParent = selectedCreateParent?.dept_name || 'Root level'
+    const previewSortOrder = createForm.sort_order.trim() || '—'
+
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>HR</span>
+          <ArrowRight className="h-3 w-3" />
+          <span>People</span>
+          <ArrowRight className="h-3 w-3" />
+          <span>Departments</span>
+          <ArrowRight className="h-3 w-3" />
+          <span className="font-medium text-gray-800">Create Department</span>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <div className="rounded-lg border bg-white shadow-sm">
+            <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" onClick={handleCancelCreate}>
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-gray-950">Create Department</h2>
+                  <p className="text-sm text-gray-500">Set up a department for your organization structure.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => handleCreateDepartment('draft')}
+                  disabled={isSaving || !canCreateDepartment}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  {isSaving ? 'Saving...' : 'Save as Draft'}
+                </Button>
+                <Button variant="outline" size="icon" onClick={handleCancelCreate}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <section className="rounded-lg border p-5">
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+                    1
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-950">Basic Information</h3>
+                    <p className="text-sm text-gray-500">Enter the essential details for this department.</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="create-dept-name">Department Name <span className="text-red-500">*</span></Label>
+                    <Input
+                      id="create-dept-name"
+                      value={createForm.dept_name}
+                      onChange={(event) => handleCreateNameChange(event.target.value)}
+                      placeholder="e.g., Operations"
+                      className={createDeptErrors.dept_name ? 'border-red-300 focus-visible:ring-red-200' : ''}
+                    />
+                    <p className="text-xs text-gray-500">The full name of the department</p>
+                    {createDeptErrors.dept_name && <p className="text-xs text-red-600">{createDeptErrors.dept_name}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="create-dept-code">Department Code <span className="text-gray-400">(optional)</span></Label>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        id="create-dept-code"
+                        value={createForm.dept_code}
+                        onChange={(event) => updateCreateForm({ dept_code: event.target.value.toUpperCase() })}
+                        placeholder="e.g., OPS"
+                        maxLength={20}
+                        className={createDeptErrors.dept_code ? 'border-red-300 focus-visible:ring-red-200' : ''}
+                      />
+                      <Button type="button" variant="outline" onClick={handleSuggestCode} disabled={!createForm.dept_name.trim()}>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Auto-suggest
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500">Short code for stable references</p>
+                    {createDeptErrors.dept_code && <p className="text-xs text-red-600">{createDeptErrors.dept_code}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="create-sort-order">Sort Order <span className="text-gray-400">(optional)</span></Label>
+                    <Input
+                      id="create-sort-order"
+                      inputMode="numeric"
+                      value={createForm.sort_order}
+                      onChange={(event) => updateCreateForm({ sort_order: event.target.value.replace(/[^\d]/g, '') })}
+                      placeholder="e.g., 20"
+                      className={createDeptErrors.sort_order ? 'border-red-300 focus-visible:ring-red-200' : ''}
+                    />
+                    <p className="text-xs text-gray-500">Determines display order in lists</p>
+                    {createDeptErrors.sort_order && <p className="text-xs text-red-600">{createDeptErrors.sort_order}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={createForm.status} onValueChange={(value) => updateCreateForm({ status: value as DepartmentCreateStatus })}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="disabled">Disabled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Set whether this department is active or inactive</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border p-5">
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+                    2
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-950">Organization Structure</h3>
+                    <p className="text-sm text-gray-500">Define the reporting structure for this department.</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Department Manager <span className="text-gray-400">(optional)</span></Label>
+                    <Select
+                      value={createForm.manager_user_id || 'none'}
+                      onValueChange={(value) => updateCreateForm({ manager_user_id: value === 'none' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a manager" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No manager</SelectItem>
+                        {orgUsers.map(user => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.full_name || user.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">The manager will be used as fallback approver for users in this department</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Parent Department <span className="text-gray-400">(optional)</span></Label>
+                    <Select
+                      value={createForm.parent_department_id || 'none'}
+                      onValueChange={(value) => updateCreateForm({ parent_department_id: value === 'none' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select parent department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No parent (root level)</SelectItem>
+                        {activeDepartments.map(dept => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">Set a parent to create department hierarchy in the org chart</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border p-5">
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">
+                    3
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-950">Additional Details</h3>
+                    <p className="text-sm text-gray-500">Add any extra information to help your team.</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description / Notes <span className="text-gray-400">(optional)</span></Label>
+                  <Textarea
+                    value={createForm.notes}
+                    onChange={(event) => updateCreateForm({ notes: event.target.value.slice(0, 500) })}
+                    placeholder="e.g., This department is responsible for day-to-day operational activities..."
+                    className="min-h-[100px] resize-none"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Provide additional context or notes about this department</span>
+                    <span>{createForm.notes.length}/500</span>
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
+                <Button variant="outline" onClick={handleCancelCreate} disabled={isSaving}>
+                  Cancel
+                </Button>
+                <Button onClick={() => handleCreateDepartment()} disabled={isSaving || !canCreateDepartment}>
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Building2 className="mr-2 h-4 w-4" />}
+                  {isSaving ? 'Creating...' : 'Create Department'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <aside className="rounded-lg border bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b p-5">
+              <h3 className="text-base font-semibold text-gray-950">Department Preview</h3>
+              <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">Live Preview</Badge>
+            </div>
+            <div className="space-y-6 p-5">
+              <div className="flex flex-col items-center text-center">
+                <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                  <Building2 className="h-10 w-10" />
+                </div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">Department Code</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-gray-950">{previewCode}</p>
+                <p className="mt-4 text-xs uppercase tracking-wide text-gray-500">Department Name</p>
+                <p className="mt-1 text-xl font-semibold text-gray-950">{previewName}</p>
+                <Badge className={`mt-4 ${createForm.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
+                  {departmentStatusLabel(createForm.status)}
+                </Badge>
+              </div>
+
+              <div className="divide-y rounded-md border">
+                <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <span className="text-gray-500">Manager</span>
+                  <span className="text-right font-medium text-gray-900">{previewManager}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <span className="text-gray-500">Parent Department</span>
+                  <span className="text-right font-medium text-gray-900">{previewParent}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <span className="text-gray-500">Sort Order</span>
+                  <span className="font-medium text-gray-900">{previewSortOrder}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <span className="text-gray-500">Status</span>
+                  <span className="font-medium text-gray-900">{departmentStatusLabel(createForm.status)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-gray-50 p-4">
+                <h4 className="mb-4 text-sm font-semibold text-gray-950">Hierarchy Preview</h4>
+                <div className="flex flex-col items-center text-sm">
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-6 py-2 text-center font-medium text-blue-800">
+                    <div>{previewParent}</div>
+                    {selectedCreateParent?.dept_code && <div className="text-xs font-normal">{selectedCreateParent.dept_code}</div>}
+                  </div>
+                  <div className="h-8 w-px bg-indigo-300" />
+                  <div className="rounded-md border border-indigo-300 bg-indigo-50 px-6 py-2 text-center font-semibold text-indigo-800">
+                    <div>{previewName}</div>
+                    <div className="text-xs font-normal">{previewCode}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+                <div className="mb-1 font-semibold">About this preview</div>
+                <p className="text-xs leading-5">This is how the department will appear in your organization structure.</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    )
+  }
+
+  if (createStep === 'success' && createdSummary) {
+    const manager = orgUsers.find(user => user.id === createdSummary.manager_user_id)
+    const parent = departments.find(dept => dept.id === createdSummary.parent_department_id)
+
+    return (
+      <div className="rounded-lg border bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+          <CheckCircle2 className="h-10 w-10" />
+        </div>
+        <h2 className="text-2xl font-semibold text-gray-950">Department Created Successfully!</h2>
+        <p className="mt-2 text-sm text-gray-500">{createdSummary.dept_name} has been added to your organization.</p>
+
+        <div className="mx-auto mt-7 grid max-w-5xl overflow-hidden rounded-lg border text-left md:grid-cols-6">
+          <div className="border-b p-4 md:border-b-0 md:border-r">
+            <p className="text-xs text-gray-500">Department Code</p>
+            <p className="mt-2 font-mono font-semibold text-gray-950">{createdSummary.dept_code || '—'}</p>
+          </div>
+          <div className="border-b p-4 md:border-b-0 md:border-r">
+            <p className="text-xs text-gray-500">Department Name</p>
+            <p className="mt-2 font-semibold text-gray-950">{createdSummary.dept_name}</p>
+          </div>
+          <div className="border-b p-4 md:border-b-0 md:border-r">
+            <p className="text-xs text-gray-500">Manager</p>
+            <p className="mt-2 font-semibold text-gray-950">{manager?.full_name || manager?.email || 'Not assigned'}</p>
+          </div>
+          <div className="border-b p-4 md:border-b-0 md:border-r">
+            <p className="text-xs text-gray-500">Parent</p>
+            <p className="mt-2 font-semibold text-gray-950">{parent?.dept_name || 'Root level'}</p>
+          </div>
+          <div className="border-b p-4 md:border-b-0 md:border-r">
+            <p className="text-xs text-gray-500">Sort Order</p>
+            <p className="mt-2 font-semibold text-gray-950">{createdSummary.sort_order || '—'}</p>
+          </div>
+          <div className="p-4">
+            <p className="text-xs text-gray-500">Status</p>
+            <Badge className={`mt-2 ${createdSummary.status === 'active' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50' : 'bg-gray-100 text-gray-700 hover:bg-gray-100'}`}>
+              {departmentStatusLabel(createdSummary.status)}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+          <Button variant="outline" onClick={handleViewDepartment}>
+            View Department
+          </Button>
+          <Button variant="outline" onClick={handleCreateAnother}>
+            Create Another
+          </Button>
+          <Button onClick={handleGoToDepartments}>
+            Go to Departments
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -603,7 +1120,7 @@ export default function DepartmentsTab({ organizationId, canEdit, onNavigateToOr
               </CardDescription>
             </div>
             {canEdit && (
-              <Button onClick={() => handleOpenDialog()} className="sm:self-end">
+              <Button onClick={handleOpenCreate} className="sm:self-end">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Department
               </Button>

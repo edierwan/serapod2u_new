@@ -1,7 +1,18 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { checkPermissionForUser } from '@/lib/server/permissions'
+import { getHrAccessDecision } from '@/lib/server/hrAccess'
+
+const shouldShowHrAccessDiagnostic = () => {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || ''
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    return (
+        process.env.NODE_ENV !== 'production' ||
+        appUrl.includes('localhost') ||
+        appUrl.includes('stg.') ||
+        supabaseUrl.includes('stg')
+    )
+}
 
 export async function getHrPageContext() {
     const supabase = await createClient()
@@ -46,15 +57,23 @@ export async function getHrPageContext() {
         roles
     }
 
-    // Superadmin (role_level 1) always has full access
-    const isSuperAdmin = roles?.role_level === 1
+    const hrAccess = await getHrAccessDecision({
+        userId: user.id,
+        organizationId,
+        roleCode: userProfile.role_code ?? null,
+        roleLevel: roles?.role_level ?? null,
+    })
 
-    const [viewUsers, viewSettings] = await Promise.all([
-        checkPermissionForUser(user.id, 'view_users'),
-        checkPermissionForUser(user.id, 'view_settings')
-    ])
+    const hrUnauthorizedReason =
+        !hrAccess.allowed && shouldShowHrAccessDiagnostic()
+            ? `Your account role was detected as ${roles?.role_name ?? userProfile.role_code ?? 'Unknown'} Level ${roles?.role_level ?? 'unknown'}, but this route requires HR admin permission. ${hrAccess.reason}`
+            : null
 
-    const canViewHr = isSuperAdmin || viewUsers.allowed || viewSettings.allowed
-
-    return { user, userProfile: transformedUserProfile, canViewHr }
+    return {
+        user,
+        userProfile: transformedUserProfile,
+        canViewHr: hrAccess.allowed,
+        hrAccess,
+        hrUnauthorizedReason,
+    }
 }

@@ -38,6 +38,7 @@ export interface CreateDepartmentPayload {
   sort_order?: number | null
   parent_department_id?: string | null
   chart_order?: number | null
+  is_active?: boolean
 }
 
 export interface UpdateDepartmentPayload {
@@ -224,7 +225,7 @@ export async function createDepartment(
         sort_order: payload.sort_order ?? 0,
         chart_order: payload.chart_order ?? null,
         parent_department_id: payload.parent_department_id || null,
-        is_active: true
+        is_active: payload.is_active ?? true
       })
       .select(`
         *
@@ -2322,4 +2323,3 @@ export async function getDepartmentsForParentPicker(
     }
   }
 }
-
