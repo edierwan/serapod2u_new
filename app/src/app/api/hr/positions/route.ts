@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
             ? null
             : Number(body.level)
         const category = body.category ? String(body.category) : null
+        const isActive = body.is_active === undefined ? true : !!body.is_active
 
         if (!code || !name) {
             return NextResponse.json({ success: false, error: 'Code and name are required' }, { status: 400 })
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
                 name,
                 level: Number.isFinite(level) ? level : null,
                 category,
-                is_active: true
+                is_active: isActive
             })
             .select('*')
             .single()

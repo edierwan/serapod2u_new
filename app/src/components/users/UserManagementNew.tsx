@@ -613,7 +613,7 @@ export default function UserManagementNew({
               .order('scanned_at', { ascending: false });
 
             if (error) {
-              throw error;
+              return [];
             }
 
             return data || [];
@@ -632,8 +632,8 @@ export default function UserManagementNew({
           }
         });
         setLastScanMap(map);
-      } catch (err) {
-        console.error('Last scan load error:', err);
+      } catch {
+        setLastScanMap(new Map());
       }
     };
 
