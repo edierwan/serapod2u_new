@@ -95,6 +95,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             variant_name,
             variant_code,
             manufacturer_sku,
+            manual_sku,
             barcode,
             suggested_retail_price,
             base_cost,
@@ -227,11 +228,16 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         if (animUploadError) throw animUploadError
         animationUrl = animationFilePath
       }
+
+      const manualSku = typeof variantData.manual_sku === 'string'
+        ? variantData.manual_sku.trim().toUpperCase().slice(0, 5)
+        : editingVariant?.manual_sku ?? null
       
       const variantPayload = {
         variant_name: variantData.variant_name,
         variant_code: variantData.variant_code,
         manufacturer_sku: variantData.manufacturer_sku,
+        manual_sku: manualSku || null,
         barcode: variantData.barcode,
         suggested_retail_price: variantData.suggested_retail_price || 0,
         base_cost: variantData.base_cost || 0,
