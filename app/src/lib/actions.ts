@@ -5,8 +5,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
+import { SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE } from '@/lib/engagement/registration-link-selection'
 import {
-  SIGNUP_PASSWORD_MIN_LENGTH_MESSAGE,
   getRegistrationPendingShopDisplayName,
   matchesRegistrationPendingShopSelection,
   sanitizeRegistrationPendingShopRequest,
@@ -23,84 +23,6 @@ import {
   markCodeUsed as markRegistrationCodeUsed,
 } from '@/server/auth/registrationVerificationService'
 
-type CreateUserErrorCode =
-  | 'UNAUTHORIZED'
-  | 'PERMISSION_DENIED'
-  | 'EMAIL_EXISTS'
-  | 'PHONE_EXISTS'
-  | 'MISSING_ROLE'
-  | 'AUTH_CREATE_FAILED'
-  | 'PROFILE_SYNC_FAILED'
-  | 'SERVER_CONFIG_ERROR'
-  | 'UNKNOWN_ERROR'
-
-const CREATE_USER_ERROR_MESSAGES: Record<CreateUserErrorCode, string> = {
-  UNAUTHORIZED: 'Please sign in again before creating user.',
-  PERMISSION_DENIED: "You don't have permission to create users. Please contact system admin.",
-  EMAIL_EXISTS: 'This email is already registered.',
-  PHONE_EXISTS: 'This phone number is already registered.',
-  MISSING_ROLE: 'Please select a valid role before creating user.',
-  AUTH_CREATE_FAILED: 'Unable to create login account. Please try again or contact admin.',
-  PROFILE_SYNC_FAILED: 'Unable to save user profile. Please try again or contact admin.',
-  SERVER_CONFIG_ERROR: 'User creation is not configured correctly on server. Please check staging environment.',
-  UNKNOWN_ERROR: 'Unable to create user. Please try again or contact admin.'
-}
-
-const createUserFailure = (
-  code: CreateUserErrorCode,
-  options: {
-    route?: string
-    currentUserId?: string | null
-    currentUserEmail?: string | null
-    resolvedRoleLevel?: number | null
-    permissionAllowed?: boolean
-    permissionReason?: string | null
-    failedStep?: string
-    errorMessage?: string
-  } = {}
-) => {
-  const message = CREATE_USER_ERROR_MESSAGES[code]
-  console.warn('[createUserWithAuth]', {
-    route: options.route || 'server_action:createUserWithAuth',
-    currentUserId: options.currentUserId || null,
-    currentUserEmail: options.currentUserEmail || null,
-    resolvedRoleLevel: options.resolvedRoleLevel ?? null,
-    permissionAllowed: options.permissionAllowed,
-    permissionReason: options.permissionReason || null,
-    failedStep: options.failedStep || 'unknown',
-    errorCode: code,
-    errorMessage: options.errorMessage || message
-  })
-
-  return {
-    success: false as const,
-    error: message,
-    code,
-    message
-  }
-}
-
-const classifyCreateUserAuthError = (message?: string | null): CreateUserErrorCode => {
-  const normalized = (message || '').toLowerCase()
-  if (normalized.includes('email') && (
-    normalized.includes('already') ||
-    normalized.includes('registered') ||
-    normalized.includes('exists') ||
-    normalized.includes('duplicate')
-  )) {
-    return 'EMAIL_EXISTS'
-  }
-  if (normalized.includes('phone') && (
-    normalized.includes('already') ||
-    normalized.includes('registered') ||
-    normalized.includes('exists') ||
-    normalized.includes('duplicate')
-  )) {
-    return 'PHONE_EXISTS'
-  }
-  return 'AUTH_CREATE_FAILED'
-}
-
 export async function createUserWithAuth(userData: {
   email: string
   password: string
@@ -109,135 +31,59 @@ export async function createUserWithAuth(userData: {
   role_code: string
   organization_id?: string
   phone?: string
-}) {
+  is_active?: boolean
+  avatar_url?: string | null
+  shop_name?: string | null
+  address?: string | null
+  referral_phone?: string | null
+  bank_id?: string | null
+  bank_account_number?: string | null
+  bank_account_holder_name?: string | null
+  department_id?: string | null
+  manager_user_id?: string | null
+  position_id?: string | null
+  employment_type?: string | null
+  join_date?: string | null
+  employment_status?: string | null
+  can_be_reference?: boolean
+}, callerInfo?: { id: string, role_code: string }) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: sessionAuthError } = await supabase.auth.getUser()
+    let callerUserId = user?.id
+
     if (sessionAuthError || !user) {
-      return createUserFailure('UNAUTHORIZED', {
-        failedStep: 'get_current_user',
-        errorMessage: sessionAuthError?.message
-      })
+      if (!callerInfo?.id) {
+        return { success: false, error: 'Unauthorized' }
+      }
+      callerUserId = callerInfo.id
     }
 
-    if (!userData.role_code) {
-      return createUserFailure('MISSING_ROLE', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        failedStep: 'validate_role'
-      })
+    if (!callerUserId) {
+      return { success: false, error: 'Unauthorized' }
     }
 
-    const permissionCheck = await checkPermissionForUser(user.id, 'create_users')
-    const currentRoleLevel = permissionCheck.context?.role_level ?? null
-    const canCreateUsers =
-      permissionCheck.allowed ||
-      (typeof currentRoleLevel === 'number' && currentRoleLevel <= 10)
-
-    if (!canCreateUsers) {
-      return createUserFailure('PERMISSION_DENIED', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: permissionCheck.allowed,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'check_create_users_permission'
-      })
+    const permissionCheck = await checkPermissionForUser(callerUserId, 'create_users')
+    const roleLevel = permissionCheck.context?.role_level
+    const hasRoleLevelCreateAccess = typeof roleLevel === 'number' && roleLevel <= 30
+    if (!permissionCheck.allowed && !hasRoleLevelCreateAccess) {
+      return { success: false, error: 'Forbidden' }
     }
 
     // Step 1: Create auth user using admin API
-    let adminClient
-    try {
-      adminClient = createAdminClient()
-    } catch (configError) {
-      return createUserFailure('SERVER_CONFIG_ERROR', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'create_admin_client',
-        errorMessage: configError instanceof Error ? configError.message : String(configError)
-      })
-    }
+    const adminClient = createAdminClient()
 
     if (!adminClient) {
-      return createUserFailure('SERVER_CONFIG_ERROR', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'create_admin_client',
-        errorMessage: 'Admin client not available'
-      })
+      return {
+        success: false,
+        error: 'Admin client not available. Check service role key configuration.'
+      }
     }
 
-    const email = userData.email.trim().toLowerCase()
     const phone = userData.phone ? normalizePhone(userData.phone) : undefined
 
-    const { data: existingEmailUser, error: existingEmailError } = await adminClient
-      .from('users')
-      .select('id')
-      .ilike('email', email)
-      .maybeSingle()
-
-    if (existingEmailError) {
-      return createUserFailure('UNKNOWN_ERROR', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'check_duplicate_email',
-        errorMessage: existingEmailError.message
-      })
-    }
-
-    if (existingEmailUser) {
-      return createUserFailure('EMAIL_EXISTS', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'check_duplicate_email'
-      })
-    }
-
-    if (phone) {
-      const { data: existingPhoneUser, error: existingPhoneError } = await adminClient
-        .from('users')
-        .select('id')
-        .eq('phone', phone)
-        .maybeSingle()
-
-      if (existingPhoneError) {
-        return createUserFailure('UNKNOWN_ERROR', {
-          currentUserId: user.id,
-          currentUserEmail: user.email,
-          resolvedRoleLevel: currentRoleLevel,
-          permissionAllowed: canCreateUsers,
-          permissionReason: permissionCheck.reason,
-          failedStep: 'check_duplicate_phone',
-          errorMessage: existingPhoneError.message
-        })
-      }
-
-      if (existingPhoneUser) {
-        return createUserFailure('PHONE_EXISTS', {
-          currentUserId: user.id,
-          currentUserEmail: user.email,
-          resolvedRoleLevel: currentRoleLevel,
-          permissionAllowed: canCreateUsers,
-          permissionReason: permissionCheck.reason,
-          failedStep: 'check_duplicate_phone'
-        })
-      }
-    }
-
     const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email,
+      email: userData.email,
       password: userData.password,
       email_confirm: true,
       phone: phone,
@@ -248,35 +94,24 @@ export async function createUserWithAuth(userData: {
     })
 
     if (authError) {
-      const errorCode = classifyCreateUserAuthError(authError.message)
-      return createUserFailure(errorCode, {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'supabase_auth_admin_create_user',
-        errorMessage: authError.message
-      })
+      return {
+        success: false,
+        error: authError.message || 'Failed to create auth user'
+      }
     }
 
     if (!authUser?.user?.id) {
-      return createUserFailure('AUTH_CREATE_FAILED', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'supabase_auth_admin_create_user',
-        errorMessage: 'No user ID returned from auth creation'
-      })
+      return {
+        success: false,
+        error: 'No user ID returned from auth creation'
+      }
     }
 
     // Step 2: Sync user profile to public.users table using the sync function
     const { data: syncResult, error: syncError } = await supabase
       .rpc('sync_user_profile', {
         p_user_id: authUser.user.id,
-        p_email: email,
+        p_email: userData.email,
         p_role_code: userData.role_code,
         p_organization_id: userData.organization_id || undefined,
         p_full_name: userData.full_name || undefined,
@@ -291,15 +126,10 @@ export async function createUserWithAuth(userData: {
         console.error('Failed to rollback auth user:', deleteError)
       }
 
-      return createUserFailure('PROFILE_SYNC_FAILED', {
-        currentUserId: user.id,
-        currentUserEmail: user.email,
-        resolvedRoleLevel: currentRoleLevel,
-        permissionAllowed: canCreateUsers,
-        permissionReason: permissionCheck.reason,
-        failedStep: 'sync_user_profile',
-        errorMessage: syncError.message
-      })
+      return {
+        success: false,
+        error: `Failed to sync user profile: ${syncError.message}`
+      }
     }
 
     // Step 2b: Set account_scope to 'portal' for business users (those with an org)
@@ -317,29 +147,59 @@ export async function createUserWithAuth(userData: {
       }
     }
 
-    if (userData.call_name !== undefined) {
+    const profileUpdateData: Record<string, any> = {}
+    if (userData.call_name !== undefined) profileUpdateData.call_name = userData.call_name || null
+    if (userData.is_active !== undefined) profileUpdateData.is_active = userData.is_active
+    if (userData.avatar_url !== undefined) profileUpdateData.avatar_url = userData.avatar_url || null
+    if (userData.shop_name !== undefined) profileUpdateData.shop_name = userData.shop_name || null
+    if (userData.address !== undefined) profileUpdateData.address = userData.address || null
+    if (userData.referral_phone !== undefined) profileUpdateData.referral_phone = userData.referral_phone || null
+    if (userData.bank_id !== undefined) profileUpdateData.bank_id = userData.bank_id || null
+    if (userData.bank_account_number !== undefined) profileUpdateData.bank_account_number = userData.bank_account_number || null
+    if (userData.bank_account_holder_name !== undefined) profileUpdateData.bank_account_holder_name = userData.bank_account_holder_name || null
+    if (userData.department_id !== undefined) profileUpdateData.department_id = userData.department_id || null
+    if (userData.manager_user_id !== undefined) profileUpdateData.manager_user_id = userData.manager_user_id || null
+    if (userData.position_id !== undefined) profileUpdateData.position_id = userData.position_id || null
+    if (userData.employment_type !== undefined) profileUpdateData.employment_type = userData.employment_type || null
+    if (userData.join_date !== undefined) profileUpdateData.join_date = userData.join_date || null
+    if (userData.employment_status !== undefined) profileUpdateData.employment_status = userData.employment_status || 'active'
+    if (phone) profileUpdateData.phone_verified_at = new Date().toISOString()
+    if (userData.can_be_reference !== undefined) profileUpdateData.can_be_reference = Boolean(userData.can_be_reference)
+
+    if (Object.keys(profileUpdateData).length > 0) {
       const { error: callNameError } = await adminClient
         .from('users')
-        .update({ call_name: userData.call_name || null })
+        .update(profileUpdateData)
         .eq('id', authUser.user.id)
 
       if (callNameError) {
-        console.error('Failed to set call_name:', callNameError.message)
+        console.error('Failed to set created user profile fields:', callNameError.message)
+        try {
+          await adminClient.auth.admin.deleteUser(authUser.user.id)
+        } catch (deleteError) {
+          console.error('Failed to rollback auth user after profile update error:', deleteError)
+        }
+
+        return {
+          success: false,
+          error: `Failed to save created user profile fields: ${callNameError.message}`
+        }
       }
     }
 
     // Step 3: Return success
     revalidatePath('/dashboard')
     return {
-      success: true as const,
+      success: true,
       user_id: authUser.user.id,
-      message: `User ${email} created successfully`
+      message: `User ${userData.email} created successfully`
     }
   } catch (error) {
-    return createUserFailure('UNKNOWN_ERROR', {
-      failedStep: 'unhandled_exception',
-      errorMessage: error instanceof Error ? error.message : String(error)
-    })
+    console.error('Error creating user:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete user'
+    }
   }
 }
 
@@ -362,6 +222,9 @@ export async function updateUserWithAuth(userId: string, userData: {
   department_id?: string | null
   manager_user_id?: string | null
   position_id?: string | null
+  employment_type?: string | null
+  join_date?: string | null
+  employment_status?: string | null
   can_be_reference?: boolean
 }, callerInfo?: { id: string, role_code: string }) {
   try {
@@ -382,8 +245,10 @@ export async function updateUserWithAuth(userId: string, userData: {
 
       if (callerInfo) {
         const permissionCheck = await checkPermissionForUser(callerInfo.id, 'edit_users')
+        const roleLevel = permissionCheck.context?.role_level
+        const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
         isSelfUpdate = callerInfo.id === userId
-        isAuthorized = isSelfUpdate || permissionCheck.allowed
+        isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
         console.log('Server action: Caller validated from DB -', { isAuthorized, isSelfUpdate })
       }
 
@@ -395,7 +260,9 @@ export async function updateUserWithAuth(userId: string, userData: {
       // Session exists - check permissions normally
       isSelfUpdate = currentUser.id === userId
       const permissionCheck = await checkPermissionForUser(currentUser.id, 'edit_users')
-      isAuthorized = isSelfUpdate || permissionCheck.allowed
+      const roleLevel = permissionCheck.context?.role_level
+      const hasRoleLevelEditAccess = typeof roleLevel === 'number' && roleLevel <= 30
+      isAuthorized = isSelfUpdate || permissionCheck.allowed || hasRoleLevelEditAccess
     }
 
     if (!isAuthorized) {

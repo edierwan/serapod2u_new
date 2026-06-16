@@ -94,7 +94,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         description: 'Create and track orders by channel: HQ, Distributor, and Shop.',
         children: [
             { id: 'orders', label: 'Orders', icon: FileText },
-            { id: 'distributor-order', label: 'Distributor Order', icon: ShoppingCart, access: { allowedOrgTypes: ['HQ', 'DIST'] } },
+            { id: 'distributor-order', label: 'Distributor Order', icon: ShoppingCart, access: { allowedOrgTypes: ['HQ', 'DIST'], maxRoleLevel: 40 } },
             { id: 'distributor-incentive', label: 'Distributor Incentive', icon: Trophy, access: { allowedOrgTypes: ['HQ'] } },
             { id: 'shop-order', label: 'Shop Order', icon: Store, access: { allowedOrgTypes: ['HQ', 'SHOP'] } },
         ],
@@ -141,10 +141,13 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
 
 function matchesAccess(access: SCAccessRule | undefined, orgType?: string, roleLevel?: number): boolean {
     if (!access) return true
+    const normalizedOrgType = orgType?.trim().toUpperCase()
     if (access.allowedOrgTypes && access.allowedOrgTypes.length > 0) {
-        if (!orgType || !access.allowedOrgTypes.includes(orgType)) return false
+        const allowedOrgTypes = access.allowedOrgTypes.map((type) => type.toUpperCase())
+        if (!normalizedOrgType || !allowedOrgTypes.includes(normalizedOrgType)) return false
     }
-    if (access.maxRoleLevel !== undefined && roleLevel !== undefined) {
+    if (access.maxRoleLevel !== undefined) {
+        if (roleLevel === undefined) return false
         if (roleLevel > access.maxRoleLevel) return false
     }
     return true
@@ -165,6 +168,19 @@ export function filterSupplyChainNavForUser(
             children: g.children.filter((c) => matchesAccess(c.access, orgType, roleLevel)),
         }))
         .filter((g) => g.children.length > 0)
+}
+
+export function canAccessSupplyChainView(
+    viewId: string,
+    orgType?: string,
+    roleLevel?: number,
+): boolean {
+    if (viewId === 'supply-chain') return true
+
+    return supplyChainNavGroups.some((group) => {
+        if (!matchesAccess(group.access, orgType, roleLevel)) return false
+        return group.children.some((child) => child.id === viewId && matchesAccess(child.access, orgType, roleLevel))
+    })
 }
 
 // ── Flat list helpers ────────────────────────────────────────────
