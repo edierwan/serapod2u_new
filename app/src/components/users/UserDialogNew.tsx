@@ -1,19 +1,42 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getOrgTypeName } from '@/lib/utils/orgHierarchy'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import {
-  Upload, X, Loader2, ImageIcon, AlertCircle, Building2, UserCheck,
-  User as UserIcon, Shield, Briefcase, CreditCard, Store, MapPin, Phone,
-  Settings, Lock, KeyRound
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Banknote,
+  Briefcase,
+  Building2,
+  Camera,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Crown,
+  Eye,
+  EyeOff,
+  Loader2,
+  Mail,
+  MapPin,
+  Phone,
+  Search,
+  Shield,
+  Store,
+  Upload,
+  User as UserIcon,
+  UserPlus,
+  Users,
+  X,
+  Zap,
 } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
@@ -48,71 +71,26 @@ interface PositionOption {
   is_active: boolean
 }
 
-const getDisplayName = (value: { call_name?: string | null; full_name?: string | null; email?: string | null }) => {
-  return value.call_name?.trim() || value.full_name?.trim() || value.email?.trim() || 'New User'
-}
+type WizardStep = 'basic' | 'access' | 'business' | 'banking' | 'review'
+type OrganizationType = 'HQ' | 'DIST' | 'SHOP'
 
-// Image compression utility for avatars
-// Avatars are displayed very small (40-80px), so we aggressively compress to ~10KB
-const compressImage = (file: File): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = (event) => {
-      const img = new Image()
-      img.src = event.target?.result as string
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-
-        // Avatar dimensions - small size since avatars are displayed at 40-80px
-        const MAX_WIDTH = 200
-        const MAX_HEIGHT = 200
-
-        // Calculate new dimensions while maintaining aspect ratio
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width)
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width = Math.round((width * MAX_HEIGHT) / height)
-            height = MAX_HEIGHT
-          }
-        }
-
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
-
-        // Convert to JPEG with aggressive compression (quality 0.6 = 60%)
-        // This targets ~10KB file size for avatars
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              // Create a new File object with compressed blob
-              const compressedFile = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              })
-              console.log(`🖼️ Avatar compressed: ${(file.size / 1024).toFixed(2)}KB → ${(compressedFile.size / 1024).toFixed(2)}KB`)
-              resolve(compressedFile)
-            } else {
-              reject(new Error('Canvas to Blob conversion failed'))
-            }
-          },
-          'image/jpeg',
-          0.6 // Lower quality = smaller file size, perfect for small avatars
-        )
-      }
-      img.onerror = () => reject(new Error('Image loading failed'))
-    }
-    reader.onerror = () => reject(new Error('File reading failed'))
-  })
+type WizardUser = Partial<User> & {
+  password?: string
+  confirmPassword?: string
+  bank_id?: string
+  bank_account_number?: string
+  bank_account_holder_name?: string
+  department_id?: string
+  manager_user_id?: string
+  position_id?: string
+  employment_type?: string
+  join_date?: string
+  employment_status?: string
+  shop_name?: string
+  address?: string
+  referral_phone?: string
+  notes?: string
+  can_be_reference?: boolean
 }
 
 interface UserDialogNewProps {
@@ -129,7 +107,107 @@ interface UserDialogNewProps {
     role_code?: string
   }
   onOpenChange: (open: boolean) => void
-  onSave: (userData: Partial<User>, avatarFile?: File | null, resetPassword?: { password: string }) => void
+  onSave: (userData: Partial<User>, avatarFile?: File | null, resetPassword?: { password: string }) => void | Promise<void>
+}
+
+const STEP_LABELS: Record<WizardStep, string> = {
+  basic: 'Basic Info',
+  access: 'Role & Access',
+  business: 'Business',
+  banking: 'Banking',
+  review: 'Review',
+}
+
+const ORG_TYPES: Array<{ value: OrganizationType; label: string; icon: typeof Building2 }> = [
+  { value: 'HQ', label: 'HQ', icon: Building2 },
+  { value: 'DIST', label: 'Distributor', icon: Store },
+  { value: 'SHOP', label: 'Shop', icon: Store },
+]
+
+const ROLE_ICONS: Record<number, typeof Crown> = {
+  10: Crown,
+  20: Zap,
+  30: Briefcase,
+  40: UserIcon,
+  50: Users,
+}
+
+const desiredRoleLabel = (role: Role) => {
+  const labels: Record<number, string> = {
+    10: 'HQ Admin',
+    20: 'Power User',
+    30: 'Manager',
+    40: 'User',
+    50: 'Guest',
+  }
+  return labels[role.role_level] || role.role_name
+}
+
+const orgMatchesType = (org: Organization, type: OrganizationType) => {
+  const code = (org.org_type_code || '').toUpperCase()
+  if (type === 'HQ') return code === 'HQ' || code.includes('HQ') || code.includes('HEAD')
+  if (type === 'DIST') return code === 'DIST' || code.includes('DISTRIBUTOR')
+  return code === 'SHOP' || code.includes('SHOP')
+}
+
+const getDisplayName = (value: { call_name?: string | null; full_name?: string | null; email?: string | null }) => {
+  return value.call_name?.trim() || value.full_name?.trim() || value.email?.trim() || 'New User'
+}
+
+const normalizeBankAccountNumber = (value: string | null | undefined) => {
+  return (value || '').replace(/[^\d]/g, '')
+}
+
+const getBankLengthText = (bank: Bank) => {
+  const min = Number(bank.min_account_length || 0)
+  const max = Number(bank.max_account_length || min)
+  if (!min && !max) return 'the required number of'
+  return min === max ? `${min}` : `${min}-${max}`
+}
+
+const isAccountLengthForBank = (bank: Bank, length: number) => {
+  const min = Number(bank.min_account_length || 0)
+  const max = Number(bank.max_account_length || min)
+  if (!min && !max) return true
+  if (min && length < min) return false
+  if (max && length > max) return false
+  return true
+}
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, value))
+
+const compressImage = (file: File, cropPosition = { x: 50, y: 50 }): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const outputSize = 200
+        const sourceSize = Math.min(img.width, img.height)
+        const sourceX = (img.width - sourceSize) * (clampPercent(cropPosition.x) / 100)
+        const sourceY = (img.height - sourceSize) * (clampPercent(cropPosition.y) / 100)
+
+        canvas.width = outputSize
+        canvas.height = outputSize
+        canvas.getContext('2d')?.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, outputSize, outputSize)
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Canvas to Blob conversion failed'))
+            return
+          }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          }))
+        }, 'image/jpeg', 0.6)
+      }
+      img.onerror = () => reject(new Error('Image loading failed'))
+    }
+    reader.onerror = () => reject(new Error('File reading failed'))
+  })
 }
 
 export default function UserDialogNew({
@@ -142,33 +220,510 @@ export default function UserDialogNew({
   lockOrganization = false,
   defaultValues,
   onOpenChange,
-  onSave
+  onSave,
 }: UserDialogNewProps) {
   const { supabase } = useSupabaseAuth()
   const [banks, setBanks] = useState<Bank[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([])
   const [positions, setPositions] = useState<PositionOption[]>([])
-  const [orgTypeFilter, setOrgTypeFilter] = useState<string>('')
-  const [activeTab, setActiveTab] = useState('profile')
-  const [formData, setFormData] = useState<Partial<User> & {
-    password?: string;
-    confirmPassword?: string;
-    bank_id?: string;
-    bank_account_number?: string;
-    bank_account_holder_name?: string;
-    department_id?: string;
-    manager_user_id?: string;
-    position_id?: string;
-    employment_type?: string;
-    join_date?: string;
-    employment_status?: string;
-    shop_name?: string;
-    address?: string;
-    referral_phone?: string;
-    can_be_reference?: boolean;
-  }>(
-    user || {
+  const [currentStep, setCurrentStep] = useState<WizardStep>('basic')
+  const [organizationType, setOrganizationType] = useState<OrganizationType>('HQ')
+  const [formData, setFormData] = useState<WizardUser>({})
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [sourceAvatarFile, setSourceAvatarFile] = useState<File | null>(null)
+  const [avatarCropPosition, setAvatarCropPosition] = useState({ x: 50, y: 50 })
+  const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+  const [phoneValidation, setPhoneValidation] = useState<PhoneValidationResult | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [localSaving, setLocalSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const avatarObjectUrlRef = useRef<string | null>(null)
+  const avatarDragRef = useRef<{ startX: number; startY: number; cropX: number; cropY: number; moved: boolean } | null>(null)
+  const avatarSuppressClickRef = useRef(false)
+
+  const saving = isSaving || localSaving
+  const availableRoles = useMemo(() => {
+    return roles
+      .filter(role => role.role_level >= currentUserRoleLevel)
+      .filter(role => [10, 20, 30, 40, 50].includes(role.role_level))
+      .sort((a, b) => a.role_level - b.role_level)
+  }, [currentUserRoleLevel, roles])
+
+  const selectedRole = roles.find(r => r.role_code === formData.role_code)
+  const selectedRoleLevel = selectedRole?.role_level
+  const selectedOrg = organizations.find(o => o.id === formData.organization_id)
+  const selectedOrgIsShop = selectedOrg?.org_type_code?.toUpperCase() === 'SHOP'
+  const selectedDepartment = departments.find(dept => dept.id === formData.department_id)
+  const selectedPosition = positions.find(position => position.id === formData.position_id)
+  const selectedManager = orgUsers.find(orgUser => orgUser.id === formData.manager_user_id)
+  const isGuest = selectedRoleLevel === 50
+  const showBusinessStep = organizationType === 'SHOP' || selectedOrgIsShop
+  const showHrFields = Boolean(
+    formData.organization_id &&
+    selectedOrg &&
+    [1, 10, 20, 30, 40].includes(selectedRoleLevel || 0)
+  )
+  const steps = useMemo<WizardStep[]>(() => {
+    return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), 'banking', 'review']
+  }, [showBusinessStep])
+  const filteredOrganizations = organizations.filter(org => orgMatchesType(org, organizationType))
+
+  useEffect(() => {
+    if (!open) return
+    const initial: WizardUser = user
+      ? {
+        ...user,
+        password: '',
+        confirmPassword: '',
+        department_id: (user as any).department_id || '',
+        manager_user_id: (user as any).manager_user_id || '',
+        position_id: (user as any).position_id || '',
+        employment_type: (user as any).employment_type || '',
+        join_date: (user as any).join_date || '',
+        employment_status: (user as any).employment_status || 'active',
+        shop_name: (user as any).shop_name || '',
+        address: (user as any).address || '',
+        referral_phone: (user as any).referral_phone || '',
+        bank_id: (user as any).bank_id || '',
+        bank_account_number: (user as any).bank_account_number || '',
+        bank_account_holder_name: (user as any).bank_account_holder_name || '',
+        can_be_reference: (user as any).can_be_reference || false,
+      }
+      : {
+        email: '',
+        full_name: '',
+        call_name: '',
+        phone: '',
+        password: '',
+        confirmPassword: '',
+        role_code: defaultValues?.role_code || '',
+        organization_id: defaultValues?.organization_id || '',
+        is_active: true,
+        avatar_url: null,
+        bank_id: '',
+        bank_account_number: '',
+        bank_account_holder_name: '',
+        department_id: defaultValues?.department_id || '',
+        manager_user_id: '',
+        position_id: '',
+        employment_type: '',
+        join_date: '',
+        employment_status: 'active',
+        shop_name: '',
+        address: '',
+        referral_phone: '',
+        notes: '',
+        can_be_reference: false,
+      }
+    const initialOrg = organizations.find(org => org.id === initial.organization_id)
+    const initialOrgType = initialOrg?.org_type_code?.toUpperCase()
+    setOrganizationType(initialOrgType?.includes('SHOP') ? 'SHOP' : initialOrgType?.includes('DIST') ? 'DIST' : 'HQ')
+    setFormData(initial)
+    setCurrentStep('basic')
+    setAvatarPreview(user?.avatar_url ? user.avatar_url.split('?')[0] : null)
+    setAvatarFile(null)
+    setSourceAvatarFile(null)
+    setAvatarCropPosition({ x: 50, y: 50 })
+    setErrors({})
+    setSubmitError(null)
+    setSuccess(false)
+    setEmailCheckStatus('idle')
+    setPhoneCheckStatus('idle')
+    setPhoneValidation(null)
+    setShowPassword(false)
+    setShowConfirmPassword(false)
+  }, [defaultValues?.department_id, defaultValues?.organization_id, defaultValues?.role_code, open, organizations, user])
+
+  useEffect(() => {
+    if (!open) return
+    supabase.from('msia_banks').select('*').eq('is_active', true).order('short_name').then(({ data }) => {
+      if (data) setBanks(data)
+    })
+  }, [open, supabase])
+
+  useEffect(() => {
+    const orgId = formData.organization_id
+    if (!open || !orgId) {
+      setDepartments([])
+      setOrgUsers([])
+      setPositions([])
+      return
+    }
+    const loadOrgDetails = async () => {
+      const [{ data: deptData }, { data: userData }, { data: positionData }] = await Promise.all([
+        supabase.from('departments').select('id, dept_code, dept_name, is_active').eq('organization_id', orgId).eq('is_active', true).order('sort_order', { ascending: true }).order('dept_name', { ascending: true }),
+        supabase.from('users').select('id, full_name, email').eq('organization_id', orgId).eq('is_active', true).order('full_name', { ascending: true }),
+        supabase.from('hr_positions').select('id, name, is_active').eq('organization_id', orgId).order('level', { ascending: true, nullsFirst: false }).order('name', { ascending: true }),
+      ])
+      setDepartments(deptData || [])
+      setOrgUsers(user?.id ? (userData || []).filter((u: any) => u.id !== user.id) : (userData || []))
+      setPositions(positionData || [])
+    }
+    void loadOrgDetails()
+  }, [formData.organization_id, open, supabase, user?.id])
+
+  useEffect(() => {
+    if (!steps.includes(currentStep)) {
+      setCurrentStep(steps[steps.length - 1])
+    }
+  }, [currentStep, steps])
+
+  useEffect(() => {
+    return () => {
+      if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current)
+      if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
+      if (avatarObjectUrlRef.current) URL.revokeObjectURL(avatarObjectUrlRef.current)
+    }
+  }, [])
+
+  const checkEmailAvailability = async (email: string) => {
+    if (!email || !email.includes('@') || !!user) {
+      setEmailCheckStatus('idle')
+      return
+    }
+    setEmailCheckStatus('checking')
+    const { data, error } = await supabase.from('users').select('id, email').ilike('email', email.trim()).limit(1)
+    if (error) {
+      setEmailCheckStatus('idle')
+      return
+    }
+    setEmailCheckStatus(data && data.length > 0 ? 'taken' : 'available')
+    if (data && data.length > 0) {
+      setErrors(prev => ({ ...prev, email: 'This email address is already registered. Please use a different email.' }))
+    }
+  }
+
+  const checkPhoneAvailability = async (phone: string) => {
+    const validation = validatePhoneNumber(phone)
+    setPhoneValidation(validation)
+    if (!phone.trim()) {
+      setPhoneCheckStatus('idle')
+      setErrors(prev => {
+        const next = { ...prev }
+        delete next.phone
+        return next
+      })
+      return
+    }
+    if (!validation.isValid) {
+      setPhoneCheckStatus('invalid')
+      setErrors(prev => ({ ...prev, phone: validation.error || 'Invalid phone number format' }))
+      return
+    }
+    const normalizedPhone = normalizePhone(phone)
+    if (user?.phone && normalizePhone(user.phone) === normalizedPhone) {
+      setPhoneCheckStatus('idle')
+      return
+    }
+    setPhoneCheckStatus('checking')
+    const { data: exists, error } = await supabase.rpc('check_phone_exists', {
+      p_phone: normalizedPhone,
+      p_exclude_user_id: user?.id || undefined,
+    })
+    if (error) {
+      setPhoneCheckStatus('idle')
+      return
+    }
+    setPhoneCheckStatus(exists ? 'taken' : 'available')
+    if (exists) {
+      setErrors(prev => ({ ...prev, phone: 'This phone number is already registered to another user.' }))
+    }
+  }
+
+  const getInitials = (name: string | null | undefined) => {
+    if (!name) return 'NU'
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  }
+
+  const clearFieldError = (field: string) => {
+    setErrors(prev => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
+
+  const handleInputChange = (field: string, value: any) => {
+    let newValue = value
+    if ((field === 'full_name' || field === 'call_name') && typeof value === 'string' && value.endsWith(' ') && value.length > 1) {
+      const words = value.split(' ')
+      const lastWordIndex = words.length - 2
+      if (words[lastWordIndex]) {
+        words[lastWordIndex] = words[lastWordIndex].charAt(0).toUpperCase() + words[lastWordIndex].slice(1).toLowerCase()
+        newValue = words.join(' ')
+      }
+    }
+    if (field === 'bank_account_number' && typeof value === 'string') {
+      newValue = normalizeBankAccountNumber(value)
+    }
+    setFormData(prev => ({ ...prev, [field]: newValue }))
+    clearFieldError(field)
+    setSubmitError(null)
+    if (field === 'email' && !user) {
+      setEmailCheckStatus('idle')
+      if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current)
+      emailCheckTimeoutRef.current = setTimeout(() => checkEmailAvailability(newValue), 500)
+    }
+    if (field === 'phone') {
+      setPhoneCheckStatus('idle')
+      if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
+      phoneCheckTimeoutRef.current = setTimeout(() => checkPhoneAvailability(newValue), 500)
+    }
+  }
+
+  const selectRole = (role: Role) => {
+    setFormData(prev => ({
+      ...prev,
+      role_code: role.role_code,
+      organization_id: role.role_level === 50 ? '' : prev.organization_id,
+    }))
+    if (role.role_level === 10) setOrganizationType('HQ')
+    clearFieldError('role_code')
+    clearFieldError('organization_id')
+  }
+
+  const selectOrganizationType = (type: OrganizationType) => {
+    setOrganizationType(type)
+    setFormData(prev => {
+      const currentOrg = organizations.find(org => org.id === prev.organization_id)
+      return {
+        ...prev,
+        organization_id: currentOrg && orgMatchesType(currentOrg, type) ? prev.organization_id : '',
+        department_id: '',
+        manager_user_id: '',
+        position_id: '',
+      }
+    })
+    clearFieldError('organization_id')
+  }
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setErrors(prev => ({ ...prev, avatar: 'Please select an image file' }))
+      return
+    }
+    if (file.type === 'image/avif') {
+      setErrors(prev => ({ ...prev, avatar: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' }))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, avatar: 'Image must be less than 5MB' }))
+      return
+    }
+
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current)
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    avatarObjectUrlRef.current = previewUrl
+    setAvatarPreview(previewUrl)
+    setSourceAvatarFile(file)
+    setAvatarCropPosition({ x: 50, y: 50 })
+    clearFieldError('avatar')
+
+    try {
+      const finalFile = await compressImage(file, { x: 50, y: 50 })
+      setAvatarFile(finalFile)
+    } catch {
+      setErrors(prev => ({ ...prev, avatar: 'Failed to process image. Please try a smaller file.' }))
+    }
+  }
+
+  const resetAvatarUpload = () => {
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current)
+      avatarObjectUrlRef.current = null
+    }
+    setAvatarFile(null)
+    setSourceAvatarFile(null)
+    setAvatarPreview(user?.avatar_url?.split('?')[0] || null)
+    setAvatarCropPosition({ x: 50, y: 50 })
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleAvatarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!avatarPreview) return
+    event.preventDefault()
+    avatarDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      cropX: avatarCropPosition.x,
+      cropY: avatarCropPosition.y,
+      moved: false,
+    }
+  }
+
+  const handleAvatarMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const drag = avatarDragRef.current
+    if (!drag) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      drag.moved = true
+    }
+    setAvatarCropPosition({
+      x: clampPercent(drag.cropX - (dx / rect.width) * 100),
+      y: clampPercent(drag.cropY - (dy / rect.height) * 100),
+    })
+  }
+
+  const handleAvatarMouseUp = async () => {
+    const drag = avatarDragRef.current
+    avatarDragRef.current = null
+    avatarSuppressClickRef.current = Boolean(drag?.moved)
+    if (!drag?.moved || !sourceAvatarFile) return
+
+    try {
+      const finalFile = await compressImage(sourceAvatarFile, avatarCropPosition)
+      setAvatarFile(finalFile)
+      clearFieldError('avatar')
+    } catch {
+      setErrors(prev => ({ ...prev, avatar: 'Failed to process image crop. Please try again.' }))
+    }
+  }
+
+  const validateBasic = () => {
+    const next: Record<string, string> = {}
+    if (!formData.full_name?.trim()) next.full_name = 'Full name is required'
+    if (!formData.email?.trim()) next.email = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) next.email = 'Invalid email format'
+    else if (emailCheckStatus === 'taken') next.email = 'This email address is already registered. Please use a different email.'
+    if (!formData.phone?.trim()) next.phone = 'Phone number is required'
+    else {
+      const validation = validatePhoneNumber(formData.phone)
+      if (!validation.isValid) next.phone = validation.error || 'Invalid phone number format'
+      else if (phoneCheckStatus === 'taken') next.phone = 'This phone number is already registered to another user.'
+    }
+    if (!user && !formData.password) next.password = 'Password is required'
+    else if (!user && formData.password && formData.password.length < 6) next.password = 'Password must be at least 6 characters'
+    if (!user && !formData.confirmPassword) next.confirmPassword = 'Please confirm your password'
+    else if (!user && formData.password !== formData.confirmPassword) next.confirmPassword = 'Passwords do not match'
+    return next
+  }
+
+  const validateAccess = () => {
+    const next: Record<string, string> = {}
+    if (!formData.role_code) next.role_code = 'Role is required'
+    if (!isGuest && !formData.organization_id) {
+      next.organization_id = `${organizationType === 'HQ' ? 'HQ' : getOrgTypeName(organizationType)} organization is required`
+    }
+    return next
+  }
+
+  const validateBanking = () => {
+    const next: Record<string, string> = {}
+    if (formData.bank_id && formData.bank_account_number) {
+      const selectedBank = banks.find(bank => bank.id === formData.bank_id)
+      if (selectedBank) {
+        const rawAccountNumber = formData.bank_account_number
+        const accountNumber = normalizeBankAccountNumber(rawAccountNumber)
+        const selectedBankName = selectedBank.short_name || 'selected bank'
+
+        if (selectedBank.is_numeric_only && rawAccountNumber.trim() && !accountNumber) {
+          next.bank_account_number = `${selectedBankName} account numbers should contain digits only. Remove letters or symbols and try again.`
+        } else if (accountNumber && !isAccountLengthForBank(selectedBank, accountNumber.length)) {
+          const likelyBanks = banks
+            .filter(bank => bank.id !== selectedBank.id && isAccountLengthForBank(bank, accountNumber.length))
+            .map(bank => bank.short_name)
+            .filter(Boolean)
+            .slice(0, 2)
+
+          if (likelyBanks.length > 0) {
+            next.bank_account_number = `This account number does not match ${selectedBankName}. It looks closer to ${likelyBanks.join(' or ')}. Please check the selected bank or enter a valid ${selectedBankName} account number.`
+          } else {
+            next.bank_account_number = `Please enter a valid ${selectedBankName} account number (${getBankLengthText(selectedBank)} digits).`
+          }
+        }
+      }
+    }
+    return next
+  }
+
+  const validateStep = (step: WizardStep) => {
+    const next = {
+      ...(step === 'basic' ? validateBasic() : {}),
+      ...(step === 'access' ? validateAccess() : {}),
+      ...(step === 'banking' ? validateBanking() : {}),
+    }
+    setErrors(prev => ({ ...prev, ...next }))
+    return Object.keys(next).length === 0
+  }
+
+  const validateAll = () => {
+    const next = { ...validateBasic(), ...validateAccess(), ...validateBanking() }
+    setErrors(next)
+    if (Object.keys(next).length > 0) {
+      const first = Object.keys(next)[0]
+      if (['full_name', 'email', 'phone', 'password', 'confirmPassword'].includes(first)) setCurrentStep('basic')
+      else if (['role_code', 'organization_id'].includes(first)) setCurrentStep('access')
+      else setCurrentStep('banking')
+      return false
+    }
+    return true
+  }
+
+  const goNext = () => {
+    if (!validateStep(currentStep)) return
+    const index = steps.indexOf(currentStep)
+    setCurrentStep(steps[Math.min(index + 1, steps.length - 1)])
+  }
+
+  const goBack = () => {
+    const index = steps.indexOf(currentStep)
+    setCurrentStep(steps[Math.max(index - 1, 0)])
+  }
+
+  const handleSubmit = async () => {
+    if (!validateAll()) return
+    setSubmitError(null)
+    setLocalSaving(true)
+    try {
+      const sanitizedFormData = {
+        ...formData,
+        bank_account_number: formData.bank_account_number
+          ? normalizeBankAccountNumber(formData.bank_account_number)
+          : formData.bank_account_number,
+      }
+      const { confirmPassword, notes, ...dataToSave } = sanitizedFormData
+      const finalAvatarFile = sourceAvatarFile
+        ? await compressImage(sourceAvatarFile, avatarCropPosition)
+        : avatarFile
+      await onSave(dataToSave as Partial<User>, finalAvatarFile)
+      if (!user) {
+        setSuccess(true)
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to save user')
+    } finally {
+      setLocalSaving(false)
+    }
+  }
+
+  const handleClose = () => {
+    onOpenChange(false)
+    resetAvatarUpload()
+    setErrors({})
+    setSubmitError(null)
+  }
+
+  const handleAddAnother = () => {
+    setSuccess(false)
+    setCurrentStep('basic')
+    setFormData({
       email: '',
       full_name: '',
       call_name: '',
@@ -182,1490 +737,542 @@ export default function UserDialogNew({
       bank_id: '',
       bank_account_number: '',
       bank_account_holder_name: '',
-      department_id: defaultValues?.department_id || '',
-      manager_user_id: '',
-      position_id: '',
-      employment_type: '',
-      join_date: '',
-      employment_status: 'active',
       shop_name: '',
       address: '',
       referral_phone: '',
+      notes: '',
+      employment_status: 'active',
       can_be_reference: false,
-    }
-  )
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url || null)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [emailCheckStatus, setEmailCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false)
-  const [phoneCheckStatus, setPhoneCheckStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
-  const [isCheckingPhone, setIsCheckingPhone] = useState(false)
-  const [phoneValidation, setPhoneValidation] = useState<PhoneValidationResult | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const phoneCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Password reset for platform admins
-  const [showPasswordReset, setShowPasswordReset] = useState(false)
-  const [resetPassword, setResetPassword] = useState('')
-  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('')
-  const canResetPasswords = currentUserRoleLevel <= 10
-
-  // Filter roles based on current user's role level
-  const availableRoles = roles.filter(role => role.role_level >= currentUserRoleLevel)
-
-  // Check if selected organization is a Shop
-  const selectedOrg = organizations.find(o => o.id === formData.organization_id)
-  const selectedOrgIsShop = selectedOrg?.org_type_code === 'SHOP'
-
-  // Determine if user is an End User (independent user)
-  const selectedRole = roles.find(r => r.role_code === formData.role_code)
-  const selectedRoleLevel = selectedRole?.role_level
-  const isEndUser = !formData.organization_id || selectedRoleLevel === 50
-
-  // Determine if Department & Reports To fields should be shown
-  const eligibleRoleLevels = [1, 10, 20, 30, 40]
-  const isEligibleRole = selectedRoleLevel !== undefined && eligibleRoleLevels.includes(selectedRoleLevel)
-  const isSeraOrg = selectedOrg?.org_code?.toUpperCase().includes('SERA') || selectedOrg?.org_name?.toLowerCase().includes('serapod')
-  const showDepartmentFields = formData.organization_id && isEligibleRole && isSeraOrg
-
-  // Fetch banks
-  useEffect(() => {
-    const fetchBanks = async () => {
-      const { data, error } = await supabase
-        .from('msia_banks')
-        .select('*')
-        .eq('is_active', true)
-        .order('short_name')
-
-      if (data) {
-        setBanks(data)
-      }
-    }
-
-    if (open) {
-      fetchBanks()
-    }
-  }, [open, supabase])
-
-  // Fetch departments and users when organization changes
-  useEffect(() => {
-    const fetchDepartmentsAndUsers = async () => {
-      const orgId = formData.organization_id
-      if (!orgId) {
-        setDepartments([])
-        setOrgUsers([])
-        return
-      }
-
-      // Fetch departments for the organization
-      const { data: deptData } = await supabase
-        .from('departments')
-        .select('id, dept_code, dept_name, is_active')
-        .eq('organization_id', orgId)
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('dept_name', { ascending: true })
-
-      if (deptData) {
-        setDepartments(deptData)
-      }
-
-      // Fetch users for the organization (for manager picker)
-      const { data: userData } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .eq('organization_id', orgId)
-        .eq('is_active', true)
-        .order('full_name', { ascending: true })
-
-      if (userData) {
-        // Exclude current user from manager options
-        const filteredUsers = user?.id
-          ? userData.filter((u: any) => u.id !== user.id)
-          : userData
-        setOrgUsers(filteredUsers)
-      }
-
-      // Fetch positions for the organization
-      const { data: positionData } = await supabase
-        .from('hr_positions')
-        .select('id, name, is_active')
-        .eq('organization_id', orgId)
-        .order('level', { ascending: true, nullsFirst: false })
-        .order('name', { ascending: true })
-
-      if (positionData) {
-        setPositions(positionData)
-      }
-    }
-
-    if (open && formData.organization_id) {
-      fetchDepartmentsAndUsers()
-    }
-  }, [open, formData.organization_id, supabase, user?.id])
-
-  // Check if email exists in database
-  const checkEmailAvailability = async (email: string) => {
-    if (!email || !email.includes('@') || !!user) {
-      setEmailCheckStatus('idle')
-      return
-    }
-
-    setIsCheckingEmail(true)
-    setEmailCheckStatus('checking')
-
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, email')
-        .ilike('email', email.trim())
-        .limit(1)
-
-      if (error) {
-        console.error('Error checking email:', error)
-        setEmailCheckStatus('idle')
-        setIsCheckingEmail(false)
-        return
-      }
-
-      if (data && data.length > 0) {
-        setEmailCheckStatus('taken')
-        setErrors(prev => ({
-          ...prev,
-          email: 'This email address is already registered. Please use a different email.'
-        }))
-      } else {
-        setEmailCheckStatus('available')
-        setErrors(prev => {
-          const newErrors = { ...prev }
-          delete newErrors.email
-          return newErrors
-        })
-      }
-    } catch (err) {
-      console.error('Error checking email availability:', err)
-      setEmailCheckStatus('idle')
-    } finally {
-      setIsCheckingEmail(false)
-    }
-  }
-
-  // Check if phone exists in database
-  const checkPhoneAvailability = async (phone: string) => {
-    // First validate the phone format
-    const validation = validatePhoneNumber(phone)
-    setPhoneValidation(validation)
-
-    // If phone is empty, reset status
-    if (!phone || phone.trim() === '') {
-      setPhoneCheckStatus('idle')
-      setErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors.phone
-        return newErrors
-      })
-      return
-    }
-
-    // If phone format is invalid, show error and don't check availability
-    if (!validation.isValid) {
-      setPhoneCheckStatus('invalid')
-      setErrors(prev => ({
-        ...prev,
-        phone: validation.error || 'Invalid phone number format'
-      }))
-      return
-    }
-
-    const normalizedPhone = normalizePhone(phone)
-
-    if (!normalizedPhone || normalizedPhone.length < 10) {
-      setPhoneCheckStatus('idle')
-      return
-    }
-
-    // If editing and phone hasn't changed (normalized check), skip
-    if (user && user.phone && normalizePhone(user.phone) === normalizedPhone) {
-      setPhoneCheckStatus('idle')
-      setErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors.phone
-        return newErrors
-      })
-      return
-    }
-
-    setIsCheckingPhone(true)
-    setPhoneCheckStatus('checking')
-
-    try {
-      // Use RPC to check auth.users directly
-      const { data: exists, error } = await supabase
-        .rpc('check_phone_exists', {
-          p_phone: normalizedPhone,
-          p_exclude_user_id: user?.id || null
-        })
-
-      if (error) {
-        console.error('Error checking phone:', error)
-        setPhoneCheckStatus('idle')
-        setIsCheckingPhone(false)
-        return
-      }
-
-      if (exists) {
-        setPhoneCheckStatus('taken')
-        setErrors(prev => ({
-          ...prev,
-          phone: 'This phone number is already registered to another user.'
-        }))
-      } else {
-        setPhoneCheckStatus('available')
-        setErrors(prev => {
-          const newErrors = { ...prev }
-          delete newErrors.phone
-          return newErrors
-        })
-      }
-    } catch (err) {
-      console.error('Error checking phone availability:', err)
-      setPhoneCheckStatus('idle')
-    } finally {
-      setIsCheckingPhone(false)
-    }
-  }
-
-
-  // Re-initialize form when user prop changes
-  useEffect(() => {
-    if (open) {
-      setActiveTab('profile')
-      if (user) {
-        setFormData({
-          ...user,
-          department_id: (user as any).department_id || '',
-          manager_user_id: (user as any).manager_user_id || '',
-          position_id: (user as any).position_id || '',
-          employment_type: (user as any).employment_type || '',
-          join_date: (user as any).join_date || '',
-          employment_status: (user as any).employment_status || 'active',
-          shop_name: (user as any).shop_name || '',
-          address: (user as any).address || '',
-          referral_phone: (user as any).referral_phone || '',
-          bank_id: (user as any).bank_id || '',
-          bank_account_number: (user as any).bank_account_number || '',
-          bank_account_holder_name: (user as any).bank_account_holder_name || '',
-          can_be_reference: (user as any).can_be_reference || false,
-        })
-        // Clean avatar URL (remove cache-busting params for display)
-        setAvatarPreview(user.avatar_url ? user.avatar_url.split('?')[0] : null)
-      } else {
-        setFormData({
-          email: '',
-          full_name: '',
-          phone: '',
-          password: '',
-          confirmPassword: '',
-          role_code: '',
-          organization_id: '',
-          is_active: true,
-          avatar_url: null,
-          bank_id: '',
-          bank_account_number: '',
-          bank_account_holder_name: '',
-          department_id: '',
-          manager_user_id: '',
-          position_id: '',
-          employment_type: '',
-          join_date: '',
-          employment_status: 'active',
-          shop_name: '',
-          address: '',
-          referral_phone: '',
-          can_be_reference: false,
-        })
-        setAvatarPreview(null)
-      }
-      setAvatarFile(null)
-      setErrors({})
-      setEmailCheckStatus('idle')
-      setIsCheckingEmail(false)
-      setPhoneCheckStatus('idle')
-      setIsCheckingPhone(false)
-      setPhoneValidation(null)
-      setShowPasswordReset(false)
-      setResetPassword('')
-      setResetPasswordConfirm('')
-    }
-  }, [user, open])
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (emailCheckTimeoutRef.current) {
-        clearTimeout(emailCheckTimeoutRef.current)
-      }
-      if (phoneCheckTimeoutRef.current) {
-        clearTimeout(phoneCheckTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  const getInitials = (name: string | null) => {
-    if (!name) return 'U'
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (!file.type.startsWith('image/')) {
-      setErrors({ avatar: 'Please select an image file' })
-      return
-    }
-
-    // Check for AVIF format - not supported by Supabase Storage
-    if (file.type === 'image/avif') {
-      setErrors({ avatar: 'AVIF format is not supported. Please use JPG, PNG, GIF, or WebP instead.' })
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-      return
-    }
-
-    // Initial file size check
-    if (file.size > 5 * 1024 * 1024) {
-      setErrors({ avatar: 'Image must be less than 5MB' })
-      return
-    }
-
-    // Always compress avatar images to optimize size (target ~10KB)
-    // Avatars are displayed small (40-80px), so we don't need high resolution
-    let finalFile = file
-    try {
-      finalFile = await compressImage(file)
-      console.log(`✅ Avatar optimized for storage (target: ~10KB)`)
-    } catch (error) {
-      console.error('Image compression failed:', error)
-      setErrors({ avatar: 'Failed to process image. Please try a smaller file.' })
-      return
-    }
-
-    setAvatarFile(finalFile)
-
-    // Clear errors
-    if (errors.avatar) {
-      setErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors.avatar
-        return newErrors
-      })
-    }
-
-    // Create preview
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setAvatarPreview(reader.result as string)
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const resetAvatarUpload = () => {
+    })
     setAvatarFile(null)
-    setAvatarPreview(user?.avatar_url?.split('?')[0] || null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
-
-  const handleInputChange = (field: string, value: any) => {
-    let newValue = value
-
-    // Auto-capitalize words in Full Name when space is pressed
-    if (field === 'full_name' && typeof value === 'string') {
-      if (value.endsWith(' ') && value.length > 1) {
-        const words = value.split(' ')
-        // The last element is empty string because of the trailing space
-        // The second to last element is the word we just finished typing
-        if (words.length >= 2) {
-          const lastWordIndex = words.length - 2
-          const lastWord = words[lastWordIndex]
-          if (lastWord) {
-            words[lastWordIndex] = lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase()
-            newValue = words.join(' ')
-          }
-        }
-      }
-    }
-
-    setFormData(prev => ({ ...prev, [field]: newValue }))
-    if (errors[field]) {
-      setErrors(prev => {
-        const newErrors = { ...prev }
-        delete newErrors[field]
-        return newErrors
-      })
-    }
-
-    // Check email availability with debounce
-    if (field === 'email' && !user) {
-      setEmailCheckStatus('idle')
-      if (emailCheckTimeoutRef.current) {
-        clearTimeout(emailCheckTimeoutRef.current)
-      }
-      emailCheckTimeoutRef.current = setTimeout(() => {
-        checkEmailAvailability(newValue)
-      }, 500) // 500ms debounce
-    }
-
-    // Check phone availability with debounce
-    if (field === 'phone') {
-      setPhoneCheckStatus('idle')
-      if (phoneCheckTimeoutRef.current) {
-        clearTimeout(phoneCheckTimeoutRef.current)
-      }
-      phoneCheckTimeoutRef.current = setTimeout(() => {
-        checkPhoneAvailability(newValue)
-      }, 500) // 500ms debounce
-    }
-  }
-
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {}
-
-    if (!formData.email) {
-      newErrors.email = 'Email is required'
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format'
-    } else if (emailCheckStatus === 'taken') {
-      newErrors.email = 'This email address is already registered. Please use a different email.'
-    }
-
-    // Validate phone format for Malaysia/China
-    if (formData.phone && formData.phone.trim()) {
-      const phoneValidationResult = validatePhoneNumber(formData.phone)
-      if (!phoneValidationResult.isValid) {
-        newErrors.phone = phoneValidationResult.error || 'Invalid phone number format'
-      } else if (phoneCheckStatus === 'taken') {
-        newErrors.phone = 'This phone number is already registered to another user.'
-      }
-    }
-
-    if (!formData.full_name) {
-      newErrors.full_name = 'Full name is required'
-    }
-
-    if (!formData.role_code) {
-      newErrors.role_code = 'Role is required'
-    }
-
-    // Password required for new users only
-    if (!user && !formData.password) {
-      newErrors.password = 'Password is required for new users'
-    }
-
-    if (!user && formData.password && formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters'
-    }
-
-    // Validate confirm password for new users
-    if (!user && !formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password'
-    }
-
-    if (!user && formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match'
-    }
-
-    // Validate Bank Account for Shop or end user
-    if (selectedOrgIsShop || isEndUser) {
-      if (formData.bank_id) {
-        const selectedBank = banks.find(b => b.id === formData.bank_id)
-        if (selectedBank) {
-          if (formData.bank_account_number) {
-            if (selectedBank.is_numeric_only && !/^\d+$/.test(formData.bank_account_number)) {
-              newErrors.bank_account_number = 'Account number must contain digits only'
-            }
-            if (formData.bank_account_number.length < selectedBank.min_account_length) {
-              newErrors.bank_account_number = `Account number must be at least ${selectedBank.min_account_length} digits`
-            }
-            if (formData.bank_account_number.length > selectedBank.max_account_length) {
-              newErrors.bank_account_number = `Account number must be at most ${selectedBank.max_account_length} digits`
-            }
-          }
-        }
-      }
-    }
-
-    // Validate password reset for existing users (admin only)
-    if (user && showPasswordReset) {
-      if (!resetPassword) {
-        newErrors.resetPassword = 'New password is required'
-      } else if (resetPassword.length < 6) {
-        newErrors.resetPassword = 'Password must be at least 6 characters'
-      }
-
-      if (!resetPasswordConfirm) {
-        newErrors.resetPasswordConfirm = 'Please confirm the new password'
-      } else if (resetPassword !== resetPasswordConfirm) {
-        newErrors.resetPasswordConfirm = 'Passwords do not match'
-      }
-    }
-
-    setErrors(newErrors)
-
-    // Navigate to the tab containing the first error
-    if (Object.keys(newErrors).length > 0) {
-      const errorKey = Object.keys(newErrors)[0]
-      const profileFields = ['email', 'full_name', 'phone', 'password', 'confirmPassword']
-      const roleFields = ['role_code', 'organization_id']
-      const bankFields = ['bank_id', 'bank_account_number', 'bank_account_holder_name']
-      const securityFields = ['resetPassword', 'resetPasswordConfirm']
-
-      if (profileFields.includes(errorKey)) {
-        setActiveTab('profile')
-      } else if (isEndUser && bankFields.includes(errorKey)) {
-        setActiveTab('banking')
-      } else if (!isEndUser && roleFields.includes(errorKey)) {
-        setActiveTab('role')
-      } else if (!isEndUser && bankFields.includes(errorKey)) {
-        setActiveTab('banking')
-      } else if (securityFields.includes(errorKey)) {
-        setActiveTab('security')
-      }
-    }
-
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleSubmit = () => {
-    if (validateForm()) {
-      // Remove confirmPassword before saving
-      const { confirmPassword, ...dataToSave } = formData
-
-      // Include password reset when an admin is resetting password
-      const passwordReset = (user && showPasswordReset && resetPassword)
-        ? { password: resetPassword }
-        : undefined
-
-      onSave(dataToSave, avatarFile, passwordReset)
-    }
-  }
-
-  const handleClose = () => {
-    onOpenChange(false)
-    resetAvatarUpload()
+    setAvatarPreview(null)
     setErrors({})
+    setSubmitError(null)
   }
 
   if (!open) return null
 
-  // Define tab config based on user type
-  const tabConfig = isEndUser
-    ? [
-      { value: 'profile', label: 'Profile', icon: 'user' },
-      { value: 'business', label: 'Business', icon: 'store' },
-      { value: 'banking', label: 'Banking', icon: 'credit-card' },
-      { value: 'security', label: 'Security', icon: 'shield' },
-    ]
-    : [
-      { value: 'profile', label: 'Profile', icon: 'user' },
-      { value: 'role', label: 'Role & Access', icon: 'briefcase' },
-      ...(showDepartmentFields ? [{ value: 'hr', label: 'HR', icon: 'building' }] : []),
-      ...(selectedOrgIsShop ? [{ value: 'banking', label: 'Banking', icon: 'credit-card' }] : []),
-      { value: 'security', label: 'Security', icon: 'shield' },
-    ]
+  const renderFieldError = (field: string) => errors[field] ? <p className="text-xs text-red-500">{errors[field]}</p> : null
+  const inputClass = (field: string, extra = '') => `h-11 rounded-lg border-gray-200 text-sm ${errors[field] ? 'border-red-500 focus-visible:ring-red-200' : ''} ${extra}`
 
-  const tabIcon = (icon: string) => {
-    switch (icon) {
-      case 'user': return <UserIcon className="w-3.5 h-3.5" />
-      case 'store': return <Store className="w-3.5 h-3.5" />
-      case 'credit-card': return <CreditCard className="w-3.5 h-3.5" />
-      case 'shield': return <Shield className="w-3.5 h-3.5" />
-      case 'briefcase': return <Briefcase className="w-3.5 h-3.5" />
-      case 'building': return <Building2 className="w-3.5 h-3.5" />
-      default: return null
-    }
+  const sectionHeader = (icon: React.ReactNode, title: string, description: string) => (
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+        {icon}
+      </div>
+      <div>
+        <h3 className="text-base font-semibold text-gray-950">{title}</h3>
+        <p className="text-sm text-gray-500">{description}</p>
+      </div>
+    </div>
+  )
+
+  const summaryValue = (value?: string | null) => value?.trim() || '-'
+
+  const renderBasicStep = () => (
+    <div className="space-y-6">
+      {sectionHeader(<UserIcon className="h-5 w-5" />, 'Basic Information', "Enter the user's basic details to get started.")}
+      <div className="grid gap-6 lg:grid-cols-[120px_1fr]">
+        <div className="flex flex-col items-center gap-3">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (avatarSuppressClickRef.current) {
+                avatarSuppressClickRef.current = false
+                return
+              }
+              if (!avatarPreview) fileInputRef.current?.click()
+            }}
+            onKeyDown={(event) => {
+              if ((event.key === 'Enter' || event.key === ' ') && !avatarPreview) {
+                event.preventDefault()
+                fileInputRef.current?.click()
+              }
+            }}
+            onMouseDown={handleAvatarMouseDown}
+            onMouseMove={handleAvatarMouseMove}
+            onMouseUp={handleAvatarMouseUp}
+            onMouseLeave={handleAvatarMouseUp}
+            className={`group flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-sm ring-4 ring-blue-50 ${saving ? 'pointer-events-none opacity-70' : avatarPreview ? 'cursor-move' : 'cursor-pointer'}`}
+            title={avatarPreview ? 'Drag to reposition image' : 'Upload photo'}
+          >
+            {avatarPreview ? (
+              <img
+                src={avatarPreview}
+                alt="Avatar preview"
+                draggable={false}
+                className="h-full w-full select-none object-cover"
+                style={{ objectPosition: `${avatarCropPosition.x}% ${avatarCropPosition.y}%` }}
+              />
+            ) : (
+              <div className="relative flex h-full w-full items-center justify-center bg-gray-200 text-2xl font-medium text-gray-700">
+                {getInitials(formData.full_name)}
+                <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                  <Camera className="h-4 w-4" />
+                </span>
+              </div>
+            )}
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" onChange={handleAvatarChange} className="hidden" />
+          <Button type="button" variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving} className="h-8 text-blue-600">
+            <Upload className="mr-1.5 h-4 w-4" />
+            Upload Photo
+          </Button>
+          <p className="text-center text-xs text-gray-400">JPG, PNG (Max 2MB)</p>
+          {avatarPreview ? (
+            <p className="text-center text-xs text-gray-400">Drag image to reposition</p>
+          ) : null}
+          {avatarFile || avatarPreview ? (
+            <Button type="button" variant="ghost" size="sm" onClick={resetAvatarUpload} disabled={saving} className="h-7 text-xs text-red-500">
+              Remove
+            </Button>
+          ) : null}
+          {renderFieldError('avatar')}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Full Name <span className="text-red-500">*</span></Label>
+            <Input value={formData.full_name || ''} onChange={e => handleInputChange('full_name', e.target.value)} disabled={saving} placeholder="Enter full name" className={inputClass('full_name')} />
+            {renderFieldError('full_name')}
+          </div>
+          <div className="space-y-2">
+            <Label>Call Name <span className="font-normal text-gray-400">(Optional)</span></Label>
+            <Input value={formData.call_name || ''} onChange={e => handleInputChange('call_name', e.target.value)} disabled={saving} placeholder="Short name / preferred name" className={inputClass('call_name')} />
+          </div>
+          <div className="space-y-2">
+            <Label>Email <span className="text-red-500">*</span></Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+              <Input type="email" value={formData.email || ''} onChange={e => handleInputChange('email', e.target.value)} disabled={saving || !!user} placeholder="Enter email address" className={inputClass('email', 'pl-9')} />
+              {emailCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-gray-400" /> : null}
+              {emailCheckStatus === 'available' ? <CheckCircle2 className="absolute right-3 top-3.5 h-4 w-4 text-green-500" /> : null}
+            </div>
+            {renderFieldError('email')}
+          </div>
+          <div className="space-y-2">
+            <Label>Phone Number <span className="text-red-500">*</span></Label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+              <Input value={formData.phone || ''} onChange={e => handleInputChange('phone', e.target.value)} disabled={saving} placeholder="e.g. 0123456789 (MY) or 13800138000 (CN)" className={inputClass('phone', 'pl-9')} />
+              {phoneCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-gray-400" /> : null}
+              {phoneCheckStatus === 'available' ? <CheckCircle2 className="absolute right-3 top-3.5 h-4 w-4 text-green-500" /> : null}
+            </div>
+            {renderFieldError('phone') || <p className="text-xs text-gray-400">{phoneCheckStatus === 'available' ? 'Phone number is available' : 'Malaysia (+60) or China (+86)'}</p>}
+          </div>
+          {!user ? (
+            <>
+              <div className="space-y-2">
+                <Label>Password <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <Input type={showPassword ? 'text' : 'password'} value={formData.password || ''} onChange={e => handleInputChange('password', e.target.value)} disabled={saving} placeholder="Min. 6 characters" className={inputClass('password', 'pr-10')} />
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-3.5 text-gray-400">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {renderFieldError('password')}
+              </div>
+              <div className="space-y-2">
+                <Label>Confirm Password <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <Input type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword || ''} onChange={e => handleInputChange('confirmPassword', e.target.value)} disabled={saving} placeholder="Re-enter password" className={inputClass('confirmPassword', 'pr-10')} />
+                  <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-3.5 text-gray-400">
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {renderFieldError('confirmPassword')}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderAccessStep = () => (
+    <div className="space-y-6">
+      {sectionHeader(<Shield className="h-5 w-5" />, 'Role & Access', "Select the user's role and organization in one place.")}
+      <div className="space-y-3">
+        <Label>Select Role <span className="text-red-500">*</span></Label>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {availableRoles.map(role => {
+            const active = formData.role_code === role.role_code
+            const Icon = ROLE_ICONS[role.role_level] || Shield
+            return (
+              <button
+                key={role.role_code}
+                type="button"
+                onClick={() => selectRole(role)}
+                disabled={saving}
+                className={`relative rounded-lg border bg-white p-4 text-center shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 ${active ? 'border-blue-600 ring-2 ring-blue-100' : 'border-gray-200'}`}
+              >
+                {active ? <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white"><Check className="h-3.5 w-3.5" /></span> : null}
+                <Icon className={`mx-auto mb-3 h-8 w-8 ${active ? 'text-blue-600' : 'text-gray-700'}`} />
+                <div className="text-sm font-semibold text-gray-900">{desiredRoleLabel(role)}</div>
+                <div className="text-xs text-gray-500">Level {role.role_level}</div>
+              </button>
+            )
+          })}
+        </div>
+        {renderFieldError('role_code')}
+      </div>
+      <div className="space-y-3">
+        <Label>Organization Type</Label>
+        <div className="grid gap-3 md:grid-cols-3">
+          {ORG_TYPES.map(type => {
+            const Icon = type.icon
+            const active = organizationType === type.value
+            return (
+              <button
+                key={type.value}
+                type="button"
+                onClick={() => selectOrganizationType(type.value)}
+                disabled={saving || lockOrganization || isGuest}
+                className={`flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200'}`}
+              >
+                <Icon className="h-4 w-4" />
+                {type.label}
+              </button>
+            )
+          })}
+        </div>
+        {isGuest ? <p className="text-xs text-gray-500">Guest users can be independent unless an organization is selected later by an admin.</p> : null}
+      </div>
+      <div className="space-y-2">
+        <Label>Organization {!isGuest ? <span className="text-red-500">*</span> : null}</Label>
+        <Select
+          value={formData.organization_id || ''}
+          onValueChange={(value) => {
+            handleInputChange('organization_id', value)
+            setFormData(prev => ({ ...prev, organization_id: value, department_id: '', manager_user_id: '', position_id: '' }))
+          }}
+          disabled={saving || lockOrganization || isGuest}
+        >
+          <SelectTrigger className={`h-11 rounded-lg ${errors.organization_id ? 'border-red-500' : ''}`}>
+            <SelectValue placeholder={isGuest ? 'Independent guest' : 'Search organization...'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-[260px]">
+            {filteredOrganizations.map(org => (
+              <SelectItem key={org.id} value={org.id}>
+                {org.org_name} ({org.org_code})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {renderFieldError('organization_id')}
+      </div>
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className={`flex h-8 w-8 items-center justify-center rounded-full ${formData.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Active</div>
+              <p className="text-xs text-gray-500">User can log in to the system</p>
+            </div>
+          </div>
+          <Switch checked={Boolean(formData.is_active)} onCheckedChange={checked => handleInputChange('is_active', checked)} disabled={saving} />
+        </div>
+      </div>
+      {showHrFields ? (
+        <div className="space-y-4 rounded-lg border border-blue-100 bg-blue-50/40 p-4">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">HR Configuration</div>
+            <p className="text-xs text-gray-500">Link this user to department, reporting line, and employment details.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Department</Label>
+            <Select value={formData.department_id || ''} onValueChange={value => handleInputChange('department_id', value === 'none' ? '' : value)} disabled={saving}>
+              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select department" /></SelectTrigger>
+              <SelectContent><SelectItem value="none">No Department</SelectItem>{departments.map(dept => <SelectItem key={dept.id} value={dept.id}>{dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Position</Label>
+            <Select value={formData.position_id || ''} onValueChange={value => handleInputChange('position_id', value === 'none' ? '' : value)} disabled={saving}>
+              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select position" /></SelectTrigger>
+              <SelectContent><SelectItem value="none">No Position</SelectItem>{positions.filter(p => p.is_active).map(position => <SelectItem key={position.id} value={position.id}>{position.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Reports To</Label>
+            <Select value={formData.manager_user_id || ''} onValueChange={value => handleInputChange('manager_user_id', value === 'none' ? '' : value)} disabled={saving}>
+              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select manager" /></SelectTrigger>
+              <SelectContent><SelectItem value="none">No Manager</SelectItem>{orgUsers.map(u => <SelectItem key={u.id} value={u.id}>{u.full_name || u.email}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Join Date</Label>
+            <Input type="date" value={formData.join_date || ''} onChange={e => handleInputChange('join_date', e.target.value)} disabled={saving} className="h-10 bg-white" />
+          </div>
+          <div className="space-y-2">
+            <Label>Employment Type</Label>
+            <Select value={formData.employment_type || ''} onValueChange={value => handleInputChange('employment_type', value === 'none' ? '' : value)} disabled={saving}>
+              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Not set</SelectItem>
+                <SelectItem value="Full-time">Full-time</SelectItem>
+                <SelectItem value="Part-time">Part-time</SelectItem>
+                <SelectItem value="Contract">Contract</SelectItem>
+                <SelectItem value="Intern">Intern</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Employment Status</Label>
+            <Select value={formData.employment_status || 'active'} onValueChange={value => handleInputChange('employment_status', value)} disabled={saving}>
+              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="resigned">Resigned</SelectItem>
+                <SelectItem value="terminated">Terminated</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+
+  const renderBusinessStep = () => (
+    <div className="space-y-6">
+      {sectionHeader(<Store className="h-5 w-5" />, 'Business Information', 'Provide business details for this user.')}
+      <div className="space-y-2">
+        <Label>Shop Name / Outlet</Label>
+        <ShopPicker
+          value={formData.shop_name || ''}
+          onSelect={(shop: ShopResult | null, displayName: string) => {
+            handleInputChange('shop_name', displayName)
+            if (shop?.org_id) handleInputChange('organization_id', shop.org_id)
+          }}
+          disabled={saving}
+          placeholder="Search shop or type name..."
+        />
+      </div>
+      <div className="space-y-2">
+        <Label><span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gray-400" />Address</span></Label>
+        <Input value={formData.address || ''} onChange={e => handleInputChange('address', e.target.value)} disabled={saving} placeholder="Enter shop address" className={inputClass('address')} />
+      </div>
+      <div className="space-y-2">
+        <Label><span className="inline-flex items-center gap-1.5"><Search className="h-4 w-4 text-gray-400" />Reference / Account Manager</span></Label>
+        <ReferencePicker
+          value={formData.referral_phone || ''}
+          onSelect={(_ref: ReferenceUser | null, phone: string) => handleInputChange('referral_phone', phone)}
+          disabled={saving}
+          placeholder="Search reference by name, phone, or email..."
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Notes <span className="font-normal text-gray-400">(Optional)</span></Label>
+        <Textarea value={formData.notes || ''} onChange={e => handleInputChange('notes', e.target.value)} disabled={saving} placeholder="Add any notes about this user..." className="min-h-[92px] rounded-lg border-gray-200" />
+      </div>
+    </div>
+  )
+
+  const renderBankingStep = () => (
+    <div className="space-y-6">
+      {sectionHeader(<Banknote className="h-5 w-5" />, 'Banking Information', 'Enter bank details for this user.')}
+      <div className="space-y-2">
+        <Label>Account Holder Name</Label>
+        <Input value={formData.bank_account_holder_name || ''} onChange={e => handleInputChange('bank_account_holder_name', e.target.value)} disabled={saving} placeholder="e.g., ALI BIN ABU" className={inputClass('bank_account_holder_name')} />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Bank</Label>
+          <Select value={formData.bank_id || ''} onValueChange={value => handleInputChange('bank_id', value)} disabled={saving}>
+            <SelectTrigger className="h-11 rounded-lg"><SelectValue placeholder="Select bank" /></SelectTrigger>
+            <SelectContent className="max-h-[260px]">{banks.map(bank => <SelectItem key={bank.id} value={bank.id}>{bank.short_name}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Account Number</Label>
+          <div className="relative">
+            <CreditCard className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+            <Input value={formData.bank_account_number || ''} onChange={e => handleInputChange('bank_account_number', e.target.value)} disabled={saving} placeholder="e.g., 1234567890" className={inputClass('bank_account_number', 'pl-9')} />
+          </div>
+          {renderFieldError('bank_account_number')}
+        </div>
+      </div>
+      <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        This information is used for payment and verification purposes only.
+      </div>
+    </div>
+  )
+
+  const SummaryCard = ({ title, icon, step, children }: { title: string; icon: React.ReactNode; step: WizardStep; children: React.ReactNode }) => (
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">{icon}{title}</div>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setCurrentStep(step)} className="h-7 px-2 text-xs text-blue-600">Edit</Button>
+      </div>
+      <div className="space-y-2 text-sm text-gray-600">{children}</div>
+    </div>
+  )
+
+  const renderReviewStep = () => (
+    <div className="space-y-6">
+      {sectionHeader(<CheckCircle2 className="h-5 w-5" />, 'Review & Confirm', 'Please review the information before creating the user.')}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SummaryCard title="Basic Information" icon={<UserIcon className="h-4 w-4 text-blue-500" />} step="basic">
+          <p>Full Name: <span className="font-medium text-gray-900">{summaryValue(formData.full_name)}</span></p>
+          <p>Call Name: <span className="font-medium text-gray-900">{summaryValue(formData.call_name)}</span></p>
+          <p>Email: <span className="font-medium text-gray-900">{summaryValue(formData.email)}</span></p>
+          <p>Phone: <span className="font-medium text-gray-900">{summaryValue(formData.phone)}</span></p>
+        </SummaryCard>
+        <SummaryCard title="Role & Access" icon={<Shield className="h-4 w-4 text-blue-500" />} step="access">
+          <p>Role: <span className="font-medium text-gray-900">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'}</span></p>
+          <p>Organization Type: <span className="font-medium text-gray-900">{organizationType === 'HQ' ? 'HQ' : getOrgTypeName(organizationType)}</span></p>
+          <p>Organization: <span className="font-medium text-gray-900">{selectedOrg ? `${selectedOrg.org_name} (${selectedOrg.org_code})` : '-'}</span></p>
+        </SummaryCard>
+        {showHrFields ? (
+          <SummaryCard title="HR Configuration" icon={<Building2 className="h-4 w-4 text-blue-500" />} step="access">
+            <p>Department: <span className="font-medium text-gray-900">{selectedDepartment ? `${selectedDepartment.dept_code ? `${selectedDepartment.dept_code} - ` : ''}${selectedDepartment.dept_name}` : '-'}</span></p>
+            <p>Position: <span className="font-medium text-gray-900">{selectedPosition?.name || '-'}</span></p>
+            <p>Reports To: <span className="font-medium text-gray-900">{selectedManager?.full_name || selectedManager?.email || '-'}</span></p>
+            <p>Employment Type: <span className="font-medium text-gray-900">{summaryValue(formData.employment_type)}</span></p>
+            <p>Join Date: <span className="font-medium text-gray-900">{summaryValue(formData.join_date)}</span></p>
+            <p>Employment Status: <span className="font-medium text-gray-900">{formData.employment_status || 'active'}</span></p>
+          </SummaryCard>
+        ) : null}
+        {showBusinessStep ? (
+          <SummaryCard title="Business Information" icon={<Store className="h-4 w-4 text-blue-500" />} step="business">
+            <p>Shop Name: <span className="font-medium text-gray-900">{summaryValue(formData.shop_name)}</span></p>
+            <p>Address: <span className="font-medium text-gray-900">{summaryValue(formData.address)}</span></p>
+            <p>Reference: <span className="font-medium text-gray-900">{summaryValue(formData.referral_phone)}</span></p>
+            <p>Notes: <span className="font-medium text-gray-900">{summaryValue(formData.notes)}</span></p>
+          </SummaryCard>
+        ) : null}
+        <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-blue-500" />} step="banking">
+          <p>Bank: <span className="font-medium text-gray-900">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
+          <p>Account No: <span className="font-medium text-gray-900">{summaryValue(formData.bank_account_number)}</span></p>
+          <p>Account Holder: <span className="font-medium text-gray-900">{summaryValue(formData.bank_account_holder_name)}</span></p>
+        </SummaryCard>
+        <SummaryCard title="Account/Security Status" icon={<CheckCircle2 className="h-4 w-4 text-blue-500" />} step="access">
+          <div className="flex items-center gap-2">
+            <span>Status:</span>
+            <Badge className={formData.is_active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-100'}>{formData.is_active ? 'Active' : 'Inactive'}</Badge>
+          </div>
+          <p>Password: <span className="font-medium text-gray-900">{user ? 'Unchanged' : 'Set for new user'}</span></p>
+        </SummaryCard>
+      </div>
+      {submitError ? (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          {submitError}
+        </div>
+      ) : null}
+    </div>
+  )
+
+  const renderStep = () => {
+    if (currentStep === 'basic') return renderBasicStep()
+    if (currentStep === 'access') return renderAccessStep()
+    if (currentStep === 'business') return renderBusinessStep()
+    if (currentStep === 'banking') return renderBankingStep()
+    return renderReviewStep()
   }
 
-  // Count errors per tab for badges
-  const profileErrorFields = ['email', 'full_name', 'phone', 'password', 'confirmPassword']
-  const roleErrorFields = ['role_code', 'organization_id']
-  const bankErrorFields = ['bank_id', 'bank_account_number', 'bank_account_holder_name']
-  const securityErrorFields = ['resetPassword', 'resetPasswordConfirm']
-  const hrErrorFields = ['department_id', 'position_id', 'manager_user_id']
-  const businessErrorFields = ['shop_name', 'address', 'referral_phone']
-
-  const tabErrorCount = (tabValue: string): number => {
-    const errorKeys = Object.keys(errors)
-    switch (tabValue) {
-      case 'profile': return errorKeys.filter(k => profileErrorFields.includes(k)).length
-      case 'role': return errorKeys.filter(k => roleErrorFields.includes(k)).length
-      case 'banking': return errorKeys.filter(k => bankErrorFields.includes(k)).length
-      case 'security': return errorKeys.filter(k => securityErrorFields.includes(k)).length
-      case 'hr': return errorKeys.filter(k => hrErrorFields.includes(k)).length
-      case 'business': return errorKeys.filter(k => businessErrorFields.includes(k)).length
-      default: return 0
-    }
+  if (success) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-3xl rounded-2xl bg-gradient-to-b from-emerald-50 to-white p-6 shadow-2xl sm:p-10">
+          <div className="flex justify-end">
+            <button onClick={handleClose} className="rounded-lg p-1 text-gray-400 hover:bg-white/70 hover:text-gray-600"><X className="h-6 w-6" /></button>
+          </div>
+          <div className="mx-auto max-w-xl text-center">
+            <div className="mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-full bg-green-500 text-white shadow-lg">
+              <Check className="h-16 w-16" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-950">User Created Successfully!</h2>
+            <p className="mt-2 text-gray-500">The new user has been added to the system.</p>
+            <div className="mt-8 flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm">
+              <Avatar className="h-16 w-16">
+                <AvatarImage src={avatarPreview || undefined} />
+                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-violet-600 text-xl text-white">{getInitials(formData.full_name)}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-gray-950">{formData.full_name}</h3>
+                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Active</Badge>
+                </div>
+                <p className="text-sm text-gray-500">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'} {selectedOrg ? `- ${selectedOrg.org_name}` : ''}</p>
+                <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
+                  <span className="inline-flex items-center gap-1"><Mail className="h-4 w-4" />{formData.email}</span>
+                  <span className="inline-flex items-center gap-1"><Phone className="h-4 w-4" />{formData.phone}</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <Button type="button" variant="outline" onClick={handleAddAnother} className="h-12 rounded-lg">
+                <UserPlus className="mr-2 h-4 w-4" />
+                Add Another User
+              </Button>
+              <Button type="button" onClick={handleClose} className="h-12 rounded-lg bg-blue-600 hover:bg-blue-700">
+                View User List
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
+
+  const currentIndex = steps.indexOf(currentStep)
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4">
+      <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {user ? 'Edit User' : 'Add New User'}
-            </h2>
-            {user && (
-              <Badge variant={isEndUser ? 'secondary' : 'outline'} className={`text-[10px] px-2 py-0.5 ${isEndUser ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                {isEndUser ? 'End User' : 'Internal'}
-              </Badge>
-            )}
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"><UserPlus className="h-5 w-5" /></span>
+            <h2 className="text-xl font-bold text-gray-950">{user ? 'Edit User' : 'Add New User'}</h2>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors rounded-lg p-1 hover:bg-gray-100"
-            disabled={isSaving}
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={handleClose} disabled={saving} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X className="h-6 w-6" /></button>
         </div>
-
-        {/* Avatar Section - Always Visible */}
-        <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              <Avatar className="w-16 h-16 border-2 border-white shadow-sm">
-                <AvatarImage src={avatarPreview || undefined} />
-                <AvatarFallback className="text-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white font-medium">
-                  {getInitials(getDisplayName(formData as any))}
-                </AvatarFallback>
-              </Avatar>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSaving}
-                className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
-              >
-                <Upload className="w-4 h-4 text-white" />
-              </button>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-              onChange={handleAvatarChange}
-              className="hidden"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                {getDisplayName(formData as any)}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {formData.email || 'No email set'}
-              </p>
-              {avatarFile && (
-                <div className="flex items-center gap-1.5 mt-1">
-                  <ImageIcon className="w-3 h-3 text-blue-500" />
-                  <span className="text-[10px] text-gray-500 truncate">{avatarFile.name}</span>
-                  <span className="text-[10px] text-gray-400">({(avatarFile.size / 1024).toFixed(0)}KB)</span>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSaving}
-                className="h-7 text-xs px-2.5"
-              >
-                <Upload className="w-3 h-3 mr-1" />
-                {avatarFile ? 'Change' : 'Upload'}
-              </Button>
-              {(avatarFile || avatarPreview) && (
-                <Button
+        <div className="border-b border-gray-100 px-4 py-4 sm:px-6">
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {steps.map((step, index) => {
+              const active = step === currentStep
+              const done = index < currentIndex
+              return (
+                <button
+                  key={step}
                   type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={resetAvatarUpload}
-                  disabled={isSaving}
-                  className="h-7 text-xs px-2.5 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => index <= currentIndex && setCurrentStep(step)}
+                  className={`flex min-w-[116px] flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left transition ${active ? 'bg-blue-50 text-blue-700' : done ? 'text-blue-600' : 'text-gray-400'}`}
                 >
-                  <X className="w-3 h-3 mr-1" />
-                  Remove
-                </Button>
-              )}
-            </div>
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${active ? 'border-blue-600 bg-blue-600 text-white' : done ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-500'}`}>
+                    {done ? <Check className="h-4 w-4" /> : index + 1}
+                  </span>
+                  <span className="text-xs font-semibold sm:text-sm">{STEP_LABELS[step]}</span>
+                </button>
+              )
+            })}
           </div>
-          {errors.avatar && (
-            <p className="text-xs text-red-500 mt-2">{errors.avatar}</p>
-          )}
         </div>
-
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-          <div className="px-6 pt-2 border-b border-gray-100">
-            <TabsList className="h-9 bg-transparent p-0 gap-0 w-full justify-start">
-              {tabConfig.map((tab) => {
-                const errCount = tabErrorCount(tab.value)
-                return (
-                  <TabsTrigger
-                    key={tab.value}
-                    value={tab.value}
-                    className="relative h-9 px-3 rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-blue-600 text-gray-500 hover:text-gray-700 text-xs font-medium gap-1.5 transition-colors"
-                  >
-                    {tabIcon(tab.icon)}
-                    {tab.label}
-                    {errCount > 0 && (
-                      <span className="ml-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-medium">
-                        {errCount}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                )
-              })}
-            </TabsList>
-          </div>
-
-          {/* Tab Content - Scrollable */}
-          <div className="flex-1 overflow-y-auto">
-
-            {/* ==================== PROFILE TAB ==================== */}
-            <TabsContent value="profile" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-              {/* Email */}
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-xs font-medium text-gray-700">
-                  Email <span className="text-red-500">*</span>
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter email address"
-                    value={formData.email || ''}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    disabled={!!user || isSaving}
-                    className={`h-9 text-sm ${errors.email ? 'border-red-500' : ''} ${emailCheckStatus === 'available' ? 'border-green-500' : ''} placeholder:text-gray-400`}
-                  />
-                  {!user && isCheckingEmail && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    </div>
-                  )}
-                  {!user && emailCheckStatus === 'available' && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center">
-                        <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                  {!user && emailCheckStatus === 'taken' && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                    </div>
-                  )}
-                </div>
-                {errors.email && <p className="text-[11px] text-red-500">{errors.email}</p>}
-                {!errors.email && emailCheckStatus === 'available' && (
-                  <p className="text-[11px] text-green-600">Email is available</p>
-                )}
-              </div>
-
-              {/* Full Name */}
-              <div className="space-y-1.5">
-                <Label htmlFor="full_name" className="text-xs font-medium text-gray-700">
-                  Full Name <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="full_name"
-                  placeholder="Enter full name"
-                  value={formData.full_name || ''}
-                  onChange={(e) => handleInputChange('full_name', e.target.value)}
-                  disabled={isSaving}
-                  className={`h-9 text-sm ${errors.full_name ? 'border-red-500' : ''} placeholder:text-gray-400`}
-                />
-                {errors.full_name && <p className="text-[11px] text-red-500">{errors.full_name}</p>}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="call_name" className="text-xs font-medium text-gray-700">
-                  Call Name <span className="text-gray-400 font-normal">(Optional)</span>
-                </Label>
-                <Input
-                  id="call_name"
-                  placeholder="Short name / preferred name"
-                  value={(formData as any).call_name || ''}
-                  onChange={(e) => handleInputChange('call_name', e.target.value)}
-                  disabled={isSaving}
-                  className="h-9 text-sm placeholder:text-gray-400"
-                />
-                <p className="text-[11px] text-gray-400">Optional field for future display/use. Leaving it blank does not affect current flows.</p>
-              </div>
-
-              {/* Phone */}
-              <div className="space-y-1.5">
-                <Label htmlFor="phone" className="text-xs font-medium text-gray-700">Phone Number</Label>
-                <div className="relative">
-                  <Input
-                    id="phone"
-                    placeholder="e.g., 0123456789 (MY) or 13800138000 (CN)"
-                    value={formData.phone || ''}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    disabled={isSaving}
-                    className={`h-9 text-sm ${errors.phone ? 'border-red-500' : ''} ${phoneCheckStatus === 'available' ? 'border-green-500' : ''} ${phoneCheckStatus === 'invalid' ? 'border-amber-500' : ''} placeholder:text-gray-400`}
-                  />
-                  {isCheckingPhone && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    </div>
-                  )}
-                  {phoneCheckStatus === 'available' && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center">
-                        <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                  {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <AlertCircle className={`w-4 h-4 ${phoneCheckStatus === 'taken' ? 'text-red-500' : 'text-amber-500'}`} />
-                    </div>
-                  )}
-                </div>
-                {errors.phone && <p className="text-[11px] text-red-500">{errors.phone}</p>}
-                {!errors.phone && phoneCheckStatus === 'available' && phoneValidation?.country && (
-                  <p className="text-[11px] text-green-600">
-                    Phone available ({phoneValidation.country === 'MY' ? 'Malaysia' : 'China'})
-                  </p>
-                )}
-                {!errors.phone && !formData.phone && (
-                  <p className="text-[11px] text-gray-400">Malaysia (+60) or China (+86)</p>
-                )}
-              </div>
-
-              {/* Password fields - new user only */}
-              {!user && (
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center gap-2 pb-1">
-                    <Lock className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Password</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="password" className="text-xs font-medium text-gray-700">
-                        Password <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        placeholder="Min. 6 characters"
-                        value={formData.password || ''}
-                        onChange={(e) => handleInputChange('password', e.target.value)}
-                        disabled={isSaving}
-                        className={`h-9 text-sm ${errors.password ? 'border-red-500' : ''} placeholder:text-gray-400`}
-                      />
-                      {errors.password && <p className="text-[11px] text-red-500">{errors.password}</p>}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="confirmPassword" className="text-xs font-medium text-gray-700">
-                        Confirm Password <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        placeholder="Re-enter password"
-                        value={formData.confirmPassword || ''}
-                        onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                        disabled={isSaving}
-                        className={`h-9 text-sm ${errors.confirmPassword ? 'border-red-500' : ''} placeholder:text-gray-400`}
-                      />
-                      {errors.confirmPassword && <p className="text-[11px] text-red-500">{errors.confirmPassword}</p>}
-                      {!errors.confirmPassword && formData.password && formData.confirmPassword && formData.password === formData.confirmPassword && (
-                        <p className="text-[11px] text-green-600">Passwords match</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Role selector - shown here for end users since they dont have Role tab */}
-              {isEndUser && (
-                <div className="space-y-1.5 pt-2">
-                  <div className="flex items-center gap-2 pb-1">
-                    <Briefcase className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Role</span>
-                  </div>
-                  <Select
-                    value={formData.role_code || ''}
-                    onValueChange={(value) => handleInputChange('role_code', value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger className={`h-9 text-sm ${errors.role_code ? 'border-red-500' : ''}`}>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableRoles.map(role => (
-                        <SelectItem key={role.role_code} value={role.role_code}>
-                          {role.role_name} (Level {role.role_level})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.role_code && <p className="text-[11px] text-red-500">{errors.role_code}</p>}
-                </div>
-              )}
-
-              {/* Eligible as Reference toggle - visible to HQ admins (level <= 20) for any user */}
-              {user && currentUserRoleLevel <= 20 && (
-                <div className="space-y-1.5 pt-2 border-t border-gray-100 mt-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <UserCheck className="w-3.5 h-3.5 text-green-500" />
-                      <Label className="text-xs font-medium text-gray-700">Eligible as Reference</Label>
-                    </div>
-                    <Checkbox
-                      checked={(formData as any).can_be_reference || false}
-                      onCheckedChange={(checked) => handleInputChange('can_be_reference', !!checked)}
-                      disabled={isSaving}
-                    />
-                  </div>
-                  <p className="text-[11px] text-gray-400 pl-5">Allow this user to appear in Reference / Account Manager selection</p>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ==================== BUSINESS TAB (End User Only) ==================== */}
-            {isEndUser && (
-              <TabsContent value="business" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                <div className="flex items-center gap-2 pb-1">
-                  <Store className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm font-medium text-gray-700">Business Information</span>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="shop_name" className="text-xs font-medium text-gray-700">Shop Name</Label>
-                  <ShopPicker
-                    value={(formData as any).shop_name || ''}
-                    onSelect={(shop: ShopResult | null, displayName: string) => {
-                      handleInputChange('shop_name', displayName)
-                      if (shop?.org_id) {
-                        handleInputChange('organization_id', shop.org_id)
-                      }
-                    }}
-                    disabled={isSaving}
-                    placeholder="Search shop or type name..."
-                  />
-                  <p className="text-[11px] text-gray-400">Selecting a shop from the list also links its masterdata organization. Typed text alone is only a profile label.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="address" className="text-xs font-medium text-gray-700">
-                    <span className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                      Address
-                    </span>
-                  </Label>
-                  <Input
-                    id="address"
-                    placeholder="Enter shop address"
-                    value={(formData as any).address || ''}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    disabled={isSaving}
-                    className="h-9 text-sm placeholder:text-gray-400"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="referral_phone" className="text-xs font-medium text-gray-700">
-                    <span className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-gray-400" />
-                      Reference / Account Manager
-                    </span>
-                  </Label>
-                  <ReferencePicker
-                    value={(formData as any).referral_phone || ''}
-                    onSelect={(_ref: ReferenceUser | null, phone: string) => {
-                      handleInputChange('referral_phone', phone)
-                    }}
-                    disabled={isSaving}
-                    placeholder="Search reference by name, phone, or email..."
-                  />
-                  <p className="text-[11px] text-gray-400">Only users marked as eligible references can be selected</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="organization_id_enduser" className="text-xs font-medium text-gray-700">Linked Organization</Label>
-                  <Select
-                    value={formData.organization_id || ''}
-                    onValueChange={(value) => handleInputChange('organization_id', value)}
-                    disabled={isSaving || lockOrganization}
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="No organization (independent)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizations.map(org => (
-                        <SelectItem key={org.id} value={org.id}>
-                          {org.org_name} ({org.org_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-gray-400">Optional masterdata link. This is the actual organization attachment used for org-based reporting, permissions, and classification.</p>
-                </div>
-              </TabsContent>
-            )}
-
-            {/* ==================== ROLE & ACCESS TAB (Internal Only) ==================== */}
-            {!isEndUser && (
-              <TabsContent value="role" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="role_code" className="text-xs font-medium text-gray-700">
-                      Role <span className="text-red-500">*</span>
-                    </Label>
-                    <Select
-                      value={formData.role_code || ''}
-                      onValueChange={(value) => handleInputChange('role_code', value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className={`h-9 text-sm ${errors.role_code ? 'border-red-500' : ''}`}>
-                        <SelectValue placeholder="Select a role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableRoles.map(role => (
-                          <SelectItem key={role.role_code} value={role.role_code}>
-                            {role.role_name} (Level {role.role_level})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.role_code && <p className="text-[11px] text-red-500">{errors.role_code}</p>}
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="organization_id" className="text-xs font-medium text-gray-700">Organization</Label>
-                    {!lockOrganization && (
-                      <div className="mb-1.5">
-                        <Select
-                          value={orgTypeFilter}
-                          onValueChange={(value) => {
-                            setOrgTypeFilter(value)
-                            if (value && value !== 'ALL' && formData.organization_id) {
-                              const currentOrg = organizations.find(o => o.id === formData.organization_id)
-                              if (currentOrg && currentOrg.org_type_code !== value) {
-                                handleInputChange('organization_id', '')
-                              }
-                            }
-                          }}
-                          disabled={isSaving}
-                        >
-                          <SelectTrigger className="h-7 text-[11px]">
-                            <SelectValue placeholder="Filter by Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ALL">All Types</SelectItem>
-                            {Array.from(new Set(organizations.map(org => org.org_type_code)))
-                              .filter((t): t is string => !!t)
-                              .map(typeCode => (
-                                <SelectItem key={typeCode} value={typeCode}>
-                                  {getOrgTypeName(typeCode)}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <Select
-                      value={formData.organization_id || ''}
-                      onValueChange={(value) => {
-                        handleInputChange('organization_id', value)
-                        setFormData(prev => ({
-                          ...prev,
-                          organization_id: value,
-                          department_id: '',
-                          manager_user_id: ''
-                        }))
-                      }}
-                      disabled={isSaving || lockOrganization}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select organization" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {organizations
-                          .filter(org => !orgTypeFilter || orgTypeFilter === 'ALL' || org.org_type_code === orgTypeFilter)
-                          .map(org => (
-                            <SelectItem key={org.id} value={org.id}>
-                              {org.org_name} ({org.org_code})
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </TabsContent>
-            )}
-
-            {/* ==================== HR TAB (Internal Only, Sera org) ==================== */}
-            {!isEndUser && showDepartmentFields && (
-              <TabsContent value="hr" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-                <div className="flex items-center gap-2 pb-1">
-                  <Building2 className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700">HR & Organization</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="department_id" className="text-xs font-medium text-gray-700">Department</Label>
-                    <Select
-                      value={formData.department_id || ''}
-                      onValueChange={(value) => handleInputChange('department_id', value === 'none' ? '' : value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Department</SelectItem>
-                        {departments.map(dept => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.dept_code ? `${dept.dept_code} - ` : ''}{dept.dept_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="position_id" className="text-xs font-medium text-gray-700">Position</Label>
-                    <Select
-                      value={formData.position_id || ''}
-                      onValueChange={(value) => handleInputChange('position_id', value === 'none' ? '' : value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select position" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Position</SelectItem>
-                        {positions.filter(p => p.is_active).map(position => (
-                          <SelectItem key={position.id} value={position.id}>
-                            {position.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="manager_user_id" className="text-xs font-medium text-gray-700">Reports To</Label>
-                    <Select
-                      value={formData.manager_user_id || ''}
-                      onValueChange={(value) => handleInputChange('manager_user_id', value === 'none' ? '' : value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select manager" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Manager</SelectItem>
-                        {orgUsers.map(u => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.full_name || u.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[11px] text-gray-400">Direct supervisor for approvals</p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="employment_type" className="text-xs font-medium text-gray-700">Employment Type</Label>
-                    <Select
-                      value={(formData as any).employment_type || ''}
-                      onValueChange={(value) => handleInputChange('employment_type', value === 'none' ? '' : value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Not set</SelectItem>
-                        <SelectItem value="Full-time">Full-time</SelectItem>
-                        <SelectItem value="Part-time">Part-time</SelectItem>
-                        <SelectItem value="Contract">Contract</SelectItem>
-                        <SelectItem value="Intern">Intern</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="join_date" className="text-xs font-medium text-gray-700">Join Date</Label>
-                    <Input
-                      id="join_date"
-                      type="date"
-                      value={(formData as any).join_date || ''}
-                      onChange={(e) => handleInputChange('join_date', e.target.value)}
-                      disabled={isSaving}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="employment_status" className="text-xs font-medium text-gray-700">Status</Label>
-                    <Select
-                      value={(formData as any).employment_status || 'active'}
-                      onValueChange={(value) => handleInputChange('employment_status', value)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="resigned">Resigned</SelectItem>
-                        <SelectItem value="terminated">Terminated</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </TabsContent>
-            )}
-
-            {/* ==================== BANKING TAB ==================== */}
-            <TabsContent value="banking" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-              <div className="flex items-center gap-2 pb-1">
-                <CreditCard className="w-4 h-4 text-green-500" />
-                <span className="text-sm font-medium text-gray-700">Bank Account Details</span>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="bank_account_holder_name" className="text-xs font-medium text-gray-700">Account Holder Name</Label>
-                <Input
-                  id="bank_account_holder_name"
-                  placeholder="e.g., ALI BIN ABU"
-                  value={formData.bank_account_holder_name || ''}
-                  onChange={(e) => handleInputChange('bank_account_holder_name', e.target.value)}
-                  disabled={isSaving}
-                  className="h-9 text-sm placeholder:text-gray-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="bank_id" className="text-xs font-medium text-gray-700">Bank</Label>
-                  <Select
-                    value={formData.bank_id || ''}
-                    onValueChange={(value) => handleInputChange('bank_id', value)}
-                    disabled={isSaving}
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select bank" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {banks.map(bank => (
-                        <SelectItem key={bank.id} value={bank.id}>
-                          {bank.short_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="bank_account_number" className="text-xs font-medium text-gray-700">Account Number</Label>
-                  <Input
-                    id="bank_account_number"
-                    placeholder="e.g., 1234567890"
-                    value={formData.bank_account_number || ''}
-                    onChange={(e) => handleInputChange('bank_account_number', e.target.value)}
-                    disabled={isSaving}
-                    className={`h-9 text-sm ${errors.bank_account_number ? 'border-red-500' : ''} placeholder:text-gray-400`}
-                  />
-                  {errors.bank_account_number && <p className="text-[11px] text-red-500">{errors.bank_account_number}</p>}
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* ==================== SECURITY TAB ==================== */}
-            <TabsContent value="security" className="p-6 space-y-5 mt-0 focus-visible:ring-0 focus-visible:ring-offset-0">
-              {/* Active Status */}
-              <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-gray-50/50">
-                <div className="space-y-0.5 flex-1">
-                  <Label htmlFor="is_active" className="text-sm font-medium text-gray-700">Active Status</Label>
-                  <p className="text-[11px] text-gray-500">Inactive users cannot log in</p>
-                </div>
-                <Checkbox
-                  id="is_active"
-                  checked={formData.is_active || false}
-                  onCheckedChange={(checked) => handleInputChange('is_active', checked)}
-                  disabled={isSaving}
-                />
-              </div>
-
-              {/* Password Reset - Admin only, existing users */}
-              {user && canResetPasswords && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-red-500" />
-                      <span className="text-sm font-medium text-gray-700">Password Reset</span>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] bg-red-50 text-red-600 border-red-200">
-                      Admin
-                    </Badge>
-                  </div>
-
-                  {!showPasswordReset ? (
-                    <div className="p-3 border border-gray-200 rounded-lg bg-gray-50/50">
-                      <p className="text-xs text-gray-500 mb-2.5">Reset without knowing current password.</p>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setShowPasswordReset(true)}
-                        disabled={isSaving}
-                        className="h-7 text-xs border-red-200 text-red-600 hover:bg-red-50"
-                      >
-                        <KeyRound className="w-3 h-3 mr-1.5" />
-                        Reset Password
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 p-4 border-2 border-red-200 rounded-lg bg-red-50/50">
-                      <div className="flex items-start gap-2 text-xs text-red-600">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <p>This will change the user&apos;s password immediately.</p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="resetPassword" className="text-xs font-medium text-gray-700">
-                            New Password <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id="resetPassword"
-                            type="password"
-                            placeholder="Min. 6 characters"
-                            value={resetPassword}
-                            onChange={(e) => {
-                              setResetPassword(e.target.value)
-                              if (errors.resetPassword) {
-                                setErrors(prev => {
-                                  const newErrors = { ...prev }
-                                  delete newErrors.resetPassword
-                                  return newErrors
-                                })
-                              }
-                            }}
-                            disabled={isSaving}
-                            className={`h-9 text-sm ${errors.resetPassword ? 'border-red-500' : ''} bg-white placeholder:text-gray-400`}
-                          />
-                          {errors.resetPassword && <p className="text-[11px] text-red-500">{errors.resetPassword}</p>}
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label htmlFor="resetPasswordConfirm" className="text-xs font-medium text-gray-700">
-                            Confirm <span className="text-red-500">*</span>
-                          </Label>
-                          <Input
-                            id="resetPasswordConfirm"
-                            type="password"
-                            placeholder="Re-enter password"
-                            value={resetPasswordConfirm}
-                            onChange={(e) => {
-                              setResetPasswordConfirm(e.target.value)
-                              if (errors.resetPasswordConfirm) {
-                                setErrors(prev => {
-                                  const newErrors = { ...prev }
-                                  delete newErrors.resetPasswordConfirm
-                                  return newErrors
-                                })
-                              }
-                            }}
-                            disabled={isSaving}
-                            className={`h-9 text-sm ${errors.resetPasswordConfirm ? 'border-red-500' : ''} bg-white placeholder:text-gray-400`}
-                          />
-                          {errors.resetPasswordConfirm && <p className="text-[11px] text-red-500">{errors.resetPasswordConfirm}</p>}
-                          {!errors.resetPasswordConfirm && resetPassword && resetPasswordConfirm && resetPassword === resetPasswordConfirm && (
-                            <p className="text-[11px] text-green-600">Passwords match</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setShowPasswordReset(false)
-                          setResetPassword('')
-                          setResetPasswordConfirm('')
-                          setErrors(prev => {
-                            const newErrors = { ...prev }
-                            delete newErrors.resetPassword
-                            delete newErrors.resetPasswordConfirm
-                            return newErrors
-                          })
-                        }}
-                        disabled={isSaving}
-                        className="h-7 text-xs text-gray-500"
-                      >
-                        Cancel Reset
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </TabsContent>
-          </div>
-        </Tabs>
-
-        {/* Footer */}
-        <div className="flex gap-2 justify-end px-6 py-3 border-t border-gray-100 bg-gray-50/30">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClose}
-            disabled={isSaving}
-            className="h-8 text-xs px-4"
-          >
-            Cancel
+        <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-6">
+          {renderStep()}
+        </div>
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:px-6">
+          <Button type="button" variant="outline" onClick={currentIndex === 0 ? handleClose : goBack} disabled={saving} className="h-11 rounded-lg">
+            {currentIndex === 0 ? 'Cancel' : <><ArrowLeft className="mr-2 h-4 w-4" />Back</>}
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={isSaving}
-            className="h-8 text-xs px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              user ? 'Update User' : 'Add User'
-            )}
-          </Button>
+          {currentStep === 'review' ? (
+            <Button type="button" onClick={handleSubmit} disabled={saving} className="h-11 rounded-lg bg-green-600 px-6 hover:bg-green-700">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+              {user ? 'Save User' : 'Create User'}
+            </Button>
+          ) : (
+            <Button type="button" onClick={goNext} disabled={saving} className="h-11 rounded-lg bg-blue-600 px-6 hover:bg-blue-700">
+              Next
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

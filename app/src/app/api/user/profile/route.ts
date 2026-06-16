@@ -76,6 +76,12 @@ export async function GET(request: NextRequest) {
         consumer_claim_confirmed_at,
         role_code,
         organization_id,
+        department_id,
+        manager_user_id,
+        position_id,
+        employment_type,
+        join_date,
+        employment_status,
         bank_id,
         bank_account_number,
         bank_account_holder_name,
@@ -107,6 +113,18 @@ export async function GET(request: NextRequest) {
       shopName: userProfile.shop_name,
       referralPhone: userProfile.referral_phone,
     })
+
+    const [departmentResult, managerResult, positionResult] = await Promise.all([
+      userProfile.department_id
+        ? supabaseAdmin.from('departments').select('id, dept_code, dept_name').eq('id', userProfile.department_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      userProfile.manager_user_id
+        ? supabaseAdmin.from('users').select('id, full_name, email').eq('id', userProfile.manager_user_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      userProfile.position_id
+        ? supabaseAdmin.from('hr_positions').select('id, name').eq('id', userProfile.position_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
 
     // Fetch organization info if organization_id exists
     let isShop = false
@@ -187,6 +205,16 @@ export async function GET(request: NextRequest) {
         shop_name: userProfile.shop_name,
         consumerClaimConfirmedAt: userProfile.consumer_claim_confirmed_at || null,
         organizationId: userProfile.organization_id,
+        departmentId: userProfile.department_id || null,
+        departmentName: departmentResult.data?.dept_name || '',
+        departmentCode: departmentResult.data?.dept_code || '',
+        managerUserId: userProfile.manager_user_id || null,
+        managerName: managerResult.data?.full_name || managerResult.data?.email || '',
+        positionId: userProfile.position_id || null,
+        positionName: positionResult.data?.name || '',
+        employmentType: userProfile.employment_type || '',
+        joinDate: userProfile.join_date || null,
+        employmentStatus: userProfile.employment_status || 'active',
         isShop,
         orgName,
         bankId,

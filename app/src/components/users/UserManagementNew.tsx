@@ -56,7 +56,6 @@ import UserDialogNew from "./UserDialogNew";
 import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
-import { updateUserHr } from "@/lib/api/hr";
 import { samePhone } from "@/utils/phone";
 import {
   Tooltip,
@@ -66,45 +65,6 @@ import {
 } from "@/components/ui/tooltip";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
-
-const CREATE_USER_FRIENDLY_MESSAGES: Record<string, string> = {
-  PERMISSION_DENIED: "You don't have permission to create users. Please contact system admin.",
-  EMAIL_EXISTS: "This email is already registered.",
-  PHONE_EXISTS: "This phone number is already registered.",
-  MISSING_ROLE: "Please select a valid role before creating user.",
-  AUTH_CREATE_FAILED: "Unable to create login account. Please try again or contact admin.",
-  SERVER_CONFIG_ERROR: "User creation is not configured correctly on server. Please check staging environment.",
-  PROFILE_SYNC_FAILED: "Unable to save user profile. Please try again or contact admin.",
-  UNAUTHORIZED: "Please sign in again before creating user."
-};
-
-const getCreateUserErrorMessage = (
-  result: { error?: string | null; message?: string | null; code?: string | null },
-  email?: string
-) => {
-  if (result.code && CREATE_USER_FRIENDLY_MESSAGES[result.code]) {
-    return CREATE_USER_FRIENDLY_MESSAGES[result.code];
-  }
-
-  const fallback = result.message || result.error || "Failed to create user";
-  const normalized = fallback.toLowerCase();
-
-  if (
-    normalized.includes("already been registered") ||
-    normalized.includes("already exists") ||
-    normalized.includes("duplicate")
-  ) {
-    return email
-      ? `The email address "${email}" is already registered in the system. Please use a different email address.`
-      : "This email is already registered.";
-  }
-
-  if (normalized === "forbidden") {
-    return CREATE_USER_FRIENDLY_MESSAGES.PERMISSION_DENIED;
-  }
-
-  return fallback;
-};
 
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return "Never";
@@ -707,7 +667,7 @@ export default function UserManagementNew({
         if ((userData as any).manager_user_id) payload.manager_user_id = (userData as any).manager_user_id;
         if ((userData as any).employment_type) payload.employment_type = (userData as any).employment_type;
         if ((userData as any).join_date) payload.join_date = (userData as any).join_date;
-        if ((userData as any).employment_status && (userData as any).employment_status !== 'active') payload.employment_status = (userData as any).employment_status;
+        if ((userData as any).employment_status) payload.employment_status = (userData as any).employment_status;
         return payload;
       };
 
@@ -743,11 +703,23 @@ export default function UserManagementNew({
           is_active: userData.is_active ?? true,
         };
 
+        const hasNonPasswordChanges = hasMeaningfulUserChanges(editingUser, userData) || Boolean(avatarFile);
+        let passwordResetSucceeded = false;
+
         // Include end user / independent user fields if present
         if ("shop_name" in userData) updateData.shop_name = (userData as any).shop_name || null;
         if ("address" in userData) updateData.address = (userData as any).address || null;
         if ("referral_phone" in userData) updateData.referral_phone = (userData as any).referral_phone || null;
         if ("can_be_reference" in userData) updateData.can_be_reference = !!(userData as any).can_be_reference;
+        if ("bank_id" in userData) updateData.bank_id = (userData as any).bank_id || null;
+        if ("bank_account_number" in userData) updateData.bank_account_number = (userData as any).bank_account_number || null;
+        if ("bank_account_holder_name" in userData) updateData.bank_account_holder_name = (userData as any).bank_account_holder_name || null;
+        if ("department_id" in userData) updateData.department_id = (userData as any).department_id || null;
+        if ("position_id" in userData) updateData.position_id = (userData as any).position_id || null;
+        if ("manager_user_id" in userData) updateData.manager_user_id = (userData as any).manager_user_id || null;
+        if ("employment_type" in userData) updateData.employment_type = (userData as any).employment_type || null;
+        if ("join_date" in userData) updateData.join_date = (userData as any).join_date || null;
+        if ("employment_status" in userData) updateData.employment_status = (userData as any).employment_status || 'active';
 
         // Handle password reset (admin only)
         if (resetPassword && resetPassword.password) {
@@ -772,6 +744,7 @@ export default function UserManagementNew({
               description: "User password has been reset successfully",
               variant: "default",
             });
+            passwordResetSucceeded = true;
           } catch (resetError: any) {
             console.error("Password reset error:", resetError);
             toast({
@@ -779,56 +752,20 @@ export default function UserManagementNew({
               description: resetError.message || "Failed to reset password",
               variant: "destructive",
             });
+
+            if (!hasNonPasswordChanges) {
+              return;
+            }
+
             // Don't throw - continue with other updates
           }
         }
 
-        // Handle Bank Details Update (if provided)
-        if (
-          (userData as any).bank_id ||
-          (userData as any).bank_account_number
-        ) {
-          // For end users (no organization), save bank details directly to user record
-          const isEndUserEdit = !userData.organization_id;
-          if (isEndUserEdit) {
-            // Bank fields will be included in updateData and saved to user table
-            if ((userData as any).bank_id) updateData.bank_id = (userData as any).bank_id;
-            if ((userData as any).bank_account_number) updateData.bank_account_number = (userData as any).bank_account_number;
-            if ((userData as any).bank_account_holder_name) updateData.bank_account_holder_name = (userData as any).bank_account_holder_name;
-          } else {
-            // For org users, update bank details on the organization
-            try {
-              const bankResponse = await fetch(
-                "/api/organization/update-bank-details",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    organizationId: userData.organization_id,
-                    bankId: (userData as any).bank_id,
-                    bankAccountNumber: (userData as any).bank_account_number,
-                    bankAccountHolderName: (userData as any)
-                      .bank_account_holder_name,
-                  }),
-                },
-              );
-
-              if (!bankResponse.ok) {
-                const errorData = await bankResponse.json();
-                throw new Error(
-                  errorData.error || "Failed to update bank details",
-                );
-              }
-            } catch (bankError: any) {
-              console.error("Error updating bank details:", bankError);
-              toast({
-                title: "Bank Details Update Failed",
-                description: bankError.message || "Failed to update bank details",
-                variant: "destructive",
-              });
-              // Continue with user update
-            }
-          }
+        if (resetPassword && resetPassword.password && passwordResetSucceeded && !hasNonPasswordChanges) {
+          setDialogOpen(false);
+          setEditingUser(null);
+          await loadUsers();
+          return;
         }
 
         // Handle avatar upload
@@ -904,18 +841,6 @@ export default function UserManagementNew({
         if (!result.success)
           throw new Error(result.error || "Failed to update user");
 
-        const hrPayload = buildHrPayload();
-        if (Object.keys(hrPayload).length > 0) {
-          const hrResult = await updateUserHr(editingUser.id, hrPayload);
-          if (!hrResult.success) {
-            toast({
-              title: "HR Fields Update Failed",
-              description: hrResult.error || "Failed to update HR fields",
-              variant: "destructive",
-            });
-          }
-        }
-
         toast({
           title: "Success",
           description: `${userData.full_name} updated successfully`,
@@ -943,60 +868,42 @@ export default function UserManagementNew({
           organization_id:
             userData.organization_id || undefined, // Don't auto-assign to admin's org - allow independent users
           phone: userData.phone || undefined,
+          is_active: userData.is_active ?? true,
+          shop_name: (userData as any).shop_name || undefined,
+          address: (userData as any).address || undefined,
+          referral_phone: (userData as any).referral_phone || undefined,
+          bank_id: (userData as any).bank_id || undefined,
+          bank_account_number: (userData as any).bank_account_number || undefined,
+          bank_account_holder_name: (userData as any).bank_account_holder_name || undefined,
+          department_id: (userData as any).department_id || undefined,
+          position_id: (userData as any).position_id || undefined,
+          manager_user_id: (userData as any).manager_user_id || undefined,
+          employment_type: (userData as any).employment_type || undefined,
+          join_date: (userData as any).join_date || undefined,
+          employment_status: (userData as any).employment_status || 'active',
+          can_be_reference: Boolean((userData as any).can_be_reference),
+        }, {
+          id: userProfile.id,
+          role_code: userProfile.role_code,
         });
 
         if (!result.success) {
-          throw new Error(getCreateUserErrorMessage(result, userData.email));
+          // Provide friendly error messages for common errors
+          let errorMessage = result.error || "Failed to create user";
+
+          if (
+            errorMessage.toLowerCase().includes("already been registered") ||
+            errorMessage.toLowerCase().includes("already exists") ||
+            errorMessage.toLowerCase().includes("duplicate")
+          ) {
+            errorMessage = `The email address "${userData.email}" is already registered in the system. Please use a different email address.`;
+          }
+
+          throw new Error(errorMessage);
         }
 
-        const hrPayload = buildHrPayload();
-        if (Object.keys(hrPayload).length > 0) {
-          const hrResult = await updateUserHr(result.user_id, hrPayload);
-          if (!hrResult.success) {
-            toast({
-              title: "HR Fields Update Failed",
-              description: hrResult.error || "Failed to update HR fields",
-              variant: "destructive",
-            });
-          }
-        }
-
-        // Handle Bank Details Update (if provided)
-        if (
-          (userData as any).bank_id ||
-          (userData as any).bank_account_number
-        ) {
-          try {
-            const bankResponse = await fetch(
-              "/api/organization/update-bank-details",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  organizationId:
-                    userData.organization_id || undefined, // Don't default to admin's org for independent users
-                  bankId: (userData as any).bank_id,
-                  bankAccountNumber: (userData as any).bank_account_number,
-                  bankAccountHolderName: (userData as any)
-                    .bank_account_holder_name,
-                }),
-              },
-            );
-
-            if (!bankResponse.ok) {
-              const errorData = await bankResponse.json();
-              throw new Error(
-                errorData.error || "Failed to update bank details",
-              );
-            }
-          } catch (bankError: any) {
-            console.error("Error updating bank details:", bankError);
-            toast({
-              title: "Bank Details Update Failed",
-              description: bankError.message || "Failed to update bank details",
-              variant: "destructive",
-            });
-          }
+        if (!result.user_id) {
+          throw new Error("No user ID returned after creating user");
         }
 
         // Upload avatar if provided
@@ -1063,7 +970,6 @@ export default function UserManagementNew({
           title: "Success",
           description: `${userData.full_name} created successfully`,
         });
-        setDialogOpen(false);
 
         // Small delay to ensure database transaction completes
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1080,6 +986,7 @@ export default function UserManagementNew({
           error instanceof Error ? error.message : "Failed to save user",
         variant: "destructive",
       });
+      throw error;
     } finally {
       setIsSaving(false);
     }

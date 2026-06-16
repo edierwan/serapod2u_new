@@ -54,6 +54,10 @@ interface UserProfile {
   // HR Foundation fields
   department_id?: string | null
   manager_user_id?: string | null
+  position_id?: string | null
+  employment_type?: string | null
+  join_date?: string | null
+  employment_status?: string | null
   organizations?: {
     id: string
     org_name: string
@@ -78,6 +82,10 @@ interface UserProfile {
     id: string
     full_name: string | null
     email: string
+  } | null
+  positions?: {
+    id: string
+    name: string
   } | null
 }
 
@@ -106,7 +114,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const [userProfile, setUserProfile] = useState<UserProfile>(initialProfile)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [sourceAvatarFile, setSourceAvatarFile] = useState<File | null>(null)
+  const [avatarCropPosition, setAvatarCropPosition] = useState({ x: 50, y: 50 })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const avatarObjectUrlRef = useRef<string | null>(null)
+  const avatarDragRef = useRef<{ startX: number; startY: number; cropX: number; cropY: number; moved: boolean } | null>(null)
+  const avatarSuppressClickRef = useRef(false)
+  const avatarCropPositionRef = useRef({ x: 50, y: 50 })
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
@@ -140,6 +154,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     return () => {
       if (phoneCheckTimeoutRef.current) clearTimeout(phoneCheckTimeoutRef.current)
       if (referralCheckTimeoutRef.current) clearTimeout(referralCheckTimeoutRef.current)
+      if (avatarObjectUrlRef.current) URL.revokeObjectURL(avatarObjectUrlRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -181,7 +196,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       let profile: any = null
       let queryError: any = null
 
-      const { data: fullProfile, error: fullError } = await supabase
+      const { data: fullProfile, error: fullError } = await (supabase as any)
         .from('users')
         .select(`
           *,
@@ -198,16 +213,6 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
           msia_banks:bank_id (
             id,
             short_name
-          ),
-          departments:department_id!users_department_id_fkey (
-            id,
-            dept_code,
-            dept_name
-          ),
-          manager:manager_user_id!users_manager_user_id_fkey (
-            id,
-            full_name,
-            email
           )
         `)
         .eq('id', targetUserId)
@@ -250,7 +255,18 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       if (queryError) throw queryError
 
       if (profile) {
-        // Transform the data structure
+        const [departmentResult, managerResult, positionResult] = await Promise.all([
+          (profile as any).department_id
+            ? supabase.from('departments').select('id, dept_code, dept_name').eq('id', (profile as any).department_id).maybeSingle()
+            : Promise.resolve({ data: null }),
+          (profile as any).manager_user_id
+            ? supabase.from('users').select('id, full_name, email').eq('id', (profile as any).manager_user_id).maybeSingle()
+            : Promise.resolve({ data: null }),
+          (profile as any).position_id
+            ? supabase.from('hr_positions').select('id, name').eq('id', (profile as any).position_id).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ])
+
         const transformedProfile: UserProfile = {
           ...(profile as any),
           organizations: Array.isArray((profile as any).organizations)
@@ -264,10 +280,9 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             : (profile as any).msia_banks,
           departments: Array.isArray((profile as any).departments)
             ? (profile as any).departments[0]
-            : (profile as any).departments,
-          manager: Array.isArray((profile as any).manager)
-            ? (profile as any).manager[0]
-            : (profile as any).manager
+            : (profile as any).departments || departmentResult.data,
+          manager: managerResult.data,
+          positions: positionResult.data
         }
 
         setUserProfile(transformedProfile)
@@ -446,18 +461,19 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         return
       }
 
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current)
+      }
+
+      const previewUrl = URL.createObjectURL(file)
+      avatarObjectUrlRef.current = previewUrl
+      setAvatarPreview(previewUrl)
+      setSourceAvatarFile(file)
+      setAvatarCrop({ x: 50, y: 50 })
+
       try {
-        // Compress image to be under 5KB
-        const compressedFile = await compressImage(file)
-
+        const compressedFile = await compressImage(file, { x: 50, y: 50 })
         setAvatarFile(compressedFile)
-
-        // Create preview
-        const reader = new FileReader()
-        reader.onloadend = () => {
-          setAvatarPreview(reader.result as string)
-        }
-        reader.readAsDataURL(compressedFile)
       } catch (error) {
         console.error('Compression error:', error)
         toast({
@@ -469,7 +485,18 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     }
   }
 
-  const compressImage = (file: File): Promise<File> => {
+  const clampPercent = (value: number) => Math.max(0, Math.min(100, value))
+
+  const setAvatarCrop = (position: { x: number; y: number }) => {
+    const next = {
+      x: clampPercent(position.x),
+      y: clampPercent(position.y)
+    }
+    avatarCropPositionRef.current = next
+    setAvatarCropPosition(next)
+  }
+
+  const compressImage = (file: File, cropPosition = avatarCropPositionRef.current): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.readAsDataURL(file)
@@ -478,27 +505,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         img.src = event.target?.result as string
         img.onload = () => {
           const canvas = document.createElement('canvas')
-          let width = img.width
-          let height = img.height
-
-          // Resize to max 150px to ensure small size
           const MAX_SIZE = 150
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width
-              width = MAX_SIZE
-            }
-          } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height
-              height = MAX_SIZE
-            }
-          }
+          const sourceSize = Math.min(img.width, img.height)
+          const sourceX = (img.width - sourceSize) * (clampPercent(cropPosition.x) / 100)
+          const sourceY = (img.height - sourceSize) * (clampPercent(cropPosition.y) / 100)
 
-          canvas.width = width
-          canvas.height = height
+          canvas.width = MAX_SIZE
+          canvas.height = MAX_SIZE
           const ctx = canvas.getContext('2d')
-          ctx?.drawImage(img, 0, 0, width, height)
+          ctx?.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, MAX_SIZE, MAX_SIZE)
 
           // Start with quality 0.7
           let quality = 0.7
@@ -536,6 +551,54 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const handleAvatarClick = () => {
     if (isEditing) {
       fileInputRef.current?.click()
+    }
+  }
+
+  const handleAvatarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!isEditing || !avatarPreview) return
+    event.preventDefault()
+    avatarDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      cropX: avatarCropPositionRef.current.x,
+      cropY: avatarCropPositionRef.current.y,
+      moved: false
+    }
+  }
+
+  const handleAvatarMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const drag = avatarDragRef.current
+    if (!drag) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      drag.moved = true
+    }
+
+    setAvatarCrop({
+      x: drag.cropX - (dx / rect.width) * 100,
+      y: drag.cropY - (dy / rect.height) * 100
+    })
+  }
+
+  const handleAvatarMouseUp = async () => {
+    const drag = avatarDragRef.current
+    avatarDragRef.current = null
+    avatarSuppressClickRef.current = Boolean(drag?.moved)
+    if (!drag?.moved || !sourceAvatarFile) return
+
+    try {
+      setAvatarFile(await compressImage(sourceAvatarFile, avatarCropPositionRef.current))
+    } catch (error) {
+      console.error('Avatar crop compression error:', error)
+      toast({
+        title: "Error",
+        description: "Failed to process image crop. Please try another one.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -644,11 +707,15 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         updateData.referral_phone = formData.referral_phone?.trim() || null
       }
 
+      const uploadAvatarFile = sourceAvatarFile
+        ? await compressImage(sourceAvatarFile, avatarCropPositionRef.current)
+        : avatarFile
+
       // Handle avatar upload if file is selected
-      if (avatarFile) {
+      if (uploadAvatarFile) {
         try {
           // Compress the avatar first
-          const compressionResult = await compressAvatar(avatarFile)
+          const compressionResult = await compressAvatar(uploadAvatarFile)
 
           toast({
             title: '🖼️ Avatar Compressed',
@@ -707,8 +774,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       if (referralChanged) {
         const { data: refResult, error: refError } = await supabase.rpc('process_reference_change', {
           p_shop_user_id: userProfile.id,
-          p_new_ref_phone: formData.referral_phone?.trim() || null,
-          p_requested_by: userProfile.id
+          p_new_reference_phone: formData.referral_phone?.trim() || '',
+          p_changed_by: userProfile.id
         })
 
         if (refError) {
@@ -744,6 +811,12 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       setIsEditing(false)
       setAvatarFile(null)
       setAvatarPreview(null)
+      setSourceAvatarFile(null)
+      setAvatarCrop({ x: 50, y: 50 })
+      if (avatarObjectUrlRef.current) {
+        URL.revokeObjectURL(avatarObjectUrlRef.current)
+        avatarObjectUrlRef.current = null
+      }
 
       // Reload fresh data from database
       await loadUserProfile()
@@ -775,6 +848,12 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
     })
     setAvatarFile(null)
     setAvatarPreview(null)
+    setSourceAvatarFile(null)
+    setAvatarCrop({ x: 50, y: 50 })
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current)
+      avatarObjectUrlRef.current = null
+    }
     setIsEditing(false)
   }
 
@@ -956,16 +1035,40 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             {/* Avatar Section */}
             <div className="flex items-center gap-4">
               <div className="relative">
-                <Avatar className="h-24 w-24 cursor-pointer border-4 border-gray-100" onClick={handleAvatarClick}>
-                  {(avatarPreview || userProfile.avatar_url) && (
+                <Avatar
+                  className={`h-24 w-24 border-4 border-gray-100 ${isEditing && avatarPreview ? 'cursor-move' : isEditing ? 'cursor-pointer' : ''}`}
+                  onClick={() => {
+                    if (avatarSuppressClickRef.current) {
+                      avatarSuppressClickRef.current = false
+                      return
+                    }
+                    if (!avatarPreview) handleAvatarClick()
+                  }}
+                  onMouseDown={handleAvatarMouseDown}
+                  onMouseMove={handleAvatarMouseMove}
+                  onMouseUp={handleAvatarMouseUp}
+                  onMouseLeave={handleAvatarMouseUp}
+                  title={isEditing && avatarPreview ? 'Drag to reposition image' : undefined}
+                >
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Avatar preview"
+                      draggable={false}
+                      className="h-full w-full select-none object-cover"
+                      style={{ objectPosition: `${avatarCropPosition.x}% ${avatarCropPosition.y}%` }}
+                    />
+                  ) : userProfile.avatar_url ? (
                     <AvatarImage
-                      src={avatarPreview || (userProfile.avatar_url ? getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?v=${Date.now()}`) : undefined)}
+                      src={getStorageUrl(`${userProfile.avatar_url.split('?')[0]}?v=${Date.now()}`)}
                       alt={userProfile.full_name || 'User'}
                     />
+                  ) : null}
+                  {!avatarPreview && (
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-3xl font-semibold">
+                      {getInitials(userProfile.full_name, userProfile.email)}
+                    </AvatarFallback>
                   )}
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-3xl font-semibold">
-                    {getInitials(userProfile.full_name, userProfile.email)}
-                  </AvatarFallback>
                 </Avatar>
                 {isEditing && (
                   <Button
@@ -995,6 +1098,11 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
                     <CheckCircle className="h-3 w-3" />
                     New avatar selected
+                  </p>
+                )}
+                {avatarPreview && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Drag the avatar to reposition it before saving.
                   </p>
                 )}
               </div>
@@ -1364,17 +1472,20 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               <div className="flex-1">
                 <p className="text-sm text-gray-500 font-medium">Phone Verification</p>
                 {userProfile.phone ? (
-                  userProfile.phone_verified_at ? (
-                    <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Verified {formatRelativeTime(userProfile.phone_verified_at)}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="mt-2 bg-yellow-50 text-yellow-700 border-yellow-200">
-                      <XCircle className="h-3 w-3 mr-1" />
-                      Not Verified
-                    </Badge>
-                  )
+                  <>
+                    <p className="text-base font-medium text-gray-900 mt-1">{userProfile.phone}</p>
+                    {userProfile.phone_verified_at ? (
+                      <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Verified {formatRelativeTime(userProfile.phone_verified_at)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="mt-2 bg-yellow-50 text-yellow-700 border-yellow-200">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Not Verified
+                      </Badge>
+                    )}
+                  </>
                 ) : (
                   <p className="text-sm text-gray-400 italic mt-1">No phone number set</p>
                 )}
@@ -1439,6 +1550,20 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   </div>
                 </div>
 
+                <div className="flex items-start gap-3 text-gray-700">
+                  <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 font-medium">Position</p>
+                    {userProfile.positions ? (
+                      <p className="text-base font-medium text-gray-900 mt-1">
+                        {userProfile.positions.name}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Reports To (HR Foundation) */}
                 <div className="flex items-start gap-3 text-gray-700">
                   <UserCheck className="h-5 w-5 text-gray-400 mt-0.5" />
@@ -1458,6 +1583,20 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     ) : (
                       <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
                     )}
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 text-gray-700">
+                  <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 font-medium">Employment</p>
+                    <p className="text-base font-medium text-gray-900 mt-1">
+                      {userProfile.employment_type || 'Not set'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Status: {userProfile.employment_status || 'active'}
+                      {userProfile.join_date ? ` · Joined ${formatDate(userProfile.join_date)}` : ''}
+                    </p>
                   </div>
                 </div>
               </>

@@ -122,7 +122,7 @@ import ScratchCardGameView from '@/components/dashboard/views/consumer-engagemen
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
-import { isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
+import { canAccessSupplyChainView, isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
 import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
@@ -217,6 +217,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     userProfile.roles.role_level <= 20 ||
     hasPermission('edit_org_settings') ||
     hasPermission('view_settings')
+
+  const orgTypeCode = userProfile.organizations?.org_type_code
+  const roleLevel = userProfile.roles?.role_level
 
   // ── Sidebar collapse state (persisted in localStorage) ──────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -342,6 +345,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       return
     }
 
+    // ── Redirect Notifications to its landing page ──
     if (view === 'notifications') {
       setCurrentView(view)
       router.push('/notifications')
@@ -352,6 +356,21 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   const renderCurrentView = () => {
+    if (
+      currentView !== 'supply-chain' &&
+      isSupplyChainViewId(currentView) &&
+      !canAccessSupplyChainView(currentView, orgTypeCode, roleLevel)
+    ) {
+      return (
+        <div className="p-8">
+          <h2 className="text-xl font-semibold text-gray-900">Unauthorized</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            You do not have permission to view this Supply Chain page.
+          </p>
+        </div>
+      )
+    }
+
     switch (currentView) {
       case 'products':
         return <ProductsView userProfile={userProfile} onViewChange={handleViewChange} />
@@ -425,7 +444,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <QualityIssuesView userProfile={userProfile} />
 
       case 'supply-chain':
-        return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleViewChange} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} bannerImageUrl={moduleBannerUrls.supply} />
+        return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} bannerImageUrl={moduleBannerUrls.supply} />
 
       case 'loyalty':
         return <LoyaltyLandingView userName={userProfile.full_name} onViewChange={handleViewChange} hideHeroBanner />
@@ -789,6 +808,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   const handleSupplyChainNavigate = (viewId: string) => {
+    if (!canAccessSupplyChainView(viewId, orgTypeCode, roleLevel)) return
     handleViewChange(viewId)
   }
 
@@ -839,7 +859,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         )}
         {/* Supply Chain Top Navigation — shown on SC views */}
         {isSupplyChainView && (
-          <SupplyChainTopNav currentView={currentView} onNavigate={handleSupplyChainNavigate} orgTypeCode={userProfile.organizations?.org_type_code} roleLevel={userProfile.roles?.role_level} />
+          <SupplyChainTopNav currentView={currentView} onNavigate={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} />
         )}
         {/* Customer & Growth Domain Top Navigation — shown on ALL CG child views */}
         {showCustomerGrowthTopNav && (
