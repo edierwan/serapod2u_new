@@ -311,12 +311,7 @@ export async function sendOtpViaWhatsApp(
     orgId: string,
     options?: VerificationMessageOptions,
 ): Promise<{ success: boolean; providerMessageId?: string | null; error?: string }> {
-    const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-
-    const config = await getWhatsAppConfig(admin, orgId)
-    if (!config?.baseUrl || !config?.apiKey) {
-        return { success: false, error: 'WhatsApp gateway is not configured for registration verification.' }
-    }
+    const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
 
     const recipientDigits = toProviderPhone(phone)
     if (!recipientDigits) {
@@ -330,14 +325,8 @@ export async function sendOtpViaWhatsApp(
             `If you did not request this registration, no further action is required.`)
 
     try {
-        const result = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send',
-            { to: recipientDigits, text: message },
-            config.tenantId,
-        )
+        const sent = await sendWhatsAppMessage(admin, orgId, { to: recipientDigits, text: message })
+        const result = sent.response
 
         return {
             success: true,

@@ -336,14 +336,9 @@ export async function sendOtpViaWhatsApp(
     orgId: string
 ): Promise<{ success: boolean; providerMessageId?: string; error?: string }> {
     // Dynamic import to avoid circular deps
-    const { getWhatsAppConfig, callGateway } = await import(
+    const { sendWhatsAppMessage } = await import(
         '@/app/api/settings/whatsapp/_utils'
     )
-
-    const config = await getWhatsAppConfig(admin, orgId)
-    if (!config?.baseUrl || !config?.apiKey) {
-        return { success: false, error: 'WhatsApp not configured for this organization' }
-    }
 
     // Phone to send to: strip + for Baileys (expects 60xxxx format or full digits)
     const recipientDigits = toProviderPhone(phone)
@@ -356,14 +351,8 @@ export async function sendOtpViaWhatsApp(
         `If you did not request this, please ignore this message.`
 
     try {
-        const result = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send',
-            { to: recipientDigits, text: message },
-            config.tenantId
-        )
+        const sent = await sendWhatsAppMessage(admin, orgId, { to: recipientDigits, text: message })
+        const result = sent.response
 
         return {
             success: true,
@@ -379,8 +368,7 @@ export async function sendOtpViaWhatsApp(
 /**
  * Find the org that owns the WhatsApp provider config.
  * For public (unauthenticated) flows, we need to determine which org to
- * query for gateway config. We look for the first org with an active
- * Baileys WhatsApp provider.
+ * query for the persisted default WhatsApp provider.
  */
 export async function resolveOrgForWhatsApp(
     admin: SupabaseClient
@@ -389,7 +377,7 @@ export async function resolveOrgForWhatsApp(
         .from('notification_provider_configs')
         .select('org_id')
         .eq('channel', 'whatsapp')
-        .in('provider_name', ['baileys', 'baileys_home'])
+        .eq('is_default', true)
         .eq('is_active', true)
         .limit(1)
         .maybeSingle()

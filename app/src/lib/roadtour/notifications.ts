@@ -1,4 +1,4 @@
-import { callGateway, getWhatsAppConfig } from '@/app/api/settings/whatsapp/_utils'
+import { sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { buildRoadTourUrl } from '@/lib/roadtour/url'
 import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 
@@ -64,11 +64,6 @@ export async function sendRoadtourClaimNotifications(params: {
         return
     }
 
-    const config = await getWhatsAppConfig(supabase, orgId)
-    if (!config?.baseUrl || !config?.apiKey) {
-        return
-    }
-
     const recipients = await resolveRecipients(supabase, orgId, settings || {})
     if (!recipients.length) {
         return
@@ -108,14 +103,8 @@ export async function sendRoadtourClaimNotifications(params: {
         let errorMessage: string | null = null
 
         try {
-            const result = await callGateway(
-                config.baseUrl,
-                config.apiKey,
-                'POST',
-                '/messages/send',
-                { to: providerPhone, text: renderedMessage },
-                config.tenantId,
-            )
+            const sent = await sendWhatsAppMessage(supabase, orgId, { to: providerPhone, text: renderedMessage })
+            const result = sent.response
 
             if (result?.ok === false) {
                 sendStatus = 'failed'

@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { getWhatsAppConfig, isAdminUser, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { buildRoadTourUrl } from '@/lib/roadtour/url'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 import { resolveNotificationRoutingPreset } from '@/lib/notifications/routing'
@@ -126,14 +126,14 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Reference has no phone number for WhatsApp delivery' }, { status: 400 })
         }
         const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
-        if (!config?.baseUrl || !config?.apiKey) {
-            return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
+        if (!config) {
+            return NextResponse.json({ error: 'No default WhatsApp provider configured' }, { status: 400 })
         }
 
         const recipientDigits = String(effectivePhone).replace(/^\+/, '')
         console.log(`[RoadTour QR WA][${reqId}] imageUrl=${imageUrl}`)
         console.log(`[RoadTour QR WA][${reqId}] recipientDigits=${recipientDigits}`)
-        console.log(`[RoadTour QR WA][${reqId}] gateway=${config.baseUrl} tenantId=${config.tenantId || 'none'}`)
+        console.log(`[RoadTour QR WA][${reqId}] provider=${config.providerName}`)
 
         // Pre-flight: verify the image URL is fetchable
         try {
@@ -159,14 +159,13 @@ export async function POST(request: NextRequest) {
 
         // Send via WhatsApp gateway (getouch uses imageUrl format)
         console.log(`[RoadTour QR WA][${reqId}] calling gateway POST /messages/send-image`)
-        const result = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send-image',
-            { to: recipientDigits, imageUrl, caption },
-            config.tenantId,
-        )
+        const sent = await sendWhatsAppMessage(supabase, userProfile.organization_id, {
+            to: recipientDigits,
+            text: caption,
+            imageUrl,
+            caption,
+        })
+        const result = sent.response
 
         console.log(`[RoadTour QR WA][${reqId}] gateway response:`, JSON.stringify(result))
         console.log(`[RoadTour QR WA][${reqId}] === REQUEST END (success) ===`)

@@ -18726,6 +18726,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_active: boolean | null
+          is_default: boolean
           is_sandbox: boolean | null
           last_test_at: string | null
           last_test_error: string | null
@@ -18743,6 +18744,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          is_default?: boolean
           is_sandbox?: boolean | null
           last_test_at?: string | null
           last_test_error?: string | null
@@ -18760,6 +18762,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_active?: boolean | null
+          is_default?: boolean
           is_sandbox?: boolean | null
           last_test_at?: string | null
           last_test_error?: string | null

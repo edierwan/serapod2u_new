@@ -29,7 +29,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { getWhatsAppConfig, isAdminUser, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { resolveRecoveryContacts } from '@/lib/wa-recovery/contact-resolver'
@@ -128,8 +128,8 @@ export async function POST(request: NextRequest) {
         if (!orgId) return NextResponse.json({ error: 'No organization' }, { status: 400 })
 
         const config = await getWhatsAppConfig(supabaseAdmin as any, orgId)
-        if (!config?.baseUrl || !config?.apiKey) {
-            return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
+        if (!config) {
+            return NextResponse.json({ error: 'No default WhatsApp provider is configured' }, { status: 400 })
         }
 
         const body = await request.json()
@@ -208,10 +208,8 @@ export async function POST(request: NextRequest) {
             }
 
             try {
-                const result = await callGateway(
-                    config.baseUrl, config.apiKey, 'POST', '/messages/send',
-                    { to: providerPhone, text: messageBody }, config.tenantId,
-                )
+                const sentResult = await sendWhatsAppMessage(supabaseAdmin as any, orgId, { to: providerPhone, text: messageBody })
+                const result = sentResult.response
                 const messageId = result?.key?.id || result?.messageId || null
                 results.push({ phone, status: 'sent', templateKey: template.key, messageId })
                 sent++

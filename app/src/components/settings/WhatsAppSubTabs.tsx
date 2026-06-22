@@ -98,6 +98,7 @@ interface ProviderConfig {
     channel: 'whatsapp' | 'sms' | 'email'
     provider_name: string
     is_active: boolean
+    is_default?: boolean
     is_sandbox: boolean
     config_public: Record<string, any>
     last_test_status?: string
@@ -280,6 +281,7 @@ export default function WhatsAppSubTabs({
             channel: 'whatsapp',
             provider_name: savedProvider.provider_name,
             is_active: savedProvider.is_active,
+            is_default: savedProvider.is_default,
             is_sandbox: savedProvider.is_sandbox,
             config_public: savedProvider.config_public || {},
             last_test_status: savedProvider.last_test_status,
@@ -745,7 +747,7 @@ export default function WhatsAppSubTabs({
 
             for (const number of savedTestNumbers) {
                 try {
-                    const response = await fetch(waApi('/api/settings/whatsapp/test'), {
+                    const response = await fetch('/api/settings/whatsapp/test', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -804,7 +806,7 @@ export default function WhatsAppSubTabs({
 
     // Start/stop polling for gateway status
     useEffect(() => {
-        if (isBaileysProvider(whatsappConfig?.provider_name)) {
+        if (whatsappConfig && isBaileysProvider(whatsappConfig.provider_name)) {
             fetchGatewayStatus()
 
             if (whatsappConfig.config_public.test_number) {
@@ -1712,7 +1714,7 @@ export default function WhatsAppSubTabs({
 
                             {/* Save Button */}
                             <div className="flex justify-end">
-                                <Button onClick={onSave} disabled={saving}>
+                                <Button onClick={() => onSave()} disabled={saving}>
                                     {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Configuration
                                 </Button>
@@ -1918,6 +1920,23 @@ export default function WhatsAppSubTabs({
 
     // Only show Baileys-specific tabs when using Baileys provider
     const isBaileys = isBaileysProvider(whatsappConfig?.provider_name)
+    const selectedProviderLabel = WHATSAPP_PROVIDERS.find(provider => provider.value === whatsappConfig?.provider_name)?.label || whatsappConfig?.provider_name || 'provider'
+
+    const setAsDefault = async () => {
+        if (!whatsappConfig?.id) return alert('Save this provider configuration before setting it as default.')
+        if (!whatsappConfig.is_active) return alert('Enable and save this provider before setting it as default.')
+        if (!window.confirm(`Use ${selectedProviderLabel} as the default WhatsApp provider?`)) return
+
+        const response = await fetch('/api/settings/notifications/providers/whatsapp/default', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerName: whatsappConfig.provider_name }),
+        })
+        const payload = await response.json()
+        if (!response.ok) return alert(payload.error || 'Failed to change the default WhatsApp provider.')
+        setWhatsappConfig({ ...whatsappConfig, is_default: true })
+        alert(`${selectedProviderLabel} is now the default WhatsApp provider.`)
+    }
 
     return (
         <div className="space-y-6">
@@ -1925,20 +1944,24 @@ export default function WhatsAppSubTabs({
                 <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
                     <div>
                         <Label htmlFor="whatsapp-provider-switcher" className="text-sm font-semibold text-slate-900">WhatsApp provider</Label>
-                        <p className="mt-1 text-xs text-slate-500">Choose a provider to switch immediately to its setup and connection flow.</p>
+                        <p className="mt-1 text-xs text-slate-500">Choose which provider to view or configure. This does not change the system default.</p>
                     </div>
-                    <Select value={whatsappConfig?.provider_name || 'whatsapp_business'} onValueChange={handleProviderChange}>
-                        <SelectTrigger id="whatsapp-provider-switcher" className="w-full bg-white md:w-[360px]">
-                            <SelectValue placeholder="Select WhatsApp provider" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {WHATSAPP_PROVIDERS.map(provider => (
-                                <SelectItem key={provider.value} value={provider.value}>
-                                    <div><div className="font-medium">{provider.label}</div><div className="text-xs text-gray-500">{provider.description}</div></div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                        {whatsappConfig?.is_default ? <Badge className="w-fit bg-emerald-600">Default</Badge> : null}
+                        <Select value={whatsappConfig?.provider_name || 'whatsapp_business'} onValueChange={handleProviderChange}>
+                            <SelectTrigger id="whatsapp-provider-switcher" className="w-full bg-white md:w-[360px]">
+                                <SelectValue placeholder="Select WhatsApp provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {WHATSAPP_PROVIDERS.map(provider => (
+                                    <SelectItem key={provider.value} value={provider.value}>
+                                        <div><div className="font-medium">{provider.label}</div><div className="text-xs text-gray-500">{provider.description}</div></div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {!whatsappConfig?.is_default ? <Button type="button" variant="outline" disabled={!whatsappConfig?.id || !whatsappConfig.is_active} onClick={setAsDefault}>Set as Default</Button> : null}
+                    </div>
                 </CardContent>
             </Card>
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">

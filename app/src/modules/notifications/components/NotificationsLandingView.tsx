@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Bell, MessageSquare, Megaphone, AlertTriangle, ListChecks } from 'lucide-react'
+import { ArrowRight, Bell, Megaphone, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface NotificationsCardItem {
@@ -16,26 +16,10 @@ interface NotificationsCardItem {
 
 const notificationCards: NotificationsCardItem[] = [
   {
-    id: 'whatsapp-activity',
-    label: 'WhatsApp Activity',
-    description: 'Monitor WhatsApp notification events and delivery flow in real time.',
-    href: '/notifications/whatsapp-activity',
-    icon: MessageSquare,
-    accent: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-300', hoverBorder: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
-  },
-  {
-    id: 'delivery-logs',
-    label: 'Delivery Logs',
-    description: 'Review outbound notification delivery logs and status history.',
-    href: '/notifications/delivery-logs',
-    icon: ListChecks,
-    accent: { bg: 'bg-sky-50 dark:bg-sky-900/30', text: 'text-sky-600 dark:text-sky-300', hoverBorder: 'hover:border-sky-200 dark:hover:border-sky-800' },
-  },
-  {
     id: 'failed-notifications',
-    label: 'Failed Notifications',
-    description: 'Track failed sends and trigger recovery actions safely.',
-    href: '/notifications/failed',
+    label: 'WhatsApp Activity & Recovery',
+    description: 'Monitor WhatsApp delivery activity, failed notifications, provider status, and recovery actions.',
+    href: '/notifications/whatsapp-activity-recovery',
     icon: AlertTriangle,
     accent: { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-300', hoverBorder: 'hover:border-amber-200 dark:hover:border-amber-800' },
   },
@@ -67,11 +51,11 @@ export default function NotificationsLandingView() {
       const supabase = createClient()
       const { data } = await supabase
         .from('notification_provider_configs')
-        .select('provider_name,is_active,config_public,last_test_status')
+        .select('provider_name,is_active,is_default,config_public,last_test_status')
         .eq('channel', 'whatsapp')
 
       const records = data || []
-      const selected = records.find(record => record.is_active) || records.find(record => record.provider_name === 'whatsapp_business')
+      const selected = records.find(record => record.is_default) || records.find(record => record.is_active) || records.find(record => record.provider_name === 'whatsapp_business')
       if (!selected) return
 
       const aliases: Record<string, string> = {

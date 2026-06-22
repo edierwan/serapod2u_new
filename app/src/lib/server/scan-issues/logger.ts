@@ -250,15 +250,9 @@ async function callWa(
 ): Promise<{ ok: boolean; messageId?: string; error?: string }> {
     try {
         if (!orgId) return { ok: false, error: 'No org_id for WA config' }
-        const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-        const cfg = await getWhatsAppConfig(supabaseAdmin as any, orgId)
-        if (!cfg?.baseUrl || !cfg?.apiKey) {
-            return { ok: false, error: 'No active WhatsApp gateway config' }
-        }
-        const result = await callGateway(cfg.baseUrl, cfg.apiKey, 'POST', '/messages/send', {
-            to: providerPhone,
-            text,
-        }, cfg.tenantId)
+        const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
+        const sent = await sendWhatsAppMessage(supabaseAdmin as any, orgId, { to: providerPhone, text })
+        const result = sent.response
         if (result?.success === false || result?.ok === false) {
             return { ok: false, error: result?.error || 'gateway-rejected' }
         }

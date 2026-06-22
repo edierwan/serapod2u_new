@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { isAdminUser, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,21 +45,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Phone and message are required' }, { status: 400 })
         }
 
-        const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
-        if (!config?.baseUrl || !config?.apiKey) {
-            return NextResponse.json({ error: 'WhatsApp gateway not configured' }, { status: 400 })
-        }
-
         const recipientDigits = String(phone).replace(/^\+/, '')
 
-        const result = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send',
-            { to: recipientDigits, text: message },
-            config.tenantId,
-        )
+        const sent = await sendWhatsAppMessage(supabase, userProfile.organization_id, { to: recipientDigits, text: message })
+        const result = sent.response
 
         return NextResponse.json({
             ok: true,

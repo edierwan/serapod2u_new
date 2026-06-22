@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash, createHmac } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { getWhatsAppConfig, callGateway, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
 
 /**
@@ -477,11 +477,11 @@ export async function GET(request: NextRequest) {
                 if (channel === 'whatsapp' && recipientPhone) {
                     const config = await getWhatsAppConfig(supabase, org_id)
 
-                    if (!config || !config.baseUrl) {
+                    if (!config) {
                         await supabase.rpc('log_notification_attempt', {
                             p_outbox_id: id,
                             p_status: 'failed',
-                            p_error_message: 'WhatsApp gateway not configured for this organization'
+                            p_error_message: 'No default WhatsApp provider configured for this organization'
                         })
                         await queueEmailFallback(supabase, item, recipientPhone, 'whatsapp_unavailable')
                         await supabase.from('notifications_outbox').update({ status: 'cancelled' }).eq('id', id)
@@ -490,14 +490,8 @@ export async function GET(request: NextRequest) {
                     }
 
                     try {
-                        const gwResult = await callGateway(
-                            config.baseUrl,
-                            config.apiKey,
-                            'POST',
-                            '/messages/send',
-                            { to: recipientPhone, text: messageBody },
-                            config.tenantId
-                        )
+                        const sentResult = await sendWhatsAppMessage(supabase, org_id, { to: recipientPhone, text: messageBody })
+                        const gwResult = sentResult.response
 
                         if (gwResult.ok || gwResult.success || gwResult.jid || gwResult.messageId) {
                             await supabase.rpc('log_notification_attempt', {

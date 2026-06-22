@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
-import { getWhatsAppConfig, callGateway, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
+import { getWhatsAppConfig, sendWhatsAppMessage, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
 import { normalizePhoneE164 } from '@/utils/phone';
 import { buildDailyReportingData } from '@/lib/reporting/dailyReporting';
 
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     // Get WhatsApp config using shared utility
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
 
-    if (!config || !config.baseUrl) {
+    if (!config) {
       return NextResponse.json({
         error: 'WhatsApp configuration not found. Please configure it in Settings > Notification Providers.'
       }, { status: 400 });
@@ -180,17 +180,8 @@ export async function POST(request: Request) {
       .replace(/{short_link}/g, appUrl);
 
     // Use the same gateway call as the working test in Settings
-    const result = await callGateway(
-      config.baseUrl,
-      config.apiKey,
-      'POST',
-      '/messages/send',
-      {
-        to: targetNumber,
-        text: processedMessage,
-      },
-      config.tenantId
-    );
+    const sent = await sendWhatsAppMessage(supabase, userProfile.organization_id, { to: targetNumber, text: processedMessage });
+    const result = sent.response;
 
     // Log the action
     await logGatewayAction(supabase, {

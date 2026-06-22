@@ -37,6 +37,7 @@ interface ProviderConfig {
   channel: 'whatsapp' | 'sms' | 'email'
   provider_name: string
   is_active: boolean
+  is_default?: boolean
   is_sandbox: boolean
   config_public: Record<string, any>
   last_test_status?: string
@@ -263,8 +264,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         : null
       const selectedWhatsapp = requestedProvider
         ? whatsappRecords.find((config: any) => config.provider_name === requestedProvider)
-        : whatsappRecords.find((config: any) => config.is_active) ||
-          whatsappRecords.find((config: any) => config.provider_name === rememberedProvider) ||
+        : whatsappRecords.find((config: any) => config.provider_name === rememberedProvider) ||
+          whatsappRecords.find((config: any) => config.is_default) ||
           whatsappRecords.find((config: any) => config.provider_name === 'whatsapp_business')
 
       if (selectedWhatsapp) {
@@ -273,12 +274,13 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           org_id: selectedWhatsapp.org_id,
           channel: 'whatsapp',
           provider_name: selectedWhatsapp.provider_name,
-          is_active: selectedWhatsapp.is_active,
-          is_sandbox: selectedWhatsapp.is_sandbox,
-          config_public: selectedWhatsapp.config_public || {},
-          last_test_status: selectedWhatsapp.last_test_status,
-          last_test_at: selectedWhatsapp.last_test_at,
-          last_test_error: selectedWhatsapp.last_test_error
+          is_active: !!selectedWhatsapp.is_active,
+          is_default: !!selectedWhatsapp.is_default,
+          is_sandbox: selectedWhatsapp.is_sandbox !== false,
+          config_public: (selectedWhatsapp.config_public || {}) as Record<string, any>,
+          last_test_status: selectedWhatsapp.last_test_status || undefined,
+          last_test_at: selectedWhatsapp.last_test_at || undefined,
+          last_test_error: selectedWhatsapp.last_test_error || undefined
         })
         setSensitiveData(prev => ({ ...prev, whatsapp: parseSensitiveConfig(selectedWhatsapp) }))
       } else {

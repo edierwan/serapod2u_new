@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import {
   DEFAULT_MANUFACTURER_ISSUE_TEMPLATE,
   getIssueTypeLabel,
@@ -127,19 +127,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       })
     }
 
-    const waConfig = await getWhatsAppConfig(admin as any, adjustment.organization_id)
-    if (!waConfig?.baseUrl || !waConfig?.apiKey) {
-      return NextResponse.json({ error: 'WhatsApp is not configured for the reporting organization' }, { status: 400 })
-    }
-
-    const result = await callGateway(
-      waConfig.baseUrl,
-      waConfig.apiKey,
-      'POST',
-      '/messages/send',
-      { to: providerPhone, text },
-      waConfig.tenantId,
-    )
+    const sent = await sendWhatsAppMessage(admin as any, adjustment.organization_id, { to: providerPhone, text })
+    const result = sent.response
 
     if (result?.success === false || result?.ok === false) {
       return NextResponse.json({ error: result?.error || 'WhatsApp send failed' }, { status: 502 })

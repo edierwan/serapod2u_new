@@ -193,19 +193,10 @@ export async function POST(request: NextRequest) {
         // Send via WhatsApp
         const message = `⚠️ DELETION VERIFICATION\n\nCode: *${code}*\n\nUser: ${targetUser.full_name || targetUser.email}\nRequested by: ${user.email}\n\nThis code expires in 5 minutes. Only enter this code if you authorize this deletion.`
 
-        const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-        const waConfig = await getWhatsAppConfig(admin, orgId)
-
-        if (!waConfig?.baseUrl || !waConfig?.apiKey) {
-            return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 500 })
-        }
+        const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
 
         const recipientDigits = phoneForSend.replace(/^\+/, '')
-        await callGateway(
-            waConfig.baseUrl, waConfig.apiKey, 'POST', '/messages/send',
-            { to: recipientDigits, text: message },
-            waConfig.tenantId
-        )
+        await sendWhatsAppMessage(admin, orgId, { to: recipientDigits, text: message })
 
         // Audit log
         await logNotificationEvent(admin, {

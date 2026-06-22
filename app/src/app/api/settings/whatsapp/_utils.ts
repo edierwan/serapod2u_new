@@ -25,14 +25,14 @@ export function isBaileysProvider(name: string | undefined | null): boolean {
 export async function getWhatsAppConfig(supabase: SupabaseClient, orgId: string, providerName?: string) {
   let query = supabase
     .from('notification_provider_configs')
-    .select('config_public, config_encrypted')
+    .select('id, provider_name, is_active, is_default, config_public, config_encrypted')
     .eq('org_id', orgId)
     .eq('channel', 'whatsapp');
 
   if (providerName) {
     query = query.eq('provider_name', providerName);
   } else {
-    query = query.in('provider_name', [...BAILEYS_PROVIDERS]);
+    query = query.eq('is_default', true).eq('is_active', true);
   }
 
   const { data, error } = await query.limit(1).single();
@@ -57,11 +57,101 @@ export async function getWhatsAppConfig(supabase: SupabaseClient, orgId: string,
   }
 
   return {
+    id: data.id,
+    providerName: data.provider_name,
+    providerType: isBaileysProvider(data.provider_name)
+      ? 'Baileys Gateway'
+      : data.provider_name === 'whatsapp_business'
+        ? 'Meta Cloud API'
+        : data.provider_name === 'twilio'
+          ? 'Twilio WhatsApp API'
+          : data.provider_name === 'messagebird' ? 'MessageBird Conversations API' : data.provider_name,
+    isDefault: !!data.is_default,
     baseUrl: publicConfig.base_url,
     apiKey: sensitiveConfig.api_key,
     testNumber: publicConfig.test_number,
     tenantId: publicConfig.tenant_id || DEFAULT_TENANT_ID,
+    publicConfig,
+    sensitiveConfig,
   };
+}
+
+export const DEFAULT_WHATSAPP_PROVIDER_ERROR = 'No default WhatsApp provider is configured. Select an enabled provider in Notification Providers and set it as default.';
+
+export async function requireDefaultWhatsAppConfig(supabase: SupabaseClient, orgId: string) {
+  const config = await getWhatsAppConfig(supabase, orgId);
+  if (!config) throw new Error(DEFAULT_WHATSAPP_PROVIDER_ERROR);
+  return config;
+}
+
+export async function sendWhatsAppMessage(
+  supabase: SupabaseClient,
+  orgId: string,
+  input: { to: string; text: string; imageUrl?: string; caption?: string }
+) {
+  const config = await requireDefaultWhatsAppConfig(supabase, orgId);
+
+  if (isBaileysProvider(config.providerName)) {
+    if (!config.baseUrl) throw new Error(`Default WhatsApp provider ${config.providerName} is missing its gateway URL.`);
+    const endpoint = input.imageUrl ? '/messages/send-image' : '/messages/send';
+    const body = input.imageUrl
+      ? { to: input.to, imageUrl: input.imageUrl, caption: input.caption || input.text }
+      : { to: input.to, text: input.text };
+    const response = await callGateway(config.baseUrl, config.apiKey, 'POST', endpoint, body, config.tenantId);
+    return { providerName: config.providerName, providerType: config.providerType, response };
+  }
+
+  if (config.providerName === 'whatsapp_business') {
+    const phoneNumberId = String(config.publicConfig.phone_number_id || '').trim();
+    const accessToken = String(config.sensitiveConfig.access_token || '').trim();
+    if (!phoneNumberId || !accessToken) throw new Error('Default Meta WhatsApp provider is missing Phone Number ID or access token.');
+    const messagePayload = input.imageUrl
+      ? { type: 'image', image: { link: input.imageUrl, caption: input.caption || input.text } }
+      : { type: 'text', text: { preview_url: false, body: input.text } };
+    const response = await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(phoneNumberId)}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp', recipient_type: 'individual', to: input.to.replace(/\D/g, ''),
+        ...messagePayload,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.error?.message || `Meta Cloud API returned HTTP ${response.status}`);
+    return { providerName: config.providerName, providerType: config.providerType, response: { ...payload, success: true, messageId: payload?.messages?.[0]?.id || null } };
+  }
+
+  if (config.providerName === 'twilio') {
+    const accountSid = String(config.sensitiveConfig.account_sid || '').trim();
+    const authToken = String(config.sensitiveConfig.auth_token || '').trim();
+    const from = String(config.publicConfig.from_number || '').trim();
+    const messagingServiceSid = String(config.publicConfig.messaging_service_sid || '').trim();
+    if (!accountSid || !authToken || (!from && !messagingServiceSid)) throw new Error('Default Twilio WhatsApp provider configuration is incomplete.');
+    const form = new URLSearchParams({ To: input.to.startsWith('whatsapp:') ? input.to : `whatsapp:+${input.to.replace(/\D/g, '')}`, Body: input.text });
+    if (messagingServiceSid) form.set('MessagingServiceSid', messagingServiceSid);
+    else form.set('From', from.startsWith('whatsapp:') ? from : `whatsapp:${from}`);
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`, {
+      method: 'POST', headers: { Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: form,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.message || `Twilio returned HTTP ${response.status}`);
+    return { providerName: config.providerName, providerType: config.providerType, response: { ...payload, success: true, messageId: payload.sid || null } };
+  }
+
+  if (config.providerName === 'messagebird') {
+    const apiKey = String(config.sensitiveConfig.api_key || '').trim();
+    const channelId = String(config.publicConfig.channel_id || '').trim();
+    if (!apiKey || !channelId) throw new Error('Default MessageBird WhatsApp provider configuration is incomplete.');
+    const response = await fetch('https://conversations.messagebird.com/v1/send', {
+      method: 'POST', headers: { Authorization: `AccessKey ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: input.to.replace(/\D/g, ''), from: channelId, type: 'text', content: { text: input.text } }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload?.errors?.[0]?.description || `MessageBird returned HTTP ${response.status}`);
+    return { providerName: config.providerName, providerType: config.providerType, response: { ...payload, success: true, messageId: payload.id || null } };
+  }
+
+  throw new Error(`Default WhatsApp provider ${config.providerName} does not have a sending adapter configured.`);
 }
 
 /**
@@ -160,7 +250,7 @@ export async function callGateway(
     headers['x-api-key'] = apiKey;
   }
   // Only add Content-Type for requests with body (POST, PUT, PATCH)
-  if (method !== 'GET' && method !== 'DELETE') {
+  if (method !== 'GET') {
     headers['Content-Type'] = 'application/json';
   }
 

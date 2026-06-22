@@ -1,4 +1,4 @@
-import { callGateway, getWhatsAppConfig } from '@/app/api/settings/whatsapp/_utils'
+import { sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import {
     normalizeShopRequestNotificationSettings,
     type ShopRequestNotificationSettings,
@@ -66,11 +66,6 @@ export async function sendShopRequestNotifications(params: {
         return
     }
 
-    const config = await getWhatsAppConfig(params.supabase, params.orgId)
-    if (!config?.baseUrl || !config?.apiKey) {
-        return
-    }
-
     const template = params.notificationType === 'admin_request'
         ? settings.requestTemplate
         : params.notificationType === 'requester_approved'
@@ -95,14 +90,8 @@ export async function sendShopRequestNotifications(params: {
         let errorMessage: string | null = null
 
         try {
-            const result = await callGateway(
-                config.baseUrl,
-                config.apiKey,
-                'POST',
-                '/messages/send',
-                { to: providerPhone, text: renderedMessage },
-                config.tenantId,
-            )
+            const sent = await sendWhatsAppMessage(params.supabase, params.orgId, { to: providerPhone, text: renderedMessage })
+            const result = sent.response
 
             if (result?.ok === false) {
                 sendStatus = 'failed'

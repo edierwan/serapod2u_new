@@ -1,8 +1,5 @@
-import DashboardContent from '@/components/dashboard/DashboardContent'
-import { getSettingsPageContext } from '@/app/settings/_lib'
+import { redirect } from 'next/navigation'
 
-export default async function NotificationsWhatsAppActivityPage() {
-  const { userProfile, canViewSettings } = await getSettingsPageContext()
-  if (!canViewSettings) return <div className="p-8"><h2 className="text-xl font-semibold">Unauthorized</h2></div>
-  return <DashboardContent userProfile={userProfile} initialView="notifications/whatsapp-activity" />
+export default function NotificationsWhatsAppActivityPage() {
+  redirect('/notifications/whatsapp-activity-recovery')
 }

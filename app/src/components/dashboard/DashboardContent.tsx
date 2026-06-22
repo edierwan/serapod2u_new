@@ -91,7 +91,6 @@ import NotificationsLandingView from '@/modules/notifications/components/Notific
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
-import { WhatsAppActivityTab } from '@/components/settings/WhatsAppActivityTab'
 import { WhatsAppRecoveryCenter } from '@/components/settings/WhatsAppRecoveryCenter'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
@@ -560,8 +559,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationProvidersTab userProfile={userProfile} />
       case 'settings/notifications/whatsapp-activity':
         return <WhatsAppRecoveryCenter userProfile={userProfile} />
-      case 'settings/notifications/whatsapp-activity-legacy':
-        return <WhatsAppActivityTab userProfile={userProfile} />
       case 'settings/preferences':
         return <SettingsView userProfile={userProfile} initialTab="preferences" />
       case 'settings/preferences/document-template':
@@ -574,11 +571,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationProvidersTab userProfile={userProfile} />
       case 'notifications/types':
         return <NotificationTypesTab userProfile={userProfile} />
-      case 'notifications/whatsapp-activity':
-        return <WhatsAppActivityTab userProfile={userProfile} />
-      case 'notifications/delivery-logs':
-        return <WhatsAppActivityTab userProfile={userProfile} />
-      case 'notifications/failed':
+      case 'notifications/whatsapp-activity-recovery':
         return <WhatsAppRecoveryCenter userProfile={userProfile} />
       case 'settings/authorization':
         return <AuthorizationTab userProfile={userProfile} />

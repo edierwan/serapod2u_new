@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils';
+import { getWhatsAppConfig, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils';
 import { normalizePhoneE164, toProviderPhone } from '@/utils/phone';
 import { normalizeAdhocRecipientList } from '@/lib/marketing/adhocRecipients';
 import {
@@ -86,7 +86,7 @@ export async function POST(
             .eq('id', user.id)
             .single();
 
-        orgId = userProfile?.organization_id;
+        orgId = userProfile?.organization_id || undefined;
         if (!orgId) {
             return NextResponse.json({ error: 'No organization found' }, { status: 400 });
         }
@@ -217,7 +217,7 @@ export async function POST(
 
         // ── Phase 2: Validate WhatsApp config BEFORE touching state ───
         const waConfig = await getWhatsAppConfig(supabase, orgId);
-        if (!waConfig || !waConfig.baseUrl) {
+        if (!waConfig) {
             logLaunch('error', 'WhatsApp config missing', { campaign_id: campaignId, org_id: orgId });
             await markLaunchFailed(supabase, campaignId, 'WA_CONFIG_MISSING', 'WhatsApp configuration not found');
             return NextResponse.json({
@@ -363,7 +363,6 @@ export async function POST(
             campaignId,
             resolvedMessageBody,
             recipients,
-            waConfig,
             orgId,
             isDailyReportingCampaign
         );
@@ -407,7 +406,6 @@ async function sendMessagesAsync(
     campaignId: string,
     messageBody: string,
     recipients: any[],
-    waConfig: { baseUrl: string; apiKey: string | undefined; tenantId: string },
     companyId: string,
     skipPersonalization: boolean = false,
 ) {
@@ -461,17 +459,8 @@ async function sendMessagesAsync(
             // Send via gateway using shared utility (same as test-send)
             const phone = toProviderPhone(recipient.phone) || recipient.phone.replace(/[^\d]/g, '');
 
-            const result = await callGateway(
-                waConfig.baseUrl,
-                waConfig.apiKey,
-                'POST',
-                '/messages/send',
-                {
-                    to: phone,
-                    text: personalizedMessage,
-                },
-                waConfig.tenantId
-            );
+            const sent = await sendWhatsAppMessage(supabase, companyId, { to: phone, text: personalizedMessage });
+            const result = sent.response;
 
             const providerMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null;
 

@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhoneE164, jidToPhone } from '@/utils/phone'
-import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import {
   buildDailyReportingDetailMessage,
   buildDailyReportingMenuMessage,
@@ -333,9 +333,15 @@ async function sendSessionReply(
     matched_by: params.matchedBy,
   })
 
-  const config = await getWhatsAppConfig(supabase as any, session.org_id)
-
-  if (!config || !config.baseUrl) {
+  let result: any
+  let success = false
+  let outboundMessageId: string | null = null
+  try {
+    const sent = await sendWhatsAppMessage(supabase as any, session.org_id, { to: session.recipient_phone, text: params.responseText })
+    result = sent.response
+    success = result?.success ?? result?.ok ?? Boolean(result?.messages?.[0]?.id)
+    outboundMessageId = result?.message_id || result?.messageId || result?.provider_message_id || result?.messages?.[0]?.id || null
+  } catch (sendError: any) {
     await (supabase as any).from('marketing_reply_logs').insert({
       session_id: session.id,
       campaign_id: session.campaign_id,
@@ -349,7 +355,7 @@ async function sendSessionReply(
       matched_by: params.matchedBy,
       provider_context: params.providerContext,
       status: 'failed',
-      error_message: 'WhatsApp configuration not found',
+      error_message: sendError.message,
       created_at: new Date().toISOString(),
     })
 
@@ -359,7 +365,7 @@ async function sendSessionReply(
       phone: session.recipient_phone,
       action: 'daily_reporting_reply',
       status: 'failed',
-      errorMessage: 'WhatsApp configuration not found',
+      errorMessage: sendError.message,
       metadata: {
         session_id: session.id,
         reply_action: params.replyAction,
@@ -368,21 +374,6 @@ async function sendSessionReply(
 
     return { success: false, outboundMessageId: null as string | null }
   }
-
-  const result = await callGateway(
-    config.baseUrl,
-    config.apiKey,
-    'POST',
-    '/messages/send',
-    {
-      to: session.recipient_phone,
-      text: params.responseText,
-    },
-    config.tenantId,
-  )
-
-  const success = result?.success ?? result?.ok ?? false
-  const outboundMessageId = result?.message_id || result?.messageId || result?.provider_message_id || null
 
   logIngest(success ? 'info' : 'error', 'send_session_reply_result', {
     session_id: session.id,
