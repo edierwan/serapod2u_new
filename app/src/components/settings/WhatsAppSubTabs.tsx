@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getWhatsAppProviderReadiness } from '@/lib/notifications/whatsapp-provider-readiness'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1921,10 +1922,18 @@ export default function WhatsAppSubTabs({
     // Only show Baileys-specific tabs when using Baileys provider
     const isBaileys = isBaileysProvider(whatsappConfig?.provider_name)
     const selectedProviderLabel = WHATSAPP_PROVIDERS.find(provider => provider.value === whatsappConfig?.provider_name)?.label || whatsappConfig?.provider_name || 'provider'
+    const defaultReadiness = getWhatsAppProviderReadiness({
+        id: whatsappConfig?.id,
+        providerName: whatsappConfig?.provider_name,
+        isActive: whatsappConfig?.is_active,
+        lastTestStatus: whatsappConfig?.last_test_status,
+        publicConfig: whatsappConfig?.config_public,
+        sensitiveConfig: sensitiveData,
+        baileysConnected: isBaileys ? gatewayStatus?.connected ?? false : null,
+    })
 
     const setAsDefault = async () => {
-        if (!whatsappConfig?.id) return alert('Save this provider configuration before setting it as default.')
-        if (!whatsappConfig.is_active) return alert('Enable and save this provider before setting it as default.')
+        if (!defaultReadiness.eligible) return alert(defaultReadiness.reason)
         if (!window.confirm(`Use ${selectedProviderLabel} as the default WhatsApp provider?`)) return
 
         const response = await fetch('/api/settings/notifications/providers/whatsapp/default', {
@@ -1960,7 +1969,14 @@ export default function WhatsAppSubTabs({
                                 ))}
                             </SelectContent>
                         </Select>
-                        {!whatsappConfig?.is_default ? <Button type="button" variant="outline" disabled={!whatsappConfig?.id || !whatsappConfig.is_active} onClick={setAsDefault}>Set as Default</Button> : null}
+                        {!whatsappConfig?.is_default ? (
+                            <div className="flex flex-col items-start gap-1 md:items-end">
+                                <Button type="button" variant="outline" disabled={!defaultReadiness.eligible} onClick={setAsDefault}>Set as Default</Button>
+                                {!defaultReadiness.eligible && defaultReadiness.reason ? (
+                                    <p className="max-w-[360px] text-xs text-amber-700" role="status">{defaultReadiness.reason}</p>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
                 </CardContent>
             </Card>
