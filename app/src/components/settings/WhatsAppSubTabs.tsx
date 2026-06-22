@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import BotAdminSection from './BotAdminSection'
 import ServicesStatusSection from './ServicesStatusSection'
+import { formatPhoneDisplay } from '@/utils/phone'
 import {
     Save,
     MessageCircle,
@@ -187,6 +188,21 @@ export default function WhatsAppSubTabs({
         phoneNumber?: string
     } | null>(null)
     const [metaTestRecipient, setMetaTestRecipient] = useState('')
+    // Delivery state for the most recent Meta test message. Status advances as the
+    // Meta status webhook arrives (accepted → sent → delivered → read / failed); we
+    // never show "delivered" off the back of a 200 alone.
+    const [metaTestResult, setMetaTestResult] = useState<{
+        recipient: string
+        wamid: string
+        status: string
+        accepted_at: string | null
+        sent_at?: string | null
+        delivered_at?: string | null
+        read_at?: string | null
+        failed_at?: string | null
+        error?: { code: number | null; message: string | null } | null
+    } | null>(null)
+    const [metaStatusRefreshing, setMetaStatusRefreshing] = useState(false)
 
     // Saved test numbers state
     const [savedTestNumbers, setSavedTestNumbers] = useState<string[]>([])
@@ -845,6 +861,7 @@ export default function WhatsAppSubTabs({
                 body: JSON.stringify({
                     action,
                     to: action === 'test-message' ? metaTestRecipient.trim() : undefined,
+                    provider_name: whatsappConfig.provider_name,
                     config: whatsappConfig.config_public,
                     credentials: {
                         access_token: sensitiveData.access_token || '',
@@ -854,19 +871,86 @@ export default function WhatsAppSubTabs({
                 })
             })
             const result = await response.json()
-            if (!response.ok) throw new Error(result.error || 'Meta Cloud API request failed')
+            if (!response.ok) {
+                // Surface safe diagnostics (Meta error code, masked Phone Number ID, hint)
+                // so credential/config mismatches are obvious without exposing secrets.
+                const metaCode = result?.meta_error?.code ? `(#${result.meta_error.code}) ` : ''
+                const detail = [
+                    `${metaCode}${result.error || 'Meta Cloud API request failed'}`,
+                    result?.hint,
+                    result?.diagnostic
+                        ? `Phone Number ID ${result.diagnostic.phone_number_id_masked} · config: ${result.diagnostic.credential_source}${
+                              result.diagnostic.normalized_recipient ? ` · recipient: ${result.diagnostic.normalized_recipient}` : ''
+                          }`
+                        : undefined
+                ].filter(Boolean).join('\n')
+                throw new Error(detail)
+            }
+
+            // For a test message, report only what Meta actually confirmed: it was
+            // ACCEPTED (a WAMID was issued), not necessarily delivered. Show recipient,
+            // WAMID and timestamp; never claim "delivered" without a delivery webhook.
+            const successMessage = action === 'connection'
+                ? 'Meta Cloud API connection verified.'
+                : [
+                    'Message accepted by Meta (not yet confirmed delivered).',
+                    `Recipient: ${result.recipient_display || result.recipient || ''}`,
+                    `WAMID: ${result.message_id || 'n/a'}`,
+                    `Accepted at: ${result.accepted_at ? new Date(result.accepted_at).toLocaleString() : new Date().toLocaleString()}`,
+                    result.delivery_note || ''
+                ].filter(Boolean).join('\n')
 
             setMetaConnection({
                 success: true,
-                message: action === 'connection' ? 'Meta Cloud API connection verified.' : 'Test WhatsApp message sent.',
+                message: successMessage,
                 phoneNumber: result.phone_number
             })
-            alert(action === 'connection' ? 'Meta Cloud API connection verified.' : 'Test WhatsApp message sent.')
+            // Track the delivery state so the UI can show accepted → delivered/read/failed
+            // as status webhooks arrive (polled via the status endpoint).
+            if (action === 'test-message' && result.message_id) {
+                setMetaTestResult({
+                    recipient: result.recipient_display || result.recipient || '',
+                    wamid: result.message_id,
+                    status: result.delivery_status || 'accepted',
+                    accepted_at: result.accepted_at || new Date().toISOString(),
+                })
+            }
+            // Reflect the verified state in the saved config so the status survives reloads.
+            setWhatsappConfig({ ...whatsappConfig, last_test_status: 'success', last_test_error: undefined })
+            alert(successMessage)
         } catch (error: any) {
             setMetaConnection({ success: false, message: error.message })
             alert(`WhatsApp test failed: ${error.message}`)
         } finally {
             setMetaAction(null)
+        }
+    }
+
+    // Poll the delivery-log for the latest webhook-confirmed status of the last test
+    // message. On localhost the Meta webhook cannot reach us, so this stays "accepted"
+    // until verified on a public (staging) URL — that is expected.
+    const refreshMetaDeliveryStatus = async () => {
+        if (!metaTestResult?.wamid) return
+        try {
+            setMetaStatusRefreshing(true)
+            const response = await fetch(`/api/settings/notifications/providers/whatsapp/meta/status?wamid=${encodeURIComponent(metaTestResult.wamid)}`)
+            const data = await response.json()
+            if (response.ok && data.found) {
+                setMetaTestResult(prev => prev && prev.wamid === data.wamid ? {
+                    ...prev,
+                    status: data.status || prev.status,
+                    accepted_at: data.accepted_at ?? prev.accepted_at,
+                    sent_at: data.sent_at,
+                    delivered_at: data.delivered_at,
+                    read_at: data.read_at,
+                    failed_at: data.failed_at,
+                    error: data.error,
+                } : prev)
+            }
+        } catch (error) {
+            console.error('Failed to refresh delivery status', error)
+        } finally {
+            setMetaStatusRefreshing(false)
         }
     }
 
@@ -958,6 +1042,11 @@ export default function WhatsAppSubTabs({
                                         <Input value={publicConfig.default_otp_template || ''} placeholder="otp_authentication" onChange={event => updateMetaPublicConfig('default_otp_template', event.target.value)} />
                                         <p className="text-xs text-slate-500">Use the exact approved template name from WhatsApp Manager.</p>
                                     </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label>Test Template Name</Label>
+                                        <Input value={publicConfig.test_template_name || ''} placeholder="hello_world" onChange={event => updateMetaPublicConfig('test_template_name', event.target.value)} />
+                                        <p className="text-xs text-slate-500">An approved, parameter-free template used by "Send Test WhatsApp". The pre-approved <code>hello_world</code> template works for most WABAs. Sent in the Default Template Language above.</p>
+                                    </div>
                             </div>
 
                             <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-3">
@@ -999,7 +1088,7 @@ export default function WhatsAppSubTabs({
                         <CardHeader className="pb-3"><CardTitle className="text-base">Connection Status</CardTitle></CardHeader>
                         <CardContent className="space-y-3 text-sm">
                             {[
-                                ['API Connection', metaConnection?.success ? 'Connected' : 'Not tested'],
+                                ['API Connection', (metaConnection?.success || (!metaConnection && whatsappConfig.last_test_status === 'success')) ? 'Connected / Verified' : 'Not tested'],
                                 ['Access Token', hasAccessToken ? 'Configured' : 'Missing'],
                                 ['Webhook', hasWebhook ? 'Configured' : 'Missing'],
                                 ['Phone Number', hasPhoneNumber ? publicConfig.display_phone_number : 'Missing']
@@ -1008,17 +1097,58 @@ export default function WhatsAppSubTabs({
                                     <span className="text-slate-600">{label}</span><span className="text-right font-medium text-slate-900">{value}</span>
                                 </div>
                             ))}
-                            {metaConnection && <p className={`rounded-lg p-2 text-xs ${metaConnection.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{metaConnection.message}</p>}
+                            {metaConnection && <p className={`whitespace-pre-line rounded-lg p-2 text-xs ${metaConnection.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{metaConnection.message}</p>}
                         </CardContent>
                     </Card>
 
                     <Card className="border-slate-200 shadow-sm">
                         <CardHeader className="pb-3"><CardTitle className="text-base">Test Message</CardTitle><CardDescription>Send a live message through Meta Cloud API.</CardDescription></CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="space-y-1.5"><Label>Recipient Phone Number</Label><Input value={metaTestRecipient} placeholder="60123456789" onChange={event => setMetaTestRecipient(event.target.value)} /></div>
+                            <div className="space-y-1.5">
+                                <Label>Recipient Phone Number</Label>
+                                <Input value={metaTestRecipient} placeholder="0192277233 or +60192277233" onChange={event => setMetaTestRecipient(event.target.value)} />
+                                {metaTestRecipient.trim() && (
+                                    formatPhoneDisplay(metaTestRecipient)
+                                        ? <p className="text-xs text-slate-500">Sending to: <span className="font-medium text-slate-700">{formatPhoneDisplay(metaTestRecipient)}</span></p>
+                                        : <p className="text-xs text-amber-600">Enter a valid Malaysian number, e.g. 0192277233</p>
+                                )}
+                            </div>
                             <Button type="button" className="w-full bg-violet-600 hover:bg-violet-700" onClick={() => handleMetaAction('test-message')} disabled={metaAction !== null}>
                                 {metaAction === 'test-message' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Send Test WhatsApp
                             </Button>
+
+                            {metaTestResult && (() => {
+                                const status = metaTestResult.status
+                                const tone = status === 'delivered' || status === 'read'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                    : status === 'failed'
+                                        ? 'border-red-200 bg-red-50 text-red-800'
+                                        : 'border-amber-200 bg-amber-50 text-amber-800'
+                                const fmt = (v?: string | null) => v ? new Date(v).toLocaleString() : '—'
+                                return (
+                                    <div className={`space-y-1 rounded-lg border p-3 text-xs ${tone}`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-semibold uppercase tracking-wide">Delivery: {status}</span>
+                                            <button type="button" onClick={refreshMetaDeliveryStatus} disabled={metaStatusRefreshing} className="underline disabled:opacity-50">
+                                                {metaStatusRefreshing ? 'Checking…' : 'Refresh'}
+                                            </button>
+                                        </div>
+                                        <p>Recipient: <span className="font-medium">{metaTestResult.recipient || '—'}</span></p>
+                                        <p className="break-all">WAMID: <span className="font-mono">{metaTestResult.wamid}</span></p>
+                                        <p>Accepted: {fmt(metaTestResult.accepted_at)}</p>
+                                        {metaTestResult.sent_at && <p>Sent: {fmt(metaTestResult.sent_at)}</p>}
+                                        {metaTestResult.delivered_at && <p>Delivered: {fmt(metaTestResult.delivered_at)}</p>}
+                                        {metaTestResult.read_at && <p>Read: {fmt(metaTestResult.read_at)}</p>}
+                                        {metaTestResult.failed_at && <p>Failed: {fmt(metaTestResult.failed_at)}</p>}
+                                        {metaTestResult.error && (
+                                            <p>Error {metaTestResult.error.code ?? ''}: {metaTestResult.error.message || 'unknown'}</p>
+                                        )}
+                                        {status === 'accepted' && (
+                                            <p className="mt-1 opacity-80">Accepted by Meta — delivery is confirmed only when a status webhook arrives. On localhost the webhook cannot reach this app, so verify on a public/staging URL.</p>
+                                        )}
+                                    </div>
+                                )
+                            })()}
                         </CardContent>
                     </Card>
 

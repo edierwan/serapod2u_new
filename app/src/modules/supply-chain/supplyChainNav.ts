@@ -180,9 +180,16 @@ export function canAccessSupplyChainView(
     if (viewId === 'create-order') return canOpenOrderEditor(roleLevel)
     if (viewId === 'view-order' || viewId === 'track-order') return canOpenOrderEditor(roleLevel)
 
+    // Product list actions render as internal views rather than top-nav items.
+    // They inherit the Product List access rule so the guard does not reject
+    // a user immediately after an authorized list-to-detail transition.
+    const accessViewId = ['view-product', 'edit-product', 'add-product'].includes(viewId)
+        ? 'products'
+        : viewId
+
     return supplyChainNavGroups.some((group) => {
         if (!matchesAccess(group.access, orgType, roleLevel)) return false
-        return group.children.some((child) => child.id === viewId && matchesAccess(child.access, orgType, roleLevel))
+        return group.children.some((child) => child.id === accessViewId && matchesAccess(child.access, orgType, roleLevel))
     })
 }
 
