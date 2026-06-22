@@ -121,6 +121,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         access: { allowedOrgTypes: ['HQ', 'DIST', 'WH'] },
         children: [
             { id: 'inventory-list', label: 'View Inventory', icon: Package },
+            { id: 'inventory-settings', label: 'Inventory Settings', icon: SettingsIcon, access: { allowedOrgTypes: ['HQ'], maxRoleLevel: 10 } },
             { id: 'add-stock', label: 'Add Stock', icon: Plus },
             { id: 'stock-adjustment', label: 'Stock Adjustment', icon: SettingsIcon },
             { id: 'stock-transfer', label: 'Stock Transfer', icon: Truck },
@@ -217,7 +218,7 @@ const _allSupplyChainViewIds = new Set<string>([
     'view-product', 'edit-product', 'add-product',
     'create-order', 'view-order', 'track-order',
     'manufacturer-scan-2',
-    'inventory', 'inventory-settings',
+    'inventory',
     // Organization views (moved from sidebar to Supply Chain)
     'organizations', 'add-organization', 'edit-organization', 'edit-organization-hq', 'view-organization',
 ])
@@ -225,6 +226,20 @@ const _allSupplyChainViewIds = new Set<string>([
 /** Check if a given view ID belongs to the Supply Chain module */
 export function isSupplyChainViewId(viewId: string): boolean {
     return _allSupplyChainViewIds.has(viewId)
+}
+
+export const supplyChainViewToPath: Record<string, string> = {
+    'inventory': 'inventory',
+    'inventory-list': 'inventory',
+    'inventory-settings': 'inventory-settings',
+}
+
+export const supplyChainPathToView: Record<string, string> = {
+    'inventory': 'inventory-list',
+    'inventory/settings': 'inventory-settings',
+    'view-inventory': 'inventory-list',
+    'inventory-settings': 'inventory-settings',
+    'settings': 'inventory-settings',
 }
 
 /** Find which group a given view id belongs to */

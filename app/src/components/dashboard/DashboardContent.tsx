@@ -121,7 +121,7 @@ import ScratchCardGameView from '@/components/dashboard/views/consumer-engagemen
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
-import { canAccessSupplyChainView, isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
+import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
 import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
@@ -348,6 +348,13 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     if (view === 'notifications') {
       setCurrentView(view)
       router.push('/notifications')
+      return
+    }
+
+    const supplyChainPath = supplyChainViewToPath[view]
+    if (supplyChainPath) {
+      setCurrentView(view)
+      router.push(`/supply-chain/${supplyChainPath}`)
       return
     }
 

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/components/ui/use-toast'
 import {
   Package,
   Search,
@@ -73,8 +74,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const { isReady, supabase } = useSupabaseAuth()
+  const { toast } = useToast()
   const { hasPermission } = usePermissions(
     userProfile?.roles?.role_level,
     userProfile?.role_code,
@@ -239,6 +243,143 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     return sortDirection === 'asc'
       ? <ArrowUp className="w-4 h-4 ml-1" />
       : <ArrowDown className="w-4 h-4 ml-1" />
+  }
+
+  const escapeSpreadsheetValue = (value: unknown) => {
+    if (value === null || value === undefined) return ''
+    const stringValue = String(value)
+    return stringValue
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+
+  const handleExport = async () => {
+    setExportMessage(null)
+    const roleLevel = userProfile?.roles?.role_level
+    const orgType = userProfile?.organizations?.org_type_code
+    const canExport =
+      roleLevel === 1 ||
+      (orgType === 'HQ' && roleLevel === 10) ||
+      hasPermission('view_inventory') ||
+      hasPermission('export_reports')
+
+    if (!canExport) {
+      setExportMessage({ type: 'error', text: 'You do not have permission to export inventory.' })
+      toast({
+        title: 'Export unavailable',
+        description: 'You do not have permission to export inventory.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (sortedInventory.length === 0) {
+      setExportMessage({ type: 'error', text: 'No inventory rows match the current filters.' })
+      toast({
+        title: 'Nothing to export',
+        description: 'No inventory rows match the current filters.',
+      })
+      return
+    }
+
+    try {
+      setExporting(true)
+
+      const includeValue = canViewTotalValue()
+      const headers = [
+        'Product Name',
+        'Product Code',
+        'Variant',
+        'Variant Code',
+        'Location',
+        'Location Code',
+        'Warehouse Location',
+        'On Hand',
+        'Allocated',
+        'Available',
+        'Reorder Point',
+        'Reorder Quantity',
+        'Max Stock Level',
+        'Safety Stock',
+        'Lead Time Days',
+        'Unit Cost',
+        ...(includeValue ? ['Total Value'] : []),
+        'Updated At',
+      ]
+
+      const rows = sortedInventory.map((item) => [
+        item.product_name,
+        item.product_code,
+        item.variant_name,
+        item.variant_code,
+        item.organization_name,
+        item.organization_code,
+        item.warehouse_location,
+        item.quantity_on_hand,
+        item.quantity_allocated,
+        item.quantity_available,
+        item.reorder_point,
+        item.reorder_quantity,
+        item.max_stock_level,
+        item.safety_stock,
+        item.lead_time_days,
+        item.unit_cost,
+        ...(includeValue ? [item.total_value] : []),
+        item.updated_at,
+      ])
+
+      const tableRows = [headers, ...rows]
+        .map((row) => (
+          `<tr>${row.map((cell) => `<td>${escapeSpreadsheetValue(cell)}</td>`).join('')}</tr>`
+        ))
+        .join('')
+      const workbookHtml = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    table { border-collapse: collapse; }
+    td { border: 1px solid #d1d5db; padding: 4px 8px; mso-number-format:"\\@"; }
+    tr:first-child td { font-weight: 700; background: #f3f4f6; }
+  </style>
+</head>
+<body>
+  <table>${tableRows}</table>
+</body>
+</html>`
+      const blob = new Blob([workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const date = new Date().toISOString().slice(0, 10)
+      link.href = url
+      link.download = `inventory-export-${date}.xls`
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+
+      setExportMessage({ type: 'success', text: `Downloaded ${sortedInventory.length} inventory row(s).` })
+      toast({
+        title: 'Export ready',
+        description: `Downloaded ${sortedInventory.length} inventory row(s).`,
+      })
+    } catch (error) {
+      console.error('Inventory export failed:', error)
+      setExportMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Unable to export inventory.'
+      })
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : 'Unable to export inventory.',
+        variant: 'destructive'
+      })
+    } finally {
+      setExporting(false)
+    }
   }
 
   const fetchInventory = async () => {
@@ -828,9 +969,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   }
 
   const canEditSettings = () => {
-    // Allow users with role_level <= 40 to edit settings
-    // role_level: 1=SUPERADMIN, 10=HQ_ADMIN, 20=MANU_ADMIN, 30=DIST_ADMIN, 40=WH_MANAGER
-    return hasPermission('manage_inventory_settings')
+    const roleLevel = userProfile?.roles?.role_level
+    const orgType = userProfile?.organizations?.org_type_code
+    return orgType === 'HQ' && (roleLevel === 1 || roleLevel === 10) && hasPermission('manage_inventory_settings')
   }
 
   const canViewTotalValue = () => {
@@ -869,9 +1010,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           <p className="text-gray-600">Real-time inventory tracking across all locations</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={loading || exporting}>
+            {exporting ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            {exporting ? 'Exporting...' : 'Export Excel'}
           </Button>
           {canEditSettings() && (
             <Button
@@ -890,6 +1035,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           </Button>
         </div>
       </div>
+      {exportMessage && (
+        <div
+          className={`rounded-md border px-3 py-2 text-sm ${
+            exportMessage.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {exportMessage.text}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
