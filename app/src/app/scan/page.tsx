@@ -1,7 +1,8 @@
 import { Metadata } from 'next'
 import { Suspense } from 'react'
 import RoadtourJourneyWrapper from '@/modules/roadtour/components/RoadtourJourneyWrapper'
-import { buildRoadtourContextFromValidation, validateRoadtourToken } from '@/lib/roadtour/server'
+import { buildRoadtourContextFromValidation, resolveRoadtourByToken, validateRoadtourToken } from '@/lib/roadtour/server'
+import { resolveRoadtourExperience } from '@/lib/roadtour/experience-registry'
 
 export const metadata: Metadata = {
     title: 'RoadTour Scan | Serapod2U',
@@ -42,10 +43,12 @@ export default async function ScanPage({ searchParams }: PageProps) {
 
     const v = result.data
     const roadtourContext = buildRoadtourContextFromValidation(token, v)
+    const qr = await resolveRoadtourByToken(token)
+    const experience = resolveRoadtourExperience(qr?.product_category)
 
     return (
         <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>}>
-            <RoadtourJourneyWrapper roadtourContext={roadtourContext} orgId={v.org_id} />
+            <RoadtourJourneyWrapper roadtourContext={roadtourContext} orgId={v.org_id} experience={experience} />
         </Suspense>
     )
 }

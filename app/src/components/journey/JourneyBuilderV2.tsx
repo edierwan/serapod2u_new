@@ -457,6 +457,13 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
         setSearchQuery(''); setStatusFilter('all'); setTypeFilter('all'); setRangeFilter('all')
     }
 
+    const trendData = useMemo(() => {
+        if (!summary) return []
+        return filterTrendByRange(summary.trend, trendRange)
+    }, [summary, trendRange])
+
+    const k = summary?.kpis
+
     if (step === 'design-journey' && selectedOrder) {
         return (
             <JourneyDesignerV2
@@ -469,13 +476,6 @@ export default function JourneyBuilderV2({ userProfile }: { userProfile: UserPro
             />
         )
     }
-
-    const trendData = useMemo(() => {
-        if (!summary) return []
-        return filterTrendByRange(summary.trend, trendRange)
-    }, [summary, trendRange])
-
-    const k = summary?.kpis
 
     return (
         <div className="space-y-5">

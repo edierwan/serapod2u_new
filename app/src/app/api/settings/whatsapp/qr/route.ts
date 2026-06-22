@@ -12,6 +12,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils';
 
+const normalizeQrImage = (value: unknown): string | null => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const payload = value.trim();
+  if (payload.startsWith('data:image/')) return payload;
+  if (payload.startsWith('iVBOR')) return `data:image/png;base64,${payload}`;
+  if (payload.startsWith('/9j/')) return `data:image/jpeg;base64,${payload}`;
+  if (payload.startsWith('UklGR')) return `data:image/webp;base64,${payload}`;
+  return null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -59,10 +69,13 @@ export async function GET(request: NextRequest) {
       config.tenantId
     );
 
+    const rawQr = typeof qrData.qr === 'string' ? qrData.qr : null;
+    const qrImage = normalizeQrImage(qrData.qr_png_base64) || normalizeQrImage(rawQr);
+
     return NextResponse.json({
       ok: qrData.ok !== false,
-      qr: qrData.qr || null,
-      qr_png_base64: qrData.qr_png_base64 || null,
+      qr: qrImage ? null : rawQr,
+      qr_png_base64: qrImage,
       pairing_state: qrData.pairing_state,
       connected: qrData.connected || false,
       generated_at: qrData.generated_at || null,

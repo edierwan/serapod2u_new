@@ -8,9 +8,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { updateUserWithAuth } from '@/lib/actions';
-import { Upload, X, Check, AlertCircle, Pencil, Eraser, RotateCcw } from 'lucide-react';
+import { Upload, X, Check, AlertCircle, Pencil, Eraser, RotateCcw, ImageOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { withStorageApiKey } from '@/lib/utils';
 
 interface SignatureUploadProps {
   userId: string;
@@ -26,6 +27,9 @@ export default function SignatureUpload({
   const SIGNATURE_BUCKET = 'documents';
   const [signatureUrl, setSignatureUrl] = useState<string | null>(currentSignatureUrl || null);
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -39,27 +43,57 @@ export default function SignatureUpload({
   const [penColor, setPenColor] = useState('#000000');
   const [penWidth, setPenWidth] = useState(2);
 
-  // Generate a signed URL for display (self-hosted Kong requires API key for all storage requests)
+  // Resolve the stored path/URL into a displayable image URL (self-hosted Kong
+  // requires an `apikey` on every storage request, even signed ones).
   useEffect(() => {
     if (!signatureUrl) {
       setDisplayUrl(null);
+      setPreviewError(false);
       return;
     }
-    const supabase = createClient();
-    // Extract file path from the full public URL
-    const marker = `/storage/v1/object/public/${SIGNATURE_BUCKET}/`;
-    const idx = signatureUrl.indexOf(marker);
-    const filePath = idx !== -1 ? signatureUrl.slice(idx + marker.length) : null;
-    if (!filePath) {
-      setDisplayUrl(signatureUrl);
-      return;
-    }
-    supabase.storage
-      .from(SIGNATURE_BUCKET)
-      .createSignedUrl(filePath, 3600)
-      .then(({ data }) => {
-        setDisplayUrl(data?.signedUrl ?? signatureUrl);
-      });
+
+    let cancelled = false;
+    setIsLoadingPreview(true);
+    setPreviewError(false);
+    setImageLoadFailed(false);
+
+    const resolve = async () => {
+      const supabase = createClient();
+      const marker = `/storage/v1/object/public/${SIGNATURE_BUCKET}/`;
+      const idx = signatureUrl.indexOf(marker);
+      const filePath = idx !== -1 ? signatureUrl.slice(idx + marker.length) : null;
+
+      if (!filePath) {
+        // Already a fully-resolved URL (e.g. external) — just ensure apikey is present.
+        if (!cancelled) {
+          setDisplayUrl(withStorageApiKey(signatureUrl));
+          setIsLoadingPreview(false);
+        }
+        return;
+      }
+
+      const { data, error: signError } = await supabase.storage
+        .from(SIGNATURE_BUCKET)
+        .createSignedUrl(filePath, 3600);
+
+      if (cancelled) return;
+
+      if (signError || !data?.signedUrl) {
+        setPreviewError(true);
+        setDisplayUrl(null);
+        setIsLoadingPreview(false);
+        return;
+      }
+
+      setDisplayUrl(withStorageApiKey(data.signedUrl));
+      setIsLoadingPreview(false);
+    };
+
+    resolve();
+
+    return () => {
+      cancelled = true;
+    };
   }, [signatureUrl]);
 
   useEffect(() => {
@@ -316,6 +350,9 @@ export default function SignatureUpload({
       }
 
       setSignatureUrl(null);
+      setDisplayUrl(null);
+      setPreviewError(false);
+      setImageLoadFailed(false);
       setSuccess(true);
 
       if (onSignatureUpdated) {
@@ -359,16 +396,25 @@ export default function SignatureUpload({
             </button>
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center justify-center min-h-[120px]">
-            {displayUrl ? (
+            {isLoadingPreview ? (
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                Loading signature...
+              </div>
+            ) : previewError || imageLoadFailed || !displayUrl ? (
+              <div className="flex flex-col items-center gap-1 text-gray-400 text-sm">
+                <ImageOff className="w-6 h-6" />
+                <span>Signature image unavailable</span>
+              </div>
+            ) : (
               <img
                 src={displayUrl}
                 alt="Digital Signature"
                 width={300}
                 height={100}
                 className="max-w-full h-auto"
+                onError={() => setImageLoadFailed(true)}
               />
-            ) : (
-              <span className="text-gray-400 text-sm">Loading...</span>
             )}
           </div>
           <button

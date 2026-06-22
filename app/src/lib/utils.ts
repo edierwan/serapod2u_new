@@ -204,6 +204,15 @@ export function getStorageUrl(pathOrUrl: string | null | undefined, bucket?: str
   return appendStorageApiKey(publicUrl.toString())
 }
 
+/**
+ * Self-hosted Kong gateways require an `apikey` on every storage request,
+ * including signed URLs (which only carry a `token` param). Use this for
+ * signed URLs from `createSignedUrl()` before handing them to an <img>.
+ */
+export function withStorageApiKey(url: string): string {
+  return appendStorageApiKey(url)
+}
+
 export type PhoneValidationResult = {
   isValid: boolean;
   formatted?: string;

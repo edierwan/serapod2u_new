@@ -12,7 +12,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useToast } from '@/components/ui/use-toast'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStorageUrl } from '@/lib/utils'
 import {
@@ -32,9 +31,11 @@ import {
     Building2,
     ChevronLeft,
     ChevronRight,
-    Palette
+    Palette,
+    Loader2
 } from 'lucide-react'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
+import PreviewPetFoodExperience from './petfood/PreviewPetFoodExperience'
 import AnnouncementBannerConfigurator from './AnnouncementBannerConfigurator'
 
 const PRODUCT_CONSUMER_READY_STATUSES = ['shipped_distributor', 'activated', 'redeemed'] as const
@@ -117,7 +118,7 @@ interface UserProfile {
 interface JourneyConfig {
     id?: string
     name: string
-    template_type?: 'classic' | 'premium'  // Template selection
+    template_type?: 'classic' | 'premium' | 'pet_food'  // Auto-detected from the order's Product Category
     is_active: boolean
     is_default: boolean
     points_enabled: boolean
@@ -336,6 +337,55 @@ export default function JourneyDesignerV2({
     })
 
     const supabase = createClient()
+
+    // --- Product Category → mobile experience auto-detection ---------------
+    // The mobile interface is determined server-side from the order's real
+    // Product Category relationships. The admin does not pick the template.
+    interface DetectedCategory {
+        categoryId: string | null
+        categoryName: string | null
+        templateKey: 'premium' | 'pet_food'
+        experienceLabel: string
+    }
+    interface DetectedExperience {
+        categories: DetectedCategory[]
+        templateKey: 'premium' | 'pet_food'
+        mixed: boolean
+        resolved: boolean
+    }
+    const [detecting, setDetecting] = useState(true)
+    const [detectError, setDetectError] = useState<string | null>(null)
+    const [detectedExperience, setDetectedExperience] = useState<DetectedExperience | null>(null)
+
+    useEffect(() => {
+        let cancelled = false
+        setDetecting(true)
+        setDetectError(null)
+        ;(async () => {
+            try {
+                const res = await fetch(`/api/journey/order-experience?order_id=${encodeURIComponent(order.id)}`)
+                const json = await res.json()
+                if (cancelled) return
+                if (!res.ok || !json?.success) {
+                    setDetectError(json?.error || 'Could not detect product experience')
+                    setDetectedExperience(null)
+                    return
+                }
+                const experience = json.experience as DetectedExperience
+                setDetectedExperience(experience)
+                // Persist the detected template on the journey config so it is
+                // stored on save (single source: the order's category).
+                setConfig((prev) => ({ ...prev, template_type: experience.templateKey }))
+            } catch (err: any) {
+                if (cancelled) return
+                setDetectError(err?.message || 'Could not detect product experience')
+                setDetectedExperience(null)
+            } finally {
+                if (!cancelled) setDetecting(false)
+            }
+        })()
+        return () => { cancelled = true }
+    }, [order.id])
 
     // Update config when journey prop changes (e.g., after save and re-edit)
     useEffect(() => {
@@ -1034,21 +1084,49 @@ export default function JourneyDesignerV2({
                                 />
                             </div>
 
-                            {/* Template Selection */}
+                            {/* Detected Product Experience (auto-detected from the order's Product Category) */}
                             <div className="space-y-2">
-                                <Label htmlFor="template">Template</Label>
-                                <Select
-                                    value={config.template_type || 'premium'}
-                                    onValueChange={(value: 'premium') => setConfig({ ...config, template_type: value })}
-                                >
-                                    <SelectTrigger id="template">
-                                        <SelectValue placeholder="Select template" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="premium">Premium Template</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-gray-500">More templates coming soon!</p>
+                                <Label>Detected Product Experience</Label>
+                                {detecting ? (
+                                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Detecting product category…
+                                    </div>
+                                ) : detectError ? (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                                        {detectError}. Falling back to <span className="font-medium">Premium Template</span>.
+                                    </div>
+                                ) : (() => {
+                                    const exp = detectedExperience
+                                    const primaryLabel = exp?.templateKey === 'pet_food' ? 'Pet Food' : (exp?.resolved ? 'Vape' : 'Default')
+                                    const interfaceName = exp?.templateKey === 'pet_food' ? 'Ellbow Pet Food Experience' : 'Premium Template'
+                                    const isPetFood = exp?.templateKey === 'pet_food'
+                                    return (
+                                        <div className={`rounded-lg border px-3 py-3 ${isPetFood ? 'border-teal-300 bg-teal-50' : 'border-blue-200 bg-blue-50'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`inline-flex h-2 w-2 rounded-full ${isPetFood ? 'bg-teal-500' : 'bg-blue-500'}`} />
+                                                <span className="text-sm font-semibold text-gray-900">
+                                                    {primaryLabel} — {interfaceName}
+                                                </span>
+                                            </div>
+                                            {exp?.mixed && (
+                                                <p className="mt-2 text-xs text-gray-600">
+                                                    This order contains multiple product categories:{' '}
+                                                    {exp.categories.map((c) => c.categoryName || 'Unknown').join(', ')}.
+                                                    Each product QR shows its own interface based on the scanned product.
+                                                </p>
+                                            )}
+                                            {!exp?.resolved && (
+                                                <p className="mt-2 text-xs text-gray-600">
+                                                    No mapped product category found — using the default Premium Template.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )
+                                })()}
+                                <p className="text-xs text-gray-500">
+                                    The interface is determined automatically from the order&apos;s product category.
+                                </p>
                             </div>
 
                             {/* Color Theme Selector */}
@@ -1612,7 +1690,11 @@ export default function JourneyDesignerV2({
                                         </div>
                                         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-gray-800 rounded-b-3xl z-20"></div>
                                         <div className="h-[calc(100%-24px)] overflow-hidden">
-                                            <PremiumLoyaltyTemplate config={config} isLive={false} />
+                                            {config.template_type === 'pet_food' ? (
+                                                <PreviewPetFoodExperience config={config} />
+                                            ) : (
+                                                <PremiumLoyaltyTemplate config={config} isLive={false} />
+                                            )}
                                         </div>
                                         <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gray-800 rounded-full"></div>
                                     </div>

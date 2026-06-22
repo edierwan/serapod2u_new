@@ -28,14 +28,22 @@ const AvatarImage = React.forwardRef<HTMLImageElement, AvatarImageProps>(
 
     if (hasError || !props.src) return null
 
+    const { onLoad, onError, ...rest } = props
+
     return (
       // eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element
       <img
         ref={ref}
         className={`aspect-square h-full w-full object-cover ${loaded ? '' : 'invisible absolute'}`}
-        onLoad={() => setLoaded(true)}
-        onError={() => setHasError(true)}
-        {...props}
+        {...rest}
+        onLoad={(e) => {
+          setLoaded(true)
+          onLoad?.(e)
+        }}
+        onError={(e) => {
+          setHasError(true)
+          onError?.(e)
+        }}
       />
     )
   }

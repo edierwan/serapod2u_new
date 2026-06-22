@@ -7,6 +7,7 @@ import { ArrowRight, CheckCircle2, Lock, MessageCircle, Package, ShieldCheck, Sh
 
 import type { LandingPageResolveResult, LandingPageResolvedProduct } from '@/lib/landing-pages/types'
 import { useCart } from '@/lib/storefront/cart-context'
+import SafeImage from '@/components/shared/SafeImage'
 import {
   buildLandingPageAttribution,
   getLandingPageSessionId,
@@ -178,13 +179,13 @@ export default function LandingPageClient({ result, preview }: { result: Landing
 
           <div className="relative">
             <div className="aspect-[4/3] overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl shadow-emerald-900/10">
-              {heroImage ? (
-                <img src={heroImage} alt="" className="h-full w-full object-contain p-4" />
-              ) : (
-                <div className="flex h-full items-center justify-center text-slate-300">
-                  <Package className="h-20 w-20" />
-                </div>
-              )}
+              <SafeImage
+                src={heroImage}
+                alt=""
+                className="h-full w-full object-contain p-4"
+                fallbackClassName="bg-white"
+                fallbackIconClassName="h-20 w-20 text-slate-300"
+              />
             </div>
           </div>
         </div>
@@ -231,11 +232,14 @@ export default function LandingPageClient({ result, preview }: { result: Landing
               return (
                 <article key={product.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/5">
                   <Link href={`/store/products/${product.id}`} onClick={() => trackProductClick(product)} className="block aspect-[4/3] bg-slate-50">
-                    {imageUrl ? (
-                      <img src={imageUrl} alt={product.product_name} className="h-full w-full object-contain p-4" loading="lazy" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-slate-300"><Package className="h-12 w-12" /></div>
-                    )}
+                    <SafeImage
+                      src={imageUrl}
+                      alt={product.product_name}
+                      className="h-full w-full object-contain p-4"
+                      fallbackClassName="bg-slate-50"
+                      fallbackIconClassName="h-12 w-12 text-slate-300"
+                      loading="lazy"
+                    />
                   </Link>
                   <div className="flex flex-1 flex-col p-4">
                     <div className="flex flex-wrap gap-2">

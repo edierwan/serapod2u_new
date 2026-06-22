@@ -1,33 +1,37 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Tabs as TabsComponent, TabsList as TabsList2, TabsTrigger as TabsTrigger2, TabsContent as TabsContent2 } from '@/components/ui/tabs'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
 import { DEFAULT_NOTIFICATION_ADMIN_ROLE } from '@/lib/notifications/recipientRoleCodes'
 import {
-  Save,
+  AlertTriangle,
+  ArrowRight,
   Bell,
-  ShoppingCart,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   FileText,
+  Info,
+  Loader2,
+  Mail,
+  MessageCircle,
+  MessageSquare,
   Package,
   QrCode,
-  UserCheck,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
+  Save,
   Settings,
-  Users,
-  MessageSquare,
-  Info
+  ShoppingCart,
+  UserCheck,
+  XCircle,
 } from 'lucide-react'
+
+type Channel = 'whatsapp' | 'email' | 'sms'
+type RoutingPreset = 'whatsapp_only' | 'email_only' | 'sms_only' | 'whatsapp_email_fallback'
+type RoutingSource = 'default' | 'category' | 'event'
 
 interface NotificationType {
   id: string
@@ -38,6 +42,13 @@ interface NotificationType {
   default_enabled: boolean
   available_channels: string[]
   is_system: boolean
+}
+
+interface RoutingMetadata {
+  preset?: RoutingPreset
+  source?: RoutingSource
+  default_preset?: RoutingPreset
+  category_preset?: RoutingPreset | null
 }
 
 interface NotificationSetting {
@@ -55,7 +66,7 @@ interface NotificationSetting {
     custom_emails?: string
     custom_phones?: string
     manual_whatsapp_numbers?: string[]
-    dynamic_target?: string // e.g. 'manufacturer', 'distributor'
+    dynamic_target?: string
     include_consumer?: boolean
     recipient_targets?: {
       roles?: boolean
@@ -63,6 +74,7 @@ interface NotificationSetting {
       users?: boolean
       consumer?: boolean
     }
+    routing?: RoutingMetadata
   }
 }
 
@@ -70,49 +82,86 @@ interface NotificationTypesTabProps {
   userProfile: {
     id: string
     organization_id: string
-    organizations: {
-      id: string
-      org_type_code: string
-    }
-    roles: {
-      role_level: number
-    }
+    organizations: { id: string; org_type_code: string }
+    roles: { role_level: number }
   }
 }
 
-const DEFAULT_RECIPIENT_TARGETS = {
-  roles: true,
-  dynamic_org: false,
-  users: false,
-  consumer: false,
+const DEFAULT_PRESET: RoutingPreset = 'whatsapp_email_fallback'
+const DEFAULT_RECIPIENT_TARGETS = { roles: true, dynamic_org: false, users: false, consumer: false }
+
+const PRESETS: Array<{
+  id: RoutingPreset
+  title: string
+  description: string
+  required: Channel[]
+}> = [
+  { id: 'whatsapp_only', title: 'WhatsApp Only', description: 'Send all notifications via WhatsApp.', required: ['whatsapp'] },
+  { id: 'email_only', title: 'Email Only', description: 'Send all notifications via Email.', required: ['email'] },
+  { id: 'sms_only', title: 'SMS Only', description: 'Send all notifications via SMS.', required: ['sms'] },
+  { id: 'whatsapp_email_fallback', title: 'WhatsApp → Email', description: 'Try WhatsApp first, then Email only if it fails.', required: ['whatsapp', 'email'] },
+]
+
+const CATEGORY_LABELS: Record<string, string> = {
+  order: 'Order Status',
+  document: 'Order Document',
+  inventory: 'Inventory & Stock',
+  qr: 'QR & Consumer',
+  user: 'User Account',
 }
+const CATEGORY_ORDER = ['order', 'document', 'inventory', 'qr', 'user']
 
 function normalizeRecipientConfig(
   recipientConfig: NotificationSetting['recipient_config'] | null | undefined,
   fallbackRoles: string[] = [DEFAULT_NOTIFICATION_ADMIN_ROLE]
 ): NonNullable<NotificationSetting['recipient_config']> {
-  const rawConfig = recipientConfig && typeof recipientConfig === 'object' ? recipientConfig : {}
-  const roles = Array.isArray(rawConfig.roles) && rawConfig.roles.length > 0
-    ? rawConfig.roles
-    : fallbackRoles
-  const hasRecipientSources = Boolean(
-    rawConfig.recipient_targets ||
-    (Array.isArray(rawConfig.manual_whatsapp_numbers) && rawConfig.manual_whatsapp_numbers.length > 0) ||
-    (Array.isArray(rawConfig.recipient_users) && rawConfig.recipient_users.length > 0) ||
-    String(rawConfig.custom_emails || '').trim() ||
-    String(rawConfig.custom_phones || '').trim() ||
-    rawConfig.dynamic_target
+  const raw = recipientConfig && typeof recipientConfig === 'object' ? recipientConfig : {}
+  const roles = Array.isArray(raw.roles) && raw.roles.length ? raw.roles : fallbackRoles
+  const hasSources = Boolean(
+    raw.recipient_targets || raw.manual_whatsapp_numbers?.length || raw.recipient_users?.length ||
+    String(raw.custom_emails || '').trim() || String(raw.custom_phones || '').trim() || raw.dynamic_target
   )
-
   return {
-    type: rawConfig.type || 'roles',
-    include_consumer: rawConfig.include_consumer ?? true,
-    ...rawConfig,
+    type: raw.type || 'roles',
+    include_consumer: raw.include_consumer ?? true,
+    ...raw,
     roles,
-    recipient_targets: rawConfig.recipient_targets || (hasRecipientSources
+    recipient_targets: raw.recipient_targets || (hasSources
       ? { roles: false, dynamic_org: false, users: false, consumer: false }
       : DEFAULT_RECIPIENT_TARGETS),
   }
+}
+
+function presetFromChannels(channels: string[]): RoutingPreset {
+  if (channels.includes('whatsapp') && channels.includes('email')) return 'whatsapp_email_fallback'
+  if (channels.includes('email')) return 'email_only'
+  if (channels.includes('sms')) return 'sms_only'
+  return 'whatsapp_only'
+}
+
+function channelsForPreset(preset: RoutingPreset): string[] {
+  // Fallback queues WhatsApp only. The worker queues Email only after a failed WhatsApp attempt.
+  if (preset === 'email_only') return ['email']
+  if (preset === 'sms_only') return ['sms']
+  return ['whatsapp']
+}
+
+function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; className?: string }) {
+  if (preset === 'email_only') return <Mail className={`${className} text-violet-600`} />
+  if (preset === 'sms_only') return <MessageSquare className={`${className} text-orange-500`} />
+  if (preset === 'whatsapp_email_fallback') {
+    return <div className="flex items-center gap-2"><MessageCircle className={`${className} text-emerald-600`} /><ArrowRight className="h-5 w-5 text-violet-600" /><Mail className={`${className} text-violet-600`} /></div>
+  }
+  return <MessageCircle className={`${className} text-emerald-600`} />
+}
+
+function CategoryIcon({ category }: { category: string }) {
+  const classes = 'h-5 w-5'
+  if (category === 'order') return <ShoppingCart className={`${classes} text-blue-600`} />
+  if (category === 'document') return <FileText className={`${classes} text-violet-600`} />
+  if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
+  if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
+  return <UserCheck className={`${classes} text-indigo-600`} />
 }
 
 export default function NotificationTypesTab({ userProfile }: NotificationTypesTabProps) {
@@ -121,630 +170,276 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   const [saving, setSaving] = useState(false)
   const [notificationTypes, setNotificationTypes] = useState<NotificationType[]>([])
   const [settings, setSettings] = useState<Map<string, NotificationSetting>>(new Map())
+  const [providerStatus, setProviderStatus] = useState<Record<Channel, boolean>>({ whatsapp: false, email: false, sms: false })
+  const [defaultPreset, setDefaultPreset] = useState<RoutingPreset>(DEFAULT_PRESET)
+  const [categoryPresets, setCategoryPresets] = useState<Record<string, RoutingPreset | null>>({})
+  const [eventPresets, setEventPresets] = useState<Record<string, RoutingPreset | null>>({})
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({ order: true })
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [activeCategory, setActiveCategory] = useState('configuration')
   const [editingSetting, setEditingSetting] = useState<string | null>(null)
 
   useEffect(() => {
-    if (isReady) {
-      loadNotificationTypes()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
+    if (isReady) void loadNotificationTypes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
   const loadNotificationTypes = async () => {
     if (!isReady) return
-
     try {
       setLoading(true)
-
-      // Load all notification types
-      const { data: types, error: typesError } = await supabase
-        .from('notification_types')
-        .select('*')
-        .order('category')
-        .order('sort_order', { ascending: true, nullsFirst: false })
-        .order('event_name')
-
+      const [{ data: types, error: typesError }, { data: existingSettings, error: settingsError }, { data: providers, error: providerError }] = await Promise.all([
+        supabase.from('notification_types').select('*').order('category').order('sort_order', { ascending: true, nullsFirst: false }).order('event_name'),
+        supabase.from('notification_settings').select('*').eq('org_id', userProfile.organizations.id),
+        supabase.from('notification_provider_configs').select('channel,is_active').eq('org_id', userProfile.organizations.id),
+      ])
       if (typesError) throw typesError
-
-      setNotificationTypes(types || [])
-
-      // Load existing settings for this org
-      const { data: existingSettings, error: settingsError } = await supabase
-        .from('notification_settings')
-        .select('*')
-        .eq('org_id', userProfile.organizations.id)
-
       if (settingsError) throw settingsError
+      if (providerError) throw providerError
 
-      // Create settings map
+      const loadedTypes = (types || []) as NotificationType[]
       const settingsMap = new Map<string, NotificationSetting>()
+      loadedTypes.forEach((type) => settingsMap.set(type.event_code, {
+        org_id: userProfile.organizations.id,
+        event_code: type.event_code,
+        enabled: type.default_enabled,
+        channels_enabled: type.default_enabled ? channelsForPreset(DEFAULT_PRESET) : [],
+        priority: 'normal',
+        templates: {},
+        recipient_config: normalizeRecipientConfig(undefined),
+      }))
 
-      // Initialize with defaults from types
-      types?.forEach((type: NotificationType) => {
-        settingsMap.set(type.event_code, {
-          org_id: userProfile.organizations.id,
-          event_code: type.event_code,
-          enabled: type.default_enabled,
-          channels_enabled: type.default_enabled ? type.available_channels : [],
-          priority: 'normal',
-          templates: {},
-          recipient_config: normalizeRecipientConfig(undefined)
+      let loadedDefault = DEFAULT_PRESET
+      const loadedCategories: Record<string, RoutingPreset | null> = {}
+      const loadedEvents: Record<string, RoutingPreset | null> = {}
+      ;(existingSettings || []).forEach((row: any) => {
+        const matchingType = loadedTypes.find((type) => type.event_code === row.event_code)
+        if (!matchingType) return
+        const recipientConfig = normalizeRecipientConfig(row.recipient_config, row.recipient_roles?.length ? row.recipient_roles : undefined)
+        const routing = recipientConfig.routing
+        const legacyPreset = presetFromChannels(row.channels_enabled || [])
+        if (routing?.default_preset) loadedDefault = routing.default_preset
+        if (routing?.category_preset !== undefined && loadedCategories[matchingType.category] === undefined) {
+          loadedCategories[matchingType.category] = routing.category_preset
+        }
+        loadedEvents[row.event_code] = routing?.source === 'event' ? (routing.preset || legacyPreset) : routing ? null : legacyPreset
+        settingsMap.set(row.event_code, {
+          id: row.id,
+          org_id: row.org_id,
+          event_code: row.event_code,
+          enabled: Boolean(row.enabled),
+          channels_enabled: row.channels_enabled || [],
+          priority: row.priority || 'normal',
+          templates: row.templates || {},
+          recipient_config: recipientConfig,
         })
       })
 
-      // Override with existing settings
-      existingSettings?.forEach((setting: any) => {
-        const fallbackRoles = Array.isArray(setting.recipient_roles) && setting.recipient_roles.length > 0
-          ? setting.recipient_roles
-          : [DEFAULT_NOTIFICATION_ADMIN_ROLE]
-
-        settingsMap.set(setting.event_code, {
-          id: setting.id,
-          org_id: setting.org_id,
-          event_code: setting.event_code,
-          enabled: setting.enabled,
-          channels_enabled: setting.channels_enabled || [],
-          priority: setting.priority || 'normal',
-          templates: setting.templates || {},
-          recipient_config: normalizeRecipientConfig(setting.recipient_config, fallbackRoles)
-        })
-      })
-
+      setNotificationTypes(loadedTypes)
       setSettings(settingsMap)
+      setDefaultPreset(loadedDefault)
+      setCategoryPresets(loadedCategories)
+      setEventPresets(loadedEvents)
+      setProviderStatus({
+        whatsapp: Boolean(providers?.some((p: any) => p.channel === 'whatsapp' && p.is_active)),
+        email: Boolean(providers?.some((p: any) => p.channel === 'email' && p.is_active)),
+        sms: Boolean(providers?.some((p: any) => p.channel === 'sms' && p.is_active)),
+      })
     } catch (error) {
-      console.error('Error loading notification types:', error)
-      alert('Failed to load notification settings')
+      console.error('Error loading notification routing:', error)
+      setSaveStatus('error')
     } finally {
       setLoading(false)
     }
   }
 
+  const grouped = useMemo(() => notificationTypes.reduce<Record<string, NotificationType[]>>((acc, type) => {
+    ;(acc[type.category] ||= []).push(type)
+    return acc
+  }, {}), [notificationTypes])
+
+  const effectivePreset = (type: NotificationType) => eventPresets[type.event_code] || categoryPresets[type.category] || defaultPreset
+  const presetAvailable = (preset: RoutingPreset) => PRESETS.find((item) => item.id === preset)!.required.every((channel) => providerStatus[channel])
+
   const toggleNotification = (eventCode: string, enabled: boolean) => {
-    const newSettings = new Map(settings)
-    const setting = newSettings.get(eventCode)
-    if (setting) {
-      setting.enabled = enabled
-      // If disabling, clear channels
-      if (!enabled) {
-        setting.channels_enabled = []
-      } else {
-        setting.recipient_config = normalizeRecipientConfig(setting.recipient_config)
-        // If enabling, use default channels from type
-        const type = notificationTypes.find(t => t.event_code === eventCode)
-        if (type) {
-          // Default to only whatsapp if available
-          if (type.available_channels.includes('whatsapp')) {
-            setting.channels_enabled = ['whatsapp']
-          } else {
-            setting.channels_enabled = type.available_channels
-          }
-        }
-      }
-      newSettings.set(eventCode, setting)
-      setSettings(newSettings)
-    }
+    const next = new Map(settings)
+    const setting = next.get(eventCode)
+    const type = notificationTypes.find((item) => item.event_code === eventCode)
+    if (!setting || !type) return
+    next.set(eventCode, { ...setting, enabled, channels_enabled: enabled ? channelsForPreset(effectivePreset(type)) : [] })
+    setSettings(next)
   }
 
-  const toggleChannel = (eventCode: string, channel: string, enabled: boolean) => {
-    const newSettings = new Map(settings)
-    const setting = newSettings.get(eventCode)
-    if (setting) {
-      if (enabled) {
-        setting.channels_enabled = [...setting.channels_enabled, channel]
-      } else {
-        setting.channels_enabled = setting.channels_enabled.filter(c => c !== channel)
-      }
-      // Auto-enable notification if at least one channel is selected
-      if (setting.channels_enabled.length > 0) {
-        setting.enabled = true
-      }
-      newSettings.set(eventCode, setting)
-      setSettings(newSettings)
+  const buildSettingRecord = (setting: NotificationSetting) => {
+    const type = notificationTypes.find((item) => item.event_code === setting.event_code)!
+    const eventPreset = eventPresets[setting.event_code]
+    const categoryPreset = categoryPresets[type.category] || null
+    const preset = eventPreset || categoryPreset || defaultPreset
+    const source: RoutingSource = eventPreset ? 'event' : categoryPreset ? 'category' : 'default'
+    const recipientConfig = normalizeRecipientConfig(setting.recipient_config)
+    return {
+      id: setting.id || crypto.randomUUID(),
+      org_id: setting.org_id,
+      event_code: setting.event_code,
+      enabled: setting.enabled,
+      channels_enabled: setting.enabled ? channelsForPreset(preset) : [],
+      priority: setting.priority,
+      recipient_roles: recipientConfig.roles || null,
+      recipient_users: null,
+      recipient_custom: recipientConfig.custom_emails ? [recipientConfig.custom_emails] : null,
+      template_code: null,
+      templates: setting.templates,
+      recipient_config: {
+        ...recipientConfig,
+        routing: { preset, source, default_preset: defaultPreset, category_preset: categoryPreset },
+      },
+      retry_enabled: true,
+      max_retries: 3,
     }
-  }
-
-  const toggleAllInCategory = (category: string, enabled: boolean) => {
-    const newSettings = new Map(settings)
-    const categoryTypes = notificationTypes.filter(t => t.category === category)
-
-    categoryTypes.forEach(type => {
-      const setting = newSettings.get(type.event_code)
-      if (setting) {
-        setting.enabled = enabled
-        if (enabled) {
-          // Enable all available channels
-          setting.channels_enabled = type.available_channels
-        } else {
-          // Clear all channels
-          setting.channels_enabled = []
-        }
-        newSettings.set(type.event_code, setting)
-      }
-    })
-
-    setSettings(newSettings)
-  }
-
-  const buildSettingRecord = (setting: NotificationSetting) => ({
-    id: setting.id || crypto.randomUUID(),
-    org_id: setting.org_id,
-    event_code: setting.event_code,
-    enabled: setting.enabled,
-    channels_enabled: setting.channels_enabled,
-    priority: setting.priority,
-    recipient_roles: normalizeRecipientConfig(setting.recipient_config).roles || null,
-    recipient_users: null,
-    recipient_custom: normalizeRecipientConfig(setting.recipient_config).custom_emails ? [normalizeRecipientConfig(setting.recipient_config).custom_emails as string] : null,
-    template_code: null,
-    templates: setting.templates,
-    recipient_config: normalizeRecipientConfig(setting.recipient_config),
-    retry_enabled: true,
-    max_retries: 3
-  })
-
-  const saveSingleSetting = async (setting: NotificationSetting) => {
-    if (!isReady) return
-
-    const newSettings = new Map(settings)
-    newSettings.set(setting.event_code, setting)
-    setSettings(newSettings)
-
-    setSaving(true)
-    setSaveStatus('idle')
-
-    const { data: upserted, error } = await (supabase as any)
-      .from('notification_settings')
-      .upsert(buildSettingRecord(setting), {
-        onConflict: 'org_id,event_code'
-      })
-      .select('id')
-
-    if (error) {
-      setSaveStatus('error')
-      setSaving(false)
-      throw new Error(error.message || 'Failed to save notification setting')
-    }
-
-    if (!upserted || upserted.length === 0) {
-      setSaveStatus('error')
-      setSaving(false)
-      throw new Error('Setting was not saved — check your permissions (HQ Admin required)')
-    }
-
-    setSaveStatus('success')
-    setSaving(false)
-    setTimeout(() => setSaveStatus('idle'), 3000)
-
-    await loadNotificationTypes()
   }
 
   const handleSaveSettings = async () => {
     if (!isReady) return
-
     try {
       setSaving(true)
       setSaveStatus('idle')
-
-      // Prepare settings for upsert
-      const settingsArray = Array.from(settings.values()).map(buildSettingRecord)
-
-      // Upsert all settings
-      const { data: upserted, error } = await (supabase as any)
-        .from('notification_settings')
-        .upsert(settingsArray, {
-          onConflict: 'org_id,event_code'
-        })
-        .select('id')
-
+      const records = Array.from(settings.values()).map(buildSettingRecord)
+      const { data, error } = await (supabase as any).from('notification_settings').upsert(records, { onConflict: 'org_id,event_code' }).select('id')
       if (error) throw error
-
-      // Verify rows were actually written (RLS can silently drop rows)
-      if (!upserted || upserted.length === 0) {
-        throw new Error('Settings were not saved — check your permissions (HQ Admin required)')
-      }
-
+      if (!data?.length) throw new Error('Settings were not saved — check HQ Admin permissions')
       setSaveStatus('success')
       setTimeout(() => setSaveStatus('idle'), 3000)
-
-      // Reload settings to get the new IDs
       await loadNotificationTypes()
     } catch (error: any) {
-      console.error('Error saving notification settings:', error)
+      console.error('Error saving notification routing:', error)
       setSaveStatus('error')
-      alert(`Failed to save settings: ${error.message}`)
     } finally {
       setSaving(false)
     }
   }
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'order': return <ShoppingCart className="w-5 h-5 text-blue-600" />
-      case 'document': return <FileText className="w-5 h-5 text-purple-600" />
-      case 'inventory': return <Package className="w-5 h-5 text-orange-600" />
-      case 'qr': return <QrCode className="w-5 h-5 text-green-600" />
-      case 'user': return <UserCheck className="w-5 h-5 text-indigo-600" />
-      default: return <Bell className="w-5 h-5 text-gray-600" />
-    }
-  }
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'order': return 'bg-blue-50 border-blue-200'
-      case 'document': return 'bg-purple-50 border-purple-200'
-      case 'inventory': return 'bg-orange-50 border-orange-200'
-      case 'qr': return 'bg-green-50 border-green-200'
-      case 'user': return 'bg-indigo-50 border-indigo-200'
-      default: return 'bg-gray-50 border-gray-200'
-    }
-  }
-
-  // Group notifications by category
-  const groupedNotifications = notificationTypes.reduce((acc, type) => {
-    if (!acc[type.category]) {
-      acc[type.category] = []
-    }
-    acc[type.category].push(type)
-    return acc
-  }, {} as Record<string, NotificationType[]>)
-
-  const categoryLabels: Record<string, string> = {
-    order: 'Order Status Changes',
-    document: 'Document Workflow',
-    inventory: 'Inventory & Stock Alerts',
-    qr: 'QR Code & Consumer Activities',
-    user: 'User Account Activities'
-  }
-
-  // Helper function to render category content
-  const renderCategoryContent = (category: string) => {
-    const types = notificationTypes.filter(t => t.category === category)
-    const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
-    const allEnabled = categorySettings.every(s => s?.enabled)
-
-    return (
-      <Card className={`border-l-4 ${getCategoryColor(category)}`}>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3 sm:items-center">
-              {getCategoryIcon(category)}
-              <div>
-                <CardTitle className="text-lg">
-                  {categoryLabels[category] || category.toUpperCase()}
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Configure which {category} events trigger notifications
-                </CardDescription>
-              </div>
-            </div>
-
-            {/* Bulk Action Buttons */}
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-center">
-              <Button
-                type="button"
-                variant={allEnabled ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => toggleAllInCategory(category, true)}
-                className="flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                Enable All
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => toggleAllInCategory(category, false)}
-                className="flex items-center justify-center gap-2"
-              >
-                <XCircle className="w-4 h-4" />
-                Disable All
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {types.map((type) => {
-            const setting = settings.get(type.event_code)
-            if (!setting) return null
-
-            return (
-              <div
-                key={type.event_code}
-                className="flex items-start gap-4 p-4 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
-              >
-                {/* Enable/Disable Switch */}
-                <div className="flex items-center pt-1">
-                  <Switch
-                    checked={setting.enabled}
-                    onCheckedChange={(checked) => toggleNotification(type.event_code, checked)}
-                  />
-                </div>
-
-                {/* Notification Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Label className="text-base font-medium text-gray-900">
-                      {type.event_name}
-                    </Label>
-                    {type.is_system && (
-                      <Badge variant="secondary" className="text-xs">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        System
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3">
-                    {type.event_description}
-                  </p>
-
-                  {/* Channel Selection */}
-                  {setting.enabled && (
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <span className="text-sm font-medium text-gray-700">Channels:</span>
-                      {type.available_channels.map((channel) => (
-                        <label
-                          key={channel}
-                          className="flex items-center gap-2 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={setting.channels_enabled.includes(channel)}
-                            onCheckedChange={(checked) =>
-                              toggleChannel(type.event_code, channel, checked as boolean)
-                            }
-                          />
-                          <span className="text-sm capitalize">{channel}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions and Status */}
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex-shrink-0">
-                    {setting.enabled ? (
-                      <Badge className="bg-green-100 text-green-800 border-green-200">
-                        Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-gray-600">
-                        Disabled
-                      </Badge>
-                    )}
-                  </div>
-
-                  {setting.enabled && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 h-8"
-                      onClick={() => setEditingSetting(type.event_code)}
-                    >
-                      <Settings className="w-3 h-3 mr-1.5" />
-                      Configure
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Configuration Dialog
-  const renderConfigDialog = () => {
-    if (!editingSetting) return null
-
-    // Create a local copy of settings to edit
-    const currentCode = editingSetting
-    const currentSetting = settings.get(currentCode)
-    const currentType = notificationTypes.find(t => t.event_code === currentCode)
-
-    if (!currentSetting || !currentType) return null
-
-    return (
-      <NotificationFlowDrawer
-        open={!!editingSetting}
-        onOpenChange={(open) => !open && setEditingSetting(null)}
-        setting={currentSetting}
-        type={currentType}
-        onSave={async (updatedSetting) => {
-          await saveSingleSetting(updatedSetting)
-        }}
-      />
-    )
+  const saveSingleSetting = async (updated: NotificationSetting) => {
+    const next = new Map(settings)
+    next.set(updated.event_code, updated)
+    setSettings(next)
+    const { error } = await (supabase as any).from('notification_settings').upsert(buildSettingRecord(updated), { onConflict: 'org_id,event_code' })
+    if (error) throw new Error(error.message)
+    await loadNotificationTypes()
   }
 
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          <span className="ml-3 text-gray-600">Loading notification settings...</span>
-        </CardContent>
-      </Card>
-    )
+    return <div className="flex min-h-[420px] items-center justify-center rounded-2xl border bg-white"><Loader2 className="h-7 w-7 animate-spin text-violet-600" /><span className="ml-3 text-slate-600">Loading notification routing…</span></div>
   }
 
+  const selectedPreset = PRESETS.find((preset) => preset.id === defaultPreset)!
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5" />
-                Notification Types Configuration
-              </CardTitle>
-              <CardDescription className="mt-2">
-                Choose which events should trigger notifications and select the delivery channels for each type
-              </CardDescription>
+    <div className="space-y-5 pb-10">
+      <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="rounded-xl bg-violet-100 p-3"><Bell className="h-6 w-6 text-violet-600" /></div>
+          <div><h1 className="text-2xl font-bold text-slate-950">Notification Types</h1><p className="mt-1 text-sm text-slate-500">Choose how each event should be delivered.</p></div>
+        </div>
+        <Button onClick={handleSaveSettings} disabled={saving} className="gap-2 bg-slate-950 hover:bg-slate-800">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? 'Saving…' : 'Save Routing Settings'}
+        </Button>
+      </section>
+
+      {saveStatus !== 'idle' && <div className={`flex items-center gap-2 rounded-xl border p-3 text-sm font-medium ${saveStatus === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
+        {saveStatus === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}{saveStatus === 'success' ? 'Routing settings saved.' : 'Unable to load or save routing settings.'}
+      </div>}
+
+      <section className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:grid-cols-3">
+        {(['whatsapp', 'email', 'sms'] as Channel[]).map((channel, index) => (
+          <div key={channel} className={`flex items-center gap-3 px-5 py-4 ${index ? 'border-t sm:border-l sm:border-t-0' : ''}`}>
+            {channel === 'whatsapp' ? <MessageCircle className="h-7 w-7 text-emerald-600" /> : channel === 'email' ? <Mail className="h-7 w-7 text-violet-600" /> : <MessageSquare className="h-7 w-7 text-orange-500" />}
+            <span className="font-semibold capitalize text-slate-900">{channel === 'sms' ? 'SMS' : channel}</span>
+            <Badge className={`ml-auto border-0 ${providerStatus[channel] ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50' : 'bg-slate-100 text-slate-500 hover:bg-slate-100'}`}>● {providerStatus[channel] ? 'Active' : 'Not configured'}</Badge>
+          </div>
+        ))}
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="space-y-5">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-950">Default Delivery Method</h2>
+            <p className="mt-1 text-sm text-slate-500">Used for every category and event unless it is overridden.</p>
+            <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+              {PRESETS.map((preset) => {
+                const available = presetAvailable(preset.id)
+                const selected = defaultPreset === preset.id
+                return <button key={preset.id} type="button" disabled={!available && !selected} onClick={() => setDefaultPreset(preset.id)} className={`relative flex min-h-52 flex-col items-center justify-center rounded-xl border-2 p-4 text-center transition ${selected ? 'border-violet-500 bg-violet-50/70 shadow-sm' : 'border-slate-200 hover:border-violet-200'} ${!available && !selected ? 'cursor-not-allowed opacity-50' : ''}`}>
+                  <PresetIcon preset={preset.id} />
+                  <span className="mt-4 font-bold text-slate-950">{preset.title}</span>
+                  <span className="mt-2 text-sm leading-5 text-slate-500">{preset.description}</span>
+                  {preset.id === DEFAULT_PRESET && <Badge className="mt-3 border-0 bg-violet-100 text-violet-700 hover:bg-violet-100">Recommended</Badge>}
+                  {!available && <span className="mt-2 text-xs font-medium text-amber-700">Provider not configured</span>}
+                  <span className={`mt-auto h-5 w-5 rounded-full border-2 ${selected ? 'border-violet-600 bg-violet-600 ring-4 ring-violet-100' : 'border-slate-300'}`} />
+                </button>
+              })}
             </div>
-            <Button
-              onClick={handleSaveSettings}
-              disabled={saving}
-              className="flex w-full items-center justify-center gap-2 sm:w-auto"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save All Settings
-                </>
-              )}
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
+            <div className="mt-4 flex items-start gap-3 rounded-xl bg-violet-50 px-4 py-3 text-sm text-slate-700">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
+              <span>{selectedPreset.description}</span>
+            </div>
+          </section>
 
-      {/* Save Status */}
-      {saveStatus === 'success' && (
-        <div className="flex items-center gap-2 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
-          <CheckCircle2 className="w-5 h-5" />
-          <span className="font-medium">Settings saved successfully!</span>
-        </div>
-      )}
-
-      {saveStatus === 'error' && (
-        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
-          <XCircle className="w-5 h-5" />
-          <span className="font-medium">Failed to save settings. Please try again.</span>
-        </div>
-      )}
-
-      {/* Category Tabs */}
-      <TabsComponent value={activeCategory} onValueChange={setActiveCategory} className="w-full">
-        <TabsList2 className="grid w-full grid-cols-2 lg:grid-cols-6">
-          <TabsTrigger2 value="configuration">Configuration</TabsTrigger2>
-          <TabsTrigger2 value="order">Order Status</TabsTrigger2>
-          <TabsTrigger2 value="document">Order Document</TabsTrigger2>
-          <TabsTrigger2 value="inventory">Inventory & Stock</TabsTrigger2>
-          <TabsTrigger2 value="qr">QR & Consumer</TabsTrigger2>
-          <TabsTrigger2 value="user">User Account</TabsTrigger2>
-        </TabsList2>
-
-        {/* Configuration Tab - Summary View */}
-        <TabsContent2 value="configuration" className="mt-6 space-y-6">
-          {/* Summary Card */}
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-            <CardHeader>
-              <CardTitle className="text-lg">Configuration Summary</CardTitle>
-              <CardDescription>Overview of all notification event configurations</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-white rounded-lg border">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {Array.from(settings.values()).filter(s => s.enabled).length}
+          <section>
+            <h2 className="text-lg font-bold text-slate-950">Event Categories</h2>
+            <p className="mt-1 text-sm text-slate-500">Use the default route or override a category and its individual events.</p>
+            <div className="mt-3 space-y-2">
+              {CATEGORY_ORDER.filter((category) => grouped[category]?.length).map((category) => {
+                const types = grouped[category]
+                const expanded = Boolean(expandedCategories[category])
+                const categoryPreset = categoryPresets[category] || null
+                return <div key={category} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                    <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setExpandedCategories((current) => ({ ...current, [category]: !expanded }))}>
+                      <span className="rounded-lg bg-slate-50 p-2"><CategoryIcon category={category} /></span>
+                      <span className="min-w-0"><span className="block font-semibold text-slate-900">{CATEGORY_LABELS[category] || category}</span><span className="block text-xs text-slate-500">{categoryPreset ? `Override: ${PRESETS.find((p) => p.id === categoryPreset)?.title}` : 'Uses default delivery method'} · {types.filter((type) => settings.get(type.event_code)?.enabled).length}/{types.length} enabled</span></span>
+                    </button>
+                    <select aria-label={`${CATEGORY_LABELS[category] || category} routing`} value={categoryPreset || 'default'} onChange={(event) => setCategoryPresets((current) => ({ ...current, [category]: event.target.value === 'default' ? null : event.target.value as RoutingPreset }))} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-violet-500">
+                      <option value="default">Use default</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id} disabled={!presetAvailable(preset.id)}>{preset.title}{!presetAvailable(preset.id) ? ' (unavailable)' : ''}</option>)}
+                    </select>
+                    <button type="button" aria-label={expanded ? 'Collapse category' : 'Expand category'} onClick={() => setExpandedCategories((current) => ({ ...current, [category]: !expanded }))} className="hidden rounded-lg p-2 hover:bg-slate-50 sm:block">{expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}</button>
                   </div>
-                  <div className="text-sm text-gray-600">Enabled Events</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg border">
-                  <div className="text-2xl font-bold text-green-600">
-                    {Array.from(settings.values()).filter(s =>
-                      s.channels_enabled.includes('whatsapp')
-                    ).length}
-                  </div>
-                  <div className="text-sm text-gray-600">WhatsApp</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg border">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {Array.from(settings.values()).filter(s =>
-                      s.channels_enabled.includes('sms')
-                    ).length}
-                  </div>
-                  <div className="text-sm text-gray-600">SMS</div>
-                </div>
-                <div className="text-center p-3 bg-white rounded-lg border">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {Array.from(settings.values()).filter(s =>
-                      s.channels_enabled.includes('email')
-                    ).length}
-                  </div>
-                  <div className="text-sm text-gray-600">Email</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* All Categories Overview */}
-          <div className="grid gap-4">
-            {Object.entries({
-              order: 'Order Status Changes',
-              document: 'Order Document Workflow',
-              inventory: 'Inventory & Stock Alerts',
-              qr: 'QR Code & Consumer Activities',
-              user: 'User Account Activities'
-            }).map(([categoryKey, categoryName]) => {
-              const types = notificationTypes.filter(t => t.category === categoryKey)
-              const categorySettings = types.map(t => settings.get(t.event_code)).filter(Boolean)
-              const enabledCount = categorySettings.filter(s => s?.enabled).length
-
-              return (
-                <Card key={categoryKey} className={`border-l-4 ${getCategoryColor(categoryKey)}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {getCategoryIcon(categoryKey)}
-                        <div>
-                          <CardTitle className="text-base">{categoryName}</CardTitle>
-                          <CardDescription className="text-xs mt-1">
-                            {enabledCount} of {types.length} events enabled
-                          </CardDescription>
-                        </div>
+                  {expanded && <div className="border-t bg-slate-50/70 px-3 py-2">
+                    {types.map((type) => {
+                      const setting = settings.get(type.event_code)
+                      if (!setting) return null
+                      const eventPreset = eventPresets[type.event_code] || null
+                      return <div key={type.event_code} className="my-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[auto_minmax(0,1fr)_210px_auto] sm:items-center">
+                        <Switch checked={setting.enabled} onCheckedChange={(checked) => toggleNotification(type.event_code, checked)} aria-label={`Enable ${type.event_name}`} />
+                        <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p></div>
+                        <select aria-label={`${type.event_name} routing`} disabled={!setting.enabled} value={eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
+                          <option value="inherit">Use {categoryPreset ? 'category' : 'default'}</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id} disabled={!presetAvailable(preset.id)}>{preset.title}</option>)}
+                        </select>
+                        <Button variant="ghost" size="sm" disabled={!setting.enabled} onClick={() => setEditingSetting(type.event_code)} className="gap-1 text-violet-700"><Settings className="h-4 w-4" /> Details</Button>
                       </div>
-                      <div className="text-2xl font-bold text-gray-400">{enabledCount}/{types.length}</div>
-                    </div>
-                  </CardHeader>
-                </Card>
-              )
-            })}
+                    })}
+                  </div>}
+                </div>
+              })}
+            </div>
+          </section>
+        </main>
+
+        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:sticky xl:top-4">
+          <div className="flex items-center gap-2"><Info className="h-5 w-5 text-violet-600" /><h2 className="font-bold text-slate-950">Delivery Summary</h2></div>
+          <div className="mt-6 space-y-5">
+            <div className="flex gap-3"><PresetIcon preset={selectedPreset.id} className="h-6 w-6" /><div><p className="font-semibold text-slate-900">{selectedPreset.id === 'whatsapp_email_fallback' ? 'Primary: WhatsApp' : selectedPreset.title}</p><p className="text-xs text-slate-500">{selectedPreset.id === 'whatsapp_email_fallback' ? 'First attempt for default-routed events' : 'Default route for events'}</p></div></div>
+            {defaultPreset === 'whatsapp_email_fallback' && <div className="flex gap-3"><Mail className="h-6 w-6 text-violet-600" /><div><p className="font-semibold text-slate-900">Fallback: Email</p><p className="text-xs text-slate-500">Only used when WhatsApp fails</p></div></div>}
+            {(['whatsapp', 'email', 'sms'] as Channel[]).filter((channel) => !providerStatus[channel]).map((channel) => <div key={channel} className="flex gap-3"><AlertTriangle className="h-6 w-6 text-amber-500" /><div><p className="font-semibold capitalize text-slate-900">{channel === 'sms' ? 'SMS' : channel} unavailable</p><p className="text-xs text-slate-500">Configure a provider to enable</p></div></div>)}
           </div>
-        </TabsContent2>
+          <div className="mt-6 border-t pt-5 text-xs leading-5 text-slate-500">Category routes inherit this default. Event routes inherit their category unless explicitly overridden.</div>
+        </aside>
+      </div>
 
-        {/* Order Status Changes Tab */}
-        <TabsContent2 value="order" className="mt-6">
-          {renderCategoryContent('order')}
-        </TabsContent2>
-
-        {/* Order Document Workflow Tab */}
-        <TabsContent2 value="document" className="mt-6">
-          {renderCategoryContent('document')}
-        </TabsContent2>
-
-        {/* Inventory & Stock Alerts Tab */}
-        <TabsContent2 value="inventory" className="mt-6">
-          {renderCategoryContent('inventory')}
-        </TabsContent2>
-
-        {/* QR Code & Consumer Activities Tab */}
-        <TabsContent2 value="qr" className="mt-6">
-          {renderCategoryContent('qr')}
-        </TabsContent2>
-
-        {/* User Account Activities Tab */}
-        <TabsContent2 value="user" className="mt-6">
-          {renderCategoryContent('user')}
-        </TabsContent2>
-      </TabsComponent>
-
-      {renderConfigDialog()}
+      {editingSetting && (() => {
+        const setting = settings.get(editingSetting)
+        const type = notificationTypes.find((item) => item.event_code === editingSetting)
+        if (!setting || !type) return null
+        return <NotificationFlowDrawer open onOpenChange={(open) => !open && setEditingSetting(null)} setting={{ ...setting, channels_enabled: channelsForPreset(effectivePreset(type)) }} type={type} onSave={saveSingleSetting} />
+      })()}
     </div>
   )
-
-
-
-
 }

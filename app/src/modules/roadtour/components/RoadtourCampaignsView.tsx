@@ -31,6 +31,7 @@ import {
     DUPLICATE_POLICY_LABEL,
     POINT_RELEASE_RULE_LABEL,
     PRODUCT_QR_COUNTING_PERIOD_LABEL,
+    buildRoadtourRunMap,
     fetchRoadtourRuns,
     type RoadtourRun,
 } from '@/lib/roadtour/events'
@@ -820,9 +821,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) || null, [runs, selectedRunId])
     const selectedRunCampaignCount = selectedRun ? (runCampaignCountById.get(selectedRun.id) || 0) : 0
     const runById = useMemo(() => {
-        const map = new Map<string, RoadtourRun>()
-        for (const r of runs) map.set(r.id, r)
-        return map
+        return buildRoadtourRunMap(runs)
     }, [runs])
 
     const handleDeleteSelectedRun = async () => {

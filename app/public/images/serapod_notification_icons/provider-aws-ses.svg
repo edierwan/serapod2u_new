@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#FFF7ED"/>
+  
+  <path d="M177 327h161c44 0 80-34 80-76 0-38-29-70-67-75-19-43-63-72-113-72-62 0-113 43-121 99-38 10-65 43-65 82 0 47 40 42 125 42Z" fill="white" stroke="#F97316" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M172 360c58 35 123 40 195 8" stroke="#F59E0B" stroke-width="22" stroke-linecap="round"/>
+  <text x="256" y="256" text-anchor="middle" font-size="78" font-family="Arial, Helvetica, sans-serif" font-weight="800" fill="#0F172A">aws</text>
+
+</svg>

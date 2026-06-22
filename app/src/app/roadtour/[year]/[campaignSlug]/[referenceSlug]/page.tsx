@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import RoadtourJourneyWrapper from '@/modules/roadtour/components/RoadtourJourneyWrapper'
 import { buildRoadtourContextFromValidation, resolveRoadTourByFriendlyPath, validateRoadtourToken } from '@/lib/roadtour/server'
+import { resolveRoadtourExperience } from '@/lib/roadtour/experience-registry'
 
 export const metadata: Metadata = {
     title: 'RoadTour Scan | Serapod2U',
@@ -35,10 +36,11 @@ export default async function FriendlyRoadtourPage({ params }: PageProps) {
     }
 
     const roadtourContext = buildRoadtourContextFromValidation(resolved.qr.token, tokenValidation.data)
+    const experience = resolveRoadtourExperience(resolved.qr.product_category)
 
     return (
         <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>}>
-            <RoadtourJourneyWrapper roadtourContext={roadtourContext} orgId={tokenValidation.data.org_id} />
+            <RoadtourJourneyWrapper roadtourContext={roadtourContext} orgId={tokenValidation.data.org_id} experience={experience} />
         </Suspense>
     )
 }

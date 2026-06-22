@@ -29133,6 +29133,7 @@ export type Database = {
           name: string
           org_id: string
           point_release_rule: string
+          product_category_id: string | null
           product_qr_counting_period: string | null
           required_product_qr_scans: number | null
           start_date: string
@@ -29152,6 +29153,7 @@ export type Database = {
           name: string
           org_id: string
           point_release_rule?: string
+          product_category_id?: string | null
           product_qr_counting_period?: string | null
           required_product_qr_scans?: number | null
           start_date: string
@@ -29171,6 +29173,7 @@ export type Database = {
           name?: string
           org_id?: string
           point_release_rule?: string
+          product_category_id?: string | null
           product_qr_counting_period?: string | null
           required_product_qr_scans?: number | null
           start_date?: string
@@ -29180,6 +29183,13 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "roadtour_runs_product_category_id_fkey"
+            columns: ["product_category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "roadtour_runs_active_reward_rule_version_id_fkey"
             columns: ["active_reward_rule_version_id"]

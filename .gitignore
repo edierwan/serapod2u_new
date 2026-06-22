@@ -191,6 +191,10 @@ z_*
 !/docs/reporting-data-coverage-audit/
 !/docs/reporting-data-coverage-audit/**
 
+# RoadTour module specifications are implementation artifacts
+!/docs/roadtourmodules/
+!/docs/roadtourmodules/33-roadtour-event-product-category-experience.md
+
 # Local reporting audit exports stay private
 /exports/reporting-audit/
 

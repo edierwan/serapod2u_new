@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,7 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
-import { Info, Loader2, Map as MapIcon } from 'lucide-react'
+import { Check, Info, Loader2, Map as MapIcon } from 'lucide-react'
+import SafeImage from '@/components/shared/SafeImage'
+import {
+    getRoadtourExperienceForCategory,
+    isRoadtourCategorySelectable,
+    type RoadtourProductCategory,
+} from '@/lib/roadtour/experience-registry'
 import {
     DUPLICATE_POLICY_OPTIONS,
     POINT_RELEASE_RULE_LABEL,
@@ -19,7 +26,6 @@ import {
     type RoadtourProductQrCountingPeriod,
     type RoadtourRunStatus,
     type RoadtourRun,
-    createRoadtourRun,
 } from '@/lib/roadtour/events'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -55,6 +61,9 @@ export function CreateRoadtourEventDialog({
     const [requiredProductQrScans, setRequiredProductQrScans] = useState(3)
     const [productQrCountingPeriod, setProductQrCountingPeriod] = useState<RoadtourProductQrCountingPeriod>('rolling_1_month')
     const [saving, setSaving] = useState(false)
+    const [categories, setCategories] = useState<RoadtourProductCategory[]>([])
+    const [categoriesLoading, setCategoriesLoading] = useState(false)
+    const [productCategoryId, setProductCategoryId] = useState('')
     const isMilestoneRule = pointReleaseRule === 'product_qr_scan_target_once'
 
     useEffect(() => {
@@ -70,11 +79,38 @@ export function CreateRoadtourEventDialog({
             setPointReleaseRule(event.point_release_rule || 'immediate_after_roadtour_claim')
             setRequiredProductQrScans(event.required_product_qr_scans || 3)
             setProductQrCountingPeriod(event.product_qr_counting_period || 'rolling_1_month')
+            setProductCategoryId(event.product_category_id || '')
             return
         }
 
         reset()
     }, [event, open])
+
+    useEffect(() => {
+        if (!open) return
+        let cancelled = false
+        ;(async () => {
+            setCategoriesLoading(true)
+            const { data, error } = await (supabase as any)
+                .from('product_categories')
+                .select('id, category_code, category_name, image_url, is_active, is_vape, sort_order')
+                .order('sort_order', { ascending: true })
+                .order('category_name', { ascending: true })
+            if (cancelled) return
+            setCategoriesLoading(false)
+            if (error) {
+                toast({ title: 'Failed to load product categories', description: error.message, variant: 'destructive' })
+                return
+            }
+            const loaded = (data || []) as RoadtourProductCategory[]
+            setCategories(loaded)
+            setProductCategoryId((current) => {
+                if (current) return current
+                return loaded.find((category) => getRoadtourExperienceForCategory(category)?.key === 'vape' && isRoadtourCategorySelectable(category))?.id || ''
+            })
+        })()
+        return () => { cancelled = true }
+    }, [open, supabase])
 
     const previewText = useMemo(() => {
         if (!isMilestoneRule) {
@@ -100,6 +136,7 @@ export function CreateRoadtourEventDialog({
         setPointReleaseRule('immediate_after_roadtour_claim')
         setRequiredProductQrScans(3)
         setProductQrCountingPeriod('rolling_1_month')
+        setProductCategoryId('')
     }
 
     const handleClose = (next: boolean) => {
@@ -124,6 +161,11 @@ export function CreateRoadtourEventDialog({
             toast({ title: 'Required Product QR scans must be at least 1', variant: 'destructive' })
             return
         }
+        const selectedCategory = categories.find((category) => category.id === productCategoryId)
+        if (!selectedCategory || !isRoadtourCategorySelectable(selectedCategory)) {
+            toast({ title: 'Select an available product category', variant: 'destructive' })
+            return
+        }
         try {
             setSaving(true)
             const rewardReleasePayload = {
@@ -144,6 +186,7 @@ export function CreateRoadtourEventDialog({
                         end_date: endDate,
                         status,
                         duplicate_policy: duplicatePolicy,
+                        product_category_id: productCategoryId,
                         ...rewardReleasePayload,
                     }),
                 })
@@ -156,17 +199,25 @@ export function CreateRoadtourEventDialog({
                 toast({ title: 'RoadTour Event updated', description: `"${result.data.name}" has been updated.` })
                 onSaved?.(result.data)
             } else {
-                const created = await createRoadtourRun(supabase, {
-                    org_id: orgId,
-                    name,
-                    description,
-                    start_date: startDate,
-                    end_date: endDate,
-                    status,
-                    duplicate_policy: duplicatePolicy,
-                    ...rewardReleasePayload,
-                    created_by: createdBy,
+                const response = await fetch('/api/roadtour/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        org_id: orgId,
+                        name,
+                        description,
+                        start_date: startDate,
+                        end_date: endDate,
+                        status,
+                        duplicate_policy: duplicatePolicy,
+                        product_category_id: productCategoryId,
+                        ...rewardReleasePayload,
+                        created_by: createdBy,
+                    }),
                 })
+                const result = await response.json().catch(() => null)
+                if (!response.ok || !result?.success) throw new Error(result?.error || 'Failed to create event.')
+                const created = result.data as RoadtourRun
                 toast({ title: 'RoadTour Event created', description: `"${created.name}" is ready.` })
                 onCreated?.(created)
             }
@@ -201,6 +252,50 @@ export function CreateRoadtourEventDialog({
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. RoadTour 2026"
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div>
+                            <Label className="text-xs">Product Category *</Label>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                                Selected category determines the mobile RoadTour interface shown to participants.
+                            </p>
+                        </div>
+                        {categoriesLoading ? (
+                            <div className="flex h-20 items-center justify-center rounded-lg border"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                        ) : (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {categories.map((category) => {
+                                    const available = isRoadtourCategorySelectable(category)
+                                    const selected = category.id === productCategoryId
+                                    return (
+                                        <button
+                                            key={category.id}
+                                            type="button"
+                                            disabled={!available}
+                                            aria-pressed={selected}
+                                            onClick={() => setProductCategoryId(category.id)}
+                                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200'} ${available ? 'hover:border-primary/60' : 'cursor-not-allowed bg-slate-50 opacity-65'}`}
+                                        >
+                                            <SafeImage
+                                                src={category.image_url}
+                                                alt={category.category_name}
+                                                className="h-10 w-10 rounded-md object-cover"
+                                                fallbackClassName="bg-slate-100"
+                                                fallbackIconClassName="h-5 w-5 text-slate-500"
+                                            />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm font-medium">{category.category_name}</span>
+                                                <Badge variant={available ? 'default' : 'secondary'} className="mt-1 text-[10px]">
+                                                    {available ? 'Available' : 'Coming soon'}
+                                                </Badge>
+                                            </span>
+                                            {selected && <Check className="h-4 w-4 text-primary" />}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-1.5">

@@ -6,10 +6,9 @@ import {
     validateShopRequestForm,
 } from '@/lib/shop-requests/core'
 import { createShopOrganization, findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
+import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 
 export const dynamic = 'force-dynamic'
-
-const SHOP_CREATED_NOTIFICATION_CHANNELS = ['whatsapp', 'sms', 'email'] as const
 
 /**
  * POST /api/shops/create
@@ -86,19 +85,12 @@ export async function POST(request: NextRequest) {
                 created_at: new Date().toLocaleString('en-GB'),
             }
 
-            for (const channel of SHOP_CREATED_NOTIFICATION_CHANNELS) {
-                await adminClient.from('notifications_outbox').insert({
-                    org_id: parentOrgId,
-                    event_code: 'user_created_shop',
-                    channel,
-                    payload_json: payload,
-                    priority: 'normal',
-                    status: 'queued',
-                    retry_count: 0,
-                    max_retries: 3,
-                    created_at: new Date().toISOString(),
-                })
-            }
+            await queueNotificationEvent(adminClient, {
+                orgId: parentOrgId,
+                eventCode: 'user_created_shop',
+                payload,
+                dedupePayload: { shop_name: createdOrganization.org_name },
+            })
 
             fetch(`${request.nextUrl.origin}/api/cron/notification-outbox-worker`).catch(() => { })
         } catch (notificationError) {

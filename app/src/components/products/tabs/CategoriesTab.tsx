@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
-import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Package, ImageOff } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import CategoryDialog from '../dialogs/CategoryDialog'
-import { getStorageUrl } from '@/lib/utils'
+import SafeImage from '@/components/shared/SafeImage'
 
 interface Category {
   id: string
@@ -37,7 +37,6 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [sortColumn, setSortColumn] = useState<string>('category_name')
-  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set())
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
   const { isReady, supabase } = useSupabaseAuth()
@@ -345,18 +344,13 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
                 <TableRow key={category.id} className="hover:bg-gray-50">
                   <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell className="text-center">
-                    {category.image_url && !brokenImages.has(category.id) ? (
-                      <img
-                        src={getStorageUrl(category.image_url) || category.image_url}
-                        alt={category.category_name}
-                        className="w-10 h-10 rounded-lg object-cover mx-auto border border-gray-100"
-                        onError={() => setBrokenImages(prev => new Set(prev).add(category.id))}
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mx-auto">
-                        <Package className="w-4 h-4 text-gray-400" />
-                      </div>
-                    )}
+                    <SafeImage
+                      src={category.image_url}
+                      alt={category.category_name}
+                      className="w-10 h-10 rounded-lg object-cover mx-auto border border-gray-100"
+                      fallbackClassName="bg-gray-100"
+                      fallbackIconClassName="w-4 h-4 text-gray-400"
+                    />
                   </TableCell>
                   <TableCell className="text-sm">{category.category_name}</TableCell>
                   <TableCell className="text-xs text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>

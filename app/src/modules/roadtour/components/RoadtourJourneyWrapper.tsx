@@ -1,6 +1,8 @@
 'use client'
 
 import PremiumLoyaltyTemplate from '@/components/journey/templates/PremiumLoyaltyTemplate'
+import RoadTourPetFoodExperience from '@/components/journey/petfood/RoadTourPetFoodExperience'
+import type { RoadtourExperience } from '@/lib/roadtour/experience-registry'
 
 interface RoadtourContext {
     token: string
@@ -19,6 +21,7 @@ interface RoadtourContext {
 interface Props {
     roadtourContext: RoadtourContext
     orgId: string
+    experience: RoadtourExperience
 }
 
 /**
@@ -29,7 +32,7 @@ interface Props {
  * The JourneyConfig is minimal — only points_enabled is turned on.
  * All other features (lucky draw, scratch card, etc.) are disabled.
  */
-export default function RoadtourJourneyWrapper({ roadtourContext, orgId }: Props) {
+export default function RoadtourJourneyWrapper({ roadtourContext, orgId, experience }: Props) {
     const config = {
         welcome_title: roadtourContext.campaign_name,
         welcome_message: `Claim your bonus points from ${roadtourContext.account_manager_name}`,
@@ -42,7 +45,16 @@ export default function RoadtourJourneyWrapper({ roadtourContext, orgId }: Props
         require_security_code: false,
     }
 
-    return (
+    // Pet Food RoadTour Events render the Ellbow interface, reusing the exact
+    // same RoadTour claim/enrollment/duplicate-protection machinery via the
+    // roadtourContext prop (no RoadTour business logic is forked or duplicated).
+    if (experience.key === 'pet_food') {
+        return <RoadTourPetFoodExperience roadtourContext={roadtourContext} orgId={orgId} />
+    }
+
+    // Vape (and every legacy / unmapped category that falls back to Vape)
+    // intentionally reuses the established RoadTour mobile journey unchanged.
+    if (experience.key === 'vape') return (
         <PremiumLoyaltyTemplate
             config={config}
             qrCode={roadtourContext.token}
@@ -56,4 +68,6 @@ export default function RoadtourJourneyWrapper({ roadtourContext, orgId }: Props
             roadtourContext={roadtourContext}
         />
     )
+
+    return null
 }

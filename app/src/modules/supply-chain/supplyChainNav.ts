@@ -30,6 +30,7 @@ import {
     Trophy,
     type LucideIcon,
 } from 'lucide-react'
+import { canOpenOrderEditor } from './h2m-access'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -176,11 +177,22 @@ export function canAccessSupplyChainView(
     roleLevel?: number,
 ): boolean {
     if (viewId === 'supply-chain') return true
+    if (viewId === 'create-order') return canOpenOrderEditor(roleLevel)
+    if (viewId === 'view-order' || viewId === 'track-order') return canOpenOrderEditor(roleLevel)
 
     return supplyChainNavGroups.some((group) => {
         if (!matchesAccess(group.access, orgType, roleLevel)) return false
         return group.children.some((child) => child.id === viewId && matchesAccess(child.access, orgType, roleLevel))
     })
+}
+
+export function resolveSupplyChainDeepLink(view?: string | null, orderId?: string | null) {
+    const isOrderView = view === 'view-order' || view === 'track-order'
+    const normalizedOrderId = String(orderId || '').trim()
+    if (!isOrderView || !normalizedOrderId) {
+        return { initialView: 'supply-chain', initialOrderId: undefined }
+    }
+    return { initialView: view, initialOrderId: normalizedOrderId }
 }
 
 // ── Flat list helpers ────────────────────────────────────────────

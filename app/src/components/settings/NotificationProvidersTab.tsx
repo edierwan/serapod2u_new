@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import WhatsAppSubTabs from './WhatsAppSubTabs'
 import {
   Save,
-  MessageCircle,
   MessageSquare,
   Mail,
   Loader2,
@@ -24,7 +24,11 @@ import {
   EyeOff,
   TestTube,
   Shield,
-  AlertTriangle
+  AlertTriangle,
+  Send,
+  HelpCircle,
+  Check,
+  Info
 } from 'lucide-react'
 
 interface ProviderConfig {
@@ -70,17 +74,85 @@ const PROVIDERS = {
     { value: 'local_my', label: 'Local Malaysian Provider', description: 'Malaysian SMS gateway' }
   ],
   email: [
-    { value: 'gmail', label: 'Gmail', description: 'Gmail with OAuth2 (Free: 500 emails/day)' },
-    { value: 'sendgrid', label: 'SendGrid', description: 'SendGrid Email API (Twilio)' },
-    { value: 'aws_ses', label: 'AWS SES', description: 'Amazon Simple Email Service' },
-    { value: 'resend', label: 'Resend', description: 'Resend Email API' },
-    { value: 'postmark', label: 'Postmark', description: 'Postmark Transactional Email' },
-    { value: 'mailgun', label: 'Mailgun', description: 'Mailgun Email Service' }
+    { value: 'smtp', label: 'Use My Domain (SMTP)', description: 'Use your own domain with SMTP', icon: '/images/serapod_notification_icons/provider-own-domain-smtp.svg' },
+    { value: 'gmail', label: 'Gmail OAuth2', description: 'Secure OAuth2 authentication', icon: '/images/serapod_notification_icons/provider-gmail-oauth2.svg' },
+    { value: 'sendgrid', label: 'SendGrid', description: 'Reliable email delivery', icon: '/images/serapod_notification_icons/provider-sendgrid.svg' },
+    { value: 'aws_ses', label: 'AWS SES', description: 'Scalable email service', icon: '/images/serapod_notification_icons/provider-aws-ses.svg' },
+    { value: 'resend', label: 'Resend', description: 'Modern email API', icon: '/images/serapod_notification_icons/provider-resend.svg' },
+    { value: 'postmark', label: 'Postmark', description: 'Transactional email service', icon: '/images/serapod_notification_icons/provider-postmark.svg' },
+    { value: 'mailgun', label: 'Mailgun', description: 'Developer-friendly API', icon: '/images/serapod_notification_icons/provider-mailgun.svg' }
   ]
+}
+
+const NOTIFICATION_ICON_BASE = '/images/serapod_notification_icons'
+
+const STATUS_ICONS: Record<string, string> = {
+  Valid: `${NOTIFICATION_ICON_BASE}/status-valid.svg`,
+  Pending: `${NOTIFICATION_ICON_BASE}/status-pending.svg`,
+  Missing: `${NOTIFICATION_ICON_BASE}/status-missing.svg`
+}
+
+const SMTP_DEFAULTS = {
+  domain: 'serapod2u.com',
+  from_name: 'Serapod2U',
+  from_email: 'no-reply@serapod2u.com',
+  reply_to: 'admin@serapod2u.com',
+  smtp_host: 'mail.getouch.co',
+  port: 587,
+  security: 'starttls',
+  username: 'no-reply@serapod2u.com'
+}
+
+type NotificationChannel = 'whatsapp' | 'sms' | 'email'
+
+const WHATSAPP_PROVIDER_FROM_URL: Record<string, string> = {
+  meta: 'whatsapp_business',
+  'baileys-hostinger': 'baileys',
+  'baileys-home': 'baileys_home',
+  twilio: 'twilio',
+  messagebird: 'messagebird'
+}
+
+const WHATSAPP_PROVIDER_TO_URL: Record<string, string> = {
+  whatsapp_business: 'meta',
+  baileys: 'baileys-hostinger',
+  baileys_home: 'baileys-home',
+  twilio: 'twilio',
+  messagebird: 'messagebird'
+}
+
+const WHATSAPP_PROVIDER_LABELS: Record<string, string> = {
+  whatsapp_business: 'Meta Official API',
+  baileys: 'Baileys — Hostinger',
+  baileys_home: 'Baileys — Home',
+  twilio: 'Twilio',
+  messagebird: 'MessageBird'
+}
+
+const normalizeSmtpConfig = (config: Record<string, any> = {}) => {
+  const savedConfig = { ...config }
+  delete savedConfig.mail_host
+  const normalized = { ...SMTP_DEFAULTS, ...savedConfig }
+
+  if (!normalized.smtp_host || (
+    normalized.domain === SMTP_DEFAULTS.domain &&
+    normalized.smtp_host === 'mail.serapod2u.com'
+  )) {
+    normalized.smtp_host = SMTP_DEFAULTS.smtp_host
+  }
+
+  return normalized
 }
 
 export default function NotificationProvidersTab({ userProfile }: NotificationProvidersTabProps) {
   const { supabase, isReady } = useSupabaseAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const requestedChannel = searchParams.get('channel')
+  const [selectedChannel, setSelectedChannel] = useState<NotificationChannel>(() => {
+    if (requestedChannel === 'whatsapp' || requestedChannel === 'sms' || requestedChannel === 'email') return requestedChannel
+    return 'whatsapp'
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
@@ -93,6 +165,8 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   // Gmail usage tracking
   const [emailUsageToday, setEmailUsageToday] = useState(0)
   const [emailUsageLoading, setEmailUsageLoading] = useState(false)
+  const [testEmail, setTestEmail] = useState('')
+  const [emailAction, setEmailAction] = useState<'connection' | 'test-email' | null>(null)
 
   // Form states for sensitive data (not stored in state)
   const [sensitiveData, setSensitiveData] = useState<Record<string, Record<string, string>>>({
@@ -108,6 +182,34 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  useEffect(() => {
+    if (requestedChannel === 'whatsapp' || requestedChannel === 'sms' || requestedChannel === 'email') {
+      setSelectedChannel(requestedChannel)
+      window.localStorage.setItem('notification-provider-channel', requestedChannel)
+    } else {
+      const remembered = window.localStorage.getItem('notification-provider-channel')
+      if (remembered === 'whatsapp' || remembered === 'sms' || remembered === 'email') setSelectedChannel(remembered)
+    }
+  }, [requestedChannel])
+
+  const handleChannelChange = (channel: string) => {
+    const nextChannel = channel as NotificationChannel
+    setSelectedChannel(nextChannel)
+    window.localStorage.setItem('notification-provider-channel', nextChannel)
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('channel', nextChannel)
+    if (nextChannel === 'whatsapp') {
+      const provider = whatsappConfig?.provider_name || 'whatsapp_business'
+      params.set('provider', WHATSAPP_PROVIDER_TO_URL[provider] || 'meta')
+      params.set('tab', provider === 'baileys' || provider === 'baileys_home' ? 'status' : 'configuration')
+    } else {
+      params.delete('provider')
+      params.delete('tab')
+    }
+    router.push(`?${params.toString()}`, { scroll: false })
+  }
 
   const loadEmailUsage = async () => {
     if (!isReady) return
@@ -141,17 +243,60 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
 
       if (error) throw error
 
+      let hasEmailConfig = false
+      const parseSensitiveConfig = (config: any) => {
+        if (!config?.config_encrypted) return {}
+        try {
+          return typeof config.config_encrypted === 'string'
+            ? JSON.parse(config.config_encrypted)
+            : config.config_encrypted
+        } catch (parseError) {
+          console.error('Failed to parse sensitive data', parseError)
+          return {}
+        }
+      }
+
+      const whatsappRecords = data?.filter((config: any) => config.channel === 'whatsapp') || []
+      const requestedProvider = WHATSAPP_PROVIDER_FROM_URL[searchParams.get('provider') || '']
+      const rememberedProvider = typeof window !== 'undefined'
+        ? window.localStorage.getItem('notification-provider-whatsapp')
+        : null
+      const selectedWhatsapp = requestedProvider
+        ? whatsappRecords.find((config: any) => config.provider_name === requestedProvider)
+        : whatsappRecords.find((config: any) => config.is_active) ||
+          whatsappRecords.find((config: any) => config.provider_name === rememberedProvider) ||
+          whatsappRecords.find((config: any) => config.provider_name === 'whatsapp_business')
+
+      if (selectedWhatsapp) {
+        setWhatsappConfig({
+          id: selectedWhatsapp.id,
+          org_id: selectedWhatsapp.org_id,
+          channel: 'whatsapp',
+          provider_name: selectedWhatsapp.provider_name,
+          is_active: selectedWhatsapp.is_active,
+          is_sandbox: selectedWhatsapp.is_sandbox,
+          config_public: selectedWhatsapp.config_public || {},
+          last_test_status: selectedWhatsapp.last_test_status,
+          last_test_at: selectedWhatsapp.last_test_at,
+          last_test_error: selectedWhatsapp.last_test_error
+        })
+        setSensitiveData(prev => ({ ...prev, whatsapp: parseSensitiveConfig(selectedWhatsapp) }))
+      } else {
+        setWhatsappConfig({
+          org_id: userProfile.organizations.id,
+          channel: 'whatsapp',
+          provider_name: requestedProvider || 'whatsapp_business',
+          is_active: false,
+          is_sandbox: true,
+          config_public: {}
+        })
+        setSensitiveData(prev => ({ ...prev, whatsapp: {} }))
+      }
+
       // Separate by channel
       data?.forEach((config: any) => {
-        let sensitive = {};
-        try {
-          // Try to parse sensitive data if it was stored as JSON string
-          if (config.config_encrypted) { // Using config_encrypted as temp storage for now
-            sensitive = JSON.parse(config.config_encrypted);
-          }
-        } catch (e) {
-          console.error('Failed to parse sensitive data', e);
-        }
+        if (config.channel === 'whatsapp') return
+        const sensitive = parseSensitiveConfig(config)
 
         const providerConfig: ProviderConfig = {
           id: config.id,
@@ -160,7 +305,9 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
           provider_name: config.provider_name,
           is_active: config.is_active,
           is_sandbox: config.is_sandbox,
-          config_public: config.config_public || {},
+          config_public: config.channel === 'email' && config.provider_name === 'smtp'
+            ? normalizeSmtpConfig(config.config_public)
+            : (config.config_public || {}),
           last_test_status: config.last_test_status,
           last_test_at: config.last_test_at,
           last_test_error: config.last_test_error
@@ -173,17 +320,26 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         }));
 
         switch (config.channel) {
-          case 'whatsapp':
-            setWhatsappConfig(providerConfig)
-            break
           case 'sms':
             setSmsConfig(providerConfig)
             break
           case 'email':
+            hasEmailConfig = true
             setEmailConfig(providerConfig)
             break
         }
       })
+
+      if (!hasEmailConfig) {
+        setEmailConfig({
+          org_id: userProfile.organizations.id,
+          channel: 'email',
+          provider_name: 'smtp',
+          is_active: false,
+          is_sandbox: true,
+          config_public: normalizeSmtpConfig()
+        })
+      }
     } catch (error) {
       console.error('Error loading provider configs:', error)
       alert('Failed to load provider configurations')
@@ -192,11 +348,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     }
   }
 
-  const handleSaveProvider = async (channel: 'whatsapp' | 'sms' | 'email') => {
+  const handleSaveProvider = async (channel: 'whatsapp' | 'sms' | 'email', configOverride?: ProviderConfig) => {
     if (!isReady) return
 
-    const config = channel === 'whatsapp' ? whatsappConfig :
+    const config = configOverride || (channel === 'whatsapp' ? whatsappConfig :
       channel === 'sms' ? smsConfig : emailConfig
+    )
 
     if (!config) return
 
@@ -340,9 +497,107 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
     }
   }
 
+  const selectEmailProvider = (providerName: string) => {
+    setEmailConfig({
+      ...emailConfig,
+      org_id: userProfile.organizations.id,
+      channel: 'email',
+      provider_name: providerName,
+      is_active: emailConfig?.is_active || false,
+      is_sandbox: emailConfig?.is_sandbox !== false,
+      config_public: providerName === 'smtp'
+        ? normalizeSmtpConfig(emailConfig?.provider_name === 'smtp' ? emailConfig.config_public : {})
+        : (emailConfig?.provider_name === providerName ? emailConfig.config_public : {})
+    })
+  }
+
+  const handleEmailAction = async (action: 'connection' | 'test-email') => {
+    if (!emailConfig) return
+
+    if (emailConfig.provider_name !== 'smtp') {
+      alert('Connection and test-email support for this provider is not implemented yet. You can still save its existing configuration.')
+      return
+    }
+
+    if (action === 'test-email' && !testEmail.trim()) {
+      alert('Enter an email address for the test message.')
+      return
+    }
+
+    try {
+      setEmailAction(action)
+      const response = await fetch('/api/settings/notifications/providers/email/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          to: action === 'test-email' ? testEmail.trim() : undefined,
+          config: emailConfig.config_public,
+          credentials: { password: sensitiveData.email.password || '' }
+        })
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Email provider test failed')
+
+      setEmailConfig({
+        ...emailConfig,
+        last_test_status: 'success',
+        last_test_at: new Date().toISOString(),
+        last_test_error: undefined
+      })
+      alert(action === 'connection' ? 'SMTP connection verified successfully.' : 'Test email sent successfully.')
+    } catch (error: any) {
+      setEmailConfig({
+        ...emailConfig,
+        last_test_status: 'failed',
+        last_test_at: new Date().toISOString(),
+        last_test_error: error.message
+      })
+      alert(`Email test failed: ${error.message}`)
+    } finally {
+      setEmailAction(null)
+    }
+  }
+
+  const handleActivateEmailProvider = async () => {
+    if (!emailConfig) return
+
+    // Save the updated active state directly to avoid waiting for React state propagation.
+    const activeConfig = { ...emailConfig, is_active: true }
+    const originalConfig = emailConfig
+    setEmailConfig(activeConfig)
+    try {
+      setSaving(true)
+      const saveData = {
+        id: activeConfig.id,
+        org_id: userProfile.organizations.id,
+        channel: activeConfig.channel,
+        provider_name: activeConfig.provider_name,
+        is_active: true,
+        is_sandbox: activeConfig.is_sandbox,
+        config_public: activeConfig.config_public,
+        config_encrypted: JSON.stringify(sensitiveData.email),
+        config_iv: 'placeholder-iv',
+        updated_at: new Date().toISOString(),
+        created_by: userProfile.id
+      }
+      const { error } = await (supabase as any)
+        .from('notification_provider_configs')
+        .upsert(saveData, { onConflict: saveData.id ? 'id' : 'org_id,channel,provider_name' })
+      if (error) throw error
+      alert('Email provider saved and set as active.')
+      await loadProviderConfigs()
+    } catch (error: any) {
+      setEmailConfig(originalConfig)
+      alert(`Failed to activate provider: ${error.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // Handler for WhatsApp save from sub-tabs
-  const handleWhatsAppSave = async () => {
-    await handleSaveProvider('whatsapp')
+  const handleWhatsAppSave = async (configOverride?: ProviderConfig) => {
+    await handleSaveProvider('whatsapp', configOverride)
   }
 
   const renderWhatsAppConfig = () => (
@@ -893,47 +1148,47 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   )
 
   const renderEmailConfig = () => (
-    <div className="space-y-6">
-      <Card>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <Card className="overflow-hidden border-slate-200 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-orange-600" />
-            Email Configuration
+            Email Delivery Setup
           </CardTitle>
           <CardDescription>
-            Configure your email service provider for sending email notifications
+            Configure how Serapod2U sends emails to your users.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Provider Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="email-provider">Email Provider</Label>
-            <Select
-              value={emailConfig?.provider_name || ''}
-              onValueChange={(value) => setEmailConfig({
-                ...emailConfig!,
-                org_id: userProfile.organizations.id,
-                channel: 'email',
-                provider_name: value,
-                is_active: emailConfig?.is_active || false,
-                is_sandbox: emailConfig?.is_sandbox !== false,
-                config_public: emailConfig?.config_public || {}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-xs text-white">1</span>
+              Choose Email Provider
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:grid-cols-7">
+              {PROVIDERS.email.map((provider) => {
+                const selected = emailConfig?.provider_name === provider.value
+                return (
+                  <button
+                    key={provider.value}
+                    type="button"
+                    onClick={() => selectEmailProvider(provider.value)}
+                    className={`relative min-h-40 rounded-xl border bg-white px-3 py-4 text-center transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm ${selected ? 'border-violet-500 ring-2 ring-violet-100' : 'border-slate-200'}`}
+                  >
+                    <span className={`absolute left-3 top-3 h-4 w-4 rounded-full border ${selected ? 'border-violet-600 bg-violet-600 shadow-[inset_0_0_0_3px_white]' : 'border-slate-300'}`} />
+                    {provider.value === 'smtp' && (
+                      <span className="absolute right-2 top-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Recommended</span>
+                    )}
+                    <span className={`mx-auto mt-4 flex h-11 w-11 items-center justify-center rounded-lg ${selected ? 'bg-violet-50' : 'bg-slate-50'}`}>
+                      <img src={provider.icon} alt={`${provider.label} icon`} className="h-9 w-9 object-contain" />
+                    </span>
+                    <span className="mt-3 block text-sm font-semibold leading-5 text-slate-900">{provider.label}</span>
+                    <span className="mt-1 block text-xs leading-4 text-slate-500">{provider.description}</span>
+                  </button>
+                )
               })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select Email provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {PROVIDERS.email.map(provider => (
-                  <SelectItem key={provider.value} value={provider.value}>
-                    <div>
-                      <div className="font-medium">{provider.label}</div>
-                      <div className="text-xs text-gray-500">{provider.description}</div>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            </div>
           </div>
 
           {emailConfig?.provider_name && (
@@ -962,6 +1217,79 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                   <Badge variant="secondary" className="text-xs">Test</Badge>
                 </div>
               </div>
+
+              {/* SMTP */}
+              {emailConfig.provider_name === 'smtp' && (
+                <div className="space-y-4 border-t border-slate-100 pt-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 text-xs text-white">2</span>
+                      Configure Your Domain (SMTP)
+                    </div>
+                    <span className="text-xs text-slate-500">Credentials stay masked and are only sent to the server when saved or tested.</span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label>Domain</Label>
+                      <Input value={emailConfig.config_public.domain || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, domain: e.target.value } })} />
+                      <p className="text-xs text-slate-500">Domain used for sending email.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>SMTP server hostname</Label>
+                      <Input value={emailConfig.config_public.smtp_host || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, smtp_host: e.target.value } })} />
+                      <p className="text-xs text-slate-500">Use the main Mailcow hostname with a valid TLS certificate. Sender email can still use your selected domain.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>From name</Label>
+                      <Input value={emailConfig.config_public.from_name || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, from_name: e.target.value } })} />
+                      <p className="text-xs text-slate-500">Name recipients will see.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>From email</Label>
+                      <Input type="email" value={emailConfig.config_public.from_email || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, from_email: e.target.value } })} />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-1 xl:col-span-2">
+                      <Label>Reply-to email</Label>
+                      <Input type="email" value={emailConfig.config_public.reply_to || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, reply_to: e.target.value } })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Port</Label>
+                      <Input type="number" value={emailConfig.config_public.port || 587} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, port: Number(e.target.value) } })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Security</Label>
+                      <Select value={emailConfig.config_public.security || 'starttls'} onValueChange={(value) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, security: value } })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="starttls">STARTTLS</SelectItem>
+                          <SelectItem value="ssl">SSL / TLS</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-1 xl:col-span-2">
+                      <Label>Username</Label>
+                      <Input value={emailConfig.config_public.username || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, username: e.target.value } })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Password</Label>
+                      <div className="relative">
+                        <Input
+                          className="pr-10"
+                          type={showSecrets.email_smtp_password ? 'text' : 'password'}
+                          autoComplete="new-password"
+                          placeholder={sensitiveData.email.password ? '••••••••••••' : 'Enter SMTP password'}
+                          value={sensitiveData.email.password || ''}
+                          onChange={(e) => setSensitiveData({ ...sensitiveData, email: { ...sensitiveData.email, password: e.target.value } })}
+                        />
+                        <button type="button" aria-label="Toggle password visibility" className="absolute right-3 top-2.5 text-slate-400" onClick={() => setShowSecrets({ ...showSecrets, email_smtp_password: !showSecrets.email_smtp_password })}>
+                          {showSecrets.email_smtp_password ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Gmail */}
               {emailConfig.provider_name === 'gmail' && (
@@ -1656,57 +1984,30 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
               )}
 
               {/* Test & Save Buttons */}
-              <div className="flex items-center justify-between pt-4 border-t">
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleTestProvider('email')}
-                    disabled={saving}
-                  >
-                    <TestTube className="w-4 h-4 mr-2" />
-                    Test Configuration
-                  </Button>
-                  {emailConfig.last_test_status && (
-                    <div className="flex items-center gap-2">
-                      {emailConfig.last_test_status === 'success' && (
-                        <Badge className="bg-green-600 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Last test passed
-                        </Badge>
-                      )}
-                      {emailConfig.last_test_status === 'failed' && (
-                        <Badge variant="destructive" className="flex items-center gap-1">
-                          <XCircle className="w-3 h-3" />
-                          Last test failed
-                        </Badge>
-                      )}
-                      {emailConfig.last_test_status === 'pending' && (
-                        <Badge variant="secondary" className="flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          Not configured
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <Button onClick={() => handleSaveProvider('email')} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Provider Configuration
-                    </>
-                  )}
+              <div className="grid gap-3 border-t pt-5 sm:grid-cols-3">
+                <Button type="button" variant="outline" onClick={() => handleEmailAction('connection')} disabled={saving || emailAction !== null}>
+                  {emailAction === 'connection' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
+                  Test Connection
                 </Button>
+                <Button type="button" variant="outline" onClick={() => handleSaveProvider('email')} disabled={saving}>
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Configuration
+                </Button>
+                <Button type="button" className="bg-violet-600 hover:bg-violet-700" onClick={handleActivateEmailProvider} disabled={saving}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Set as Active Provider
+                </Button>
+                {emailConfig.last_test_status && (
+                  <div className="sm:col-span-3">
+                    <Badge className={emailConfig.last_test_status === 'success' ? 'bg-emerald-600' : 'bg-red-600'}>
+                      {emailConfig.last_test_status === 'success' ? 'Last connection test passed' : `Last test failed${emailConfig.last_test_error ? `: ${emailConfig.last_test_error}` : ''}`}
+                    </Badge>
+                  </div>
+                )}
               </div>
 
               {/* Setup Guide */}
-              <Card className="bg-blue-50 border-blue-200">
+              {emailConfig.provider_name !== 'smtp' && <Card className="bg-blue-50 border-blue-200">
                 <CardHeader>
                   <CardTitle className="text-sm">Email Provider Setup Guide</CardTitle>
                 </CardHeader>
@@ -1789,11 +2090,64 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     </ol>
                   )}
                 </CardContent>
-              </Card>
+              </Card>}
             </>
           )}
         </CardContent>
       </Card>
+      <aside className="space-y-4">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base"><img src={`${NOTIFICATION_ICON_BASE}/domain-dns-status.svg`} alt="Domain and DNS status icon" className="h-6 w-6 object-contain" />Domain &amp; DNS Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[
+              ['MX Record', 'Valid'],
+              ['SPF Record', 'Valid'],
+              ['DKIM Record', 'Valid'],
+              ['DMARC Record', 'Pending'],
+              ['PTR / Reverse DNS', 'Valid']
+            ].map(([label, status]) => (
+              <div key={label} className="flex items-center justify-between gap-3 text-sm">
+                <span className="flex items-center gap-1.5 font-medium text-slate-700">{label}<HelpCircle className="h-3.5 w-3.5 text-slate-400" /></span>
+                <Badge variant="outline" className={status === 'Valid' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
+                  <img src={STATUS_ICONS[status]} alt={`${status} status`} className="mr-1 h-3.5 w-3.5 object-contain" />
+                  {status}
+                </Badge>
+              </div>
+            ))}
+            <p className="rounded-lg bg-emerald-50 p-2 text-xs leading-4 text-emerald-800">PTR and the main SMTP host point to <span className="font-semibold">mail.getouch.co</span>. Sender addresses may use <span className="font-semibold">serapod2u.com</span> because Mailcow supports multiple domains.</p>
+            <p className="rounded-lg bg-slate-50 p-2 text-xs leading-4 text-slate-500">Status values are placeholders until DNS verification is connected.</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><img src={`${NOTIFICATION_ICON_BASE}/test-email.svg`} alt="Test email icon" className="h-6 w-6 object-contain" />Test Email</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="email-test-recipient">Send test to</Label>
+              <Input id="email-test-recipient" type="email" placeholder="name@example.com" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+            </div>
+            <Button type="button" variant="outline" className="w-full border-violet-300 text-violet-700 hover:bg-violet-50" onClick={() => handleEmailAction('test-email')} disabled={emailAction !== null}>
+              {emailAction === 'test-email' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Send Test Email
+            </Button>
+            <p className="text-xs leading-5 text-slate-500">Use this to verify inbox delivery before enabling for OTP and notifications.</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><img src={`${NOTIFICATION_ICON_BASE}/email-usage.svg`} alt="Email usage icon" className="h-6 w-6 object-contain" />Email Usage</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {['OTP / Registration', 'Password Reset', 'System Notifications', 'WhatsApp Fallback'].map((usage) => (
+              <div key={usage} className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-violet-600"><Check className="h-3 w-3 text-white" /></span>
+                {usage}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </aside>
     </div>
   )
 
@@ -1807,6 +2161,21 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       </Card>
     )
   }
+
+  const whatsappProviderLabel = WHATSAPP_PROVIDER_LABELS[whatsappConfig?.provider_name || ''] || 'Meta Official API'
+  const isMetaSetupIncomplete = whatsappConfig?.provider_name === 'whatsapp_business' && !(
+    whatsappConfig.config_public?.phone_number_id &&
+    whatsappConfig.config_public?.waba_id &&
+    sensitiveData.whatsapp.access_token
+  )
+  const whatsappStatus = whatsappConfig?.last_test_status === 'failed'
+    ? 'Error'
+    : whatsappConfig?.is_active
+      ? 'Active'
+      : isMetaSetupIncomplete ? 'Setup incomplete' : 'Configured'
+  const emailStatus = emailConfig?.last_test_status === 'failed'
+    ? 'Error'
+    : emailConfig?.is_active ? 'Active' : 'Setup incomplete'
 
   return (
     <div className="space-y-6">
@@ -1828,23 +2197,32 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
         </CardHeader>
       </Card>
 
+      <div className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/70 px-4 py-3 text-sm text-slate-700">
+        <Info className="h-4 w-4 shrink-0 text-violet-600" />
+        Official WhatsApp API uses Meta Cloud API configuration. Baileys providers keep their linked-device QR flow.
+      </div>
+
       {/* Provider Tabs */}
-      <Tabs defaultValue="whatsapp" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="whatsapp" className="flex items-center gap-2">
-            <MessageCircle className="w-4 h-4" />
-            WhatsApp
-            {whatsappConfig?.is_active && <Badge className="ml-2 h-5 px-1.5 bg-green-600">Active</Badge>}
+      <Tabs value={selectedChannel} onValueChange={handleChannelChange} className="space-y-6">
+        <TabsList className="grid h-auto w-full grid-cols-1 gap-3 bg-transparent p-0 md:grid-cols-3">
+          <TabsTrigger value="whatsapp" className="flex min-h-20 items-center justify-start gap-3 rounded-xl border border-slate-200 bg-white px-5 text-left shadow-sm data-[state=active]:border-violet-500 data-[state=active]:ring-2 data-[state=active]:ring-violet-100">
+            <img src={`${NOTIFICATION_ICON_BASE}/channel-whatsapp.svg`} alt="WhatsApp channel icon" className="h-9 w-9 object-contain" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">WhatsApp</span>
+              <span className="block truncate text-xs font-normal text-slate-500">Provider: {whatsappProviderLabel}</span>
+              <span className="mt-1 block text-[11px] font-semibold text-violet-600">{isMetaSetupIncomplete ? 'Continue Setup' : 'Manage'}</span>
+            </span>
+            <Badge className={`ml-2 h-5 shrink-0 px-1.5 ${whatsappStatus === 'Active' ? 'bg-green-600' : whatsappStatus === 'Error' ? 'bg-red-600' : 'bg-amber-500'}`}>{whatsappStatus}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="sms" className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />
-            SMS
+          <TabsTrigger value="sms" className="flex min-h-20 items-center justify-start gap-3 rounded-xl border border-slate-200 bg-white px-5 text-left shadow-sm data-[state=active]:border-violet-500 data-[state=active]:ring-2 data-[state=active]:ring-violet-100">
+            <img src={`${NOTIFICATION_ICON_BASE}/channel-sms.svg`} alt="SMS channel icon" className="h-9 w-9 object-contain" />
+            <span className="min-w-0 flex-1"><span className="block font-semibold">SMS</span><span className="block text-xs font-normal text-slate-500">Provider: {smsConfig?.provider_name || 'Not configured'}</span><span className="mt-1 block text-[11px] font-semibold text-violet-600">Manage</span></span>
             {smsConfig?.is_active && <Badge className="ml-2 h-5 px-1.5 bg-green-600">Active</Badge>}
           </TabsTrigger>
-          <TabsTrigger value="email" className="flex items-center gap-2">
-            <Mail className="w-4 h-4" />
-            Email
-            {emailConfig?.is_active && <Badge className="ml-2 h-5 px-1.5 bg-green-600">Active</Badge>}
+          <TabsTrigger value="email" className="flex min-h-20 items-center justify-start gap-3 rounded-xl border border-slate-200 bg-white px-5 text-left shadow-sm data-[state=active]:border-violet-500 data-[state=active]:ring-2 data-[state=active]:ring-violet-100">
+            <img src={`${NOTIFICATION_ICON_BASE}/channel-email.svg`} alt="Email channel icon" className="h-9 w-9 object-contain" />
+            <span className="min-w-0 flex-1"><span className="block font-semibold">Email</span><span className="block text-xs font-normal text-slate-500">Provider: {emailConfig?.provider_name?.toUpperCase() || 'Not configured'}</span><span className="mt-1 block text-[11px] font-semibold text-violet-600">Manage</span></span>
+            <Badge className={`ml-2 h-5 shrink-0 px-1.5 ${emailStatus === 'Active' ? 'bg-green-600' : emailStatus === 'Error' ? 'bg-red-600' : 'bg-amber-500'}`}>{emailStatus}</Badge>
           </TabsTrigger>
         </TabsList>
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
+import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 
 interface UserProfile {
   id: string
@@ -153,6 +154,7 @@ const getDefaultCaseSize = (family: string): number => {
 export default function CreateOrderView({ userProfile, onViewChange }: CreateOrderViewProps) {
   const { toast } = useToast()
   const supabase = createClient()
+  const canCreateH2M = canCreateH2MOrder(userProfile.organizations.org_type_code, userProfile.roles.role_level)
 
   // Determine order type based on user's organization type
   const [orderType, setOrderType] = useState<'H2M' | 'D2H' | 'S2D'>('H2M')
@@ -1096,6 +1098,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   }
 
   const saveOrder = async (status: 'draft' | 'submitted') => {
+    if (!editingOrderId && orderType === 'H2M' && !canCreateH2M) {
+      toast({
+        title: 'Unauthorized',
+        description: 'H2M orders can only be created by Headquarters users with access level 40 or higher.',
+        variant: 'destructive',
+      })
+      return
+    }
     try {
       // Validation
       if (!sellerOrg) {

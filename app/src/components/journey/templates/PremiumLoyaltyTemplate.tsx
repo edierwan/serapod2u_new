@@ -10,6 +10,7 @@ import { registerConsumer } from '@/lib/actions'
 import { captureRoadtourGeolocation } from '@/lib/roadtour/location-client'
 import type { RoadtourLocationPayload } from '@/lib/roadtour/location-shared'
 import { SupportChatWidgetV2 } from '@/components/support/SupportChatWidgetV2'
+import SafeImage from '@/components/shared/SafeImage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -267,6 +268,12 @@ interface PremiumLoyaltyTemplateProps {
         survey_template_id?: string | null
         require_geolocation?: boolean
     }
+    /**
+     * Optional brand skin. 'pet_food' layers Ellbow branding (verified cat
+     * hero, teal/pink wordmark) over the identical claim/points machinery.
+     * Absent / 'premium' renders the existing Vape/Premium experience unchanged.
+     */
+    experienceTheme?: 'premium' | 'pet_food'
 }
 
 interface RoadtourSurveyField {
@@ -450,9 +457,15 @@ export default function PremiumLoyaltyTemplate({
     isLive = false,
     consumerPhone,
     productInfo,
-    roadtourContext
+    roadtourContext,
+    experienceTheme = 'premium'
 }: PremiumLoyaltyTemplateProps) {
     const supabase = createClient()
+    // Optional, additive brand skin. Defaults to 'premium' so the existing
+    // Vape/Premium experience is rendered exactly as before. Only the Pet Food
+    // shell passes 'pet_food' to layer Ellbow branding on top of the unchanged
+    // claim/points/rewards machinery below.
+    const isPetFoodTheme = experienceTheme === 'pet_food'
     const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
     const previousActiveTabRef = useRef<TabType>('home')
@@ -4774,7 +4787,188 @@ export default function PremiumLoyaltyTemplate({
         )
     }
 
-    const renderHomeTab = () => (
+    // Ellbow Pet Food home tab. Distinct presentation only — it reuses the same
+    // in-scope state (points, productInfo, rewards) and the same collect/scan
+    // handlers as the Premium home tab, so claim/points logic is identical.
+    const ELLBOW_ICON = '/images/ellbow_icons_pack'
+    const renderEllbowHomeTab = () => {
+        const earned = lastEarnedPoints || pointsEarned || 0
+        const collected = Boolean(qrCode && (pointsCollected || qrPointsCollected))
+        const heroProductName = productInfo?.product_name || roadtourContext?.campaign_name
+        const productImage = config.variant_image_url || `${ELLBOW_ICON}/08-ellbow-product-pack-icon.png`
+        const progressPct = Math.min((userPoints / (nextRewardInfo.nextRewardPoints || 50000)) * 100, 100)
+        const featured = rewards.slice(0, 6)
+        return (
+            <div className="flex-1 overflow-y-auto pb-24 bg-[#f6f7f7]">
+                {/* Genuine Product Verified hero */}
+                <div
+                    className="relative px-5 pt-7 pb-10 text-white overflow-hidden"
+                    style={{ background: 'linear-gradient(135deg,#0F8B82 0%,#0D9488 55%,#16b8a6 100%)' }}
+                >
+                    <div className="absolute -right-10 -top-8 w-44 h-44 rounded-full bg-white/10" />
+                    <div className="absolute -left-8 bottom-0 w-28 h-28 rounded-full bg-white/5" />
+                    <div className="relative z-10 flex flex-col items-center text-center">
+                        <div className="flex items-end gap-2">
+                            <img src={`${ELLBOW_ICON}/04-ellbow-verified-shield-cat.png`} alt="Verified" className="w-24 h-24 object-contain drop-shadow-md" />
+                            <img src={`${ELLBOW_ICON}/01-ellbow-cat-mascot-full.png`} alt="Ellbow" className="w-16 h-16 object-contain -mb-1 opacity-95" />
+                        </div>
+                        <h1 className="mt-2 text-[26px] font-extrabold leading-tight tracking-tight">
+                            Genuine Product <span className="block">Verified!</span>
+                        </h1>
+                        <p className="mt-1 text-white/85 text-sm">
+                            This <span className="font-bold lowercase">ellbow</span> product is authentic.
+                        </p>
+                    </div>
+                </div>
+
+                {/* Product card (real data only) */}
+                {heroProductName && (
+                    <div className="px-5 -mt-6 relative z-20">
+                        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-xl bg-[#0d9488]/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                                <img src={productImage} alt={heroProductName} className="w-full h-full object-contain" />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-base font-bold text-gray-900 truncate">{heroProductName}</p>
+                                {productInfo?.variant_name && (
+                                    <p className="text-sm font-semibold text-[#DB2777] truncate">{productInfo.variant_name}</p>
+                                )}
+                                {productInfo?.brand_name && (
+                                    <p className="text-xs text-gray-500 truncate mt-0.5">by {productInfo.brand_name}</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Earned banner (only after a successful collect) */}
+                {collected && earned > 0 && (
+                    <div className="px-5 mt-4">
+                        <div className="rounded-2xl p-4 flex items-center gap-3 border border-pink-100" style={{ background: 'linear-gradient(135deg,#fde7f1,#ffffff)' }}>
+                            <img src={`${ELLBOW_ICON}/11-ellbow-points-reward-icon.png`} alt="" className="w-12 h-12 object-contain" />
+                            <div>
+                                <p className="text-xl font-extrabold text-[#DB2777] leading-none">+{earned} pts</p>
+                                <p className="text-xs text-gray-500 mt-1">Keep collecting for more treats!</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Your Points */}
+                <div className="px-5 mt-4">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                                <img src={`${ELLBOW_ICON}/11-ellbow-points-reward-icon.png`} alt="" className="w-9 h-9 object-contain" />
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wide text-gray-400">Your Points</p>
+                                    <p className="text-2xl font-extrabold text-gray-900 tabular-nums leading-none">{displayPoints}</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[11px] text-gray-400">Next Reward</p>
+                                <p className="text-sm font-semibold text-[#0d9488]">
+                                    {nextRewardInfo.pointsAway > 0 ? `${nextRewardInfo.pointsAway.toLocaleString()} pts away` : 'Ready to claim!'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg,#0d9488,#16b8a6)' }} />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Primary actions */}
+                <div className="px-5 mt-4 space-y-3">
+                    {config.points_enabled && (
+                        <button
+                            onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
+                            disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
+                            className="w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 font-bold text-white shadow-md transition active:scale-[0.99] disabled:opacity-60"
+                            style={{ background: 'linear-gradient(135deg,#0F8B82,#0d9488)' }}
+                        >
+                            {qrCode && (collectingPoints || checkingQrStatus) ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : collected ? (
+                                <CheckCircle2 className="w-5 h-5" />
+                            ) : (
+                                <img src={`${ELLBOW_ICON}/07-ellbow-scan-icon.png`} alt="" className="w-5 h-5 object-contain brightness-0 invert" />
+                            )}
+                            <span>
+                                {!qrCode ? 'Scan to Collect' : collectingPoints ? 'Collecting…' : checkingQrStatus ? 'Checking…' : collected ? 'Points Collected' : 'Collect Points'}
+                            </span>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setActiveTab('rewards')}
+                        className="w-full rounded-2xl py-3.5 font-bold border-2 border-[#0d9488] text-[#0d9488] bg-white transition active:scale-[0.99]"
+                    >
+                        View Rewards
+                    </button>
+                </div>
+
+                {/* Featured Rewards (real data) */}
+                <div className="px-5 mt-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <h2 className="text-lg font-bold text-gray-900">Featured Rewards</h2>
+                        <button onClick={() => setActiveTab('rewards')} className="text-sm font-semibold text-[#0d9488] flex items-center gap-1">
+                            See all <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                    {loadingRewards ? (
+                        <div className="flex gap-3 overflow-x-auto pb-2">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="flex-shrink-0 w-32 h-40 rounded-2xl bg-white border border-gray-100 animate-pulse" />
+                            ))}
+                        </div>
+                    ) : featured.length === 0 ? (
+                        <div className="rounded-2xl bg-white border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+                            No rewards available yet
+                        </div>
+                    ) : (
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
+                            {featured.map((reward) => {
+                                const points = reward.point_offer || reward.points_required
+                                const img = reward.item_image_url ? (getStorageUrl(reward.item_image_url) || reward.item_image_url) : null
+                                return (
+                                    <button
+                                        key={reward.id}
+                                        onClick={() => { setSelectedRewardForDetail(reward); setCurrentRewardImageIndex(0); setShowRewardDetailModal(true) }}
+                                        className="flex-shrink-0 w-32 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden text-left"
+                                    >
+                                        <div className="h-24 bg-[#0d9488]/5 flex items-center justify-center overflow-hidden p-2">
+                                            {img ? (
+                                                <img src={img} alt={reward.item_name} className="w-full h-full object-contain" />
+                                            ) : (
+                                                <img src={`${ELLBOW_ICON}/06-ellbow-rewards-gift-icon.png`} alt="" className="w-12 h-12 object-contain" />
+                                            )}
+                                        </div>
+                                        <div className="p-2.5">
+                                            <p className="text-xs font-semibold text-gray-800 truncate">{reward.item_name}</p>
+                                            <p className="text-xs font-bold text-[#DB2777] mt-0.5">{formatNumber(points)} pts</p>
+                                        </div>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* Brand footer */}
+                <div className="px-5 mt-6">
+                    <div className="rounded-2xl px-4 py-3 flex items-center gap-3 overflow-hidden" style={{ background: 'linear-gradient(135deg,#DB2777,#be185d)' }}>
+                        <div className="text-white">
+                            <p className="font-bold text-sm leading-tight">More scans. More points.</p>
+                            <p className="text-white/80 text-xs">Scan authentic. Stay rewarded.</p>
+                        </div>
+                        <img src={`${ELLBOW_ICON}/02-ellbow-cat-peeking.png`} alt="" className="w-14 h-14 object-contain ml-auto" />
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    const renderHomeTab = () => isPetFoodTheme ? renderEllbowHomeTab() : (
         <div className="flex-1 overflow-y-auto pb-20">
             {/* Hero Section */}
             <div
@@ -5057,16 +5251,14 @@ export default function PremiumLoyaltyTemplate({
                                 onClick={() => setActiveTab('rewards')}
                             >
                                 <div className="h-24 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center relative overflow-hidden p-2">
-                                    {reward.item_image_url ? (
-                                        <Image
-                                            src={getStorageUrl(reward.item_image_url) || reward.item_image_url}
-                                            alt={reward.item_name}
-                                            fill
-                                            className="object-contain"
-                                        />
-                                    ) : (
-                                        <Gift className="w-10 h-10 text-gray-400" />
-                                    )}
+                                    <SafeImage
+                                        src={reward.item_image_url}
+                                        alt={reward.item_name}
+                                        className="absolute inset-0 h-full w-full object-contain"
+                                        fallbackClassName="bg-gradient-to-br from-gray-100 to-gray-200"
+                                        fallbackIcon={Gift}
+                                        fallbackIconClassName="h-10 w-10 text-gray-400"
+                                    />
                                     {reward.stock_quantity !== null && reward.stock_quantity <= 5 && reward.stock_quantity > 0 && (
                                         <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
                                             {reward.stock_quantity} left

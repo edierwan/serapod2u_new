@@ -30,6 +30,7 @@ export interface RoadtourRun {
     product_qr_counting_period: RoadtourProductQrCountingPeriod | null
     unique_product_qr_only: boolean
     active_reward_rule_version_id: string | null
+    product_category_id: string | null
     created_at: string
     updated_at: string
 }
@@ -52,17 +53,42 @@ export const PRODUCT_QR_COUNTING_PERIOD_LABEL: Record<RoadtourProductQrCountingP
     open_period: 'Open period',
 }
 
+const ROADTOUR_RUN_LEGACY_SELECT = 'id, org_id, name, description, start_date, end_date, status, duplicate_policy, point_release_rule, required_product_qr_scans, product_qr_counting_period, unique_product_qr_only, active_reward_rule_version_id, created_at, updated_at'
+const ROADTOUR_RUN_CATEGORY_SELECT = `${ROADTOUR_RUN_LEGACY_SELECT}, product_category_id`
+
+export function isMissingRoadtourProductCategorySchema(error: { code?: string | null; message?: string | null } | null | undefined) {
+    const message = String(error?.message || '').toLowerCase()
+    return error?.code === '42703'
+        || error?.code === 'PGRST200'
+        || (message.includes('product_category_id') && (message.includes('does not exist') || message.includes('relationship')))
+}
+
+export function buildRoadtourRunMap(runs: RoadtourRun[]) {
+    return new Map(runs.map((run) => [run.id, run]))
+}
+
 export async function fetchRoadtourRuns(
     supabase: SupabaseClient,
     orgId: string,
 ): Promise<RoadtourRun[]> {
-    const { data, error } = await (supabase as any)
+    const categoryResult = await (supabase as any)
         .from('roadtour_runs')
-        .select('id, org_id, name, description, start_date, end_date, status, duplicate_policy, point_release_rule, required_product_qr_scans, product_qr_counting_period, unique_product_qr_only, active_reward_rule_version_id, created_at, updated_at')
+        .select(ROADTOUR_RUN_CATEGORY_SELECT)
         .eq('org_id', orgId)
         .order('start_date', { ascending: false })
-    if (error) throw error
-    return (data || []) as RoadtourRun[]
+
+    if (!categoryResult.error) return (categoryResult.data || []) as RoadtourRun[]
+    if (!isMissingRoadtourProductCategorySchema(categoryResult.error)) throw categoryResult.error
+
+    // Rolling-deploy compatibility: the additive migration may not yet be
+    // applied. Preserve legacy Event records/IDs and treat category as null.
+    const legacyResult = await (supabase as any)
+        .from('roadtour_runs')
+        .select(ROADTOUR_RUN_LEGACY_SELECT)
+        .eq('org_id', orgId)
+        .order('start_date', { ascending: false })
+    if (legacyResult.error) throw legacyResult.error
+    return (legacyResult.data || []).map((run: any) => ({ ...run, product_category_id: null })) as RoadtourRun[]
 }
 
 export async function fetchActiveOrDraftRoadtourRuns(

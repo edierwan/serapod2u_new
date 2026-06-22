@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#FEFCE8"/>
+  
+  <rect x="132" y="116" width="248" height="280" rx="44" fill="#EAB308" stroke="#A16207" stroke-width="12"/>
+  <text x="256" y="318" text-anchor="middle" font-size="190" font-family="Georgia, serif" font-weight="900" fill="#111827">P</text>
+  <path d="M180 154h152" stroke="white" stroke-width="14" stroke-linecap="round" opacity="0.65"/>
+
+</svg>
