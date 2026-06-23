@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getStorageUrl } from '@/lib/utils'
+import { normalizePersistedOrganizationLogo, resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
 import {
   Building2,
   Search,
@@ -111,6 +111,10 @@ interface Organization {
   distributors_count?: number
   shops_count?: number
   orders_count?: number
+  loyalty_program_organization_memberships?: Array<{
+    status: string | null
+    loyalty_programs?: { code: string | null; name: string | null } | Array<{ code: string | null; name: string | null }> | null
+  }>
 }
 
 interface OrganizationsViewProps {
@@ -120,6 +124,13 @@ interface OrganizationsViewProps {
 
 type SortField = 'org_name' | 'org_type_code' | 'contact_name' | 'state' | 'is_active'
 type SortDirection = 'asc' | 'desc'
+const PROGRAM_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Programs' },
+  { value: 'Cellera', label: 'Cellera' },
+  { value: 'Ellbow', label: 'Ellbow' },
+  { value: 'Cellera + Ellbow', label: 'Cellera + Ellbow' },
+  { value: 'Not Enrolled', label: 'Not Enrolled' },
+] as const
 
 interface BlockingRecord {
   table_name: string
@@ -175,12 +186,32 @@ function matchesOrganizationSearch(org: Organization, searchValue: string) {
   )
 }
 
+function getSingleRelation<T>(relation: T | T[] | null | undefined): T | null {
+  if (Array.isArray(relation)) return relation[0] ?? null
+  return relation ?? null
+}
+
+function getProgramLabel(org: Organization) {
+  const activeCodes = new Set(
+    (org.loyalty_program_organization_memberships || [])
+      .filter((membership) => (membership.status || 'active') === 'active')
+      .map((membership) => getSingleRelation(membership.loyalty_programs)?.code)
+      .filter((code): code is string => code === 'cellera' || code === 'ellbow'),
+  )
+
+  if (activeCodes.has('cellera') && activeCodes.has('ellbow')) return 'Cellera + Ellbow'
+  if (activeCodes.has('cellera')) return 'Cellera'
+  if (activeCodes.has('ellbow')) return 'Ellbow'
+  return 'Not Enrolled'
+}
+
 export default function OrganizationsView({ userProfile, onViewChange }: OrganizationsViewProps) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterProgram, setFilterProgram] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list')
   const [sortField, setSortField] = useState<SortField>('org_name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -319,14 +350,21 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       setLoading(true)
 
       // Build the query based on user role and organization
-      let query = supabase
+      let query = (supabase as any)
         .from('organizations')
         .select(`
           *,
           org_types:organization_types(type_name, type_description),
           parent_org:organizations!parent_org_id(org_name, org_code),
           payment_terms(term_name, deposit_percentage, balance_percentage),
-          states(state_name)
+          states(state_name),
+          loyalty_program_organization_memberships!loyalty_program_organization_memberships_member_organization_id_fkey (
+            status,
+            loyalty_programs!loyalty_program_org_memberships_program_owner_fk (
+              code,
+              name
+            )
+          )
         `)
         .eq('is_active', true)  // Only fetch active organizations
 
@@ -390,6 +428,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
         return {
           ...org,
+          logo_url: normalizePersistedOrganizationLogo(org.logo_url),
           org_types: Array.isArray(org.org_types) ? org.org_types[0] : org.org_types,
           parent_org: Array.isArray(org.parent_org) ? org.parent_org[0] : org.parent_org,
           children_count: stats.children_count,
@@ -417,8 +456,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       filterStatus === 'all' ||
       (filterStatus === 'active' && org.is_active) ||
       (filterStatus === 'inactive' && !org.is_active)
+    const matchesProgram =
+      filterProgram === 'all' || getProgramLabel(org) === filterProgram
 
-    return matchesSearch && matchesType && matchesStatus
+    return matchesSearch && matchesType && matchesStatus && matchesProgram
   }).sort((a, b) => {
     let aVal: any = a[sortField]
     let bVal: any = b[sortField]
@@ -461,7 +502,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, filterType, filterStatus])
+  }, [searchTerm, filterType, filterStatus, filterProgram])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -942,6 +983,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={filterProgram} onValueChange={setFilterProgram}>
+              <SelectTrigger className="w-full sm:w-52">
+                <SelectValue placeholder="Program" />
+              </SelectTrigger>
+              <SelectContent>
+                {PROGRAM_FILTER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="flex gap-2">
               <Button
                 variant={viewMode === 'card' ? 'default' : 'outline'}
@@ -984,7 +1037,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <div className="w-14 h-14 rounded-lg border border-gray-200 bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
                     {org.logo_url ? (
                       <img
-                        src={getStorageUrl(org.logo_url) || org.logo_url}
+                        src={resolveOrganizationLogoUrl(org.logo_url)}
                         alt={`${org.org_name} logo`}
                         className="w-full h-full object-contain p-1"
                       />
@@ -1001,6 +1054,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     <Badge className={`${getOrgTypeColor(org.org_type_code)} text-xs`}>
                       {org.org_types?.type_name || org.org_type_code}
+                    </Badge>
+                    <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 text-xs">
+                      {getProgramLabel(org)}
                     </Badge>
                     {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
                       (org as any).payment_terms && (
@@ -1338,6 +1394,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       )}
                     </button>
                   </TableHead>
+                  <TableHead className="text-xs">Program</TableHead>
                   <TableHead>
                     <button
                       onClick={() => handleSort('contact_name')}
@@ -1394,6 +1451,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       <Badge className={`${getOrgTypeColor(org.org_type_code)} text-[10px] px-1.5 py-0.5`}>
                         {org.org_types?.type_name || org.org_type_code}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-gray-700">
+                      {getProgramLabel(org)}
                     </TableCell>
                     <TableCell>
                       <div className="text-xs">
@@ -1534,7 +1594,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No organizations found</h3>
             <p className="text-gray-600 mb-4">
-              {searchTerm || filterType !== 'all' || filterStatus !== 'all'
+              {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterProgram !== 'all'
                 ? 'Try adjusting your search criteria'
                 : 'Get started by adding your first organization'
               }

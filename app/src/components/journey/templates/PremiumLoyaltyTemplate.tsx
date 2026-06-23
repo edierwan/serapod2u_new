@@ -466,6 +466,8 @@ export default function PremiumLoyaltyTemplate({
     // shell passes 'pet_food' to layer Ellbow branding on top of the unchanged
     // claim/points/rewards machinery below.
     const isPetFoodTheme = experienceTheme === 'pet_food'
+    const isRoadtourMode = Boolean(roadtourContext?.token)
+    const hasLegacyProductQrContext = Boolean(qrCode) && !isRoadtourMode
     const { toast } = useToast()
     const [activeTab, setActiveTab] = useState<TabType>('home')
     const previousActiveTabRef = useRef<TabType>('home')
@@ -1796,11 +1798,11 @@ export default function PremiumLoyaltyTemplate({
 
     // Fetch free gifts when rewards tab is active (fixes issue where free gifts don't show when directly navigating to Rewards)
     useEffect(() => {
-        if (activeTab === 'rewards' && isLive && qrCode && config.redemption_enabled) {
+        if (activeTab === 'rewards' && isLive && hasLegacyProductQrContext && config.redemption_enabled) {
             fetchFreeGifts()
             checkGiftRedeemStatus()
         }
-    }, [activeTab, isLive, qrCode, config.redemption_enabled])
+    }, [activeTab, isLive, hasLegacyProductQrContext, qrCode, config.redemption_enabled])
 
     // Fetch rewards tab data when user logs in while on rewards tab
     useEffect(() => {
@@ -1889,7 +1891,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Check QR status function - reusable for multiple calls
     const checkQrStatusFromApi = async (): Promise<{ isLuckyDrawEntered: boolean, isPointsCollected: boolean, claimMode: 'single_shop' | 'dual', shopLaneCollected: boolean, consumerLaneCollected: boolean }> => {
-        if (!qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false, claimMode: 'single_shop', shopLaneCollected: false, consumerLaneCollected: false }
+        if (!hasLegacyProductQrContext || !qrCode) return { isLuckyDrawEntered: false, isPointsCollected: false, claimMode: 'single_shop', shopLaneCollected: false, consumerLaneCollected: false }
 
         try {
             const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
@@ -1926,7 +1928,7 @@ export default function PremiumLoyaltyTemplate({
     // Check QR status on mount - this prevents button clicks if already used
     useEffect(() => {
         const checkQrStatus = async () => {
-            if (!qrCode) {
+            if (!hasLegacyProductQrContext || !qrCode) {
                 setCheckingQrStatus(false)
                 return
             }
@@ -1999,13 +2001,13 @@ export default function PremiumLoyaltyTemplate({
         }
 
         // Check on mount - always check QR status for returning visitors
-        if (isLive && qrCode) {
+        if (isLive && hasLegacyProductQrContext) {
             checkQrStatus()
         } else {
             // Not live or no QR code - immediately set checking to false
             setCheckingQrStatus(false)
         }
-    }, [isLive, qrCode]) // Only run on mount and when qrCode changes
+    }, [isLive, hasLegacyProductQrContext, qrCode]) // Only run on mount and when QR context changes
 
     // Clear login form when QR code changes (new scan)
     useEffect(() => {
@@ -2144,7 +2146,7 @@ export default function PremiumLoyaltyTemplate({
     // Re-check QR status when navigating to lucky-draw tab (bulletproof double-check)
     useEffect(() => {
         const recheckStatus = async () => {
-            if (activeTab === 'lucky-draw' && isLive && qrCode && !luckyDrawQrUsed && !luckyDrawEntered) {
+            if (activeTab === 'lucky-draw' && isLive && hasLegacyProductQrContext && !luckyDrawQrUsed && !luckyDrawEntered) {
                 setCheckingQrStatus(true)
                 const status = await checkQrStatusFromApi()
                 if (status.isLuckyDrawEntered) {
@@ -2155,7 +2157,7 @@ export default function PremiumLoyaltyTemplate({
             }
         }
         recheckStatus()
-    }, [activeTab, isLive, qrCode])
+    }, [activeTab, isLive, hasLegacyProductQrContext, qrCode])
 
     const fetchRewards = async () => {
         if (!orgId) return
@@ -2269,7 +2271,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Fetch free gifts for redemption
     const fetchFreeGifts = async () => {
-        if (!qrCode) return
+        if (!hasLegacyProductQrContext || !qrCode) return
         setLoadingFreeGifts(true)
         try {
             const response = await fetch(`/api/consumer/redeem-gifts?qr_code=${encodeURIComponent(qrCode)}`)
@@ -2291,7 +2293,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Check if gift already redeemed for this QR
     const checkGiftRedeemStatus = async () => {
-        if (!qrCode) return
+        if (!hasLegacyProductQrContext || !qrCode) return
         try {
             const response = await fetch(`/api/consumer/check-lucky-draw-status?qr_code=${encodeURIComponent(qrCode)}`)
             const data = await response.json()
@@ -2306,7 +2308,7 @@ export default function PremiumLoyaltyTemplate({
 
     // Handle gift claim
     const handleClaimGift = async () => {
-        if (!selectedGift || !qrCode) return
+        if (!selectedGift || !hasLegacyProductQrContext || !qrCode) return
 
         setClaimingGift(true)
         setGiftError('')
@@ -4793,7 +4795,7 @@ export default function PremiumLoyaltyTemplate({
     const ELLBOW_ICON = '/images/ellbow_icons_pack'
     const renderEllbowHomeTab = () => {
         const earned = lastEarnedPoints || pointsEarned || 0
-        const collected = Boolean(qrCode && (pointsCollected || qrPointsCollected))
+        const collected = Boolean((isRoadtourMode || hasLegacyProductQrContext) && (pointsCollected || qrPointsCollected))
         const heroProductName = productInfo?.product_name || roadtourContext?.campaign_name
         const productImage = config.variant_image_url || `${ELLBOW_ICON}/08-ellbow-product-pack-icon.png`
         const progressPct = Math.min((userPoints / (nextRewardInfo.nextRewardPoints || 50000)) * 100, 100)
@@ -4882,12 +4884,12 @@ export default function PremiumLoyaltyTemplate({
                 <div className="px-5 mt-4 space-y-3">
                     {config.points_enabled && (
                         <button
-                            onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
-                            disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
+                            onClick={() => (isRoadtourMode || hasLegacyProductQrContext) ? handleProtectedAction('collect-points') : setShowScanner(true)}
+                            disabled={(isRoadtourMode || hasLegacyProductQrContext) ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
                             className="w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 font-bold text-white shadow-md transition active:scale-[0.99] disabled:opacity-60"
                             style={{ background: 'linear-gradient(135deg,#0F8B82,#0d9488)' }}
                         >
-                            {qrCode && (collectingPoints || checkingQrStatus) ? (
+                            {(isRoadtourMode || hasLegacyProductQrContext) && (collectingPoints || checkingQrStatus) ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : collected ? (
                                 <CheckCircle2 className="w-5 h-5" />
@@ -4895,7 +4897,7 @@ export default function PremiumLoyaltyTemplate({
                                 <img src={`${ELLBOW_ICON}/07-ellbow-scan-icon.png`} alt="" className="w-5 h-5 object-contain brightness-0 invert" />
                             )}
                             <span>
-                                {!qrCode ? 'Scan to Collect' : collectingPoints ? 'Collecting…' : checkingQrStatus ? 'Checking…' : collected ? 'Points Collected' : 'Collect Points'}
+                                {!(isRoadtourMode || hasLegacyProductQrContext) ? 'Scan to Collect' : collectingPoints ? 'Collecting…' : checkingQrStatus ? 'Checking…' : collected ? 'Points Collected' : 'Collect Points'}
                             </span>
                         </button>
                     )}
@@ -5119,50 +5121,50 @@ export default function PremiumLoyaltyTemplate({
                 <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
                     {config.points_enabled && (
                         <button
-                            onClick={() => qrCode ? handleProtectedAction('collect-points') : setShowScanner(true)}
-                            disabled={qrCode ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                            onClick={() => (isRoadtourMode || hasLegacyProductQrContext) ? handleProtectedAction('collect-points') : setShowScanner(true)}
+                            disabled={(isRoadtourMode || hasLegacyProductQrContext) ? (collectingPoints || pointsCollected || qrPointsCollected || checkingQrStatus) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${(isRoadtourMode || hasLegacyProductQrContext) && (pointsCollected || qrPointsCollected) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                                 }`}
                         >
                             <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                style={{ backgroundColor: (qrCode && (pointsCollected || qrPointsCollected)) ? '#dcfce7' : `${config.primary_color}15` }}
+                                style={{ backgroundColor: ((isRoadtourMode || hasLegacyProductQrContext) && (pointsCollected || qrPointsCollected)) ? '#dcfce7' : `${config.primary_color}15` }}
                             >
-                                {qrCode && (collectingPoints || checkingQrStatus) ? (
+                                {(isRoadtourMode || hasLegacyProductQrContext) && (collectingPoints || checkingQrStatus) ? (
                                     <Loader2 className="w-5 h-5 animate-spin" style={{ color: config.primary_color }} />
-                                ) : (qrCode && (pointsCollected || qrPointsCollected)) ? (
+                                ) : ((isRoadtourMode || hasLegacyProductQrContext) && (pointsCollected || qrPointsCollected)) ? (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
                                     <Coins className="w-5 h-5" style={{ color: config.primary_color }} />
                                 )}
                             </div>
-                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
-                                {!qrCode ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : roadtourContext ? 'RoadTour Rewards' : 'Collect'}
+                            <span className={`text-[10px] font-medium ${(isRoadtourMode || hasLegacyProductQrContext) ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!(isRoadtourMode || hasLegacyProductQrContext) ? 'Scan to collect' : collectingPoints ? 'Collecting...' : checkingQrStatus ? 'Checking...' : (pointsCollected || qrPointsCollected) ? 'Collected' : isRoadtourMode ? 'RoadTour Rewards' : 'Collect'}
                             </span>
                         </button>
                     )}
 
                     {config.lucky_draw_enabled && (
                         <button
-                            onClick={() => qrCode ? handleProtectedAction('lucky-draw') : setShowScanner(true)}
-                            disabled={qrCode ? (checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered) : false}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                            onClick={() => hasLegacyProductQrContext ? handleProtectedAction('lucky-draw') : setShowScanner(true)}
+                            disabled={hasLegacyProductQrContext ? (checkingQrStatus || luckyDrawQrUsed || luckyDrawEntered) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${hasLegacyProductQrContext && (luckyDrawQrUsed || luckyDrawEntered) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                                 }`}
                         >
                             <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                style={{ backgroundColor: (qrCode && (luckyDrawQrUsed || luckyDrawEntered)) ? '#dcfce7' : '#fef3c7' }}
+                                style={{ backgroundColor: (hasLegacyProductQrContext && (luckyDrawQrUsed || luckyDrawEntered)) ? '#dcfce7' : '#fef3c7' }}
                             >
-                                {qrCode && checkingQrStatus ? (
+                                {hasLegacyProductQrContext && checkingQrStatus ? (
                                     <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
-                                ) : (qrCode && (luckyDrawQrUsed || luckyDrawEntered)) ? (
+                                ) : (hasLegacyProductQrContext && (luckyDrawQrUsed || luckyDrawEntered)) ? (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
                                     <Trophy className="w-5 h-5 text-amber-500" />
                                 )}
                             </div>
-                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
-                                {!qrCode ? 'Scan first' : checkingQrStatus ? 'Checking...' : (luckyDrawQrUsed || luckyDrawEntered) ? 'Already In' : 'Lucky Draw'}
+                            <span className={`text-[10px] font-medium ${hasLegacyProductQrContext ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!hasLegacyProductQrContext ? 'Scan first' : checkingQrStatus ? 'Checking...' : (luckyDrawQrUsed || luckyDrawEntered) ? 'Already In' : 'Lucky Draw'}
                             </span>
                         </button>
                     )}
@@ -5170,31 +5172,31 @@ export default function PremiumLoyaltyTemplate({
                     {config.redemption_enabled && (
                         <button
                             onClick={() => {
-                                if (qrCode) {
+                                if (hasLegacyProductQrContext) {
                                     handleProtectedAction('redeem')
                                     fetchFreeGifts()
                                 } else {
                                     setShowScanner(true)
                                 }
                             }}
-                            disabled={qrCode ? (checkingQrStatus || giftQrUsed || giftRedeemed) : false}
-                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${qrCode && (giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                            disabled={hasLegacyProductQrContext ? (checkingQrStatus || giftQrUsed || giftRedeemed) : false}
+                            className={`flex-1 flex flex-col items-center p-2 rounded-xl transition-colors ${hasLegacyProductQrContext && (giftQrUsed || giftRedeemed) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
                                 }`}
                         >
                             <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center mb-1.5"
-                                style={{ backgroundColor: (qrCode && (giftQrUsed || giftRedeemed)) ? '#dcfce7' : '#dcfce7' }}
+                                style={{ backgroundColor: (hasLegacyProductQrContext && (giftQrUsed || giftRedeemed)) ? '#dcfce7' : '#dcfce7' }}
                             >
-                                {qrCode && checkingQrStatus ? (
+                                {hasLegacyProductQrContext && checkingQrStatus ? (
                                     <Loader2 className="w-5 h-5 animate-spin text-green-500" />
-                                ) : (qrCode && (giftQrUsed || giftRedeemed)) ? (
+                                ) : (hasLegacyProductQrContext && (giftQrUsed || giftRedeemed)) ? (
                                     <CheckCircle2 className="w-5 h-5 text-green-500" />
                                 ) : (
                                     <Gift className="w-5 h-5 text-green-500" />
                                 )}
                             </div>
-                            <span className={`text-[10px] font-medium ${qrCode ? 'text-gray-700' : 'text-gray-500'}`}>
-                                {!qrCode ? 'Scan first' : checkingQrStatus ? 'Checking...' : (giftQrUsed || giftRedeemed) ? 'Redeemed' : 'Redeem'}
+                            <span className={`text-[10px] font-medium ${hasLegacyProductQrContext ? 'text-gray-700' : 'text-gray-500'}`}>
+                                {!hasLegacyProductQrContext ? 'Scan first' : checkingQrStatus ? 'Checking...' : (giftQrUsed || giftRedeemed) ? 'Redeemed' : 'Redeem'}
                             </span>
                         </button>
                     )}

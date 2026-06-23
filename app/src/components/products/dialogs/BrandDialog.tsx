@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2, Upload, Image as ImageIcon } from 'lucide-react'
+import { X, Loader2, Upload, Trash2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
+import BrandLogo from '../BrandLogo'
+import { normalizePersistedBrandLogo } from '@/lib/brands/logo'
 
 interface Brand {
   id?: string
@@ -59,7 +61,7 @@ export default function BrandDialog({
           logo_url: brand.logo_url || '',
           is_active: brand.is_active
         })
-        setImagePreview(brand.logo_url || '')
+        setImagePreview(normalizePersistedBrandLogo(brand.logo_url) || '')
       } else {
         setFormData({
           brand_name: '',
@@ -145,8 +147,13 @@ export default function BrandDialog({
       return
     }
 
+    let localPreviewUrl: string | null = null
+    const previousLogo = normalizePersistedBrandLogo(formData.logo_url) || ''
+
     try {
       setUploading(true)
+      localPreviewUrl = URL.createObjectURL(file)
+      setImagePreview(localPreviewUrl)
 
       // Compress the image first
       const compressionResult = await compressAvatar(file)
@@ -161,7 +168,7 @@ export default function BrandDialog({
       const filePath = `brands/${fileName}`
 
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase
+      const { error: uploadError } = await supabase
         .storage
         .from('product-images')
         .upload(filePath, compressionResult.file, {
@@ -172,22 +179,13 @@ export default function BrandDialog({
 
       if (uploadError) throw uploadError
 
-      // Get public URL
-      const { data: urlData } = supabase
-        .storage
-        .from('product-images')
-        .getPublicUrl(filePath)
-
-      const publicUrl = urlData.publicUrl
-
-      setFormData(prev => ({ ...prev, logo_url: publicUrl }))
-      setImagePreview(publicUrl)
-
-      toast({
-        title: 'Success',
-        description: 'Image uploaded successfully'
-      })
+      // Persist a stable bucket-qualified path, never a blob URL or an
+      // environment-specific self-hosted public URL.
+      const persistentPath = `product-images/${filePath}`
+      setFormData(prev => ({ ...prev, logo_url: persistentPath }))
+      setImagePreview(persistentPath)
     } catch (error) {
+      setImagePreview(previousLogo)
       console.error('Error uploading image:', error)
       toast({
         title: 'Upload Failed',
@@ -195,6 +193,7 @@ export default function BrandDialog({
         variant: 'destructive'
       })
     } finally {
+      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl)
       setUploading(false)
     }
   }
@@ -209,10 +208,11 @@ export default function BrandDialog({
   const handleSubmit = async () => {
     const isValid = await validate()
     if (isValid) {
-      onSave({
+      const payload = {
         ...formData,
-        brand_code: generateBrandCode()
-      })
+        logo_url: normalizePersistedBrandLogo(formData.logo_url)
+      }
+      onSave(brand ? payload : { ...payload, brand_code: generateBrandCode() })
     }
   }
 
@@ -263,16 +263,14 @@ export default function BrandDialog({
           <div className="space-y-2">
             <Label>Brand Logo</Label>
             <div className="space-y-3">
-              {imagePreview && (
-                <div className="relative w-full h-32 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imagePreview}
-                    alt="Brand logo preview"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              )}
+              <div className="relative w-full h-32 border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                <BrandLogo
+                  name={formData.brand_name || 'Brand'}
+                  logoUrl={imagePreview}
+                  className="w-full h-full object-contain"
+                  iconClassName="h-9 w-9 text-slate-300"
+                />
+              </div>
 
               <input
                 ref={fileInputRef}
@@ -301,6 +299,23 @@ export default function BrandDialog({
                   </>
                 )}
               </Button>
+
+              {imagePreview && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, logo_url: null }))
+                    setImagePreview('')
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }}
+                  disabled={uploading || isSaving}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Remove Image
+                </Button>
+              )}
 
               <p className="text-xs text-gray-500">
                 Recommended: PNG or JPG, max 2MB

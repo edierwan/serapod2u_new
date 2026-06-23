@@ -184,8 +184,16 @@ export function canAccessSupplyChainView(
     // Product list actions render as internal views rather than top-nav items.
     // They inherit the Product List access rule so the guard does not reject
     // a user immediately after an authorized list-to-detail transition.
+    //
+    // Organization detail/edit views are the same shape: they are reached by
+    // clicking a row in the Organizations list, so they inherit the
+    // Organizations list access rule. (edit-organization-hq routes HQ users to
+    // Settings but is still gated here.) Without this mapping an authorized HQ
+    // admin who opens an organization is wrongly shown "Unauthorized".
     const accessViewId = ['view-product', 'edit-product', 'add-product'].includes(viewId)
         ? 'products'
+        : ['view-organization', 'edit-organization', 'edit-organization-hq'].includes(viewId)
+        ? 'organizations'
         : viewId
 
     return supplyChainNavGroups.some((group) => {
@@ -240,6 +248,50 @@ export const supplyChainPathToView: Record<string, string> = {
     'view-inventory': 'inventory-list',
     'inventory-settings': 'inventory-settings',
     'settings': 'inventory-settings',
+    'organizations': 'organizations',
+    'organizations/new': 'add-organization',
+}
+
+/**
+ * Build the URL path for an Organizations view so it survives a refresh and
+ * browser back/forward (the org id lives in the URL, not only React state).
+ *
+ *   organizations        → /supply-chain/organizations
+ *   add-organization     → /supply-chain/organizations/new
+ *   view-organization    → /supply-chain/organizations/<id>
+ *   edit-organization    → /supply-chain/organizations/<id>/edit
+ *
+ * Returns null for views that are not URL-addressable here (caller falls back
+ * to its existing in-memory navigation, e.g. edit-organization-hq → Settings).
+ */
+export function supplyChainOrganizationPath(view: string, orgId?: string | null): string | null {
+    if (view === 'organizations') return 'organizations'
+    if (view === 'add-organization') return 'organizations/new'
+    const id = String(orgId || '').trim()
+    if (!id) return null
+    if (view === 'view-organization') return `organizations/${id}`
+    if (view === 'edit-organization') return `organizations/${id}/edit`
+    return null
+}
+
+/**
+ * Resolve a Supply Chain catch-all slug into a view id (and optional org id).
+ * Handles Organizations deep links plus the existing static path map.
+ */
+export function resolveSupplyChainSlug(slug: string[]): { initialView: string; initialOrgId?: string } {
+    if (slug[0] === 'organizations') {
+        // /organizations
+        if (slug.length === 1) return { initialView: 'organizations' }
+        // /organizations/new (reserved keyword; org ids are UUIDs)
+        if (slug[1] === 'new') return { initialView: 'add-organization' }
+        // /organizations/<id> or /organizations/<id>/edit
+        const initialOrgId = slug[1]
+        const initialView = slug[2] === 'edit' ? 'edit-organization' : 'view-organization'
+        return { initialView, initialOrgId }
+    }
+    const path = slug.join('/')
+    const initialView = supplyChainPathToView[path] || supplyChainPathToView[slug[0] || ''] || 'supply-chain'
+    return { initialView }
 }
 
 /** Find which group a given view id belongs to */

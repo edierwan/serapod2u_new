@@ -4,6 +4,7 @@ import {
     type ShopRequestFormInput,
 } from './core'
 import { samePhone } from '@/utils/phone'
+import { upsertOrganizationProgramMembership, type LoyaltyProgramCode } from '@/lib/server/loyalty-memberships'
 
 export interface DuplicateShopSuggestion {
     org_id: string
@@ -199,6 +200,7 @@ export async function createShopOrganization(
         form: ShopRequestFormInput
         createdBy?: string | null
         userOrgId?: string | null
+        loyaltyProgramCode?: LoyaltyProgramCode
     },
 ) {
     const form = sanitizeShopRequestForm(input.form)
@@ -228,6 +230,16 @@ export async function createShopOrganization(
     if (createError || !createdOrganization) {
         throw new Error(createError?.message || 'Failed to create shop.')
     }
+
+    await upsertOrganizationProgramMembership(
+        adminClient,
+        input.loyaltyProgramCode || 'cellera',
+        createdOrganization.id,
+        input.loyaltyProgramCode === 'ellbow' ? 'roadtour' : 'legacy_registration',
+        {
+            createdBy: input.createdBy || null,
+        },
+    )
 
     return {
         organization: {

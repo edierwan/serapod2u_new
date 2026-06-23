@@ -528,6 +528,22 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
       const newOrgId = data[0].id
 
+      if ((formData.org_type_code === 'SHOP' || formData.org_type_code === 'DIST') && newOrgId) {
+        try {
+          const membershipResponse = await fetch('/api/loyalty/memberships/organization', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organizationId: newOrgId }),
+          })
+          if (!membershipResponse.ok) {
+            const membershipResult = await membershipResponse.json().catch(() => null)
+            console.error('Failed to enroll organization in Cellera Loyalty:', membershipResult?.error || membershipResponse.statusText)
+          }
+        } catch (membershipError) {
+          console.error('Failed to enroll organization in Cellera Loyalty:', membershipError)
+        }
+      }
+
       // Upload logo if provided (using same pattern as user avatars)
       if (logoFile && newOrgId) {
         try {
@@ -761,6 +777,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
             <OrgLogoUpload
               orgName={formData.org_name || 'New Organization'}
               onLogoChange={handleLogoChange}
+              onError={setLogoError}
               error={logoError}
             />
 

@@ -121,7 +121,7 @@ import ScratchCardGameView from '@/components/dashboard/views/consumer-engagemen
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
-import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath } from '@/modules/supply-chain/supplyChainNav'
+import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
 import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
@@ -197,9 +197,11 @@ interface DashboardContentProps {
   initialView?: string
   initialOrderId?: string
   initialTargetId?: string
+  /** Organization id parsed from a Supply Chain deep link (e.g. /supply-chain/organizations/<id>/edit) */
+  initialOrgId?: string
 }
 
-export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId }: DashboardContentProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions(
     userProfile.roles.role_level,
@@ -292,6 +294,15 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     }
   }, [initialView])
 
+  // Seed the selected organization from the URL (deep link / refresh / back-forward)
+  // so organization detail/edit views load the right record without relying only
+  // on in-memory React state. Detail components read sessionStorage('selectedOrgId').
+  useEffect(() => {
+    if (initialOrgId && typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedOrgId', initialOrgId)
+    }
+  }, [initialOrgId])
+
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
     if (view !== 'edit-organization' && view !== 'edit-organization-hq' && view !== 'view-organization') {
@@ -356,6 +367,20 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       setCurrentView(view)
       router.push(`/supply-chain/${supplyChainPath}`)
       return
+    }
+
+    // ── Organizations: push real URLs so refresh / back-forward resolve the
+    //    correct view and organization id (not only in-memory state). ──
+    //    edit-organization-hq is intentionally excluded: HQ self-edit renders
+    //    Settings and keeps its existing in-memory behaviour.
+    if (view === 'organizations' || view === 'add-organization' || view === 'view-organization' || view === 'edit-organization') {
+      const orgId = typeof window !== 'undefined' ? sessionStorage.getItem('selectedOrgId') : null
+      const orgPath = supplyChainOrganizationPath(view, orgId)
+      if (orgPath) {
+        setCurrentView(view)
+        router.push(`/supply-chain/${orgPath}`)
+        return
+      }
     }
 
     setCurrentView(view)

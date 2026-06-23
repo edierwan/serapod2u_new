@@ -7,6 +7,7 @@ import {
 } from '@/lib/shop-requests/core'
 import { createShopOrganization, findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
+import { upsertUserProgramMembership } from '@/lib/server/loyalty-memberships'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +116,20 @@ export async function POST(request: NextRequest) {
                     success: true,
                     organization: createdOrganization,
                     linkError: 'Shop created but failed to link to your profile. Please update your shop in Profile.',
+                })
+            }
+
+            try {
+                await upsertUserProgramMembership(adminClient as any, 'cellera', user.id, 'organization_user', 'legacy_registration', {
+                    memberOrganizationId: createdOrganization.id,
+                    createdBy: user.id,
+                })
+            } catch (membershipError: any) {
+                console.error('Cellera user membership upsert failed:', membershipError?.message || membershipError)
+                return NextResponse.json({
+                    success: true,
+                    organization: createdOrganization,
+                    membershipError: 'Shop created but failed to enroll your profile in Cellera Loyalty.',
                 })
             }
         }

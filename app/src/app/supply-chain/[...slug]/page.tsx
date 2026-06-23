@@ -1,6 +1,6 @@
 import DashboardContent from '@/components/dashboard/DashboardContent'
 import { getSupplyChainPageContext } from '@/app/supply-chain/_lib'
-import { supplyChainPathToView } from '@/modules/supply-chain/supplyChainNav'
+import { resolveSupplyChainSlug } from '@/modules/supply-chain/supplyChainNav'
 
 interface SupplyChainSubPageProps {
     params: Promise<{ slug?: string[] }>
@@ -9,8 +9,7 @@ interface SupplyChainSubPageProps {
 export default async function SupplyChainSubPage({ params }: SupplyChainSubPageProps) {
     const { userProfile, canViewSupplyChain } = await getSupplyChainPageContext()
     const { slug = [] } = await params
-    const path = slug.join('/')
-    const initialView = supplyChainPathToView[path] || supplyChainPathToView[slug[0] || ''] || 'supply-chain'
+    const { initialView, initialOrgId } = resolveSupplyChainSlug(slug)
 
     const orgType = userProfile.organizations?.org_type_code
     const roleLevel = userProfile.roles?.role_level
@@ -27,5 +26,5 @@ export default async function SupplyChainSubPage({ params }: SupplyChainSubPageP
         )
     }
 
-    return <DashboardContent userProfile={userProfile} initialView={initialView} />
+    return <DashboardContent userProfile={userProfile} initialView={initialView} initialOrgId={initialOrgId} />
 }
