@@ -15,6 +15,8 @@ import { buildMilestoneClaimResponse, createRoadtourParticipantMission, missionR
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
 import { normalizePhoneE164 } from '@/utils/phone'
+import { getRoadtourExperienceForCategory } from '@/lib/roadtour/experience-registry'
+import { upsertProgramMembershipsForUserAndOrganization, type LoyaltyParticipantType } from '@/lib/server/loyalty-memberships'
 
 function isMissingConsumerPhoneColumnError(error: any) {
     const combined = [error?.message, error?.details, error?.hint]
@@ -933,7 +935,94 @@ export async function POST(request: NextRequest) {
             })
         }
 
-        // 5. Record reward using the DB function
+        // Pet Food RoadTour is explicitly mapped to the isolated Ellbow economy.
+        // Every other category continues through the existing Cellera RPC below.
+        const isEllbowPetFood = getRoadtourExperienceForCategory(qrRecord?.product_category)?.key === 'pet_food'
+        const roadtourParticipantType: LoyaltyParticipantType =
+            laneExperience.claimLane === 'shop' || orgType === 'SHOP' ? 'shop_staff' : 'consumer'
+        const roadtourMemberOrganizationId = resolvedRewardShopId || userProfile?.organization_id || null
+
+        if (isEllbowPetFood) {
+            if (!roadtour_run_id) {
+                return NextResponse.json({ message: 'This Pet Food RoadTour event is missing its Ellbow event mapping.', code: 'ELLBOW_MAPPING_MISSING' }, { status: 500 })
+            }
+            try {
+                await upsertProgramMembershipsForUserAndOrganization({
+                    admin: supabase as any,
+                    programCode: 'ellbow',
+                    userId,
+                    memberOrganizationId: roadtourMemberOrganizationId,
+                    participantType: roadtourParticipantType,
+                    enrollmentSource: 'roadtour',
+                    context: {
+                        ownerOrganizationId: org_id,
+                        firstRoadtourRunId: roadtour_run_id,
+                        firstCampaignId: campaign_id,
+                        createdBy: userId,
+                    },
+                })
+            } catch (membershipError: any) {
+                console.error('[RT] Ellbow membership upsert failed:', membershipError?.message || membershipError)
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: 'Ellbow membership enrollment failed.', code: 'ELLBOW_MEMBERSHIP_FAILED' }, { status: 500 })
+            }
+
+            const { data: ellbowResult, error: ellbowError } = await (supabase as any).rpc('ellbow_award_roadtour_scan', {
+                p_roadtour_event_id: roadtour_run_id,
+                p_campaign_id: campaign_id,
+                p_scan_id: scanEvent.id,
+                p_participant_user_id: userId,
+            })
+            if (ellbowError) {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: ellbowError.message || 'Ellbow reward processing failed.', code: 'ELLBOW_AWARD_FAILED' }, { status: 422 })
+            }
+            if (ellbowResult?.reason === 'not_ellbow_event') {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: 'This Pet Food event is not mapped to Ellbow Loyalty.', code: 'ELLBOW_MAPPING_MISSING' }, { status: 422 })
+            }
+            if (ellbowResult?.awarded === false) {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'success', points_awarded: 0 }).eq('id', scanEvent.id)
+            }
+            const ellbowPoints = Number(ellbowResult?.points_awarded || 0)
+            const ellbowBalance = Number(ellbowResult?.balance_after || 0)
+            await notifyClaim({
+                scanEventId: scanEvent.id, campaignId: campaign_id, qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id, notificationType: 'success', campaignName,
+                referenceName, shopName: duplicateShopName || 'Unknown shop', consumerName: consumerDisplayName || 'Unknown consumer',
+                pointsAwarded: ellbowPoints, balanceAfter: ellbowBalance, canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel, message: ellbowPoints > 0 ? 'Ellbow reward claimed successfully.' : 'Ellbow point collection is currently inactive.',
+            })
+            return NextResponse.json({
+                message: ellbowPoints > 0 ? 'Ellbow reward claimed successfully.' : 'Ellbow point collection is currently inactive.',
+                loyalty_program: 'ellbow', points_awarded: ellbowPoints, balance_after: ellbowBalance,
+                total_balance: ellbowBalance, scan_event_id: scanEvent.id, survey_response_id: surveyResponseId,
+                award_status: ellbowResult?.reason || (ellbowPoints > 0 ? 'awarded' : 'no_eligible_lane'),
+            })
+        }
+
+        // 5. Existing Cellera/Vape reward path (unchanged).
+        try {
+            await upsertProgramMembershipsForUserAndOrganization({
+                admin: supabase as any,
+                programCode: 'cellera',
+                userId,
+                memberOrganizationId: roadtourMemberOrganizationId,
+                participantType: roadtourParticipantType,
+                enrollmentSource: 'roadtour',
+                context: {
+                    ownerOrganizationId: org_id,
+                    firstRoadtourRunId: roadtour_run_id,
+                    firstCampaignId: campaign_id,
+                    createdBy: userId,
+                },
+            })
+        } catch (membershipError: any) {
+            console.error('[RT] Cellera membership upsert failed:', membershipError?.message || membershipError)
+            await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+            return NextResponse.json({ message: 'Cellera membership enrollment failed.', code: 'CELLERA_MEMBERSHIP_FAILED' }, { status: 500 })
+        }
+
         const { data: rewardResult, error: rewardError } = await (supabase as any).rpc('record_roadtour_reward', {
             p_org_id: org_id,
             p_campaign_id: campaign_id,
