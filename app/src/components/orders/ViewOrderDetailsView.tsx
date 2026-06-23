@@ -63,9 +63,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   useEffect(() => {
     const idToLoad = orderId || sessionStorage.getItem('viewOrderId')
     if (idToLoad) {
-      loadOrderData(idToLoad)
-      loadJourneyData(idToLoad)
-      loadQRStats(idToLoad)
+      loadAuthorizedOrderData(idToLoad)
     } else {
       toast({
         title: 'Error',
@@ -76,6 +74,29 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function loadAuthorizedOrderData(orderId: string) {
+    try {
+      const accessResponse = await fetch(`/api/orders/${encodeURIComponent(orderId)}/access`)
+      if (!accessResponse.ok) {
+        const result = await accessResponse.json().catch(() => null)
+        throw new Error(result?.error || 'Unauthorized')
+      }
+
+      await Promise.all([
+        loadOrderData(orderId),
+        loadJourneyData(orderId),
+        loadQRStats(orderId),
+      ])
+    } catch (error: any) {
+      setLoading(false)
+      toast({
+        title: 'Unauthorized',
+        description: error?.message || 'You do not have permission to view this order',
+        variant: 'destructive'
+      })
+    }
+  }
 
   async function loadOrderData(orderId: string) {
     try {
@@ -322,6 +343,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const handleBack = () => {
     sessionStorage.removeItem('viewOrderId')
+    window.history.replaceState({}, '', '/supply-chain')
     if (onViewChange) {
       onViewChange('orders')
     }

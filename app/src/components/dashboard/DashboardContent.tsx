@@ -91,7 +91,6 @@ import NotificationsLandingView from '@/modules/notifications/components/Notific
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
-import { WhatsAppActivityTab } from '@/components/settings/WhatsAppActivityTab'
 import { WhatsAppRecoveryCenter } from '@/components/settings/WhatsAppRecoveryCenter'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
@@ -122,7 +121,7 @@ import ScratchCardGameView from '@/components/dashboard/views/consumer-engagemen
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
-import { canAccessSupplyChainView, isSupplyChainViewId } from '@/modules/supply-chain/supplyChainNav'
+import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
 import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
@@ -198,9 +197,11 @@ interface DashboardContentProps {
   initialView?: string
   initialOrderId?: string
   initialTargetId?: string
+  /** Organization id parsed from a Supply Chain deep link (e.g. /supply-chain/organizations/<id>/edit) */
+  initialOrgId?: string
 }
 
-export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId }: DashboardContentProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions(
     userProfile.roles.role_level,
@@ -293,6 +294,15 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     }
   }, [initialView])
 
+  // Seed the selected organization from the URL (deep link / refresh / back-forward)
+  // so organization detail/edit views load the right record without relying only
+  // on in-memory React state. Detail components read sessionStorage('selectedOrgId').
+  useEffect(() => {
+    if (initialOrgId && typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedOrgId', initialOrgId)
+    }
+  }, [initialOrgId])
+
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
     if (view !== 'edit-organization' && view !== 'edit-organization-hq' && view !== 'view-organization') {
@@ -350,6 +360,27 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       setCurrentView(view)
       router.push('/notifications')
       return
+    }
+
+    const supplyChainPath = supplyChainViewToPath[view]
+    if (supplyChainPath) {
+      setCurrentView(view)
+      router.push(`/supply-chain/${supplyChainPath}`)
+      return
+    }
+
+    // ── Organizations: push real URLs so refresh / back-forward resolve the
+    //    correct view and organization id (not only in-memory state). ──
+    //    edit-organization-hq is intentionally excluded: HQ self-edit renders
+    //    Settings and keeps its existing in-memory behaviour.
+    if (view === 'organizations' || view === 'add-organization' || view === 'view-organization' || view === 'edit-organization') {
+      const orgId = typeof window !== 'undefined' ? sessionStorage.getItem('selectedOrgId') : null
+      const orgPath = supplyChainOrganizationPath(view, orgId)
+      if (orgPath) {
+        setCurrentView(view)
+        router.push(`/supply-chain/${orgPath}`)
+        return
+      }
     }
 
     setCurrentView(view)
@@ -560,8 +591,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationProvidersTab userProfile={userProfile} />
       case 'settings/notifications/whatsapp-activity':
         return <WhatsAppRecoveryCenter userProfile={userProfile} />
-      case 'settings/notifications/whatsapp-activity-legacy':
-        return <WhatsAppActivityTab userProfile={userProfile} />
       case 'settings/preferences':
         return <SettingsView userProfile={userProfile} initialTab="preferences" />
       case 'settings/preferences/document-template':
@@ -574,11 +603,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <NotificationProvidersTab userProfile={userProfile} />
       case 'notifications/types':
         return <NotificationTypesTab userProfile={userProfile} />
-      case 'notifications/whatsapp-activity':
-        return <WhatsAppActivityTab userProfile={userProfile} />
-      case 'notifications/delivery-logs':
-        return <WhatsAppActivityTab userProfile={userProfile} />
-      case 'notifications/failed':
+      case 'notifications/whatsapp-activity-recovery':
         return <WhatsAppRecoveryCenter userProfile={userProfile} />
       case 'settings/authorization':
         return <AuthorizationTab userProfile={userProfile} />
@@ -654,7 +679,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'hr/attendance/timesheets':
         return <HrAttendanceTimesheetsView userProfile={userProfile} />
       case 'hr/leave/types':
-        return <HrLeaveTypesView />
+        return (
+          <HrLeaveTypesView
+            organizationId={userProfile.organizations.id}
+            userId={userProfile.id}
+          />
+        )
       case 'hr/leave/requests':
         return (
           <HrLeaveRequestsView

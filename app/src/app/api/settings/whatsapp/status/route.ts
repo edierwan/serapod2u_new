@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getWhatsAppConfig, isAdminUser, callGateway } from '@/app/api/settings/whatsapp/_utils';
+import { getWhatsAppConfig, isAdminUser, isBaileysProvider, callGateway } from '@/app/api/settings/whatsapp/_utils';
 
 async function hasGatewayQr(config: { baseUrl: string; apiKey: string | undefined; tenantId: string }) {
   try {
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     const provider = request.nextUrl.searchParams.get('provider') || undefined;
     const config = await getWhatsAppConfig(supabase, userProfile.organization_id, provider);
 
-    if (!config || !config.baseUrl) {
+    if (!config) {
       return NextResponse.json({
         configured: false,
         connected: false,
@@ -70,9 +70,33 @@ export async function GET(request: NextRequest) {
         phone_number: null,
         push_name: null,
         last_connected_at: null,
-        last_error: 'WhatsApp gateway not configured',
+        last_error: provider ? 'WhatsApp provider not configured' : 'No default WhatsApp provider configured',
       });
     }
+
+    const providerLabels: Record<string, string> = {
+      whatsapp_business: 'WhatsApp Business API', baileys: 'Baileys — Hostinger',
+      baileys_home: 'Baileys — Home', twilio: 'Twilio', messagebird: 'MessageBird',
+    };
+    const providerMetadata = { provider_name: providerLabels[config.providerName] || config.providerName, provider_key: config.providerName, provider_type: config.providerType, is_default: config.isDefault };
+
+    if (!isBaileysProvider(config.providerName)) {
+      if (config.providerName === 'whatsapp_business') {
+        const phoneNumberId = String(config.publicConfig.phone_number_id || '').trim();
+        const accessToken = String(config.sensitiveConfig.access_token || '').trim();
+        if (!phoneNumberId || !accessToken) return NextResponse.json({ configured: true, connected: false, pairing_state: 'incomplete_configuration', last_error: 'Meta provider configuration is incomplete', ...providerMetadata });
+        try {
+          const response = await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: 'no-store' });
+          const payload = await response.json().catch(() => ({}));
+          return NextResponse.json({ configured: true, connected: response.ok, pairing_state: response.ok ? 'connected' : 'disconnected', phone_number: payload.display_phone_number || null, last_error: response.ok ? null : payload?.error?.message || `HTTP ${response.status}`, ...providerMetadata }, { headers: { 'Cache-Control': 'no-store' } });
+        } catch (error: any) {
+          return NextResponse.json({ configured: true, connected: false, pairing_state: 'gateway_unreachable', last_error: error.message, ...providerMetadata });
+        }
+      }
+      return NextResponse.json({ configured: true, connected: false, pairing_state: 'adapter_unavailable', last_error: `No status adapter configured for ${config.providerName}`, ...providerMetadata });
+    }
+
+    if (!config.baseUrl) return NextResponse.json({ configured: true, connected: false, pairing_state: 'incomplete_configuration', last_error: 'Gateway URL is missing', ...providerMetadata });
 
     // Call gateway tenant status endpoint
     try {
@@ -114,6 +138,7 @@ export async function GET(request: NextRequest) {
         last_disconnect_reason: gatewayStatus.last_disconnect_reason || null,
         has_qr: qrAvailable,
         tenant_id: gatewayStatus.tenant_id,
+        ...providerMetadata,
       }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (gatewayError: any) {
       // Gateway unreachable
@@ -126,6 +151,7 @@ export async function GET(request: NextRequest) {
         last_connected_at: null,
         last_error: `Gateway unreachable: ${gatewayError.message}`,
         gateway_url: config.baseUrl,
+        ...providerMetadata,
       });
     }
 

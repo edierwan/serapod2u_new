@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -80,14 +81,23 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
+  const { hasPermission, loading: permissionsLoading } = usePermissions(
+    userProfile?.roles?.role_level,
+    userProfile?.role_code,
+    userProfile?.department_id
+  )
+  const roleLevel = userProfile?.roles?.role_level
+  const orgType = userProfile?.organizations?.org_type_code
+  const canManageSettings =
+    orgType === 'HQ' && (roleLevel === 1 || roleLevel === 10) && hasPermission('manage_inventory_settings')
 
   useEffect(() => {
-    if (isReady) {
+    if (isReady && !permissionsLoading && canManageSettings) {
       fetchInventory()
       fetchProducts()
       fetchLocations()
     }
-  }, [isReady])
+  }, [isReady, permissionsLoading, canManageSettings])
 
   useEffect(() => {
     filterInventory()
@@ -413,6 +423,23 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
     return new Intl.NumberFormat('en-MY').format(value)
   }
 
+  if (permissionsLoading) {
+    return (
+      <div className="p-8 text-sm text-gray-600">
+        Loading inventory settings...
+      </div>
+    )
+  }
+
+  if (!canManageSettings) {
+    return (
+      <div className="p-8">
+        <h2 className="text-xl font-semibold">Unauthorized</h2>
+        <p>You do not have permission to view this Supply Chain page.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -421,7 +448,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onViewChange?.('view-inventory')}
+            onClick={() => onViewChange?.('inventory-list')}
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back

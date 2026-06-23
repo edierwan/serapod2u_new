@@ -45,6 +45,7 @@ import {
   Hash
 } from 'lucide-react'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
+import { getStorageUrl } from '@/lib/utils'
 
 interface UserProfile {
   id: string
@@ -268,8 +269,9 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
         qr_tracking_visibility: qrVisibility
       })
 
-      // Set initial logo preview
-      setLogoPreview(orgData.logo_url || null)
+      // Set initial logo preview (resolve to a browsable URL - self-hosted
+      // Supabase requires an apikey query param even on "public" storage URLs)
+      setLogoPreview(orgData.logo_url ? getStorageUrl(orgData.logo_url) : null)
       setSignaturePreview(orgData.signature_url || null)
 
       // Load branding settings from database
@@ -501,10 +503,17 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
       // This also ensures the cache-busted URL is properly set
       await loadSettings()
 
-      alert('Organization settings saved successfully!')
+      toast({
+        title: 'Organization settings saved',
+        description: 'Your organization details have been updated successfully.',
+      })
     } catch (error: any) {
       console.error('Error saving organization:', error)
-      alert(`Error saving organization: ${error.message}`)
+      toast({
+        title: 'Error saving organization',
+        description: error.message || 'Something went wrong while saving.',
+        variant: 'destructive',
+      })
     } finally {
       setLoading(false)
     }
@@ -517,13 +526,13 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file')
+      toast({ title: 'Invalid file', description: 'Please select an image file', variant: 'destructive' })
       return
     }
 
     // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB')
+      toast({ title: 'File too large', description: 'File size must be less than 5MB', variant: 'destructive' })
       return
     }
 
@@ -744,6 +753,7 @@ const SettingsView = ({ userProfile, initialTab }: SettingsViewProps) => {
                               src={logoPreview || undefined}
                               alt={`${orgSettings.org_name} logo`}
                               className="object-contain"
+                              onError={() => console.error('Failed to load organization logo:', logoPreview)}
                             />
                             <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50">
                               <Building2 className="w-12 h-12 text-blue-600" />

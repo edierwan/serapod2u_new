@@ -70,6 +70,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ord
       return NextResponse.json({ error: 'Valid orderId is required' }, { status: 400 })
     }
 
+    // Use the authenticated client so orders_select RLS validates the caller's
+    // real organization relationship. Never trust a manufacturer id supplied
+    // by the browser.
+    const { data: accessibleOrder, error: orderAccessError } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    if (orderAccessError || !accessibleOrder) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const searchParams = request.nextUrl.searchParams
     const warehouseId = parseUUID(searchParams.get('warehouseId') || searchParams.get('warehouse_id'))
 

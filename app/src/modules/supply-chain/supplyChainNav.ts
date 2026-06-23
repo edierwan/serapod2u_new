@@ -30,6 +30,7 @@ import {
     Trophy,
     type LucideIcon,
 } from 'lucide-react'
+import { canOpenOrderEditor } from './h2m-access'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         access: { allowedOrgTypes: ['HQ', 'DIST', 'WH'] },
         children: [
             { id: 'inventory-list', label: 'View Inventory', icon: Package },
+            { id: 'inventory-settings', label: 'Inventory Settings', icon: SettingsIcon, access: { allowedOrgTypes: ['HQ'], maxRoleLevel: 10 } },
             { id: 'add-stock', label: 'Add Stock', icon: Plus },
             { id: 'stock-adjustment', label: 'Stock Adjustment', icon: SettingsIcon },
             { id: 'stock-transfer', label: 'Stock Transfer', icon: Truck },
@@ -176,11 +178,37 @@ export function canAccessSupplyChainView(
     roleLevel?: number,
 ): boolean {
     if (viewId === 'supply-chain') return true
+    if (viewId === 'create-order') return canOpenOrderEditor(roleLevel)
+    if (viewId === 'view-order' || viewId === 'track-order') return canOpenOrderEditor(roleLevel)
+
+    // Product list actions render as internal views rather than top-nav items.
+    // They inherit the Product List access rule so the guard does not reject
+    // a user immediately after an authorized list-to-detail transition.
+    //
+    // Organization detail/edit views are the same shape: they are reached by
+    // clicking a row in the Organizations list, so they inherit the
+    // Organizations list access rule. (edit-organization-hq routes HQ users to
+    // Settings but is still gated here.) Without this mapping an authorized HQ
+    // admin who opens an organization is wrongly shown "Unauthorized".
+    const accessViewId = ['view-product', 'edit-product', 'add-product'].includes(viewId)
+        ? 'products'
+        : ['view-organization', 'edit-organization', 'edit-organization-hq'].includes(viewId)
+        ? 'organizations'
+        : viewId
 
     return supplyChainNavGroups.some((group) => {
         if (!matchesAccess(group.access, orgType, roleLevel)) return false
-        return group.children.some((child) => child.id === viewId && matchesAccess(child.access, orgType, roleLevel))
+        return group.children.some((child) => child.id === accessViewId && matchesAccess(child.access, orgType, roleLevel))
     })
+}
+
+export function resolveSupplyChainDeepLink(view?: string | null, orderId?: string | null) {
+    const isOrderView = view === 'view-order' || view === 'track-order'
+    const normalizedOrderId = String(orderId || '').trim()
+    if (!isOrderView || !normalizedOrderId) {
+        return { initialView: 'supply-chain', initialOrderId: undefined }
+    }
+    return { initialView: view, initialOrderId: normalizedOrderId }
 }
 
 // ── Flat list helpers ────────────────────────────────────────────
@@ -198,7 +226,7 @@ const _allSupplyChainViewIds = new Set<string>([
     'view-product', 'edit-product', 'add-product',
     'create-order', 'view-order', 'track-order',
     'manufacturer-scan-2',
-    'inventory', 'inventory-settings',
+    'inventory',
     // Organization views (moved from sidebar to Supply Chain)
     'organizations', 'add-organization', 'edit-organization', 'edit-organization-hq', 'view-organization',
 ])
@@ -206,6 +234,64 @@ const _allSupplyChainViewIds = new Set<string>([
 /** Check if a given view ID belongs to the Supply Chain module */
 export function isSupplyChainViewId(viewId: string): boolean {
     return _allSupplyChainViewIds.has(viewId)
+}
+
+export const supplyChainViewToPath: Record<string, string> = {
+    'inventory': 'inventory',
+    'inventory-list': 'inventory',
+    'inventory-settings': 'inventory-settings',
+}
+
+export const supplyChainPathToView: Record<string, string> = {
+    'inventory': 'inventory-list',
+    'inventory/settings': 'inventory-settings',
+    'view-inventory': 'inventory-list',
+    'inventory-settings': 'inventory-settings',
+    'settings': 'inventory-settings',
+    'organizations': 'organizations',
+    'organizations/new': 'add-organization',
+}
+
+/**
+ * Build the URL path for an Organizations view so it survives a refresh and
+ * browser back/forward (the org id lives in the URL, not only React state).
+ *
+ *   organizations        → /supply-chain/organizations
+ *   add-organization     → /supply-chain/organizations/new
+ *   view-organization    → /supply-chain/organizations/<id>
+ *   edit-organization    → /supply-chain/organizations/<id>/edit
+ *
+ * Returns null for views that are not URL-addressable here (caller falls back
+ * to its existing in-memory navigation, e.g. edit-organization-hq → Settings).
+ */
+export function supplyChainOrganizationPath(view: string, orgId?: string | null): string | null {
+    if (view === 'organizations') return 'organizations'
+    if (view === 'add-organization') return 'organizations/new'
+    const id = String(orgId || '').trim()
+    if (!id) return null
+    if (view === 'view-organization') return `organizations/${id}`
+    if (view === 'edit-organization') return `organizations/${id}/edit`
+    return null
+}
+
+/**
+ * Resolve a Supply Chain catch-all slug into a view id (and optional org id).
+ * Handles Organizations deep links plus the existing static path map.
+ */
+export function resolveSupplyChainSlug(slug: string[]): { initialView: string; initialOrgId?: string } {
+    if (slug[0] === 'organizations') {
+        // /organizations
+        if (slug.length === 1) return { initialView: 'organizations' }
+        // /organizations/new (reserved keyword; org ids are UUIDs)
+        if (slug[1] === 'new') return { initialView: 'add-organization' }
+        // /organizations/<id> or /organizations/<id>/edit
+        const initialOrgId = slug[1]
+        const initialView = slug[2] === 'edit' ? 'edit-organization' : 'view-organization'
+        return { initialView, initialOrgId }
+    }
+    const path = slug.join('/')
+    const initialView = supplyChainPathToView[path] || supplyChainPathToView[slug[0] || ''] || 'supply-chain'
+    return { initialView }
 }
 
 /** Find which group a given view id belongs to */

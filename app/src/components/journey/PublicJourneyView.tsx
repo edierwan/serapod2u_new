@@ -13,6 +13,7 @@ import {
   XCircle
 } from 'lucide-react'
 import PremiumLoyaltyTemplate from './templates/PremiumLoyaltyTemplate'
+import JourneyPetFoodExperience from './petfood/JourneyPetFoodExperience'
 
 interface JourneyConfig {
   id?: string
@@ -73,6 +74,8 @@ interface VerificationData {
   is_blocked?: boolean // Optional - not in current DB schema
   status?: string
   org_id?: string
+  // Server-resolved mobile interface for the scanned product (trusted).
+  template_key?: 'premium' | 'pet_food'
   journey_config?: JourneyConfig
   product_info?: {
     product_name?: string
@@ -250,8 +253,20 @@ export default function PublicJourneyView({
   const welcomeTitle = journeyConfig.welcome_title || 'Welcome!'
   const welcomeMessage = journeyConfig.welcome_message || 'Thank you for scanning our QR code'
 
-  // Always show full-screen mobile view for consumers (eliminates flash/flicker)
-  // Use Premium template
+  // Always show full-screen mobile view for consumers (eliminates flash/flicker).
+  // Interface is chosen from the server-resolved template_key for THIS scanned
+  // product. Pet Food → Ellbow experience; everything else → Premium template.
+  if (data?.template_key === 'pet_food') {
+    return (
+      <JourneyPetFoodExperience
+        config={journeyConfig}
+        qrCode={code}
+        orgId={data?.org_id}
+        productInfo={data?.product_info}
+      />
+    )
+  }
+
   return (
     <PremiumLoyaltyTemplate
       config={journeyConfig}

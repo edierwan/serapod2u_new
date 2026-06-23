@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildRoadTourPath, extractRoadTourShortCode } from '@/lib/roadtour/url'
+import type { RoadtourProductCategory } from '@/lib/roadtour/experience-registry'
+import { isMissingRoadtourProductCategorySchema } from '@/lib/roadtour/events'
 
 export interface ResolvedRoadtourQrRecord {
     id: string
@@ -10,13 +12,17 @@ export interface ResolvedRoadtourQrRecord {
     reference_slug: string | null
     short_code: string | null
     campaign_name: string
+    account_manager_user_id: string
     account_manager_name: string
+    account_manager_email: string
+    account_manager_phone: string
     org_id: string
     default_points: number
+    product_category: RoadtourProductCategory | null
 }
 
 async function fetchRoadtourQr(supabase: any, applyFilters: (query: any) => any) {
-    const { data, error } = await applyFilters(
+    const categoryResult = await applyFilters(
         supabase
             .from('roadtour_qr_codes')
             .select(`
@@ -27,10 +33,41 @@ async function fetchRoadtourQr(supabase: any, applyFilters: (query: any) => any)
             campaign_slug,
             reference_slug,
             short_code,
-            roadtour_campaigns!inner(name, org_id, default_points),
-            users:account_manager_user_id(full_name)
+            roadtour_campaigns!inner(
+                name,
+                org_id,
+                default_points,
+                roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(
+                    product_category_id,
+                    product_categories!roadtour_runs_product_category_id_fkey(id, category_code, category_name, image_url, is_active, is_vape)
+                )
+            ),
+            users:account_manager_user_id(id, full_name, email, phone)
         `)
     ).maybeSingle()
+
+    let data = categoryResult.data
+    let error = categoryResult.error
+
+    if (error && isMissingRoadtourProductCategorySchema(error)) {
+        const legacyResult = await applyFilters(
+            supabase
+                .from('roadtour_qr_codes')
+                .select(`
+                    id,
+                    token,
+                    canonical_path,
+                    route_year,
+                    campaign_slug,
+                    reference_slug,
+                    short_code,
+                    roadtour_campaigns!inner(name, org_id, default_points),
+                    users:account_manager_user_id(id, full_name, email, phone)
+                `)
+        ).maybeSingle()
+        data = legacyResult.data
+        error = legacyResult.error
+    }
 
     if (error || !data) return null
 
@@ -42,6 +79,13 @@ async function fetchRoadtourQr(supabase: any, applyFilters: (query: any) => any)
         routeBase: 'roadtour',
     })
 
+    const run = Array.isArray(data.roadtour_campaigns?.roadtour_runs)
+        ? data.roadtour_campaigns.roadtour_runs[0]
+        : data.roadtour_campaigns?.roadtour_runs
+    const productCategory = Array.isArray(run?.product_categories)
+        ? run.product_categories[0]
+        : run?.product_categories
+
     return {
         id: data.id,
         token: data.token,
@@ -51,9 +95,13 @@ async function fetchRoadtourQr(supabase: any, applyFilters: (query: any) => any)
         reference_slug: data.reference_slug,
         short_code: data.short_code,
         campaign_name: data.roadtour_campaigns?.name || 'RoadTour',
+        account_manager_user_id: data.users?.id || '',
         account_manager_name: data.users?.full_name || '',
+        account_manager_email: data.users?.email || '',
+        account_manager_phone: data.users?.phone || '',
         org_id: data.roadtour_campaigns?.org_id || '',
         default_points: data.roadtour_campaigns?.default_points || 0,
+        product_category: productCategory || null,
     } as ResolvedRoadtourQrRecord
 }
 

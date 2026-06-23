@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getWhatsAppProviderReadiness } from '@/lib/notifications/whatsapp-provider-readiness'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import BotAdminSection from './BotAdminSection'
 import ServicesStatusSection from './ServicesStatusSection'
+import { formatPhoneDisplay } from '@/utils/phone'
 import {
     Save,
     MessageCircle,
@@ -48,6 +50,45 @@ const WHATSAPP_PROVIDERS = [
     { value: 'baileys_home', label: 'Baileys (Self-hosted) - Home', description: 'Self-hosted WhatsApp Gateway (Home VPS)' }
 ]
 
+const PROVIDER_TO_URL: Record<string, string> = {
+    whatsapp_business: 'meta',
+    baileys: 'baileys-hostinger',
+    baileys_home: 'baileys-home',
+    twilio: 'twilio',
+    messagebird: 'messagebird'
+}
+
+const VALID_TABS = new Set(['status', 'configuration', 'testing', 'bot-control'])
+
+const normalizeQrImage = (value: unknown): string | null => {
+    if (typeof value !== 'string' || !value.trim()) return null
+    const payload = value.trim()
+    if (payload.startsWith('data:image/')) return payload
+    if (payload.startsWith('iVBOR')) return `data:image/png;base64,${payload}`
+    if (payload.startsWith('/9j/')) return `data:image/jpeg;base64,${payload}`
+    if (payload.startsWith('UklGR')) return `data:image/webp;base64,${payload}`
+    return null
+}
+
+const resolveQrDataUrl = async (preRendered: unknown, rawPayload: unknown): Promise<string | null> => {
+    const image = normalizeQrImage(preRendered) || normalizeQrImage(rawPayload)
+    if (image) return image
+    if (typeof rawPayload !== 'string' || !rawPayload.trim()) return null
+
+    const rawQr = rawPayload.trim()
+    if (rawQr.length > 4096) {
+        throw new Error('Gateway returned an unsupported oversized QR payload')
+    }
+
+    const QRCode = (await import('qrcode')).default
+    return QRCode.toDataURL(rawQr, {
+        errorCorrectionLevel: 'M',
+        type: 'image/png',
+        margin: 2,
+        width: 300
+    })
+}
+
 /** Check if a provider name is a Baileys variant */
 const isBaileysProvider = (name: string | undefined | null): boolean =>
     name === 'baileys' || name === 'baileys_home'
@@ -58,6 +99,7 @@ interface ProviderConfig {
     channel: 'whatsapp' | 'sms' | 'email'
     provider_name: string
     is_active: boolean
+    is_default?: boolean
     is_sandbox: boolean
     config_public: Record<string, any>
     last_test_status?: string
@@ -83,7 +125,7 @@ interface WhatsAppSubTabsProps {
     setSensitiveData: (data: Record<string, string>) => void
     showSecrets: Record<string, boolean>
     setShowSecrets: (secrets: Record<string, boolean>) => void
-    onSave: () => Promise<void>
+    onSave: (configOverride?: ProviderConfig) => Promise<void>
     saving: boolean
 }
 
@@ -108,9 +150,9 @@ export default function WhatsAppSubTabs({
         return p ? `${path}?provider=${encodeURIComponent(p)}` : path
     }
 
-    // Get initial tab from URL or default to 'status'
-    const urlTab = searchParams.get('whatsapp_tab')
-    const [activeTab, setActiveTab] = useState(urlTab || 'status')
+    const urlTab = searchParams.get('tab') || searchParams.get('whatsapp_tab')
+    const urlProvider = searchParams.get('provider')
+    const [activeTab, setActiveTab] = useState(VALID_TABS.has(urlTab || '') ? urlTab! : 'configuration')
 
     // Global AI Auto Mode State
     const [globalAiEnabled, setGlobalAiEnabled] = useState(true)
@@ -141,6 +183,28 @@ export default function WhatsAppSubTabs({
         message: string
         timestamp: Date
     } | null>(null)
+    const [metaAction, setMetaAction] = useState<'connection' | 'test-message' | null>(null)
+    const [metaConnection, setMetaConnection] = useState<{
+        success: boolean
+        message: string
+        phoneNumber?: string
+    } | null>(null)
+    const [metaTestRecipient, setMetaTestRecipient] = useState('')
+    // Delivery state for the most recent Meta test message. Status advances as the
+    // Meta status webhook arrives (accepted → sent → delivered → read / failed); we
+    // never show "delivered" off the back of a 200 alone.
+    const [metaTestResult, setMetaTestResult] = useState<{
+        recipient: string
+        wamid: string
+        status: string
+        accepted_at: string | null
+        sent_at?: string | null
+        delivered_at?: string | null
+        read_at?: string | null
+        failed_at?: string | null
+        error?: { code: number | null; message: string | null } | null
+    } | null>(null)
+    const [metaStatusRefreshing, setMetaStatusRefreshing] = useState(false)
 
     // Saved test numbers state
     const [savedTestNumbers, setSavedTestNumbers] = useState<string[]>([])
@@ -150,15 +214,121 @@ export default function WhatsAppSubTabs({
     // Smart polling state
     const statusPollRef = useRef<NodeJS.Timeout | null>(null)
     const lastStatusRef = useRef<{ data: any; at: number } | null>(null)
+    const providerLoadRef = useRef(0)
     const [pollInterval, setPollInterval] = useState(5000)
 
     // Update URL when tab changes
     const handleTabChange = (value: string) => {
         setActiveTab(value)
         const params = new URLSearchParams(searchParams.toString())
-        params.set('whatsapp_tab', value)
+        params.set('channel', 'whatsapp')
+        params.set('tab', value)
+        params.delete('whatsapp_tab')
         router.push(`?${params.toString()}`, { scroll: false })
     }
+
+    const handleProviderChange = async (providerName: string) => {
+        if (providerName === whatsappConfig?.provider_name) return
+        const requestId = ++providerLoadRef.current
+
+        const defaultTab = isBaileysProvider(providerName) ? 'status' : 'configuration'
+        const params = new URLSearchParams(searchParams.toString())
+        params.set('channel', 'whatsapp')
+        params.set('provider', PROVIDER_TO_URL[providerName] || providerName)
+        params.set('tab', defaultTab)
+        params.delete('whatsapp_tab')
+        window.localStorage.setItem('notification-provider-channel', 'whatsapp')
+        window.localStorage.setItem('notification-provider-whatsapp', providerName)
+        setActiveTab(defaultTab)
+        router.push(`?${params.toString()}`, { scroll: false })
+
+        const fallbackProvider: ProviderConfig = {
+            org_id: userProfile.organizations.id,
+            channel: 'whatsapp',
+            provider_name: providerName,
+            is_active: false,
+            is_sandbox: true,
+            config_public: {}
+        }
+        setSensitiveData({})
+        setMetaConnection(null)
+        setWhatsappConfig(fallbackProvider)
+
+        const { data: savedProvider } = await (supabase as any)
+            .from('notification_provider_configs')
+            .select('*')
+            .eq('org_id', userProfile.organizations.id)
+            .eq('channel', 'whatsapp')
+            .eq('provider_name', providerName)
+            .maybeSingle()
+
+        if (requestId !== providerLoadRef.current) return
+
+        let savedSensitiveData: Record<string, string> = {}
+        if (savedProvider?.config_encrypted) {
+            try {
+                savedSensitiveData = typeof savedProvider.config_encrypted === 'string'
+                    ? JSON.parse(savedProvider.config_encrypted)
+                    : savedProvider.config_encrypted
+            } catch (error) {
+                console.error('Failed to parse saved WhatsApp credentials', error)
+            }
+        }
+
+        setSensitiveData(savedSensitiveData)
+        setWhatsappConfig(savedProvider ? {
+            id: savedProvider.id,
+            org_id: savedProvider.org_id,
+            channel: 'whatsapp',
+            provider_name: savedProvider.provider_name,
+            is_active: savedProvider.is_active,
+            is_default: savedProvider.is_default,
+            is_sandbox: savedProvider.is_sandbox,
+            config_public: savedProvider.config_public || {},
+            last_test_status: savedProvider.last_test_status,
+            last_test_at: savedProvider.last_test_at,
+            last_test_error: savedProvider.last_test_error
+        } : fallbackProvider)
+    }
+
+    useEffect(() => {
+        if (whatsappConfig?.provider_name === 'whatsapp_business') {
+            setActiveTab('configuration')
+            setQrCode(null)
+            setGatewayStatus(null)
+            if (urlProvider !== 'meta' || urlTab !== 'configuration') {
+                const params = new URLSearchParams(searchParams.toString())
+                params.set('channel', 'whatsapp')
+                params.set('provider', 'meta')
+                params.set('tab', 'configuration')
+                params.delete('whatsapp_tab')
+                router.replace(`?${params.toString()}`, { scroll: false })
+            }
+        } else if (whatsappConfig?.provider_name && !isBaileysProvider(whatsappConfig.provider_name)) {
+            setActiveTab('configuration')
+            const expectedProvider = PROVIDER_TO_URL[whatsappConfig.provider_name] || whatsappConfig.provider_name
+            if (urlProvider !== expectedProvider || urlTab !== 'configuration') {
+                const params = new URLSearchParams(searchParams.toString())
+                params.set('channel', 'whatsapp')
+                params.set('provider', expectedProvider)
+                params.set('tab', 'configuration')
+                params.delete('whatsapp_tab')
+                router.replace(`?${params.toString()}`, { scroll: false })
+            }
+        } else if (isBaileysProvider(whatsappConfig?.provider_name)) {
+            const urlMatchesProvider = urlProvider === PROVIDER_TO_URL[whatsappConfig!.provider_name]
+            const nextTab = urlMatchesProvider && VALID_TABS.has(urlTab || '') ? urlTab! : 'status'
+            setActiveTab(nextTab)
+            if (!urlMatchesProvider || !VALID_TABS.has(urlTab || '')) {
+                const params = new URLSearchParams(searchParams.toString())
+                params.set('channel', 'whatsapp')
+                params.set('provider', PROVIDER_TO_URL[whatsappConfig!.provider_name])
+                params.set('tab', nextTab)
+                params.delete('whatsapp_tab')
+                router.replace(`?${params.toString()}`, { scroll: false })
+            }
+        }
+    }, [whatsappConfig?.provider_name, urlProvider, urlTab, router, searchParams])
 
     // Fetch global AI mode status
     const fetchGlobalAiMode = useCallback(async () => {
@@ -388,29 +558,9 @@ export default function WhatsAppSubTabs({
                 return
             }
 
-            if (data.qr_png_base64) {
-                // Use pre-rendered PNG from gateway (preferred)
-                setQrCode(data.qr_png_base64)
-                setQrExpiry(data.expires_in_sec || 25)
-            } else if (data.qr) {
-                // Fallback: render raw QR string client-side
-                try {
-                    const QRCode = (await import('qrcode')).default
-                    const dataUrl = await QRCode.toDataURL(data.qr, {
-                        errorCorrectionLevel: 'M',
-                        type: 'image/png',
-                        margin: 2,
-                        width: 300
-                    })
-                    setQrCode(dataUrl)
-                    setQrExpiry(data.expires_in_sec || 25)
-                } catch (qrRenderErr) {
-                    console.error('Failed to render QR client-side:', qrRenderErr)
-                    setQrCode(null)
-                }
-            } else {
-                setQrCode(null)
-            }
+            const dataUrl = await resolveQrDataUrl(data.qr_png_base64, data.qr)
+            setQrCode(dataUrl)
+            if (dataUrl) setQrExpiry(data.expires_in_sec || 25)
         } catch (error) {
             console.error('Error fetching QR code:', error)
             setQrCode(null)
@@ -477,18 +627,9 @@ export default function WhatsAppSubTabs({
                     const qrData = await qrRes.json()
 
                     if (qrRes.ok && (qrData.qr_png_base64 || qrData.qr)) {
-                        if (qrData.qr_png_base64) {
-                            setQrCode(qrData.qr_png_base64)
-                        } else if (qrData.qr) {
-                            const QRCode = (await import('qrcode')).default
-                            const dataUrl = await QRCode.toDataURL(qrData.qr, {
-                                errorCorrectionLevel: 'M',
-                                type: 'image/png',
-                                margin: 2,
-                                width: 300
-                            })
-                            setQrCode(dataUrl)
-                        }
+                        const dataUrl = await resolveQrDataUrl(qrData.qr_png_base64, qrData.qr)
+                        if (!dataUrl) continue
+                        setQrCode(dataUrl)
                         setQrExpiry(qrData.expires_in_sec || 25)
                         qrFound = true
                         break
@@ -607,7 +748,7 @@ export default function WhatsAppSubTabs({
 
             for (const number of savedTestNumbers) {
                 try {
-                    const response = await fetch(waApi('/api/settings/whatsapp/test'), {
+                    const response = await fetch('/api/settings/whatsapp/test', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -666,7 +807,7 @@ export default function WhatsAppSubTabs({
 
     // Start/stop polling for gateway status
     useEffect(() => {
-        if (isBaileysProvider(whatsappConfig?.provider_name)) {
+        if (whatsappConfig && isBaileysProvider(whatsappConfig.provider_name)) {
             fetchGatewayStatus()
 
             if (whatsappConfig.config_public.test_number) {
@@ -699,6 +840,328 @@ export default function WhatsAppSubTabs({
     // Check if any service is down for warning badge
     const hasServiceWarning =
         gatewayStatus && (!gatewayStatus.connected || isGatewayUnreachable)
+
+    const updateMetaPublicConfig = (key: string, value: string | boolean) => {
+        if (!whatsappConfig) return
+        setWhatsappConfig({
+            ...whatsappConfig,
+            config_public: { ...whatsappConfig.config_public, [key]: value }
+        })
+    }
+
+    const handleMetaAction = async (action: 'connection' | 'test-message') => {
+        if (!whatsappConfig) return
+        if (action === 'test-message' && !metaTestRecipient.trim()) {
+            alert('Enter a recipient phone number with country code.')
+            return
+        }
+
+        try {
+            setMetaAction(action)
+            const response = await fetch('/api/settings/notifications/providers/whatsapp/meta/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action,
+                    to: action === 'test-message' ? metaTestRecipient.trim() : undefined,
+                    provider_name: whatsappConfig.provider_name,
+                    config: whatsappConfig.config_public,
+                    credentials: {
+                        access_token: sensitiveData.access_token || '',
+                        app_secret: sensitiveData.app_secret || '',
+                        webhook_verify_token: sensitiveData.webhook_verify_token || ''
+                    }
+                })
+            })
+            const result = await response.json()
+            if (!response.ok) {
+                // Surface safe diagnostics (Meta error code, masked Phone Number ID, hint)
+                // so credential/config mismatches are obvious without exposing secrets.
+                const metaCode = result?.meta_error?.code ? `(#${result.meta_error.code}) ` : ''
+                const detail = [
+                    `${metaCode}${result.error || 'Meta Cloud API request failed'}`,
+                    result?.hint,
+                    result?.diagnostic
+                        ? `Phone Number ID ${result.diagnostic.phone_number_id_masked} · config: ${result.diagnostic.credential_source}${
+                              result.diagnostic.normalized_recipient ? ` · recipient: ${result.diagnostic.normalized_recipient}` : ''
+                          }`
+                        : undefined
+                ].filter(Boolean).join('\n')
+                throw new Error(detail)
+            }
+
+            // For a test message, report only what Meta actually confirmed: it was
+            // ACCEPTED (a WAMID was issued), not necessarily delivered. Show recipient,
+            // WAMID and timestamp; never claim "delivered" without a delivery webhook.
+            const successMessage = action === 'connection'
+                ? 'Meta Cloud API connection verified.'
+                : [
+                    'Message accepted by Meta (not yet confirmed delivered).',
+                    `Recipient: ${result.recipient_display || result.recipient || ''}`,
+                    `WAMID: ${result.message_id || 'n/a'}`,
+                    `Accepted at: ${result.accepted_at ? new Date(result.accepted_at).toLocaleString() : new Date().toLocaleString()}`,
+                    result.delivery_note || ''
+                ].filter(Boolean).join('\n')
+
+            setMetaConnection({
+                success: true,
+                message: successMessage,
+                phoneNumber: result.phone_number
+            })
+            // Track the delivery state so the UI can show accepted → delivered/read/failed
+            // as status webhooks arrive (polled via the status endpoint).
+            if (action === 'test-message' && result.message_id) {
+                setMetaTestResult({
+                    recipient: result.recipient_display || result.recipient || '',
+                    wamid: result.message_id,
+                    status: result.delivery_status || 'accepted',
+                    accepted_at: result.accepted_at || new Date().toISOString(),
+                })
+            }
+            // Reflect the verified state in the saved config so the status survives reloads.
+            setWhatsappConfig({ ...whatsappConfig, last_test_status: 'success', last_test_error: undefined })
+            alert(successMessage)
+        } catch (error: any) {
+            setMetaConnection({ success: false, message: error.message })
+            alert(`WhatsApp test failed: ${error.message}`)
+        } finally {
+            setMetaAction(null)
+        }
+    }
+
+    // Poll the delivery-log for the latest webhook-confirmed status of the last test
+    // message. On localhost the Meta webhook cannot reach us, so this stays "accepted"
+    // until verified on a public (staging) URL — that is expected.
+    const refreshMetaDeliveryStatus = async () => {
+        if (!metaTestResult?.wamid) return
+        try {
+            setMetaStatusRefreshing(true)
+            const response = await fetch(`/api/settings/notifications/providers/whatsapp/meta/status?wamid=${encodeURIComponent(metaTestResult.wamid)}`)
+            const data = await response.json()
+            if (response.ok && data.found) {
+                setMetaTestResult(prev => prev && prev.wamid === data.wamid ? {
+                    ...prev,
+                    status: data.status || prev.status,
+                    accepted_at: data.accepted_at ?? prev.accepted_at,
+                    sent_at: data.sent_at,
+                    delivered_at: data.delivered_at,
+                    read_at: data.read_at,
+                    failed_at: data.failed_at,
+                    error: data.error,
+                } : prev)
+            }
+        } catch (error) {
+            console.error('Failed to refresh delivery status', error)
+        } finally {
+            setMetaStatusRefreshing(false)
+        }
+    }
+
+    const renderMetaSecretInput = (
+        label: string,
+        key: 'access_token' | 'app_secret' | 'webhook_verify_token',
+        placeholder: string
+    ) => {
+        const visibilityKey = `meta_${key}`
+        return (
+            <div className="space-y-1.5">
+                <Label>{label}</Label>
+                <div className="relative">
+                    <Input
+                        type={showSecrets[visibilityKey] ? 'text' : 'password'}
+                        value={sensitiveData[key] || ''}
+                        placeholder={placeholder}
+                        autoComplete="new-password"
+                        onChange={event => setSensitiveData({ ...sensitiveData, [key]: event.target.value })}
+                        className="pr-10"
+                    />
+                    <button
+                        type="button"
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                        aria-label={`Toggle ${label} visibility`}
+                        onClick={() => setShowSecrets({ ...showSecrets, [visibilityKey]: !showSecrets[visibilityKey] })}
+                    >
+                        {showSecrets[visibilityKey] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                </div>
+            </div>
+        )
+    }
+
+    const renderMetaConfigurationTab = () => {
+        if (!whatsappConfig) return null
+
+        const publicConfig = whatsappConfig.config_public
+        const hasAccessToken = Boolean(sensitiveData.access_token)
+        const hasPhoneNumber = Boolean(publicConfig.phone_number_id && publicConfig.display_phone_number)
+        const hasWebhook = Boolean(publicConfig.webhook_callback_url && sensitiveData.webhook_verify_token)
+
+        return (
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-5">
+                    <Card className="overflow-hidden border-slate-200 shadow-sm">
+                        <CardHeader className="border-b border-slate-100 bg-white">
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <MessageCircle className="h-5 w-5 text-emerald-600" />
+                                WhatsApp Business API Configuration
+                            </CardTitle>
+                            <CardDescription>Connect your WhatsApp Business Account through the official Meta Cloud API.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6 pt-6">
+                            <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-1.5">
+                                        <Label>Display Phone Number</Label>
+                                        <Input value={publicConfig.display_phone_number || ''} placeholder="e.g. +60 12 345 6789" onChange={event => updateMetaPublicConfig('display_phone_number', event.target.value)} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Phone Number ID</Label>
+                                        <Input value={publicConfig.phone_number_id || ''} placeholder="e.g. 123456789012345" onChange={event => updateMetaPublicConfig('phone_number_id', event.target.value)} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>WhatsApp Business Account ID (WABA ID)</Label>
+                                        <Input value={publicConfig.waba_id || ''} placeholder="e.g. 123456789012345" onChange={event => updateMetaPublicConfig('waba_id', event.target.value)} />
+                                    </div>
+                                    {renderMetaSecretInput('Permanent Access Token', 'access_token', 'Meta system-user access token')}
+                                    {renderMetaSecretInput('App Secret', 'app_secret', 'Meta app secret')}
+                                    {renderMetaSecretInput('Webhook Verify Token', 'webhook_verify_token', 'A private token you choose')}
+                                    <div className="space-y-1.5">
+                                        <Label>Webhook Callback URL</Label>
+                                        <Input value={publicConfig.webhook_callback_url || ''} placeholder="https://your-domain.com/api/webhooks/whatsapp/meta" onChange={event => updateMetaPublicConfig('webhook_callback_url', event.target.value)} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label>Default Template Language</Label>
+                                        <Select value={publicConfig.default_template_language || 'en_US'} onValueChange={value => updateMetaPublicConfig('default_template_language', value)}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="en_US">English (en_US)</SelectItem>
+                                                <SelectItem value="en_GB">English (en_GB)</SelectItem>
+                                                <SelectItem value="ms">Bahasa Melayu (ms)</SelectItem>
+                                                <SelectItem value="zh_CN">Chinese Simplified (zh_CN)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label>Default OTP / Authentication Template</Label>
+                                        <Input value={publicConfig.default_otp_template || ''} placeholder="otp_authentication" onChange={event => updateMetaPublicConfig('default_otp_template', event.target.value)} />
+                                        <p className="text-xs text-slate-500">Use the exact approved template name from WhatsApp Manager.</p>
+                                    </div>
+                                    <div className="space-y-1.5 md:col-span-2">
+                                        <Label>Test Template Name</Label>
+                                        <Input value={publicConfig.test_template_name || ''} placeholder="hello_world" onChange={event => updateMetaPublicConfig('test_template_name', event.target.value)} />
+                                        <p className="text-xs text-slate-500">An approved, parameter-free template used by "Send Test WhatsApp". The pre-approved <code>hello_world</code> template works for most WABAs. Sent in the Default Template Language above.</p>
+                                    </div>
+                            </div>
+
+                            <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-3">
+                                <div className="flex items-start gap-3">
+                                    <Switch checked={whatsappConfig.is_active} onCheckedChange={checked => setWhatsappConfig({ ...whatsappConfig, is_active: checked })} />
+                                    <div><Label>Enable WhatsApp notifications</Label><p className="text-xs text-slate-500">Allow notification delivery through Meta.</p></div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <Switch checked={whatsappConfig.is_sandbox} onCheckedChange={checked => setWhatsappConfig({ ...whatsappConfig, is_sandbox: checked })} />
+                                    <div><Label>Enable sandbox / test mode</Label><p className="text-xs text-slate-500">Restrict sending while testing.</p></div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <Switch checked={publicConfig.inbox_reply_via_whatsapp ?? false} onCheckedChange={checked => updateMetaPublicConfig('inbox_reply_via_whatsapp', checked)} />
+                                    <div><Label>Enable WhatsApp reply in support inbox</Label><p className="text-xs text-slate-500">Allow agents to reply via WhatsApp.</p></div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <Button type="button" variant="outline" className="border-violet-300 text-violet-700" onClick={() => handleMetaAction('connection')} disabled={metaAction !== null}>
+                            {metaAction === 'connection' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}Test Connection
+                        </Button>
+                        <Button type="button" variant="outline" className="border-violet-300 text-violet-700" onClick={() => onSave()} disabled={saving}>
+                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Save Configuration
+                        </Button>
+                        <Button type="button" className="bg-violet-600 hover:bg-violet-700" disabled={saving} onClick={async () => {
+                            const activeConfig = { ...whatsappConfig, is_active: true }
+                            setWhatsappConfig(activeConfig)
+                            await onSave(activeConfig)
+                        }}>
+                            <CheckCircle2 className="mr-2 h-4 w-4" />Set as Active Provider
+                        </Button>
+                    </div>
+                </div>
+
+                <aside className="space-y-4">
+                    <Card className="border-slate-200 shadow-sm">
+                        <CardHeader className="pb-3"><CardTitle className="text-base">Connection Status</CardTitle></CardHeader>
+                        <CardContent className="space-y-3 text-sm">
+                            {[
+                                ['API Connection', (metaConnection?.success || (!metaConnection && whatsappConfig.last_test_status === 'success')) ? 'Connected / Verified' : 'Not tested'],
+                                ['Access Token', hasAccessToken ? 'Configured' : 'Missing'],
+                                ['Webhook', hasWebhook ? 'Configured' : 'Missing'],
+                                ['Phone Number', hasPhoneNumber ? publicConfig.display_phone_number : 'Missing']
+                            ].map(([label, value]) => (
+                                <div key={label} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                                    <span className="text-slate-600">{label}</span><span className="text-right font-medium text-slate-900">{value}</span>
+                                </div>
+                            ))}
+                            {metaConnection && <p className={`whitespace-pre-line rounded-lg p-2 text-xs ${metaConnection.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{metaConnection.message}</p>}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-slate-200 shadow-sm">
+                        <CardHeader className="pb-3"><CardTitle className="text-base">Test Message</CardTitle><CardDescription>Send a live message through Meta Cloud API.</CardDescription></CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="space-y-1.5">
+                                <Label>Recipient Phone Number</Label>
+                                <Input value={metaTestRecipient} placeholder="0192277233 or +60192277233" onChange={event => setMetaTestRecipient(event.target.value)} />
+                                {metaTestRecipient.trim() && (
+                                    formatPhoneDisplay(metaTestRecipient)
+                                        ? <p className="text-xs text-slate-500">Sending to: <span className="font-medium text-slate-700">{formatPhoneDisplay(metaTestRecipient)}</span></p>
+                                        : <p className="text-xs text-amber-600">Enter a valid Malaysian number, e.g. 0192277233</p>
+                                )}
+                            </div>
+                            <Button type="button" className="w-full bg-violet-600 hover:bg-violet-700" onClick={() => handleMetaAction('test-message')} disabled={metaAction !== null}>
+                                {metaAction === 'test-message' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Send Test WhatsApp
+                            </Button>
+
+                            {metaTestResult && (() => {
+                                const status = metaTestResult.status
+                                const tone = status === 'delivered' || status === 'read'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                    : status === 'failed'
+                                        ? 'border-red-200 bg-red-50 text-red-800'
+                                        : 'border-amber-200 bg-amber-50 text-amber-800'
+                                const fmt = (v?: string | null) => v ? new Date(v).toLocaleString() : '—'
+                                return (
+                                    <div className={`space-y-1 rounded-lg border p-3 text-xs ${tone}`}>
+                                        <div className="flex items-center justify-between">
+                                            <span className="font-semibold uppercase tracking-wide">Delivery: {status}</span>
+                                            <button type="button" onClick={refreshMetaDeliveryStatus} disabled={metaStatusRefreshing} className="underline disabled:opacity-50">
+                                                {metaStatusRefreshing ? 'Checking…' : 'Refresh'}
+                                            </button>
+                                        </div>
+                                        <p>Recipient: <span className="font-medium">{metaTestResult.recipient || '—'}</span></p>
+                                        <p className="break-all">WAMID: <span className="font-mono">{metaTestResult.wamid}</span></p>
+                                        <p>Accepted: {fmt(metaTestResult.accepted_at)}</p>
+                                        {metaTestResult.sent_at && <p>Sent: {fmt(metaTestResult.sent_at)}</p>}
+                                        {metaTestResult.delivered_at && <p>Delivered: {fmt(metaTestResult.delivered_at)}</p>}
+                                        {metaTestResult.read_at && <p>Read: {fmt(metaTestResult.read_at)}</p>}
+                                        {metaTestResult.failed_at && <p>Failed: {fmt(metaTestResult.failed_at)}</p>}
+                                        {metaTestResult.error && (
+                                            <p>Error {metaTestResult.error.code ?? ''}: {metaTestResult.error.message || 'unknown'}</p>
+                                        )}
+                                        {status === 'accepted' && (
+                                            <p className="mt-1 opacity-80">Accepted by Meta — delivery is confirmed only when a status webhook arrives. On localhost the webhook cannot reach this app, so verify on a public/staging URL.</p>
+                                        )}
+                                    </div>
+                                )
+                            })()}
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-violet-200 bg-violet-50/60 shadow-sm">
+                        <CardContent className="flex items-start gap-3 pt-5"><Bot className="mt-0.5 h-5 w-5 text-violet-600" /><div><p className="font-semibold text-slate-900">Support inbox replies</p><p className="mt-1 text-xs leading-5 text-slate-600">Bot and agent controls remain available in the Support Inbox after this provider is activated.</p></div></CardContent>
+                    </Card>
+                </aside>
+            </div>
+        )
+    }
 
     // ========================================
     // TAB 1: STATUS (Read-only health view)
@@ -1007,39 +1470,6 @@ export default function WhatsAppSubTabs({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    {/* Provider Selection */}
-                    <div className="space-y-2">
-                        <Label htmlFor="whatsapp-provider">WhatsApp Provider</Label>
-                        <Select
-                            value={whatsappConfig?.provider_name || ''}
-                            onValueChange={value =>
-                                setWhatsappConfig({
-                                    ...whatsappConfig!,
-                                    org_id: userProfile.organizations.id,
-                                    channel: 'whatsapp',
-                                    provider_name: value,
-                                    is_active: whatsappConfig?.is_active || false,
-                                    is_sandbox: whatsappConfig?.is_sandbox !== false,
-                                    config_public: whatsappConfig?.config_public || {}
-                                })
-                            }
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select WhatsApp provider" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {WHATSAPP_PROVIDERS.map(provider => (
-                                    <SelectItem key={provider.value} value={provider.value}>
-                                        <div>
-                                            <div className="font-medium">{provider.label}</div>
-                                            <div className="text-xs text-gray-500">{provider.description}</div>
-                                        </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
                     {whatsappConfig?.provider_name && (
                         <>
                             {/* Enable/Sandbox Switches */}
@@ -1285,7 +1715,7 @@ export default function WhatsAppSubTabs({
 
                             {/* Save Button */}
                             <div className="flex justify-end">
-                                <Button onClick={onSave} disabled={saving}>
+                                <Button onClick={() => onSave()} disabled={saving}>
                                     {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Configuration
                                 </Button>
@@ -1491,9 +1921,65 @@ export default function WhatsAppSubTabs({
 
     // Only show Baileys-specific tabs when using Baileys provider
     const isBaileys = isBaileysProvider(whatsappConfig?.provider_name)
+    const selectedProviderLabel = WHATSAPP_PROVIDERS.find(provider => provider.value === whatsappConfig?.provider_name)?.label || whatsappConfig?.provider_name || 'provider'
+    const defaultReadiness = getWhatsAppProviderReadiness({
+        id: whatsappConfig?.id,
+        providerName: whatsappConfig?.provider_name,
+        isActive: whatsappConfig?.is_active,
+        lastTestStatus: whatsappConfig?.last_test_status,
+        publicConfig: whatsappConfig?.config_public,
+        sensitiveConfig: sensitiveData,
+        baileysConnected: isBaileys ? gatewayStatus?.connected ?? false : null,
+    })
+
+    const setAsDefault = async () => {
+        if (!defaultReadiness.eligible) return alert(defaultReadiness.reason)
+        if (!window.confirm(`Use ${selectedProviderLabel} as the default WhatsApp provider?`)) return
+
+        const response = await fetch('/api/settings/notifications/providers/whatsapp/default', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ providerName: whatsappConfig.provider_name }),
+        })
+        const payload = await response.json()
+        if (!response.ok) return alert(payload.error || 'Failed to change the default WhatsApp provider.')
+        setWhatsappConfig({ ...whatsappConfig, is_default: true })
+        alert(`${selectedProviderLabel} is now the default WhatsApp provider.`)
+    }
 
     return (
         <div className="space-y-6">
+            <Card className="border-violet-200 bg-violet-50/40 shadow-sm">
+                <CardContent className="flex flex-col gap-3 pt-5 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <Label htmlFor="whatsapp-provider-switcher" className="text-sm font-semibold text-slate-900">WhatsApp provider</Label>
+                        <p className="mt-1 text-xs text-slate-500">Choose which provider to view or configure. This does not change the system default.</p>
+                    </div>
+                    <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                        {whatsappConfig?.is_default ? <Badge className="w-fit bg-emerald-600">Default</Badge> : null}
+                        <Select value={whatsappConfig?.provider_name || 'whatsapp_business'} onValueChange={handleProviderChange}>
+                            <SelectTrigger id="whatsapp-provider-switcher" className="w-full bg-white md:w-[360px]">
+                                <SelectValue placeholder="Select WhatsApp provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {WHATSAPP_PROVIDERS.map(provider => (
+                                    <SelectItem key={provider.value} value={provider.value}>
+                                        <div><div className="font-medium">{provider.label}</div><div className="text-xs text-gray-500">{provider.description}</div></div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {!whatsappConfig?.is_default ? (
+                            <div className="flex flex-col items-start gap-1 md:items-end">
+                                <Button type="button" variant="outline" disabled={!defaultReadiness.eligible} onClick={setAsDefault}>Set as Default</Button>
+                                {!defaultReadiness.eligible && defaultReadiness.reason ? (
+                                    <p className="max-w-[360px] text-xs text-amber-700" role="status">{defaultReadiness.reason}</p>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
+                </CardContent>
+            </Card>
             <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
                 <TabsList className={`grid w-full ${isBaileys ? 'grid-cols-4' : 'grid-cols-1'}`}>
                     {isBaileys && (
@@ -1527,7 +2013,11 @@ export default function WhatsAppSubTabs({
 
                 {isBaileys && <TabsContent value="status">{renderStatusTab()}</TabsContent>}
 
-                <TabsContent value="configuration">{renderConfigurationTab()}</TabsContent>
+                <TabsContent value="configuration">
+                    {whatsappConfig?.provider_name === 'whatsapp_business'
+                        ? renderMetaConfigurationTab()
+                        : renderConfigurationTab()}
+                </TabsContent>
 
                 {isBaileys && (
                     <>

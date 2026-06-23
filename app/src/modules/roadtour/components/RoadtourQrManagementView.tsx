@@ -36,6 +36,7 @@ interface QrCode {
     account_manager_user_id: string
     user_name?: string
     user_phone?: string
+    user_email?: string
     token: string
     status: string
     expires_at: string | null
@@ -94,7 +95,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
             const [campaignRes, qrRes, runsRes] = await Promise.all([
                 (supabase as any).from('roadtour_campaigns').select('id, name, status, roadtour_run_id').eq('org_id', companyId).order('name'),
                 (supabase as any).from('roadtour_qr_codes')
-                    .select('*, roadtour_campaigns!inner(name, org_id, roadtour_run_id), users:account_manager_user_id(full_name, phone)')
+                    .select('*, roadtour_campaigns!inner(name, org_id, roadtour_run_id), users:account_manager_user_id(full_name, phone, email)')
                     .eq('roadtour_campaigns.org_id', companyId)
                     .order('created_at', { ascending: false })
                     .limit(500),
@@ -111,6 +112,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                 campaign_name: row.roadtour_campaigns?.name || '—',
                 user_name: row.users?.full_name || '—',
                 user_phone: row.users?.phone || '',
+                user_email: row.users?.email || '',
             })))
         } catch {
             toast({ title: 'Error', description: 'Failed to load QR records.', variant: 'destructive' })
@@ -146,20 +148,12 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         })()
     }, [getQrUrl, previewQr])
 
-    const sendWhatsAppForQr = async (qr: QrCode, silent = false) => {
-        const phone = qr.user_phone
-        if (!phone) {
-            if (!silent) {
-                toast({ title: 'Error', description: 'Reference has no phone number.', variant: 'destructive' })
-            }
-            return { ok: false, reason: 'missing_phone' }
-        }
-
+    const sendQrForReference = async (qr: QrCode, silent = false) => {
         const resp = await fetch('/api/roadtour/send-qr-whatsapp', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                phone,
+                phone: qr.user_phone,
                 token: qr.token,
                 campaignName: qr.campaign_name,
                 userName: qr.user_name,
@@ -171,21 +165,30 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
             throw new Error(errBody.error || `WhatsApp send failed (${resp.status})${errBody.step ? ` [${errBody.step}]` : ''}`)
         }
 
+        const delivery = await resp.json()
+        const channel = delivery.channel === 'email' ? 'email' : 'whatsapp'
+        const recipient = delivery.recipient || (channel === 'email' ? qr.user_email : qr.user_phone)
+
         await (supabase as any).from('roadtour_qr_delivery_logs').insert({
             campaign_id: qr.campaign_id,
             qr_code_id: qr.id,
             account_manager_user_id: qr.account_manager_user_id,
-            phone_number: phone,
-            channel: 'whatsapp_qr_image',
-            send_status: 'sent',
-            sent_at: new Date().toISOString(),
+            phone_number: recipient,
+            channel: channel === 'email' ? 'email_qr_link' : 'whatsapp_qr_image',
+            send_status: delivery.queued ? 'pending' : 'sent',
+            sent_at: delivery.queued ? null : new Date().toISOString(),
         })
 
         if (!silent) {
-            toast({ title: 'Sent', description: `QR code image sent via WhatsApp to ${phone}.` })
+            toast({
+                title: delivery.queued ? 'Email Queued' : 'Sent',
+                description: delivery.queued
+                    ? `RoadTour QR email queued for ${recipient}.`
+                    : `QR code image sent via WhatsApp to ${recipient}.`,
+            })
         }
 
-        return { ok: true }
+        return { ok: true, channel, queued: Boolean(delivery.queued) }
     }
 
     const downloadQr = async (qr: QrCode) => {
@@ -212,7 +215,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         setPreviewOpen(true)
     }
 
-    const sendGroupWhatsApp = async (group: QrCampaignGroup) => {
+    const sendGroupQr = async (group: QrCampaignGroup) => {
         const activeQrs = group.qr_codes.filter((qr) => qr.status === 'active')
         if (activeQrs.length === 0) {
             toast({ title: 'No Active QR', description: 'This campaign has no active QR records to send.', variant: 'destructive' })
@@ -222,18 +225,22 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         try {
             setSendingGroupKey(group.key)
             let sentCount = 0
+            let queuedEmailCount = 0
             for (const qr of activeQrs) {
-                const result = await sendWhatsAppForQr(qr, true)
-                if (result.ok) sentCount += 1
+                const result = await sendQrForReference(qr, true)
+                if (result.ok) {
+                    sentCount += 1
+                    if (result.channel === 'email' && result.queued) queuedEmailCount += 1
+                }
             }
             toast({
-                title: 'WhatsApp Sent',
-                description: sentCount === 1
-                    ? 'QR code sent to 1 reference.'
-                    : `QR codes sent to ${sentCount} references.`
+                title: queuedEmailCount > 0 ? 'Email Queued' : 'QR Sent',
+                description: queuedEmailCount > 0
+                    ? `${queuedEmailCount} RoadTour QR email${queuedEmailCount === 1 ? '' : 's'} queued.`
+                    : sentCount === 1 ? 'QR code sent to 1 reference.' : `QR codes sent to ${sentCount} references.`,
             })
         } catch (error: any) {
-            toast({ title: 'Error', description: error.message || 'Failed to send WhatsApp messages.', variant: 'destructive' })
+            toast({ title: 'Error', description: error.message || 'Failed to send RoadTour QR notifications.', variant: 'destructive' })
         } finally {
             setSendingGroupKey(null)
         }
@@ -403,8 +410,8 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                     <TableCell className="text-right">
                                         <div className="flex gap-1 justify-end">
                                             <Button size="sm" variant="ghost" onClick={() => openPreviewGroup(group)} title="Preview"><Eye className="h-4 w-4" /></Button>
-                                            <Button size="sm" variant="ghost" onClick={() => sendGroupWhatsApp(group)} title="Send WhatsApp" disabled={sendingGroupKey === group.key}>
-                                                {sendingGroupKey === group.key ? <Loader2 className="h-4 w-4 animate-spin text-green-600" /> : <Send className="h-4 w-4 text-green-600" />}
+                                            <Button size="sm" variant="ghost" onClick={() => sendGroupQr(group)} title="Send using Notification Types routing" disabled={sendingGroupKey === group.key}>
+                                                {sendingGroupKey === group.key ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : <Send className="h-4 w-4 text-blue-600" />}
                                             </Button>
                                             {group.status === 'active' && (
                                                 <Button size="sm" variant="ghost" onClick={() => revokeGroup(group)} title="Revoke" disabled={revokingGroupKey === group.key}>
@@ -454,7 +461,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                             <div className="flex flex-wrap gap-2 justify-center">
                                 <Button size="sm" variant="outline" onClick={() => downloadQr(previewQr)} className="gap-1"><Download className="h-4 w-4" />Download</Button>
                                 <Button size="sm" variant="outline" onClick={() => copyLink(previewQr)} className="gap-1"><Copy className="h-4 w-4" />Copy Link</Button>
-                                <Button size="sm" variant="outline" onClick={() => sendWhatsAppForQr(previewQr)} className="gap-1"><Send className="h-4 w-4" />WhatsApp</Button>
+                                <Button size="sm" variant="outline" onClick={() => sendQrForReference(previewQr)} className="gap-1"><Send className="h-4 w-4" />Send</Button>
                             </div>
                         </div>
                     )}

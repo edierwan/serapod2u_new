@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
     CalendarDays,
     Plus,
@@ -21,7 +21,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { getLeaveRepository } from '@/modules/hr/leave/repository'
+import { getLeaveRepositoryForOrg } from '@/modules/hr/leave/repository'
+import { SupabaseLeaveRepository } from '@/modules/hr/leave/supabaseRepository'
 import type {
     LeaveType,
     EntitlementTier,
@@ -92,8 +93,19 @@ function blankLeaveType(): Omit<LeaveType, 'id' | 'createdAt' | 'updatedAt'> {
 
 // ── Component ───────────────────────────────────────────────────
 
-export default function HrLeaveTypesView() {
-    const repo = getLeaveRepository()
+export default function HrLeaveTypesView({
+    organizationId,
+    userId,
+}: {
+    organizationId?: string
+    userId?: string
+} = {}) {
+    const repo = useMemo(() => {
+        if (organizationId && userId) {
+            return new SupabaseLeaveRepository(organizationId, userId)
+        }
+        return getLeaveRepositoryForOrg(null, null)
+    }, [organizationId, userId])
     const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
     const [loading, setLoading] = useState(true)
     const [dialogOpen, setDialogOpen] = useState(false)

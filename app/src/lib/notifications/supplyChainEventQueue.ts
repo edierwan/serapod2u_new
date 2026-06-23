@@ -83,10 +83,69 @@ export async function queueNotificationEvent(supabase: SupabaseLikeClient, input
         }
     }
 
+    const { data: rawSetting } = await supabase
+        .from('notification_settings')
+        .select('enabled, channels_enabled, recipient_config')
+        .eq('org_id', orgId)
+        .eq('event_code', eventCode)
+        .maybeSingle()
+
+    const routingPreset = rawSetting?.recipient_config?.routing?.preset as string | undefined
+    let channels: readonly string[] = DEFAULT_CHANNELS
+
+    if (rawSetting && rawSetting.enabled === false) {
+        return { queuedCount: 0, skippedReason: 'disabled_or_no_provider' as const, errors: [] }
+    }
+
+    if (routingPreset === 'whatsapp_email_fallback') {
+        const { data: activeProviders } = await supabase
+            .from('notification_provider_configs')
+            .select('channel, provider_name')
+            .eq('org_id', orgId)
+            .eq('is_active', true)
+            .in('channel', ['whatsapp', 'email'])
+
+        const whatsappProvider = activeProviders?.find((provider: any) => provider.channel === 'whatsapp')
+        const emailProvider = activeProviders?.find((provider: any) => provider.channel === 'email')
+
+        // A fallback route starts with exactly one channel. If WhatsApp is unavailable,
+        // queue Email directly instead of silently dropping the notification.
+        if (!whatsappProvider && emailProvider) {
+            const { data, error } = await supabase.from('notifications_outbox').insert({
+                org_id: orgId,
+                event_code: eventCode,
+                channel: 'email',
+                to_phone: null,
+                to_email: null,
+                template_code: null,
+                payload_json: { ...payload, _routing_fallback: 'whatsapp_unavailable' },
+                priority,
+                provider_name: emailProvider.provider_name,
+                status: 'queued',
+                retry_count: 0,
+                max_retries: 3,
+            }).select('id').single()
+
+            return {
+                queuedCount: data ? 1 : 0,
+                skippedReason: data ? null : 'disabled_or_no_provider' as const,
+                errors: error ? [`email: ${error.message}`] : [],
+            }
+        }
+
+        channels = ['whatsapp']
+    } else if (routingPreset === 'whatsapp_only') {
+        channels = ['whatsapp']
+    } else if (routingPreset === 'email_only') {
+        channels = ['email']
+    } else if (routingPreset === 'sms_only') {
+        channels = ['sms']
+    }
+
     let queuedCount = 0
     const errors: string[] = []
 
-    for (const channel of DEFAULT_CHANNELS) {
+    for (const channel of channels) {
         const { data, error } = await supabase.rpc('queue_notification', {
             p_org_id: orgId,
             p_event_code: eventCode,

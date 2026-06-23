@@ -64,6 +64,7 @@ import {
     type LandingPageTrackingDefaults,
 } from '@/lib/landing-pages/types'
 import { normalizeLandingPageSlug } from '@/lib/landing-pages/slug'
+import SafeImage from '@/components/shared/SafeImage'
 
 // ── Types & helpers ────────────────────────────────────────────────────
 
@@ -648,12 +649,12 @@ function ListView(props: {
                                 </div>
                                 <div className="mt-3 flex gap-3">
                                     <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50">
-                                        {page.hero.hero_image_url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={page.hero.hero_image_url} alt="" className="h-full w-full object-contain" />
-                                        ) : (
-                                            <Package className="h-6 w-6 text-slate-300" />
-                                        )}
+                                        <SafeImage
+                                            src={page.hero.hero_image_url}
+                                            alt=""
+                                            className="h-full w-full object-contain"
+                                            fallbackIconClassName="h-6 w-6 text-slate-300"
+                                        />
                                     </div>
                                     <div className="min-w-0 text-xs text-slate-500">
                                         <p className="line-clamp-2 text-slate-700">{page.public_title}</p>
@@ -700,12 +701,12 @@ function ListView(props: {
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-3">
                                                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50">
-                                                        {page.hero.hero_image_url ? (
-                                                            // eslint-disable-next-line @next/next/no-img-element
-                                                            <img src={page.hero.hero_image_url} alt="" className="h-full w-full object-contain" />
-                                                        ) : (
-                                                            <Package className="h-4 w-4 text-slate-300" />
-                                                        )}
+                                                        <SafeImage
+                                                            src={page.hero.hero_image_url}
+                                                            alt=""
+                                                            className="h-full w-full object-contain"
+                                                            fallbackIconClassName="h-4 w-4 text-slate-300"
+                                                        />
                                                     </div>
                                                     <div className="min-w-0">
                                                         <p className="truncate font-semibold text-slate-900">{page.internal_name}</p>
@@ -1002,12 +1003,13 @@ function HeroPreview({ hero, fallbackTitle, fallbackSubtitle }: { hero: LandingP
                 )}
             </div>
             <div className="mt-4 aspect-[16/9] overflow-hidden rounded-xl border border-slate-100 bg-white">
-                {hero.hero_image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={hero.hero_image_url} alt="" className="h-full w-full object-contain p-3" />
-                ) : (
-                    <div className="flex h-full items-center justify-center text-slate-300"><Package className="h-10 w-10" /></div>
-                )}
+                <SafeImage
+                    src={hero.hero_image_url}
+                    alt=""
+                    className="h-full w-full object-contain p-3"
+                    fallbackClassName="bg-white"
+                    fallbackIconClassName="h-10 w-10 text-slate-300"
+                />
             </div>
         </div>
     )
@@ -1052,7 +1054,7 @@ function StepProducts(props: EditorProps) {
         if (index < 0) return
         const target = index + direction
         if (target < 0 || target >= next.length) return
-        ;[next[index], next[target]] = [next[target], next[index]]
+            ;[next[index], next[target]] = [next[target], next[index]]
         updateForm('selected_product_ids', next)
     }
 
@@ -1120,12 +1122,12 @@ function StepProducts(props: EditorProps) {
                                                     <td className="px-3 py-2">
                                                         <div className="flex items-center gap-2">
                                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50">
-                                                                {product.image_url ? (
-                                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                                    <img src={product.image_url} alt="" className="h-full w-full object-contain" />
-                                                                ) : (
-                                                                    <Package className="h-4 w-4 text-slate-300" />
-                                                                )}
+                                                                <SafeImage
+                                                                    src={product.image_url}
+                                                                    alt=""
+                                                                    className="h-full w-full object-contain"
+                                                                    fallbackIconClassName="h-4 w-4 text-slate-300"
+                                                                />
                                                             </div>
                                                             <div className="min-w-0">
                                                                 <p className="truncate font-semibold text-slate-900">{product.product_name}</p>
@@ -1164,12 +1166,12 @@ function StepProducts(props: EditorProps) {
                                     {selectedDetails.map((product, index) => (
                                         <li key={product.id} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-white p-2">
                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50">
-                                                {product.image_url ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={product.image_url} alt="" className="h-full w-full object-contain" />
-                                                ) : (
-                                                    <Package className="h-4 w-4 text-slate-300" />
-                                                )}
+                                                <SafeImage
+                                                    src={product.image_url}
+                                                    alt=""
+                                                    className="h-full w-full object-contain"
+                                                    fallbackIconClassName="h-4 w-4 text-slate-300"
+                                                />
                                             </div>
                                             <div className="min-w-0 flex-1">
                                                 <p className="truncate text-xs font-semibold text-slate-900">{product.product_name}</p>

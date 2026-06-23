@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import PublicJourneyView from '@/components/journey/PublicJourneyView'
 import { resolveQrProductContext } from '@/lib/qr-product-resolution'
+import { resolveProductCategoryExperience, type TemplateKey } from '@/lib/journey/product-experience'
 
 export const metadata: Metadata = {
   title: 'Track Product | Serapod2U',
@@ -136,6 +137,24 @@ async function getJourneyData(code: string) {
       order_item_id: qrCode.order_item_id,
     })
 
+    // Resolve the scanned product's Product Category server-side and map it to a
+    // mobile experience. This is the trusted source for interface selection —
+    // each QR resolves its own template from the actual scanned product, which
+    // is what makes mixed-category orders work. Falls back to 'premium'.
+    let templateKey: TemplateKey = 'premium'
+    const categoryProductId = product?.id || qrCode.product_id
+    if (categoryProductId) {
+      const { data: productCategoryRow } = await supabase
+        .from('products')
+        .select('category_id, product_categories!inner(id, category_code, category_name, image_url, is_active, is_vape)')
+        .eq('id', categoryProductId)
+        .maybeSingle()
+      const rawCategory = Array.isArray((productCategoryRow as any)?.product_categories)
+        ? (productCategoryRow as any).product_categories[0]
+        : (productCategoryRow as any)?.product_categories
+      templateKey = resolveProductCategoryExperience(rawCategory ?? null).templateKey
+    }
+
     let order = null
     if (qrCode.order_id) {
       const { data: o, error: orderError } = await supabase
@@ -215,6 +234,8 @@ async function getJourneyData(code: string) {
         is_valid: true,
         status: qrCode.status || undefined,
         org_id: qrCode.company_id,
+        // Trusted, server-resolved interface for this specific scanned product.
+        template_key: templateKey,
         resolved_code: qrCode.code, // The actual full code from database (important for points collection)
         journey_config: {
           id: journeyConfig.id,

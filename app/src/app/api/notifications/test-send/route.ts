@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getWhatsAppConfig, callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { getWhatsAppConfig, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 
 // Helper to replace variables
 function applyTemplate(template: string, variables: any) {
@@ -45,14 +45,16 @@ export async function POST(request: NextRequest) {
         }
 
         let result: any = { status: 'failed' }
+        let resolvedProviderName: string | undefined
 
         if (channel === 'whatsapp') {
             // Use the same working utility as /api/settings/whatsapp/test
             const config = await getWhatsAppConfig(supabase, userProfile.organization_id)
 
-            if (!config || !config.baseUrl) {
-                return NextResponse.json({ error: 'WhatsApp gateway not configured. Go to Providers tab to set up.' }, { status: 400 })
+            if (!config) {
+                return NextResponse.json({ error: 'No default WhatsApp provider is configured. Go to Providers and set one as default.' }, { status: 400 })
             }
+            resolvedProviderName = config.providerName
 
             const phoneNumber = recipient?.phone || recipient?.phone_number
             if (!phoneNumber) {
@@ -60,17 +62,8 @@ export async function POST(request: NextRequest) {
             }
 
             try {
-                const gwResult = await callGateway(
-                    config.baseUrl,
-                    config.apiKey,
-                    'POST',
-                    '/messages/send',
-                    {
-                        to: phoneNumber,
-                        text: messageBody,
-                    },
-                    config.tenantId
-                )
+                const sent = await sendWhatsAppMessage(supabase, userProfile.organization_id, { to: phoneNumber, text: messageBody })
+                const gwResult = sent.response
 
                 if (gwResult.ok || gwResult.success || gwResult.jid) {
                     result = { status: 'sent', provider_id: gwResult.jid || gwResult.messageId || 'sent', message: 'WhatsApp message sent successfully' }
@@ -97,7 +90,7 @@ export async function POST(request: NextRequest) {
                 recipient_value: channel === 'email' ? recipient?.email : (recipient?.phone || recipient?.phone_number),
                 recipient_type: channel === 'email' ? 'email' : 'phone',
                 status: result.status,
-                provider_name: channel === 'whatsapp' ? 'baileys' : channel,
+                provider_name: channel === 'whatsapp' ? resolvedProviderName : channel,
                 provider_response: result,
                 queued_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),

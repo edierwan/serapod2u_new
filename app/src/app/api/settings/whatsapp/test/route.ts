@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getWhatsAppConfig, isAdminUser, callGateway, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
+import { getWhatsAppConfig, isAdminUser, sendWhatsAppMessage, logGatewayAction } from '@/app/api/settings/whatsapp/_utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,12 +39,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get WhatsApp config from DB
-    const provider = request.nextUrl.searchParams.get('provider') || undefined;
-    const config = await getWhatsAppConfig(supabase, userProfile.organization_id, provider);
+    const config = await getWhatsAppConfig(supabase, userProfile.organization_id);
 
-    if (!config || !config.baseUrl) {
+    if (!config) {
       return NextResponse.json({
-        error: 'WhatsApp gateway not configured'
+        error: 'No default WhatsApp provider is configured'
       }, { status: 400 });
     }
 
@@ -69,17 +68,8 @@ export async function POST(request: NextRequest) {
     const message = body.message || `🧪 Test message from Serapod2u\n\nTimestamp: ${new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}\n\nIf you received this message, your WhatsApp gateway is working correctly! ✅`;
 
     // Call gateway tenant send endpoint
-    const result = await callGateway(
-      config.baseUrl,
-      config.apiKey,
-      'POST',
-      '/messages/send',
-      {
-        to: recipientNumber,
-        text: message,
-      },
-      config.tenantId
-    );
+    const sendResult = await sendWhatsAppMessage(supabase, userProfile.organization_id, { to: recipientNumber, text: message });
+    const result = sendResult.response;
 
     // Log the action
     await logGatewayAction(supabase, {
@@ -90,6 +80,7 @@ export async function POST(request: NextRequest) {
         recipient: recipientNumber,
         result,
         tenantId: config.tenantId,
+        provider: sendResult.providerName,
       },
     });
 

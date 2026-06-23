@@ -7,6 +7,7 @@ export interface User {
   role_code: string
   organization_id: string
   is_active: boolean
+  can_be_reference?: boolean
   is_verified: boolean
   created_at: string
   updated_at: string

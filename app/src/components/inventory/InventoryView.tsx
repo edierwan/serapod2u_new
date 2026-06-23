@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/components/ui/use-toast'
 import {
   Package,
   Search,
@@ -73,8 +74,11 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const { isReady, supabase } = useSupabaseAuth()
+  const { toast } = useToast()
   const { hasPermission } = usePermissions(
     userProfile?.roles?.role_level,
     userProfile?.role_code,
@@ -241,6 +245,162 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       : <ArrowDown className="w-4 h-4 ml-1" />
   }
 
+  const getStockStatus = (available: number, reorderPoint: number) => {
+    if (available <= 0) return 'Out of Stock'
+    if (available <= reorderPoint * 0.5) return 'Critical'
+    if (available <= reorderPoint) return 'Low Stock'
+    return 'Healthy'
+  }
+
+  const handleExport = async () => {
+    setExportMessage(null)
+    const canExport = hasPermission('view_inventory') && hasPermission('export_reports')
+
+    if (!canExport) {
+      setExportMessage({ type: 'error', text: 'You do not have permission to export inventory.' })
+      toast({
+        title: 'Export unavailable',
+        description: 'You do not have permission to export inventory.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (sortedInventory.length === 0) {
+      setExportMessage({ type: 'error', text: 'No inventory rows match the current filters.' })
+      toast({
+        title: 'Nothing to export',
+        description: 'No inventory rows match the current filters.',
+      })
+      return
+    }
+
+    try {
+      setExporting(true)
+
+      const canViewCost = hasPermission('view_inventory_cost')
+      const canViewValue = hasPermission('view_inventory_value')
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = 'Serapod2U'
+      workbook.created = new Date()
+
+      const worksheet = workbook.addWorksheet('Inventory', {
+        views: [{ state: 'frozen', ySplit: 5 }]
+      })
+      const headers = [
+        'No.', 'Product Name', 'Product Code / SKU', 'Variant', 'Variant Code',
+        'Location / Warehouse', 'On Hand', 'Allocated', 'Available', 'Stock Status',
+        'Reorder Level', 'Unit Cost (RM)', 'Total Value (RM)', 'Last Updated'
+      ]
+
+      worksheet.mergeCells('A1:N1')
+      worksheet.getCell('A1').value = 'Current Inventory Report'
+      worksheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF1F2937' } }
+      worksheet.getCell('A1').alignment = { vertical: 'middle' }
+      worksheet.getRow(1).height = 26
+
+      worksheet.mergeCells('A2:N2')
+      worksheet.getCell('A2').value = `Generated: ${new Date().toLocaleString('en-MY')}`
+      worksheet.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } }
+
+      worksheet.mergeCells('A3:N3')
+      worksheet.getCell('A3').value = `Organization: ${userProfile?.organizations?.org_name || '-'}`
+      worksheet.getCell('A3').font = { color: { argb: 'FF4B5563' } }
+
+      const headerRow = worksheet.getRow(5)
+      headerRow.values = headers
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      headerRow.height = 30
+
+      sortedInventory.forEach((item, index) => {
+        const location = [item.organization_name, item.warehouse_location]
+          .filter((value, position, values) => value && values.indexOf(value) === position)
+          .join(' — ') || '-'
+        const updatedAt = item.updated_at ? new Date(item.updated_at) : null
+        const validUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : '-'
+
+        worksheet.addRow([
+          index + 1,
+          item.product_name || '-',
+          item.product_code || '-',
+          item.variant_name || '-',
+          item.variant_code || '-',
+          location,
+          item.quantity_on_hand,
+          item.quantity_allocated,
+          item.quantity_available,
+          getStockStatus(item.quantity_available, item.reorder_point),
+          item.reorder_point,
+          canViewCost ? (item.unit_cost ?? '-') : '-',
+          canViewValue ? (item.total_value ?? '-') : '-',
+          validUpdatedAt
+        ])
+      })
+
+      worksheet.autoFilter = { from: 'A5', to: 'N5' }
+      worksheet.columns = [
+        { width: 8 }, { width: 30 }, { width: 22 }, { width: 26 }, { width: 20 },
+        { width: 32 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 16 },
+        { width: 15 }, { width: 16 }, { width: 18 }, { width: 22 }
+      ]
+      worksheet.getColumn(1).alignment = { horizontal: 'center' }
+      ;[7, 8, 9, 11].forEach(column => {
+        worksheet.getColumn(column).numFmt = '#,##0.00'
+      })
+      ;[12, 13].forEach(column => {
+        worksheet.getColumn(column).numFmt = '"RM" #,##0.00;[Red]-"RM" #,##0.00'
+      })
+      worksheet.getColumn(14).numFmt = 'dd mmm yyyy hh:mm'
+
+      for (let rowNumber = 6; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+        const row = worksheet.getRow(rowNumber)
+        row.alignment = { vertical: 'middle' }
+        row.eachCell(cell => {
+          cell.border = { bottom: { style: 'hair', color: { argb: 'FFD1D5DB' } } }
+        })
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([new Uint8Array(buffer)], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const now = new Date()
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`
+      link.href = url
+      link.download = `Serapod2U_Inventory_${date}_${time}.xlsx`
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+
+      setExportMessage({ type: 'success', text: `Downloaded ${sortedInventory.length} inventory row(s).` })
+      toast({
+        title: 'Export ready',
+        description: `Downloaded ${sortedInventory.length} inventory row(s).`,
+      })
+    } catch (error) {
+      console.error('Inventory export failed:', error)
+      setExportMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Unable to export inventory.'
+      })
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : 'Unable to export inventory.',
+        variant: 'destructive'
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const fetchInventory = async () => {
     if (!isReady) return
 
@@ -249,15 +409,29 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       let source: 'view' | 'fallback' = 'view'
       let data: any[] | null = null
 
-      let query = supabase
-        .from('vw_inventory_on_hand' as any)
-        .select('*')
-
-      if (locationFilter && locationFilter !== 'all') {
-        query = query.eq('organization_id', locationFilter)
+      const pageSize = 1000
+      const fetchAllPages = async (createQuery: () => any) => {
+        const rows: any[] = []
+        for (let from = 0; ; from += pageSize) {
+          const { data: page, error } = await createQuery().range(from, from + pageSize - 1)
+          if (error) return { data: null, error }
+          rows.push(...(page || []))
+          if (!page || page.length < pageSize) return { data: rows, error: null }
+        }
       }
 
-      const { data: viewData, error: viewError } = await query
+      const viewResult = await fetchAllPages(() => {
+        let query = supabase
+          .from('vw_inventory_on_hand' as any)
+          .select('*')
+          .order('organization_id')
+          .order('variant_id')
+        if (locationFilter && locationFilter !== 'all') {
+          query = query.eq('organization_id', locationFilter)
+        }
+        return query
+      })
+      const { data: viewData, error: viewError } = viewResult
 
       if (viewError) {
         const missingView = (() => {
@@ -276,9 +450,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         console.warn('vw_inventory_on_hand unavailable, using product_inventory fallback', viewError)
         source = 'fallback'
 
-        let fallbackQuery = supabase
-          .from('product_inventory')
-          .select(`
+        const fallbackResult = await fetchAllPages(() => {
+          let fallbackQuery = supabase
+            .from('product_inventory')
+            .select(`
             id,
             variant_id,
             organization_id,
@@ -309,14 +484,18 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               org_name,
               org_code
             )
-          `)
-          .eq('is_active', true)
+            `)
+            .eq('is_active', true)
+            .order('organization_id')
+            .order('variant_id')
 
-        if (locationFilter && locationFilter !== 'all') {
-          fallbackQuery = fallbackQuery.eq('organization_id', locationFilter)
-        }
+          if (locationFilter && locationFilter !== 'all') {
+            fallbackQuery = fallbackQuery.eq('organization_id', locationFilter)
+          }
+          return fallbackQuery
+        })
 
-        const { data: fallbackData, error: fallbackError } = await fallbackQuery
+        const { data: fallbackData, error: fallbackError } = fallbackResult
 
         if (fallbackError) {
           console.error('Fallback inventory query failed:', {
@@ -828,9 +1007,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   }
 
   const canEditSettings = () => {
-    // Allow users with role_level <= 40 to edit settings
-    // role_level: 1=SUPERADMIN, 10=HQ_ADMIN, 20=MANU_ADMIN, 30=DIST_ADMIN, 40=WH_MANAGER
-    return hasPermission('manage_inventory_settings')
+    const roleLevel = userProfile?.roles?.role_level
+    const orgType = userProfile?.organizations?.org_type_code
+    return orgType === 'HQ' && (roleLevel === 1 || roleLevel === 10) && hasPermission('manage_inventory_settings')
   }
 
   const canViewTotalValue = () => {
@@ -869,9 +1048,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           <p className="text-gray-600">Real-time inventory tracking across all locations</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={loading || exporting}>
+            {exporting ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            {exporting ? 'Exporting...' : 'Export Excel'}
           </Button>
           {canEditSettings() && (
             <Button
@@ -890,6 +1073,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           </Button>
         </div>
       </div>
+      {exportMessage && (
+        <div
+          className={`rounded-md border px-3 py-2 text-sm ${
+            exportMessage.type === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          {exportMessage.text}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">

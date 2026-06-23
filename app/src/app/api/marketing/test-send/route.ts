@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Phone and message required' }, { status: 400 });
         }
 
-        // In a real implementation, we would call the Baileys Gateway API here.
+        // Placeholder route retained for the generic marketing preview flow.
         // For this demo/task, we will mock the successful "send" and return success.
 
         // Mock Gateway Call

@@ -17,6 +17,14 @@ import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveRegistrationLinkSelection } from '@/lib/engagement/registration-link-resolution'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
 import { createShopOrganization } from '@/lib/shop-requests/create-shop'
+import { resolveRoadtourByToken } from '@/lib/roadtour/server'
+import { getRoadtourExperienceForCategory } from '@/lib/roadtour/experience-registry'
+import {
+  upsertProgramMembershipsForUserAndOrganization,
+  upsertUserProgramMembership,
+  type LoyaltyParticipantType,
+  type LoyaltyProgramCode,
+} from '@/lib/server/loyalty-memberships'
 import {
   findCodeByVerificationToken,
   logNotificationEvent as logRegistrationNotificationEvent,
@@ -184,6 +192,25 @@ export async function createUserWithAuth(userData: {
           success: false,
           error: `Failed to save created user profile fields: ${callNameError.message}`
         }
+      }
+    }
+
+    if (userData.organization_id) {
+      try {
+        const { data: orgRow } = await adminClient
+          .from('organizations')
+          .select('org_type_code')
+          .eq('id', userData.organization_id)
+          .maybeSingle()
+
+        if (orgRow?.org_type_code === 'SHOP' || orgRow?.org_type_code === 'DIST') {
+          await upsertUserProgramMembership(adminClient as any, 'cellera', authUser.user.id, 'organization_user', 'legacy_registration', {
+            memberOrganizationId: userData.organization_id,
+            createdBy: callerUserId,
+          })
+        }
+      } catch (membershipError) {
+        console.error('Failed to create Cellera membership for admin-created user:', membershipError)
       }
     }
 
@@ -923,6 +950,42 @@ export async function registerConsumer(userData: {
       if (profileError) {
         console.warn('Registration profile enrichment failed:', profileError)
       }
+    }
+
+    try {
+      let programCode: LoyaltyProgramCode = 'cellera'
+      let enrollmentSource: 'legacy_registration' | 'roadtour' = 'legacy_registration'
+      let firstRoadtourRunId: string | null = null
+      let firstCampaignId: string | null = null
+      let ownerOrganizationId: string | null = userData.registration_org_id || null
+
+      if (verifiedRoadtourContext?.token) {
+        const roadtour = await resolveRoadtourByToken(verifiedRoadtourContext.token)
+        const experience = getRoadtourExperienceForCategory(roadtour?.product_category)
+        programCode = experience?.key === 'pet_food' ? 'ellbow' : 'cellera'
+        enrollmentSource = 'roadtour'
+        firstRoadtourRunId = (roadtour as any)?.roadtour_run_id || null
+        firstCampaignId = verifiedRoadtourContext.campaign_id || (roadtour as any)?.campaign_id || null
+        ownerOrganizationId = verifiedRoadtourContext.org_id || ownerOrganizationId
+      }
+
+      const participantType: LoyaltyParticipantType = finalOrganizationId ? 'shop_staff' : 'consumer'
+      await upsertProgramMembershipsForUserAndOrganization({
+        admin: adminClient as any,
+        programCode,
+        userId: authUser.user.id,
+        memberOrganizationId: finalOrganizationId,
+        participantType,
+        enrollmentSource,
+        context: {
+          ownerOrganizationId,
+          firstRoadtourRunId,
+          firstCampaignId,
+          createdBy: authUser.user.id,
+        },
+      })
+    } catch (membershipError) {
+      console.error('Registration loyalty membership upsert failed:', membershipError)
     }
 
     let bonusAwarded = false

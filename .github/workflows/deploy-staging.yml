@@ -1,0 +1,110 @@
+# Build the Next.js app image OFF the VPS (here on GitHub runners), push it to
+# GHCR, then tell Coolify to PULL the prebuilt image instead of building on-box.
+#
+# Why: the VPS only has ~7.8GB RAM shared by prod+stg Supabase stacks, Coolify,
+# mail and portals. An on-box `next build` fills swap and takes the whole box
+# (prod included) down via resource starvation. Building here removes that risk.
+#
+# ── ONE-TIME SETUP (required before this works) ───────────────────────────────
+# 1. GitHub repo → Settings → Secrets and variables → Actions → add:
+#      STAGING_NEXT_PUBLIC_SUPABASE_URL        (staging Supabase URL)
+#      STAGING_NEXT_PUBLIC_SUPABASE_ANON_KEY   (staging anon key)
+#      STAGING_NEXT_PUBLIC_APP_URL             (staging public app URL)
+#      STAGING_SUPABASE_SERVICE_ROLE_KEY       (staging service role key)
+#      STAGING_CRON_SECRET                     (staging cron secret)
+#      COOLIFY_URL                             (e.g. https://coolify.getouch.cloud)
+#      COOLIFY_API_TOKEN                       (Coolify → Keys & Tokens → API token)
+#      COOLIFY_STAGING_UUID                    (ao0gw084g0skgoo0ko4wwsco)
+#    Copy the *_NEXT_PUBLIC_* / service-role / cron values from the current
+#    Coolify staging app's Environment Variables so the bundle matches today.
+#
+# 2. In Coolify, change the staging resource (uuid ao0gw084g0skgoo0ko4wwsco) from
+#    a git/Dockerfile source to a "Docker Image" source:
+#      Image: ghcr.io/edierwan/serapod2u_new:staging
+#    and turn OFF "Auto Deploy" on the git source so a `git push` no longer
+#    triggers an on-box build. Keep all its existing runtime env vars.
+#
+# 3. Add GHCR pull credentials in Coolify (the repo/package is private):
+#      Coolify → Sources/Registries → add a Docker registry
+#        Registry: ghcr.io
+#        Username: edierwan
+#        Password: a GitHub PAT with `read:packages`
+#
+# After setup: pushing to `staging` builds here, pushes the image, and Coolify
+# pulls + restarts — no build ever runs on the VPS again.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: Deploy Staging (image → GHCR → Coolify pull)
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: edierwan/serapod2u_new
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=staging
+            type=sha,format=short
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.STAGING_NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.STAGING_NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.STAGING_NEXT_PUBLIC_APP_URL }}
+            SUPABASE_SERVICE_ROLE_KEY=${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+            CRON_SECRET=${{ secrets.STAGING_CRON_SECRET }}
+
+  trigger-coolify:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify to pull the new image
+        run: |
+          curl --fail-with-body -sS -X GET \
+            "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_UUID}&force=true" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_UUID: ${{ secrets.COOLIFY_STAGING_UUID }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}

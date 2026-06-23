@@ -82,6 +82,24 @@ interface ShopSurveySource {
     sells_sbox_special_edition: boolean | null
 }
 
+interface RoadtourMilestoneSummary {
+    reward_status: 'pending' | 'completed' | 'awarded' | 'expired' | 'cancelled'
+    current_valid_product_scan_count: number
+    required_product_qr_scans: number
+    remaining_product_qr_scans: number
+    campaign_reward_points: number
+}
+
+interface RoadtourClaimResponse {
+    code?: string
+    message?: string
+    points_awarded?: number
+    total_balance?: number
+    balance_after?: number
+    roadtour_reward_deferred?: boolean
+    roadtour_milestone?: RoadtourMilestoneSummary | null
+}
+
 export default function RoadtourScanPage() {
     const searchParams = useSearchParams()
     const token = searchParams.get('rt')
@@ -90,7 +108,6 @@ export default function RoadtourScanPage() {
     const [step, setStep] = useState<ScanStep>('loading')
     const [qr, setQr] = useState<QrValidation | null>(null)
     const [errorMsg, setErrorMsg] = useState('')
-    const [duplicateTitle, setDuplicateTitle] = useState('Already Claimed')
 
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -134,6 +151,7 @@ export default function RoadtourScanPage() {
     const [processing, setProcessing] = useState(false)
     const [rewardPoints, setRewardPoints] = useState(0)
     const [totalBalance, setTotalBalance] = useState(0)
+    const [roadtourMilestone, setRoadtourMilestone] = useState<RoadtourMilestoneSummary | null>(null)
     const [showSuccessAnimation, setShowSuccessAnimation] = useState(false)
 
     // Geolocation
@@ -413,6 +431,7 @@ export default function RoadtourScanPage() {
         if (processing || !qr) return
         setProcessing(true)
         setErrorMsg('')
+        setRoadtourMilestone(null)
 
         try {
             const nextLocation = qr.require_geolocation
@@ -447,7 +466,7 @@ export default function RoadtourScanPage() {
                 }),
             })
 
-            const result = await resp.json()
+            const result = await resp.json() as RoadtourClaimResponse
 
             if (!resp.ok) {
                 // Profile completion gate — same behavior as product flow
@@ -474,7 +493,6 @@ export default function RoadtourScanPage() {
                 }
                 if (result.code === 'DUPLICATE') {
                     setStep('duplicate')
-                    setDuplicateTitle(result.modalTitle || 'Already Claimed')
                     setErrorMsg(result.message || 'You have already claimed this reward.')
                 } else {
                     setErrorMsg(result.message || 'Failed to claim reward.')
@@ -483,7 +501,16 @@ export default function RoadtourScanPage() {
                 return
             }
 
-            setRewardPoints(result.points_awarded || qr.default_points || 0)
+            if (result.roadtour_reward_deferred && result.roadtour_milestone) {
+                setRoadtourMilestone(result.roadtour_milestone)
+                setRewardPoints(0)
+                setTotalBalance(result.total_balance ?? result.balance_after ?? 0)
+                setShowSuccessAnimation(false)
+                setStep('done')
+                return
+            }
+
+            setRewardPoints(result.points_awarded ?? qr.default_points ?? 0)
             setTotalBalance(result.total_balance ?? result.balance_after ?? result.points_awarded ?? 0)
             setShowSuccessAnimation(true)
             setStep('done')
@@ -856,9 +883,36 @@ export default function RoadtourScanPage() {
                 {step === 'done' && !showSuccessAnimation && (
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-emerald-100">
                         <CheckCircle2 className="h-16 w-16 text-emerald-500 mx-auto" />
-                        <h2 className="text-xl font-bold mt-3">Reward Claimed!</h2>
-                        <p className="text-3xl font-bold text-emerald-600 mt-2">+{rewardPoints} points</p>
-                        <p className="text-sm text-gray-500 mt-2">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
+                        {roadtourMilestone ? (
+                            <>
+                                <h2 className="text-xl font-bold mt-3">
+                                    {roadtourMilestone.reward_status === 'awarded'
+                                        ? 'RoadTour Milestone Completed'
+                                        : roadtourMilestone.current_valid_product_scan_count > 0
+                                            ? 'RoadTour Progress Updated'
+                                            : 'RoadTour Progress Started'}
+                                </h2>
+                                <p className="text-3xl font-bold text-emerald-600 mt-2">
+                                    {roadtourMilestone.current_valid_product_scan_count}/{roadtourMilestone.required_product_qr_scans}
+                                </p>
+                                <p className="text-sm text-gray-500 mt-2">
+                                    {roadtourMilestone.reward_status === 'awarded'
+                                        ? `${roadtourMilestone.campaign_reward_points} RoadTour points have been awarded after completing the Product QR requirement.`
+                                        : `You will be entitled to ${roadtourMilestone.campaign_reward_points} points after scanning ${roadtourMilestone.required_product_qr_scans} unique Product QR codes.`}
+                                </p>
+                                <p className="text-xs text-gray-400 mt-2">
+                                    {roadtourMilestone.remaining_product_qr_scans > 0
+                                        ? `${roadtourMilestone.remaining_product_qr_scans} more Product QR scan${roadtourMilestone.remaining_product_qr_scans === 1 ? '' : 's'} to unlock this RoadTour reward.`
+                                        : 'Milestone completed. Your reward will be reflected in your points balance.'}
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <h2 className="text-xl font-bold mt-3">Reward Claimed!</h2>
+                                <p className="text-3xl font-bold text-emerald-600 mt-2">+{rewardPoints} points</p>
+                                <p className="text-sm text-gray-500 mt-2">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -866,7 +920,7 @@ export default function RoadtourScanPage() {
                 {step === 'duplicate' && (
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
                         <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
-                        <h2 className="text-lg font-semibold mt-3">{duplicateTitle}</h2>
+                        <h2 className="text-lg font-semibold mt-3">Already Claimed</h2>
                         <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
                     </div>
                 )}
@@ -1069,7 +1123,7 @@ export default function RoadtourScanPage() {
 
             {/* ======================== SUCCESS ANIMATION ======================== */}
             <PointEarnedAnimation
-                isOpen={showSuccessAnimation}
+                isOpen={showSuccessAnimation && !roadtourMilestone}
                 pointsEarned={rewardPoints}
                 totalBalance={totalBalance}
                 previousBalance={totalBalance - rewardPoints}

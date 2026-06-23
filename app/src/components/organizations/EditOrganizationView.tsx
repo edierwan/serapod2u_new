@@ -14,6 +14,11 @@ import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon, 
 import OrgLogoUpload from './OrgLogoUpload'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
+  getOwnedOrganizationLogoPath,
+  normalizePersistedOrganizationLogo,
+  persistedOrganizationLogoMatches,
+} from '@/lib/organizations/logo'
+import {
   getValidParentOrgs,
   isParentRequired,
   getParentHelpText,
@@ -78,6 +83,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   const [orgUsers, setOrgUsers] = useState<any[]>([])
   const [authError, setAuthError] = useState<string | null>(null)
   const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoRemoved, setLogoRemoved] = useState(false)
   const [logoError, setLogoError] = useState('')
   const { isReady, supabase, error: authHookError } = useSupabaseAuth()
   const { toast } = useToast()
@@ -332,6 +338,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
   const handleLogoChange = (file: File | null) => {
     setLogoFile(file)
+    if (file) setLogoRemoved(false)
     if (file && !file.type.startsWith('image/')) {
       setLogoError('Please select an image file')
     } else if (file && file.size > 5 * 1024 * 1024) {
@@ -341,9 +348,21 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     }
   }
 
+  const handleLogoRemove = () => {
+    setLogoFile(null)
+    setLogoRemoved(true)
+    setLogoError('')
+  }
+
   const handleSave = async () => {
+    let uploadedLogoPath: string | null = null
+
     try {
       setSaving(true)
+
+      if (logoError) {
+        throw new Error(logoError)
+      }
 
       // Validate required parent_org_id for organizations that need it
       if (isParentRequired(formData.org_type_code as OrgType || organization?.org_type_code as OrgType)) {
@@ -359,59 +378,40 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       }
 
       // Upload logo if a new file is provided
-      let logo_url = formData.logo_url
+      let logo_url = logoRemoved ? null : normalizePersistedOrganizationLogo(formData.logo_url)
 
       if (logoFile) {
-        try {
-          // Compress logo first
-          const compressionResult = await compressAvatar(logoFile)
+        // Compress logo first
+        const compressionResult = await compressAvatar(logoFile)
 
-          toast({
-            title: '🖼️ Logo Compressed',
-            description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+        toast({
+          title: '🖼️ Logo Compressed',
+          description: `${formatFileSize(compressionResult.originalSize)} → ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}% smaller)`,
+        })
+
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
+        const filePath = `${organization!.id}/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, compressionResult.file, {
+            contentType: compressionResult.file.type,
+            cacheControl: '3600',
+            upsert: false
           })
 
-          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`
-          const filePath = `${organization!.id}/${fileName}` // Nested folder: org_id/filename
+        if (uploadError) {
+          throw new Error(`Logo upload failed: ${uploadError.message}`)
+        }
 
-          // Delete old logo if exists (using same pattern as user avatars)
-          if (organization?.logo_url) {
-            try {
-              const oldPath = organization.logo_url.split('/').pop()?.split('?')[0]
-              if (oldPath) {
-                await supabase.storage
-                  .from('avatars')
-                  .remove([`${organization.id}/${oldPath}`])
-              }
-            } catch (deleteError) {
-              console.error('Error deleting old logo:', deleteError)
-            }
-          }
+        uploadedLogoPath = filePath
+        const { data: { publicUrl } } = supabase.storage
+          .from('avatars')
+          .getPublicUrl(filePath)
+        logo_url = normalizePersistedOrganizationLogo(publicUrl)
 
-          const { error: uploadError } = await supabase.storage
-            .from('avatars') // Use same bucket as user avatars
-            .upload(filePath, compressionResult.file, {
-              contentType: compressionResult.file.type,
-              cacheControl: '3600',
-              upsert: true // Allow overwrite
-            })
-
-          if (uploadError) {
-            console.error('Logo upload error:', uploadError)
-            toast({
-              title: '⚠️ Logo Upload Warning',
-              description: 'Logo upload failed, but other changes will be saved',
-              variant: 'destructive'
-            })
-          } else {
-            const { data: { publicUrl } } = supabase.storage
-              .from('avatars')
-              .getPublicUrl(filePath)
-
-            logo_url = `${publicUrl}?v=${Date.now()}` // Add cache-busting
-          }
-        } catch (logoUploadError) {
-          console.error('Error uploading logo:', logoUploadError)
+        if (!logo_url) {
+          throw new Error('Storage upload succeeded but did not return a valid logo URL')
         }
       }
 
@@ -487,14 +487,15 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         .from('organizations')
         .update(updatePayload)
         .eq('id', organization!.id)
-        .select()
+        .select('*')
+        .single()
 
       const { error, data } = response
 
       console.log('📊 Update response:', {
         hasError: !!error,
         hasData: !!data,
-        dataCount: data?.length,
+        persistedLogoUrl: data?.logo_url,
         updatePayload
       })
 
@@ -511,8 +512,29 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         throw error
       }
 
-      if (!data || data.length === 0) {
+      if (!data) {
         throw new Error('Update succeeded but no data was returned. This may indicate an RLS policy issue.')
+      }
+
+      if (!persistedOrganizationLogoMatches(data.logo_url, logo_url)) {
+        throw new Error('Organization was updated, but the persisted logo value could not be confirmed')
+      }
+
+      const persistedNewLogoPath = uploadedLogoPath
+      uploadedLogoPath = null
+      const previousLogoPath = getOwnedOrganizationLogoPath(organization?.logo_url, organization!.id)
+      const persistedOrganization = data as Organization
+      setOrganization(persistedOrganization)
+      setFormData(persistedOrganization)
+      setLogoFile(null)
+      setLogoRemoved(false)
+
+      // Remove the prior object only after the database points to the new value (or null).
+      if ((logoFile || logoRemoved) && previousLogoPath && previousLogoPath !== persistedNewLogoPath) {
+        const { error: removeError } = await supabase.storage.from('avatars').remove([previousLogoPath])
+        if (removeError) {
+          console.warn('Organization logo was saved, but the previous storage object could not be removed:', removeError)
+        }
       }
 
       // Auto-repair: If this is a SHOP with a DIST parent, ensure shop_distributors entry exists
@@ -564,6 +586,10 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         onViewChange?.('organizations')
       }, 500)
     } catch (error: any) {
+      if (uploadedLogoPath) {
+        const { error: cleanupError } = await supabase.storage.from('avatars').remove([uploadedLogoPath])
+        if (cleanupError) console.warn('Could not clean up unpersisted organization logo:', cleanupError)
+      }
       console.error('❌ Error saving organization:')
       console.error('Error type:', typeof error)
       console.error('Error constructor:', error?.constructor?.name)
@@ -678,6 +704,8 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             currentLogoUrl={organization.logo_url}
             orgName={organization.org_name}
             onLogoChange={handleLogoChange}
+            onLogoRemove={handleLogoRemove}
+            onError={setLogoError}
             error={logoError}
           />
 

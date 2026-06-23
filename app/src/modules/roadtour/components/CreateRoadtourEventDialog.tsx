@@ -1,20 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
-import { Loader2, Map as MapIcon } from 'lucide-react'
+import { Check, Info, Loader2, Map as MapIcon } from 'lucide-react'
+import SafeImage from '@/components/shared/SafeImage'
+import {
+    getRoadtourExperienceForCategory,
+    isRoadtourCategorySelectable,
+    type RoadtourProductCategory,
+} from '@/lib/roadtour/experience-registry'
 import {
     DUPLICATE_POLICY_OPTIONS,
+    POINT_RELEASE_RULE_LABEL,
+    PRODUCT_QR_COUNTING_PERIOD_LABEL,
     type RoadtourDuplicatePolicy,
+    type RoadtourPointReleaseRule,
+    type RoadtourProductQrCountingPeriod,
     type RoadtourRunStatus,
     type RoadtourRun,
-    createRoadtourRun,
 } from '@/lib/roadtour/events'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -46,7 +57,14 @@ export function CreateRoadtourEventDialog({
     const [endDate, setEndDate] = useState('')
     const [status, setStatus] = useState<RoadtourRunStatus>('active')
     const [duplicatePolicy, setDuplicatePolicy] = useState<RoadtourDuplicatePolicy>('one_participant_once_per_event')
+    const [pointReleaseRule, setPointReleaseRule] = useState<RoadtourPointReleaseRule>('immediate_after_roadtour_claim')
+    const [requiredProductQrScans, setRequiredProductQrScans] = useState(3)
+    const [productQrCountingPeriod, setProductQrCountingPeriod] = useState<RoadtourProductQrCountingPeriod>('rolling_1_month')
     const [saving, setSaving] = useState(false)
+    const [categories, setCategories] = useState<RoadtourProductCategory[]>([])
+    const [categoriesLoading, setCategoriesLoading] = useState(false)
+    const [productCategoryId, setProductCategoryId] = useState('')
+    const isMilestoneRule = pointReleaseRule === 'product_qr_scan_target_once'
 
     useEffect(() => {
         if (!open) return
@@ -58,11 +76,55 @@ export function CreateRoadtourEventDialog({
             setEndDate(event.end_date)
             setStatus(event.status)
             setDuplicatePolicy(event.duplicate_policy)
+            setPointReleaseRule(event.point_release_rule || 'immediate_after_roadtour_claim')
+            setRequiredProductQrScans(event.required_product_qr_scans || 3)
+            setProductQrCountingPeriod(event.product_qr_counting_period || 'rolling_1_month')
+            setProductCategoryId(event.product_category_id || '')
             return
         }
 
         reset()
     }, [event, open])
+
+    useEffect(() => {
+        if (!open) return
+        let cancelled = false
+        ;(async () => {
+            setCategoriesLoading(true)
+            const { data, error } = await (supabase as any)
+                .from('product_categories')
+                .select('id, category_code, category_name, image_url, is_active, is_vape, sort_order')
+                .order('sort_order', { ascending: true })
+                .order('category_name', { ascending: true })
+            if (cancelled) return
+            setCategoriesLoading(false)
+            if (error) {
+                toast({ title: 'Failed to load product categories', description: error.message, variant: 'destructive' })
+                return
+            }
+            const loaded = (data || []) as RoadtourProductCategory[]
+            setCategories(loaded)
+            setProductCategoryId((current) => {
+                if (current) return current
+                return loaded.find((category) => getRoadtourExperienceForCategory(category)?.key === 'vape' && isRoadtourCategorySelectable(category))?.id || ''
+            })
+        })()
+        return () => { cancelled = true }
+    }, [open, supabase])
+
+    const previewText = useMemo(() => {
+        if (!isMilestoneRule) {
+            return 'Participants receive their campaign Reward Points immediately after a successful RoadTour claim.'
+        }
+
+        const periodText = productQrCountingPeriod === 'rolling_1_month'
+            ? 'within 1 month from enrollment'
+            : productQrCountingPeriod === 'rolling_2_months'
+                ? 'within 2 months from enrollment'
+                : 'before the campaign/event ends'
+
+        return `Participants under this event earn their campaign Reward Points once after scanning ${requiredProductQrScans} unique Product QR codes ${periodText}.`
+    }, [isMilestoneRule, productQrCountingPeriod, requiredProductQrScans])
 
     const reset = () => {
         setName('')
@@ -71,6 +133,10 @@ export function CreateRoadtourEventDialog({
         setEndDate('')
         setStatus('active')
         setDuplicatePolicy('one_participant_once_per_event')
+        setPointReleaseRule('immediate_after_roadtour_claim')
+        setRequiredProductQrScans(3)
+        setProductQrCountingPeriod('rolling_1_month')
+        setProductCategoryId('')
     }
 
     const handleClose = (next: boolean) => {
@@ -91,8 +157,24 @@ export function CreateRoadtourEventDialog({
             toast({ title: 'End date must be on or after start date', variant: 'destructive' })
             return
         }
+        if (isMilestoneRule && (!Number.isInteger(requiredProductQrScans) || requiredProductQrScans < 1)) {
+            toast({ title: 'Required Product QR scans must be at least 1', variant: 'destructive' })
+            return
+        }
+        const selectedCategory = categories.find((category) => category.id === productCategoryId)
+        if (!selectedCategory || !isRoadtourCategorySelectable(selectedCategory)) {
+            toast({ title: 'Select an available product category', variant: 'destructive' })
+            return
+        }
         try {
             setSaving(true)
+            const rewardReleasePayload = {
+                point_release_rule: pointReleaseRule,
+                required_product_qr_scans: isMilestoneRule ? requiredProductQrScans : null,
+                product_qr_counting_period: isMilestoneRule ? productQrCountingPeriod : null,
+                unique_product_qr_only: true,
+            }
+
             if (event) {
                 const response = await fetch(`/api/roadtour/events/${event.id}`, {
                     method: 'PATCH',
@@ -104,6 +186,8 @@ export function CreateRoadtourEventDialog({
                         end_date: endDate,
                         status,
                         duplicate_policy: duplicatePolicy,
+                        product_category_id: productCategoryId,
+                        ...rewardReleasePayload,
                     }),
                 })
 
@@ -115,16 +199,25 @@ export function CreateRoadtourEventDialog({
                 toast({ title: 'RoadTour Event updated', description: `"${result.data.name}" has been updated.` })
                 onSaved?.(result.data)
             } else {
-                const created = await createRoadtourRun(supabase, {
-                    org_id: orgId,
-                    name,
-                    description,
-                    start_date: startDate,
-                    end_date: endDate,
-                    status,
-                    duplicate_policy: duplicatePolicy,
-                    created_by: createdBy,
+                const response = await fetch('/api/roadtour/events', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        org_id: orgId,
+                        name,
+                        description,
+                        start_date: startDate,
+                        end_date: endDate,
+                        status,
+                        duplicate_policy: duplicatePolicy,
+                        product_category_id: productCategoryId,
+                        ...rewardReleasePayload,
+                        created_by: createdBy,
+                    }),
                 })
+                const result = await response.json().catch(() => null)
+                if (!response.ok || !result?.success) throw new Error(result?.error || 'Failed to create event.')
+                const created = result.data as RoadtourRun
                 toast({ title: 'RoadTour Event created', description: `"${created.name}" is ready.` })
                 onCreated?.(created)
             }
@@ -138,7 +231,7 @@ export function CreateRoadtourEventDialog({
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-lg">
                         <MapIcon className="h-5 w-5 text-primary" />
@@ -159,6 +252,50 @@ export function CreateRoadtourEventDialog({
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. RoadTour 2026"
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <div>
+                            <Label className="text-xs">Product Category *</Label>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                                Selected category determines the mobile RoadTour interface shown to participants.
+                            </p>
+                        </div>
+                        {categoriesLoading ? (
+                            <div className="flex h-20 items-center justify-center rounded-lg border"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                        ) : (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {categories.map((category) => {
+                                    const available = isRoadtourCategorySelectable(category)
+                                    const selected = category.id === productCategoryId
+                                    return (
+                                        <button
+                                            key={category.id}
+                                            type="button"
+                                            disabled={!available}
+                                            aria-pressed={selected}
+                                            onClick={() => setProductCategoryId(category.id)}
+                                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200'} ${available ? 'hover:border-primary/60' : 'cursor-not-allowed bg-slate-50 opacity-65'}`}
+                                        >
+                                            <SafeImage
+                                                src={category.image_url}
+                                                alt={category.category_name}
+                                                className="h-10 w-10 rounded-md object-cover"
+                                                fallbackClassName="bg-slate-100"
+                                                fallbackIconClassName="h-5 w-5 text-slate-500"
+                                            />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm font-medium">{category.category_name}</span>
+                                                <Badge variant={available ? 'default' : 'secondary'} className="mt-1 text-[10px]">
+                                                    {available ? 'Available' : 'Coming soon'}
+                                                </Badge>
+                                            </span>
+                                            {selected && <Check className="h-4 w-4 text-primary" />}
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -213,9 +350,79 @@ export function CreateRoadtourEventDialog({
                         Recommended: <strong>One participant once per event</strong> allows multiple workers from the same shop to claim once each,
                         while preventing the same user or phone from claiming repeatedly. Use shop-level protection only when the reward is intended once per shop.
                     </p>
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                        <div>
+                            <p className="text-sm font-semibold">Participant Reward Release Rule (New Flow)</p>
+                            <p className="text-xs text-muted-foreground mt-1">This event-level rule applies to all campaigns under this event.</p>
+                        </div>
+
+                        <div className="flex gap-2 rounded-md border border-blue-200 bg-white/80 p-3 text-xs text-blue-800">
+                            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                            <p>Campaign Reward Points remain configured inside each RoadTour campaign. This section only controls when participants receive those points.</p>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Point Release Rule</Label>
+                                <Select value={pointReleaseRule} onValueChange={(v) => setPointReleaseRule(v as RoadtourPointReleaseRule)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="immediate_after_roadtour_claim">{POINT_RELEASE_RULE_LABEL.immediate_after_roadtour_claim}</SelectItem>
+                                        <SelectItem value="product_qr_scan_target_once">{POINT_RELEASE_RULE_LABEL.product_qr_scan_target_once}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-[11px] text-muted-foreground">
+                                    {isMilestoneRule ? 'Participants qualify after Product QR progress.' : 'Keeps current logic unchanged.'}
+                                </p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Required Product QR scans</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    value={requiredProductQrScans}
+                                    disabled={!isMilestoneRule}
+                                    onChange={(e) => setRequiredProductQrScans(Math.max(1, Number(e.target.value || 1)))}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Counting Period</Label>
+                                <Select
+                                    value={productQrCountingPeriod}
+                                    disabled={!isMilestoneRule}
+                                    onValueChange={(v) => setProductQrCountingPeriod(v as RoadtourProductQrCountingPeriod)}
+                                >
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="rolling_1_month">{PRODUCT_QR_COUNTING_PERIOD_LABEL.rolling_1_month}</SelectItem>
+                                        <SelectItem value="rolling_2_months">{PRODUCT_QR_COUNTING_PERIOD_LABEL.rolling_2_months}</SelectItem>
+                                        <SelectItem value="open_period">{PRODUCT_QR_COUNTING_PERIOD_LABEL.open_period}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs">Scope</Label>
+                                <Input value="Per participant / phone" readOnly className="bg-white" />
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-md border bg-white px-3 py-2">
+                            <div>
+                                <p className="text-xs font-medium">Count only unique Product QR scans</p>
+                                <p className="text-[11px] text-muted-foreground">Locked on for this first version.</p>
+                            </div>
+                            <Switch checked disabled />
+                        </div>
+
+                        <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">{previewText}</p>
+                    </div>
                     {isEditMode && event?.status === 'active' && (
                         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                            Changing duplicate protection affects future claims only. Existing successful claims remain unchanged.
+                            Changing duplicate protection or reward release rule affects future claims only. Existing progress, completed rewards, and awarded points remain unchanged.
                         </p>
                     )}
                 </div>

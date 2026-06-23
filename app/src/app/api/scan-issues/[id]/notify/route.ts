@@ -101,11 +101,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     if (recipients.length === 0) return NextResponse.json({ error: 'no recipients' }, { status: 400 })
 
-    const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-    const cfg = orgId ? await getWhatsAppConfig(supabaseAdmin as any, orgId) : null
-    if (!cfg?.baseUrl || !cfg?.apiKey) {
-        return NextResponse.json({ error: 'No active WhatsApp gateway config for this org' }, { status: 400 })
-    }
+    const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
+    if (!orgId) return NextResponse.json({ error: 'No organization for WhatsApp notification' }, { status: 400 })
 
     const { toProviderPhone } = await import('@/utils/phone')
     const results: Array<{ to: string; ok: boolean; error?: string; messageId?: string }> = []
@@ -113,7 +110,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const provider = toProviderPhone('+' + String(raw).replace(/^\+/, ''))
         if (!provider) { results.push({ to: raw, ok: false, error: 'phone_normalize_failed' }); continue }
         try {
-            const r = await callGateway(cfg.baseUrl, cfg.apiKey, 'POST', '/messages/send', { to: provider, text }, cfg.tenantId)
+            const sent = await sendWhatsAppMessage(supabaseAdmin as any, orgId, { to: provider, text })
+            const r = sent.response
             const ok = !(r?.success === false || r?.ok === false)
             results.push({ to: provider, ok, messageId: r?.messageId || r?.message_id, error: ok ? undefined : (r?.error || 'gateway_rejected') })
         } catch (err: any) {

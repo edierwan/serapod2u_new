@@ -11,8 +11,12 @@ import {
     normalizeRoadtourParticipantPhone,
 } from '@/lib/roadtour/duplicate-protection'
 import { getRoadtourGeoLabel, getRoadtourLocationError, getRoadtourLocationStatus, normalizeRoadtourGeolocationInput, reverseGeocodeRoadtourLocation } from '@/lib/roadtour/geolocation'
+import { buildMilestoneClaimResponse, createRoadtourParticipantMission, missionRowToMilestoneMission, type RoadtourPointReleaseRule } from '@/lib/roadtour/milestone'
 import { sendRoadtourClaimNotifications } from '@/lib/roadtour/notifications'
 import { resolveRoadtourByToken } from '@/lib/roadtour/server'
+import { normalizePhoneE164 } from '@/utils/phone'
+import { getRoadtourExperienceForCategory } from '@/lib/roadtour/experience-registry'
+import { upsertProgramMembershipsForUserAndOrganization, type LoyaltyParticipantType } from '@/lib/server/loyalty-memberships'
 
 function isMissingConsumerPhoneColumnError(error: any) {
     const combined = [error?.message, error?.details, error?.hint]
@@ -106,6 +110,50 @@ type RoadtourSurveyResponseItemInsert = {
     answer_json?: unknown
     answer_number?: number
     media_url?: string | null
+}
+
+function normalizeParticipantPhoneKey(phone?: string | null) {
+    const normalized = normalizePhoneE164(phone || '').replace(/^\+/, '')
+    return normalized || null
+}
+
+function normalizePointReleaseRule(value: unknown): RoadtourPointReleaseRule {
+    return value === 'product_qr_scan_target_once'
+        ? 'product_qr_scan_target_once'
+        : 'immediate_after_roadtour_claim'
+}
+
+function getSingleRelation<T>(relation: T | T[] | null | undefined): T | null {
+    if (Array.isArray(relation)) return relation[0] ?? null
+    return relation ?? null
+}
+
+async function findActiveRoadtourMission(params: {
+    supabase: ReturnType<typeof createAdminClient>
+    roadtourEventId: string
+    roadtourCampaignId: string
+    participantUserId: string
+    participantPhoneNormalized: string | null
+}) {
+    let query = params.supabase
+        .from('roadtour_participant_missions')
+        .select('*')
+        .eq('roadtour_event_id', params.roadtourEventId)
+        .eq('roadtour_campaign_id', params.roadtourCampaignId)
+        .in('reward_status', ['pending', 'completed', 'awarded'])
+        .gt('effective_period_end', new Date().toISOString())
+        .order('enrolled_at', { ascending: false })
+        .limit(1)
+
+    if (params.participantPhoneNormalized) {
+        query = query.or(`participant_user_id.eq.${params.participantUserId},participant_phone_normalized.eq.${params.participantPhoneNormalized}`)
+    } else {
+        query = query.eq('participant_user_id', params.participantUserId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data?.[0] ? missionRowToMilestoneMission(data[0]) : null
 }
 
 function buildRoadtourSurveyResponseItem(params: {
@@ -405,18 +453,20 @@ export async function POST(request: NextRequest) {
         let roadtour_run_id: string | null = null
         let runDuplicatePolicy: string | null = null
         let roadtourRunName: string | null = null
+        let pointReleaseRule: RoadtourPointReleaseRule = 'immediate_after_roadtour_claim'
         try {
             const { data: campaignRow } = await (supabase as any)
                 .from('roadtour_campaigns')
-                .select('roadtour_run_id, roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(id,name,duplicate_policy)')
+                .select('roadtour_run_id, roadtour_runs!roadtour_campaigns_roadtour_run_id_fkey(id,name,duplicate_policy,point_release_rule,required_product_qr_scans,product_qr_counting_period,unique_product_qr_only,active_reward_rule_version_id)')
                 .eq('id', campaign_id)
                 .maybeSingle()
             if (campaignRow) {
                 roadtour_run_id = campaignRow.roadtour_run_id || null
-                const runRel: any = (campaignRow as any).roadtour_runs
+                const runRel = getSingleRelation((campaignRow as any).roadtour_runs)
                 if (runRel) {
                     runDuplicatePolicy = runRel.duplicate_policy || null
                     roadtourRunName = runRel.name || null
+                    pointReleaseRule = normalizePointReleaseRule(runRel.point_release_rule)
                 }
             }
         } catch (runLookupError) {
@@ -546,6 +596,8 @@ export async function POST(request: NextRequest) {
         const explicitShopId = shop_id || null
         const resolvedScanShopId = explicitShopId || qrShopId
         const resolvedRewardShopId = resolvedScanShopId || (laneExperience.claimLane === 'shop' ? userProfile?.organization_id || null : null)
+        const isMilestoneRelease = pointReleaseRule === 'product_qr_scan_target_once' && !!roadtour_run_id
+        const participantPhoneNormalized = normalizeParticipantPhoneKey(userPhone)
 
         // RoadTour does NOT use the product dual-claim lane selection.
         // Users without a shop will be caught by SHOP_REQUIRED / PROFILE_INCOMPLETE gates below.
@@ -602,6 +654,27 @@ export async function POST(request: NextRequest) {
                 },
                 { status: 400 }
             )
+        }
+
+        if (isMilestoneRelease && roadtour_run_id && userId) {
+            const existingMission = await findActiveRoadtourMission({
+                supabase,
+                roadtourEventId: roadtour_run_id,
+                roadtourCampaignId: campaign_id,
+                participantUserId: userId,
+                participantPhoneNormalized,
+            })
+
+            if (existingMission) {
+                const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
+                return NextResponse.json({
+                    ...buildMilestoneClaimResponse(existingMission),
+                    total_balance: totalBalance,
+                    balance_after: totalBalance,
+                    scan_event_id: null,
+                    survey_response_id: null,
+                })
+            }
         }
 
         const alreadyClaimed = await hasExistingRoadtourReward({
@@ -814,7 +887,142 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 5. Record reward using the DB function
+        if (isMilestoneRelease && roadtour_run_id && userId) {
+            const missionResult = await createRoadtourParticipantMission(supabase, {
+                roadtourEventId: roadtour_run_id,
+                roadtourCampaignId: campaign_id,
+                participantUserId: userId,
+                participantPhone: userPhone || '',
+                enrollmentScanEventId: scanEvent.id,
+                shopId: resolvedRewardShopId,
+                createdBy: userId,
+            })
+
+            if (!missionResult.success || !missionResult.mission) {
+                return NextResponse.json(
+                    {
+                        message: missionResult.message || 'Failed to start RoadTour Product QR mission.',
+                        code: missionResult.code || 'MILESTONE_START_FAILED',
+                    },
+                    { status: 500 },
+                )
+            }
+
+            const totalBalance = await calculateRoadtourUserBalance(supabase, userId)
+            await notifyClaim({
+                scanEventId: scanEvent.id,
+                campaignId: campaign_id,
+                qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id,
+                notificationType: 'success',
+                campaignName,
+                referenceName,
+                shopName: duplicateShopName || 'Unknown shop',
+                consumerName: consumerDisplayName || 'Unknown consumer',
+                pointsAwarded: 0,
+                balanceAfter: totalBalance,
+                canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel,
+                message: missionResult.mission.message,
+            })
+
+            return NextResponse.json({
+                ...buildMilestoneClaimResponse(missionResult.mission),
+                total_balance: totalBalance,
+                balance_after: totalBalance,
+                scan_event_id: scanEvent.id,
+                survey_response_id: surveyResponseId,
+            })
+        }
+
+        // Pet Food RoadTour is explicitly mapped to the isolated Ellbow economy.
+        // Every other category continues through the existing Cellera RPC below.
+        const isEllbowPetFood = getRoadtourExperienceForCategory(qrRecord?.product_category)?.key === 'pet_food'
+        const roadtourParticipantType: LoyaltyParticipantType =
+            laneExperience.claimLane === 'shop' || orgType === 'SHOP' ? 'shop_staff' : 'consumer'
+        const roadtourMemberOrganizationId = resolvedRewardShopId || userProfile?.organization_id || null
+
+        if (isEllbowPetFood) {
+            if (!roadtour_run_id) {
+                return NextResponse.json({ message: 'This Pet Food RoadTour event is missing its Ellbow event mapping.', code: 'ELLBOW_MAPPING_MISSING' }, { status: 500 })
+            }
+            try {
+                await upsertProgramMembershipsForUserAndOrganization({
+                    admin: supabase as any,
+                    programCode: 'ellbow',
+                    userId,
+                    memberOrganizationId: roadtourMemberOrganizationId,
+                    participantType: roadtourParticipantType,
+                    enrollmentSource: 'roadtour',
+                    context: {
+                        ownerOrganizationId: org_id,
+                        firstRoadtourRunId: roadtour_run_id,
+                        firstCampaignId: campaign_id,
+                        createdBy: userId,
+                    },
+                })
+            } catch (membershipError: any) {
+                console.error('[RT] Ellbow membership upsert failed:', membershipError?.message || membershipError)
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: 'Ellbow membership enrollment failed.', code: 'ELLBOW_MEMBERSHIP_FAILED' }, { status: 500 })
+            }
+
+            const { data: ellbowResult, error: ellbowError } = await (supabase as any).rpc('ellbow_award_roadtour_scan', {
+                p_roadtour_event_id: roadtour_run_id,
+                p_campaign_id: campaign_id,
+                p_scan_id: scanEvent.id,
+                p_participant_user_id: userId,
+            })
+            if (ellbowError) {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: ellbowError.message || 'Ellbow reward processing failed.', code: 'ELLBOW_AWARD_FAILED' }, { status: 422 })
+            }
+            if (ellbowResult?.reason === 'not_ellbow_event') {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+                return NextResponse.json({ message: 'This Pet Food event is not mapped to Ellbow Loyalty.', code: 'ELLBOW_MAPPING_MISSING' }, { status: 422 })
+            }
+            if (ellbowResult?.awarded === false) {
+                await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'success', points_awarded: 0 }).eq('id', scanEvent.id)
+            }
+            const ellbowPoints = Number(ellbowResult?.points_awarded || 0)
+            const ellbowBalance = Number(ellbowResult?.balance_after || 0)
+            await notifyClaim({
+                scanEventId: scanEvent.id, campaignId: campaign_id, qrCodeId: qr_code_id,
+                accountManagerUserId: account_manager_user_id, notificationType: 'success', campaignName,
+                referenceName, shopName: duplicateShopName || 'Unknown shop', consumerName: consumerDisplayName || 'Unknown consumer',
+                pointsAwarded: ellbowPoints, balanceAfter: ellbowBalance, canonicalPath: qrRecord?.canonical_path || null,
+                geoLabel: resolvedGeoLabel, message: ellbowPoints > 0 ? 'Ellbow reward claimed successfully.' : 'Ellbow point collection is currently inactive.',
+            })
+            return NextResponse.json({
+                message: ellbowPoints > 0 ? 'Ellbow reward claimed successfully.' : 'Ellbow point collection is currently inactive.',
+                loyalty_program: 'ellbow', points_awarded: ellbowPoints, balance_after: ellbowBalance,
+                total_balance: ellbowBalance, scan_event_id: scanEvent.id, survey_response_id: surveyResponseId,
+                award_status: ellbowResult?.reason || (ellbowPoints > 0 ? 'awarded' : 'no_eligible_lane'),
+            })
+        }
+
+        // 5. Existing Cellera/Vape reward path (unchanged).
+        try {
+            await upsertProgramMembershipsForUserAndOrganization({
+                admin: supabase as any,
+                programCode: 'cellera',
+                userId,
+                memberOrganizationId: roadtourMemberOrganizationId,
+                participantType: roadtourParticipantType,
+                enrollmentSource: 'roadtour',
+                context: {
+                    ownerOrganizationId: org_id,
+                    firstRoadtourRunId: roadtour_run_id,
+                    firstCampaignId: campaign_id,
+                    createdBy: userId,
+                },
+            })
+        } catch (membershipError: any) {
+            console.error('[RT] Cellera membership upsert failed:', membershipError?.message || membershipError)
+            await (supabase as any).from('roadtour_scan_events').update({ scan_status: 'failed', points_awarded: 0 }).eq('id', scanEvent.id)
+            return NextResponse.json({ message: 'Cellera membership enrollment failed.', code: 'CELLERA_MEMBERSHIP_FAILED' }, { status: 500 })
+        }
+
         const { data: rewardResult, error: rewardError } = await (supabase as any).rpc('record_roadtour_reward', {
             p_org_id: org_id,
             p_campaign_id: campaign_id,

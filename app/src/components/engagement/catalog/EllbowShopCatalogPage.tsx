@@ -1,0 +1,31 @@
+'use client'
+
+import Image from 'next/image'
+import { useCallback, useEffect, useState } from 'react'
+import { Gift, History, Star, TrendingUp } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/components/ui/use-toast'
+import { getStorageUrl } from '@/lib/utils'
+
+type Reward = { id: string; item_name: string; item_description: string | null; item_image_url: string | null; points_required: number; point_offer: number | null; stock_quantity: number | null; category: string }
+
+export function EllbowShopCatalogPage() {
+  const [balance, setBalance] = useState(0); const [wallets, setWallets] = useState<any>({}); const [rewards, setRewards] = useState<Reward[]>([])
+  const [transactions, setTransactions] = useState<any[]>([]); const [redemptions, setRedemptions] = useState<any[]>([]); const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
+  const load = useCallback(async () => { setLoading(true); try { const [shopRes, txnRes, redemptionRes] = await Promise.all([fetch('/api/engagement/catalog/ellbow/shop'), fetch('/api/engagement/catalog/ellbow/transactions'), fetch('/api/engagement/catalog/ellbow/redemptions')]); const shop = await shopRes.json(); const txns = await txnRes.json(); const redemption = await redemptionRes.json(); if (!shopRes.ok) throw new Error(shop.error); setBalance(shop.balance); setWallets(shop.wallets); setRewards(shop.rewards); setTransactions(txns.transactions ?? []); setRedemptions(redemption.redemptions ?? []) } catch (error) { toast({ title: 'Unable to load Ellbow Loyalty', description: error instanceof Error ? error.message : 'Unknown error', variant: 'destructive' }) } finally { setLoading(false) } }, [toast])
+  useEffect(() => { load() }, [load])
+  const redeem = async (reward: Reward) => { const points = reward.point_offer ?? reward.points_required; if (balance < points) return toast({ title: 'Insufficient Ellbow points', description: `You need ${points.toLocaleString()} points.`, variant: 'destructive' }); const response = await fetch('/api/engagement/catalog/ellbow/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reward_id: reward.id, request_key: crypto.randomUUID() }) }); const body = await response.json(); if (!response.ok) return toast({ title: 'Redemption failed', description: body.error, variant: 'destructive' }); toast({ title: 'Ellbow reward redeemed', description: `Code: ${body.redemption_code}` }); load() }
+  return <div className="space-y-6"><div><Badge className="bg-teal-600">Program: Ellbow Loyalty</Badge><h1 className="mt-2 text-3xl font-bold">My Ellbow Points & Rewards</h1><p className="text-muted-foreground">Pet Food loyalty balances, activity and rewards only.</p></div>
+    <div className="grid gap-4 md:grid-cols-3"><Card className="border-teal-200 bg-teal-50"><CardHeader><CardTitle className="flex gap-2 text-teal-800"><Star />Ellbow consumer balance</CardTitle></CardHeader><CardContent className="text-4xl font-bold text-teal-700">{balance.toLocaleString()}</CardContent></Card><Summary title="Shop staff wallet" value={Number(wallets.shop_staff?.balance ?? 0)} /><Summary title="Total Ellbow activity" value={transactions.length} /></div>
+    <Tabs defaultValue="rewards"><TabsList><TabsTrigger value="rewards"><Gift className="mr-2 h-4 w-4" />Rewards</TabsTrigger><TabsTrigger value="points"><TrendingUp className="mr-2 h-4 w-4" />Points History</TabsTrigger><TabsTrigger value="redemptions"><History className="mr-2 h-4 w-4" />Redemption History</TabsTrigger></TabsList>
+      <TabsContent value="rewards" className="mt-5"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{loading ? <p>Loading…</p> : rewards.length === 0 ? <Card className="col-span-full"><CardContent className="py-12 text-center text-muted-foreground">No Ellbow rewards are currently available.</CardContent></Card> : rewards.map(reward => <Card key={reward.id} className="overflow-hidden"><div className="relative h-44 bg-muted">{reward.item_image_url ? <Image src={getStorageUrl(reward.item_image_url, 'avatars')} alt={reward.item_name} fill className="object-contain" unoptimized /> : <Gift className="m-auto h-full w-12 text-muted-foreground" />}</div><CardHeader><CardTitle>{reward.item_name}</CardTitle><CardDescription>{reward.item_description}</CardDescription></CardHeader><CardContent><div className="mb-3 flex justify-between"><Badge variant="outline">{reward.category}</Badge><strong>{(reward.point_offer ?? reward.points_required).toLocaleString()} pts</strong></div><Button className="w-full" onClick={() => redeem(reward)} disabled={reward.stock_quantity === 0}>Redeem</Button></CardContent></Card>)}</div></TabsContent>
+      <TabsContent value="points" className="mt-5"><Activity rows={transactions} empty="No Ellbow point transactions yet." /></TabsContent>
+      <TabsContent value="redemptions" className="mt-5"><Activity rows={redemptions.map(row => ({ ...row, description: row.reward_name, points_delta: -row.points_used, created_at: row.requested_at }))} empty="No Ellbow redemptions yet." /></TabsContent>
+    </Tabs></div>
+}
+function Summary({ title, value }: { title: string; value: number }) { return <Card><CardHeader><CardTitle className="text-base">{title}</CardTitle></CardHeader><CardContent className="text-3xl font-bold">{value.toLocaleString()}</CardContent></Card> }
+function Activity({ rows, empty }: { rows: any[]; empty: string }) { return <Card><CardContent className="divide-y p-0">{rows.length === 0 ? <div className="p-10 text-center text-muted-foreground">{empty}</div> : rows.map(row => <div key={row.id} className="flex justify-between p-4"><div><div className="font-medium">{row.description || row.transaction_type}</div><div className="text-xs text-muted-foreground">{new Date(row.created_at).toLocaleString()}</div></div><div className={Number(row.points_delta) >= 0 ? 'font-bold text-emerald-600' : 'font-bold text-purple-600'}>{Number(row.points_delta) > 0 ? '+' : ''}{Number(row.points_delta).toLocaleString()} pts</div></div>)}</CardContent></Card> }

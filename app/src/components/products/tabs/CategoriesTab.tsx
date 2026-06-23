@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
-import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Package } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import CategoryDialog from '../dialogs/CategoryDialog'
+import SafeImage from '@/components/shared/SafeImage'
 
 interface Category {
   id: string
@@ -45,9 +46,9 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
     if (isReady) {
       loadCategories()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, refreshTrigger])
 
   const loadCategories = async () => {
@@ -76,7 +77,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
   const handleSave = async (categoryData: Partial<Category>) => {
     try {
       setIsSaving(true)
-      
+
       if (editingCategory) {
         const { error } = await supabase
           .from('product_categories')
@@ -133,7 +134,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
       if (products && products.length > 0) {
         const productList = products.map(p => `${p.product_code} - ${p.product_name}`).join(', ')
         const moreText = products.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Category',
           description: `This category is used by ${products.length} product(s): ${productList}${moreText}. Please remove or reassign these products first.`,
@@ -155,7 +156,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
       if (groups && groups.length > 0) {
         const groupList = groups.map(g => g.group_name).join(', ')
         const moreText = groups.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Category',
           description: `This category is used by ${groups.length} group(s): ${groupList}${moreText}. Please delete these groups first.`,
@@ -177,7 +178,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
       if (subCategories && subCategories.length > 0) {
         const subCatList = subCategories.map(c => c.category_name).join(', ')
         const moreText = subCategories.length === 5 ? ' and possibly more' : ''
-        
+
         toast({
           title: '❌ Cannot Delete Category',
           description: `This category has ${subCategories.length} sub-category(ies): ${subCatList}${moreText}. Please delete these sub-categories first.`,
@@ -198,12 +199,12 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
         .eq('id', id)
 
       if (deleteError) throw deleteError
-      
+
       toast({
         title: '✅ Success',
         description: 'Category deleted successfully'
       })
-      
+
       loadCategories()
     } catch (error: any) {
       console.error('Error deleting category:', error)
@@ -302,7 +303,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>
               <TableHead className="w-16 text-center">Image</TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('category_name')}
               >
@@ -310,7 +311,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
                   Name {renderSortIcon('category_name')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('category_description')}
               >
@@ -318,7 +319,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
                   Description {renderSortIcon('category_description')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="text-center cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('is_vape')}
               >
@@ -326,7 +327,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
                   Vape {renderSortIcon('is_vape')}
                 </div>
               </TableHead>
-              <TableHead 
+              <TableHead
                 className="text-center cursor-pointer hover:bg-gray-100 select-none"
                 onClick={() => handleSort('is_active')}
               >
@@ -343,17 +344,13 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
                 <TableRow key={category.id} className="hover:bg-gray-50">
                   <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell className="text-center">
-                    {category.image_url ? (
-                      <img
-                        src={category.image_url}
-                        alt={category.category_name}
-                        className="w-10 h-10 rounded-lg object-cover mx-auto border border-gray-100"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center mx-auto">
-                        <Package className="w-4 h-4 text-gray-400" />
-                      </div>
-                    )}
+                    <SafeImage
+                      src={category.image_url}
+                      alt={category.category_name}
+                      className="w-10 h-10 rounded-lg object-cover mx-auto border border-gray-100"
+                      fallbackClassName="bg-gray-100"
+                      fallbackIconClassName="w-4 h-4 text-gray-400"
+                    />
                   </TableCell>
                   <TableCell className="text-sm">{category.category_name}</TableCell>
                   <TableCell className="text-xs text-gray-600 truncate max-w-xs">{category.category_description || '-'}</TableCell>

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
     const { data: requester, error: requesterError } = await supabase
       .from('users')
-      .select('organization_id, organizations!inner(org_type_code)')
+      .select('organization_id, organizations!inner(org_type_code), roles:role_code(role_level)')
       .eq('id', user.id)
       .single()
 
@@ -36,6 +36,8 @@ export async function POST(request: Request) {
     const requesterOrgType = Array.isArray(requester.organizations)
       ? requester.organizations[0]?.org_type_code
       : requester.organizations?.org_type_code
+    const requesterRole = Array.isArray((requester as any).roles) ? (requester as any).roles[0] : (requester as any).roles
+    const requesterRoleLevel = Number(requesterRole?.role_level ?? 999)
 
     const { data: companyId, error: companyError } = await supabase
       .rpc('get_company_id', { p_org_id: requester.organization_id })
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
 
     let ordersQuery = adminSupabase
       .from('orders')
-      .select('id, created_by, approved_by')
+      .select('id, created_by, approved_by, buyer_org_id, seller_org_id, warehouse_org_id, company_id')
       .in('id', orderIds)
 
     if (requesterOrgType === 'MFG' || requesterOrgType === 'MANU') {
@@ -57,8 +59,10 @@ export async function POST(request: Request) {
         .eq('seller_org_id', requester.organization_id)
         .neq('status', 'submitted')
         .neq('status', 'draft')
-    } else {
+    } else if (requesterOrgType === 'HQ' && requesterRoleLevel <= 20) {
       ordersQuery = ordersQuery.eq('company_id', scopedCompanyId)
+    } else {
+      ordersQuery = ordersQuery.or(`buyer_org_id.eq.${requester.organization_id},seller_org_id.eq.${requester.organization_id},warehouse_org_id.eq.${requester.organization_id}`)
     }
 
     const { data: orders, error: ordersError } = await ordersQuery
@@ -66,6 +70,10 @@ export async function POST(request: Request) {
     if (ordersError) {
       console.error('Order actor scope query failed:', ordersError)
       return NextResponse.json({ error: 'Failed to resolve order access' }, { status: 500 })
+    }
+
+    if ((orders || []).length !== orderIds.length) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const actorIds = Array.from(new Set(

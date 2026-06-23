@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { normalizePhoneE164 } from '@/utils/phone'
-import { callGateway, getWhatsAppConfig } from '@/app/api/settings/whatsapp/_utils'
+import { sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
       throw msgError
     }
 
-    // Step 2: Send via Baileys Gateway
+    // Step 2: Send via the persisted default WhatsApp provider
     let gatewaySuccess = false
     let gatewayMessageId: string | null = null
     let gatewayError: string | null = null
@@ -155,38 +155,19 @@ export async function POST(request: NextRequest) {
       if (!orgId) {
         gatewayError = 'WhatsApp configuration is not available for this admin user'
       } else {
-        const config = await getWhatsAppConfig(supabaseAdmin as any, orgId)
-        if (!config?.baseUrl || !config?.apiKey) {
-          gatewayError = 'WhatsApp configuration is not set up for this organization'
-        } else {
-          resolvedTenantId = tenantId || config.tenantId || DEFAULT_TENANT_ID
-          const gatewayResult = await callGateway(
-            config.baseUrl,
-            config.apiKey,
-            'POST',
-            '/messages/send',
-            {
-              to: recipientPhone,
-              text,
-              metadata: {
-                source: 'serapod',
-                outbound_id: outboundId,
-                conversation_id: threadId,
-                message_id: message.id,
-              },
-            },
-            resolvedTenantId,
-          )
+        try {
+          const sent = await sendWhatsAppMessage(supabaseAdmin as any, orgId, { to: recipientPhone, text })
+          const gatewayResult = sent.response
 
-          if (gatewayResult?.success ?? gatewayResult?.ok) {
+          if ((gatewayResult?.success ?? gatewayResult?.ok) || gatewayResult?.messages?.[0]?.id) {
             gatewaySuccess = true
-            gatewayMessageId = gatewayResult.message_id || gatewayResult.messageId || gatewayResult.jid || null
+            gatewayMessageId = gatewayResult.message_id || gatewayResult.messageId || gatewayResult.jid || gatewayResult?.messages?.[0]?.id || null
             console.log(`[WhatsApp Send] Gateway success: ${gatewayMessageId}`)
           } else {
             gatewayError = gatewayResult?.error || 'Unknown gateway error'
             console.error(`[WhatsApp Send] Gateway failed: ${gatewayError}`)
           }
-        }
+        } catch (error: any) { gatewayError = error.message }
       }
 
     } catch (gwError: any) {

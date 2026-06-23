@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import SafeImage from "@/components/shared/SafeImage"
 import { X, ZoomIn, ZoomOut, Move } from "lucide-react"
 
 // Standard aspect ratio for banners: 16:9 for optimal mobile display
@@ -324,13 +325,13 @@ export function AnnouncementBanner({
                     </button>
                     <div className="relative w-full h-full flex items-center justify-center p-4">
                         {lightboxImage && (
-                            <Image
+                            <SafeImage
+                                key={lightboxImage}
                                 src={lightboxImage}
                                 alt="Full banner view"
-                                width={1200}
-                                height={800}
                                 className="max-w-full max-h-[85vh] object-contain"
-                                priority
+                                fallbackClassName="min-h-64 min-w-64 rounded-xl bg-gray-900"
+                                fallbackIconClassName="h-12 w-12 text-gray-500"
                             />
                         )}
                     </div>
@@ -379,14 +380,12 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
             onMouseUp={handleTouchEnd}
             onMouseLeave={handleTouchEnd}
         >
-            <Image
+            <SafeImage
                 src={imageUrl}
                 alt="Promotional banner"
-                width={0}
-                height={0}
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="w-full h-auto"
-                priority
+                className="aspect-video h-auto w-full object-cover"
+                fallbackClassName="aspect-video bg-gradient-to-br from-orange-50 to-gray-100"
+                fallbackIconClassName="h-12 w-12 text-orange-300"
             />
             {/* Subtle indicator that image is clickable */}
             {!item.link_to && (

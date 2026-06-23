@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { isRoadtourCategorySelectable, type RoadtourProductCategory } from '@/lib/roadtour/experience-registry'
+import { isMissingRoadtourProductCategorySchema } from '@/lib/roadtour/events'
 
 const extractRoleLevel = (roleRelation: { role_level?: number | null } | Array<{ role_level?: number | null }> | null | undefined) => {
     if (Array.isArray(roleRelation)) {
@@ -22,6 +24,8 @@ const ALLOWED_DUPLICATE_POLICIES = new Set([
 ])
 
 const ALLOWED_STATUSES = new Set(['draft', 'active', 'completed', 'cancelled'])
+const ALLOWED_POINT_RELEASE_RULES = new Set(['immediate_after_roadtour_claim', 'product_qr_scan_target_once'])
+const ALLOWED_PRODUCT_QR_COUNTING_PERIODS = new Set(['rolling_1_month', 'rolling_2_months', 'open_period'])
 
 async function resolveAuthorizedEventAccess(eventId: string) {
     const supabase = await createClient()
@@ -104,6 +108,9 @@ export async function PATCH(
         const endDate = String(body?.end_date || '').trim()
         const status = String(body?.status || '').trim()
         const duplicatePolicy = String(body?.duplicate_policy || '').trim()
+        const pointReleaseRule = String(body?.point_release_rule || 'immediate_after_roadtour_claim').trim()
+        const hasProductCategory = Object.prototype.hasOwnProperty.call(body || {}, 'product_category_id')
+        const productCategoryId = hasProductCategory ? String(body?.product_category_id || '').trim() : null
 
         if (!name) {
             return NextResponse.json({ success: false, error: 'Event name is required.' }, { status: 400 })
@@ -125,25 +132,82 @@ export async function PATCH(
             return NextResponse.json({ success: false, error: 'Invalid duplicate protection policy.' }, { status: 400 })
         }
 
+        if (!ALLOWED_POINT_RELEASE_RULES.has(pointReleaseRule)) {
+            return NextResponse.json({ success: false, error: 'Invalid point release rule.' }, { status: 400 })
+        }
+
+        let requiredProductQrScans: number | null = null
+        let productQrCountingPeriod: string | null = null
+
+        if (pointReleaseRule === 'product_qr_scan_target_once') {
+            const scanCount = Number(body?.required_product_qr_scans)
+            const countingPeriod = String(body?.product_qr_counting_period || '').trim()
+
+            if (!Number.isInteger(scanCount) || scanCount < 1) {
+                return NextResponse.json({ success: false, error: 'Required Product QR scans must be at least 1.' }, { status: 400 })
+            }
+
+            if (!ALLOWED_PRODUCT_QR_COUNTING_PERIODS.has(countingPeriod)) {
+                return NextResponse.json({ success: false, error: 'Product QR counting period is required.' }, { status: 400 })
+            }
+
+            requiredProductQrScans = scanCount
+            productQrCountingPeriod = countingPeriod
+        }
+
         const access = await resolveAuthorizedEventAccess(eventId)
         if ('response' in access) return access.response
 
-        const { data: updatedEvent, error: updateError } = await access.adminClient
-            .from('roadtour_runs')
-            .update({
-                name,
-                description: description || null,
-                start_date: startDate,
-                end_date: endDate,
-                status,
-                duplicate_policy: duplicatePolicy,
-                updated_by: access.profile.id,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', eventId)
-            .eq('org_id', access.eventRow.org_id)
-            .select('*')
-            .maybeSingle()
+        if (hasProductCategory) {
+            if (!productCategoryId) {
+                return NextResponse.json({ success: false, error: 'Product category is required.' }, { status: 400 })
+            }
+            const { data: category, error: categoryError } = await access.adminClient
+                .from('product_categories')
+                .select('id, category_code, category_name, image_url, is_active, is_vape')
+                .eq('id', productCategoryId)
+                .maybeSingle()
+            if (categoryError) return NextResponse.json({ success: false, error: 'Failed to validate product category.' }, { status: 500 })
+            if (!category || !isRoadtourCategorySelectable(category as RoadtourProductCategory)) {
+                return NextResponse.json({ success: false, error: 'This product category is not available for RoadTour yet.' }, { status: 400 })
+            }
+        }
+
+        const baseUpdate = {
+            name,
+            description: description || null,
+            start_date: startDate,
+            end_date: endDate,
+            status,
+            duplicate_policy: duplicatePolicy,
+            point_release_rule: pointReleaseRule,
+            required_product_qr_scans: requiredProductQrScans,
+            product_qr_counting_period: productQrCountingPeriod,
+            unique_product_qr_only: true,
+            updated_by: access.profile.id,
+            updated_at: new Date().toISOString(),
+        }
+
+        const runUpdate = (payload: Record<string, unknown>) =>
+            access.adminClient
+                .from('roadtour_runs')
+                .update(payload)
+                .eq('id', eventId)
+                .eq('org_id', access.eventRow.org_id)
+                .select('*')
+                .maybeSingle()
+
+        let { data: updatedEvent, error: updateError } = await runUpdate({
+            ...baseUpdate,
+            ...(hasProductCategory ? { product_category_id: productCategoryId } : {}),
+        })
+
+        // Backward-compatible fallback when the additive column is not migrated.
+        if (updateError && hasProductCategory && isMissingRoadtourProductCategorySchema(updateError)) {
+            const legacy = await runUpdate(baseUpdate)
+            updatedEvent = legacy.data ? { ...legacy.data, product_category_id: null } : legacy.data
+            updateError = legacy.error
+        }
 
         if (updateError) {
             return NextResponse.json(

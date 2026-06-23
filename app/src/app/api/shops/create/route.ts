@@ -6,10 +6,10 @@ import {
     validateShopRequestForm,
 } from '@/lib/shop-requests/core'
 import { createShopOrganization, findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
+import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
+import { upsertUserProgramMembership } from '@/lib/server/loyalty-memberships'
 
 export const dynamic = 'force-dynamic'
-
-const SHOP_CREATED_NOTIFICATION_CHANNELS = ['whatsapp', 'sms', 'email'] as const
 
 /**
  * POST /api/shops/create
@@ -86,19 +86,12 @@ export async function POST(request: NextRequest) {
                 created_at: new Date().toLocaleString('en-GB'),
             }
 
-            for (const channel of SHOP_CREATED_NOTIFICATION_CHANNELS) {
-                await adminClient.from('notifications_outbox').insert({
-                    org_id: parentOrgId,
-                    event_code: 'user_created_shop',
-                    channel,
-                    payload_json: payload,
-                    priority: 'normal',
-                    status: 'queued',
-                    retry_count: 0,
-                    max_retries: 3,
-                    created_at: new Date().toISOString(),
-                })
-            }
+            await queueNotificationEvent(adminClient, {
+                orgId: parentOrgId,
+                eventCode: 'user_created_shop',
+                payload,
+                dedupePayload: { shop_name: createdOrganization.org_name },
+            })
 
             fetch(`${request.nextUrl.origin}/api/cron/notification-outbox-worker`).catch(() => { })
         } catch (notificationError) {
@@ -123,6 +116,20 @@ export async function POST(request: NextRequest) {
                     success: true,
                     organization: createdOrganization,
                     linkError: 'Shop created but failed to link to your profile. Please update your shop in Profile.',
+                })
+            }
+
+            try {
+                await upsertUserProgramMembership(adminClient as any, 'cellera', user.id, 'organization_user', 'legacy_registration', {
+                    memberOrganizationId: createdOrganization.id,
+                    createdBy: user.id,
+                })
+            } catch (membershipError: any) {
+                console.error('Cellera user membership upsert failed:', membershipError?.message || membershipError)
+                return NextResponse.json({
+                    success: true,
+                    organization: createdOrganization,
+                    membershipError: 'Shop created but failed to enroll your profile in Cellera Loyalty.',
                 })
             }
         }

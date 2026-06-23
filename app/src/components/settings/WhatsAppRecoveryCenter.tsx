@@ -293,7 +293,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
     const [editingTemplateBody, setEditingTemplateBody] = useState("")
     const [savingTemplate, setSavingTemplate] = useState(false)
 
-    const [gatewayStatus, setGatewayStatus] = useState<{ connected: boolean; phone?: string | null; loading: boolean }>({
+    const [gatewayStatus, setGatewayStatus] = useState<{ connected: boolean; phone?: string | null; providerName?: string; providerKey?: string; providerType?: string; loading: boolean }>({
         connected: false,
         loading: true,
     })
@@ -328,7 +328,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
             const response = await fetch("/api/settings/whatsapp/status")
             if (response.ok) {
                 const payload = await response.json()
-                setGatewayStatus({ connected: !!payload.connected, phone: payload.phone_number, loading: false })
+                setGatewayStatus({ connected: !!payload.connected, phone: payload.phone_number, providerName: payload.provider_name, providerKey: payload.provider_key, providerType: payload.provider_type, loading: false })
             } else {
                 setGatewayStatus({ connected: false, loading: false })
             }
@@ -678,7 +678,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                         <MessageCircle className="h-5 w-5" />
                     </span>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">WhatsApp Recovery Operations Center</h1>
+                        <h1 className="text-2xl font-bold text-slate-900">WhatsApp Activity & Recovery</h1>
                         <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
                             Monitor failed WhatsApp notifications, identify the affected contact, and send a safe recovery message once the service has been restored.
                         </p>
@@ -1014,7 +1014,8 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                                 {gatewayStatus.connected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
                             </span>
                             <div>
-                                <p className="text-sm font-medium text-slate-900">Baileys Gateway</p>
+                                <p className="text-sm font-medium text-slate-900">{gatewayStatus.providerName || "No default provider"}</p>
+                                {gatewayStatus.providerType ? <p className="text-[11px] text-slate-400">{gatewayStatus.providerType}</p> : null}
                                 <p className="text-xs text-slate-500">{gatewayStatus.connected ? "Connected" : "Disconnected"}</p>
                                 {gatewayStatus.phone ? <p className="mt-0.5 text-[11px] text-slate-500">{gatewayStatus.phone}</p> : null}
                             </div>
@@ -1024,7 +1025,7 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                             <div className="flex justify-between"><span className="text-slate-500">Recovery Sent (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.recoverySent ?? 0}</span></div>
                             <div className="flex justify-between"><span className="text-slate-500">Delivered (24h)</span><span className="font-medium text-slate-900">{summary?.kpis.delivered ?? 0}</span></div>
                         </div>
-                        <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => loadGateway()}>
+                        <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => { if (gatewayStatus.providerKey) setFilterProvider(gatewayStatus.providerKey); loadGateway() }}>
                             <Activity className="mr-1.5 h-3.5 w-3.5" />View Gateway Logs
                         </Button>
                     </div>

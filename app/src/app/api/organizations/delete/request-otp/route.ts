@@ -183,22 +183,10 @@ export async function POST(request: NextRequest) {
 
     const message = `⚠️ ORGANIZATION DELETION VERIFICATION\n\nCode: *${code}*\n\nOrganization: ${targetOrg.org_name} (${targetOrg.org_code})\nRequested by: ${user.email}\n\nThis code expires in 5 minutes. Only enter it if you authorize this deletion.`
 
-    const { getWhatsAppConfig, callGateway } = await import('@/app/api/settings/whatsapp/_utils')
-    const waConfig = await getWhatsAppConfig(admin, currentOrgId)
-
-    if (!waConfig?.baseUrl || !waConfig?.apiKey) {
-      return NextResponse.json({ error: 'WhatsApp not configured' }, { status: 500 })
-    }
+    const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
 
     const recipientDigits = phoneForSend.replace(/^\+/, '')
-    await callGateway(
-      waConfig.baseUrl,
-      waConfig.apiKey,
-      'POST',
-      '/messages/send',
-      { to: recipientDigits, text: message },
-      waConfig.tenantId,
-    )
+    await sendWhatsAppMessage(admin, currentOrgId, { to: recipientDigits, text: message })
 
     await logNotificationEvent(admin, {
       eventType: 'delete_organization_otp_requested',

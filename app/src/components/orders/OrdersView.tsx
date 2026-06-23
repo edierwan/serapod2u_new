@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
 import { usePermissions } from '@/hooks/usePermissions'
+import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 import {
   FileText,
   Plus,
@@ -153,6 +154,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     userProfile.department_id
   )
   const canCreateOrders = hasPermission('create_orders')
+  const canCreateH2M = canCreateH2MOrder(userProfile.organizations.org_type_code, userProfile.roles.role_level)
 
   // Debug: Log permission state
   console.log('[OrdersView] Permission check:', {
@@ -781,6 +783,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
     // If H2M filter is selected, go directly to H2M order creation
     if (typeFilter === 'H2M') {
+      if (!canCreateH2M) {
+        toast({ title: 'Unauthorized', description: 'H2M orders can only be created by Headquarters users with access level 40 or higher.', variant: 'destructive' })
+        return
+      }
       if (onViewChange) {
         onViewChange('create-order')
       }
@@ -839,6 +845,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // Navigate to view order details (read-only)
     if (onViewChange) {
       sessionStorage.setItem('viewOrderId', orderId)
+      window.history.pushState({}, '', `/supply-chain?view=view-order&orderId=${encodeURIComponent(orderId)}`)
       onViewChange('view-order')
     }
   }
@@ -1235,7 +1242,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="all">All Types</option>
-                  <option value="H2M">H2M (HQ → Manufacturer)</option>
+                  {canCreateH2M ? <option value="H2M">H2M (HQ → Manufacturer)</option> : null}
                   <option value="D2H">D2H (Distributor → HQ)</option>
                   <option value="S2D">S2D (Shop → Distributor)</option>
                 </select>
@@ -1882,20 +1889,20 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             </p>
 
             <div className="space-y-3">
-              <button
-                onClick={() => handleOrderTypeSelection('regular')}
-                className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
-              >
-                <div className="flex items-start gap-3">
-                  <Store className="w-5 h-5 text-gray-600 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-gray-900">HQ Order to Manufacture (H2M)</h4>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Create a standard order (based on your organization type)
-                    </p>
+              {canCreateH2M ? (
+                <button
+                  onClick={() => handleOrderTypeSelection('regular')}
+                  className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <Store className="w-5 h-5 text-gray-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-gray-900">HQ Order to Manufacture (H2M)</h4>
+                      <p className="text-sm text-gray-600 mt-1">Create an order from Headquarters to a manufacturer.</p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              ) : null}
 
               <button
                 onClick={() => handleOrderTypeSelection('d2h')}

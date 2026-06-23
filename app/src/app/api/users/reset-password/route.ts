@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { checkPermissionForUser } from '@/lib/server/permissions'
 
 const extractRoleLevel = (roleRelation: { role_level?: number | null } | Array<{ role_level?: number | null }> | null | undefined) => {
   if (Array.isArray(roleRelation)) {
@@ -20,7 +19,7 @@ const extractRoleLevel = (roleRelation: { role_level?: number | null } | Array<{
  *
  * Security:
  * - Requires valid authentication session
- * - Requires HQ Admin role level or explicit reset-password permission
+ * - Requires exact HQ Admin role level 10
  * - Cannot reset a higher-privilege account
  * - Updates password directly via Supabase Admin API
  */
@@ -38,20 +37,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const permissionCheck = await checkPermissionForUser(authUser.id, 'reset_passwords')
-    const currentUserLevel = permissionCheck.context?.role_level ?? null
-    const canResetPasswords = permissionCheck.allowed || (typeof currentUserLevel === 'number' && currentUserLevel <= 10)
+    const supabaseAdmin = createAdminClient()
+    const { data: currentUserProfile, error: profileError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, roles(role_level)')
+      .eq('id', authUser.id)
+      .single()
+    const currentUserLevel = extractRoleLevel((currentUserProfile as any)?.roles)
 
-    if (!permissionCheck.context) {
+    if (profileError || !currentUserProfile) {
       return NextResponse.json(
         { success: false, error: 'Failed to fetch user profile' },
         { status: 403 }
       )
     }
 
-    if (!canResetPasswords) {
+    if (currentUserLevel !== 10) {
       return NextResponse.json(
-        { success: false, error: 'Access denied - Only admins can reset passwords' },
+        { success: false, error: 'Forbidden - Password reset requires role level 10' },
         { status: 403 }
       )
     }
@@ -67,15 +70,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate password length
-    if (new_password.length < 6) {
+    if (new_password.length < 8) {
       return NextResponse.json(
-        { success: false, error: 'Password must be at least 6 characters' },
+        { success: false, error: 'Password must be at least 8 characters' },
         { status: 400 }
       )
     }
 
     // Verify target user exists
-    const { data: targetUser, error: targetError } = await supabase
+    const { data: targetUser, error: targetError } = await supabaseAdmin
       .from('users')
       .select('id, email, full_name, role_code, roles(role_level)')
       .eq('id', user_id)
@@ -100,8 +103,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabaseAdmin = createAdminClient()
-    
     // Use the admin updateUserById method to change password
     const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user_id,
@@ -116,8 +117,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Log the password reset for audit purposes
-    console.log(`✅ Password reset by admin ${authUser.email} for user ${targetUser.email}`)
+    // Audit metadata deliberately excludes the password.
+    const { error: auditError } = await supabaseAdmin.from('audit_logs').insert({
+      user_id: authUser.id,
+      user_email: currentUserProfile.email || authUser.email || null,
+      action: 'PASSWORD_RESET',
+      entity_type: 'user',
+      entity_id: user_id,
+      changed_fields: ['password'],
+      new_values: { reset_by_admin: true },
+      user_agent: request.headers.get('user-agent'),
+    })
+    if (auditError) console.error('Password reset audit log error:', auditError)
 
     return NextResponse.json({
       success: true,

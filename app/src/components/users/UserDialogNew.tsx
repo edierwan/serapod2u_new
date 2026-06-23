@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   AlertCircle,
   ArrowLeft,
@@ -24,6 +25,7 @@ import {
   Crown,
   Eye,
   EyeOff,
+  Factory,
   Loader2,
   Mail,
   MapPin,
@@ -43,6 +45,7 @@ import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
+import UserPasswordResetSection from './UserPasswordResetSection'
 
 interface Bank {
   id: string
@@ -72,7 +75,7 @@ interface PositionOption {
 }
 
 type WizardStep = 'basic' | 'access' | 'business' | 'banking' | 'review'
-type OrganizationType = 'HQ' | 'DIST' | 'SHOP'
+export type OrganizationType = 'HQ' | 'MFG' | 'DIST' | 'SHOP'
 
 type WizardUser = Partial<User> & {
   password?: string
@@ -90,7 +93,34 @@ type WizardUser = Partial<User> & {
   address?: string
   referral_phone?: string
   notes?: string
-  can_be_reference?: boolean
+}
+
+export function ReferenceCheckbox({
+  checked,
+  disabled = false,
+  onCheckedChange,
+}: {
+  checked: boolean
+  disabled?: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <Checkbox
+        id="can-be-reference"
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(value === true)}
+        disabled={disabled}
+        className="mt-0.5"
+      />
+      <div className="space-y-1">
+        <Label htmlFor="can-be-reference" className="cursor-pointer text-sm font-semibold text-gray-900">
+          Reference
+        </Label>
+        <p className="text-xs text-gray-500">Allow this user to be selected as a Reference in RoadTour campaigns.</p>
+      </div>
+    </div>
+  )
 }
 
 interface UserDialogNewProps {
@@ -118,8 +148,9 @@ const STEP_LABELS: Record<WizardStep, string> = {
   review: 'Review',
 }
 
-const ORG_TYPES: Array<{ value: OrganizationType; label: string; icon: typeof Building2 }> = [
+export const USER_ORGANIZATION_TYPES: Array<{ value: OrganizationType; label: string; icon: typeof Building2 }> = [
   { value: 'HQ', label: 'HQ', icon: Building2 },
+  { value: 'MFG', label: 'Manufacturer', icon: Factory },
   { value: 'DIST', label: 'Distributor', icon: Store },
   { value: 'SHOP', label: 'Shop', icon: Store },
 ]
@@ -143,11 +174,25 @@ const desiredRoleLabel = (role: Role) => {
   return labels[role.role_level] || role.role_name
 }
 
-const orgMatchesType = (org: Organization, type: OrganizationType) => {
+export const orgMatchesType = (org: Organization, type: OrganizationType) => {
   const code = (org.org_type_code || '').toUpperCase()
   if (type === 'HQ') return code === 'HQ' || code.includes('HQ') || code.includes('HEAD')
+  if (type === 'MFG') return code === 'MFG' || code === 'MANU' || code.includes('MANUFACTUR')
   if (type === 'DIST') return code === 'DIST' || code.includes('DISTRIBUTOR')
   return code === 'SHOP' || code.includes('SHOP')
+}
+
+export const organizationIdForType = (organizations: Organization[], organizationId: string | undefined, type: OrganizationType) => {
+  const currentOrg = organizations.find(org => org.id === organizationId)
+  return currentOrg && orgMatchesType(currentOrg, type) ? organizationId || '' : ''
+}
+
+export const filterOrganizationsForType = (organizations: Organization[], type: OrganizationType, searchValue = '') => {
+  const search = searchValue.trim().toLowerCase()
+  return organizations.filter((org) => {
+    if (!orgMatchesType(org, type)) return false
+    return !search || org.org_name.toLowerCase().includes(search) || org.org_code.toLowerCase().includes(search)
+  })
 }
 
 const getDisplayName = (value: { call_name?: string | null; full_name?: string | null; email?: string | null }) => {
@@ -242,6 +287,7 @@ export default function UserDialogNew({
   const [phoneValidation, setPhoneValidation] = useState<PhoneValidationResult | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [organizationSearch, setOrganizationSearch] = useState('')
   const [localSaving, setLocalSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -275,7 +321,16 @@ export default function UserDialogNew({
   const steps = useMemo<WizardStep[]>(() => {
     return ['basic', 'access', ...(showBusinessStep ? ['business' as WizardStep] : []), 'banking', 'review']
   }, [showBusinessStep])
-  const filteredOrganizations = organizations.filter(org => orgMatchesType(org, organizationType))
+  const filteredOrganizations = filterOrganizationsForType(organizations, organizationType, organizationSearch)
+
+  useEffect(() => {
+    if (!open) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -296,7 +351,7 @@ export default function UserDialogNew({
         bank_id: (user as any).bank_id || '',
         bank_account_number: (user as any).bank_account_number || '',
         bank_account_holder_name: (user as any).bank_account_holder_name || '',
-        can_be_reference: (user as any).can_be_reference || false,
+        can_be_reference: user.can_be_reference ?? false,
       }
       : {
         email: '',
@@ -326,7 +381,15 @@ export default function UserDialogNew({
       }
     const initialOrg = organizations.find(org => org.id === initial.organization_id)
     const initialOrgType = initialOrg?.org_type_code?.toUpperCase()
-    setOrganizationType(initialOrgType?.includes('SHOP') ? 'SHOP' : initialOrgType?.includes('DIST') ? 'DIST' : 'HQ')
+    setOrganizationType(
+      initialOrgType === 'MFG' || initialOrgType === 'MANU' || initialOrgType?.includes('MANUFACTUR')
+        ? 'MFG'
+        : initialOrgType?.includes('SHOP')
+          ? 'SHOP'
+          : initialOrgType?.includes('DIST')
+            ? 'DIST'
+            : 'HQ',
+    )
     setFormData(initial)
     setCurrentStep('basic')
     setAvatarPreview(user?.avatar_url ? user.avatar_url.split('?')[0] : null)
@@ -341,6 +404,7 @@ export default function UserDialogNew({
     setPhoneValidation(null)
     setShowPassword(false)
     setShowConfirmPassword(false)
+    setOrganizationSearch('')
   }, [defaultValues?.department_id, defaultValues?.organization_id, defaultValues?.role_code, open, organizations, user])
 
   useEffect(() => {
@@ -494,11 +558,11 @@ export default function UserDialogNew({
 
   const selectOrganizationType = (type: OrganizationType) => {
     setOrganizationType(type)
+    setOrganizationSearch('')
     setFormData(prev => {
-      const currentOrg = organizations.find(org => org.id === prev.organization_id)
       return {
         ...prev,
-        organization_id: currentOrg && orgMatchesType(currentOrg, type) ? prev.organization_id : '',
+        organization_id: organizationIdForType(organizations, prev.organization_id, type),
         department_id: '',
         manager_user_id: '',
         position_id: '',
@@ -918,8 +982,8 @@ export default function UserDialogNew({
       </div>
       <div className="space-y-3">
         <Label>Organization Type</Label>
-        <div className="grid gap-3 md:grid-cols-3">
-          {ORG_TYPES.map(type => {
+        <div className="grid gap-3 md:grid-cols-4">
+          {USER_ORGANIZATION_TYPES.map(type => {
             const Icon = type.icon
             const active = organizationType === type.value
             return (
@@ -952,11 +1016,21 @@ export default function UserDialogNew({
             <SelectValue placeholder={isGuest ? 'Independent guest' : 'Search organization...'} />
           </SelectTrigger>
           <SelectContent className="max-h-[260px]">
+            <div className="sticky top-0 z-10 bg-white p-2">
+              <Input
+                value={organizationSearch}
+                onChange={(event) => setOrganizationSearch(event.target.value)}
+                onKeyDown={(event) => event.stopPropagation()}
+                placeholder="Search organization..."
+                className="h-9"
+              />
+            </div>
             {filteredOrganizations.map(org => (
               <SelectItem key={org.id} value={org.id}>
                 {org.org_name} ({org.org_code})
               </SelectItem>
             ))}
+            {filteredOrganizations.length === 0 ? <p className="px-3 py-2 text-xs text-gray-500">No matching organizations.</p> : null}
           </SelectContent>
         </Select>
         {renderFieldError('organization_id')}
@@ -975,6 +1049,19 @@ export default function UserDialogNew({
           <Switch checked={Boolean(formData.is_active)} onCheckedChange={checked => handleInputChange('is_active', checked)} disabled={saving} />
         </div>
       </div>
+      <ReferenceCheckbox
+        checked={Boolean(formData.can_be_reference)}
+        onCheckedChange={checked => handleInputChange('can_be_reference', checked)}
+        disabled={saving}
+      />
+      {user ? (
+        <UserPasswordResetSection
+          targetUserId={user.id}
+          targetUserName={getDisplayName(user)}
+          targetUserEmail={user.email}
+          currentUserRoleLevel={currentUserRoleLevel}
+        />
+      ) : null}
       {showHrFields ? (
         <div className="space-y-4 rounded-lg border border-blue-100 bg-blue-50/40 p-4">
           <div>

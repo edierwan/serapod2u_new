@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, Bell, MessageSquare, Megaphone, AlertTriangle, ListChecks } from 'lucide-react'
+import { ArrowRight, Bell, Megaphone, AlertTriangle } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 interface NotificationsCardItem {
   id: string
@@ -14,26 +16,10 @@ interface NotificationsCardItem {
 
 const notificationCards: NotificationsCardItem[] = [
   {
-    id: 'whatsapp-activity',
-    label: 'WhatsApp Activity',
-    description: 'Monitor WhatsApp notification events and delivery flow in real time.',
-    href: '/notifications/whatsapp-activity',
-    icon: MessageSquare,
-    accent: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-600 dark:text-emerald-300', hoverBorder: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
-  },
-  {
-    id: 'delivery-logs',
-    label: 'Delivery Logs',
-    description: 'Review outbound notification delivery logs and status history.',
-    href: '/notifications/delivery-logs',
-    icon: ListChecks,
-    accent: { bg: 'bg-sky-50 dark:bg-sky-900/30', text: 'text-sky-600 dark:text-sky-300', hoverBorder: 'hover:border-sky-200 dark:hover:border-sky-800' },
-  },
-  {
     id: 'failed-notifications',
-    label: 'Failed Notifications',
-    description: 'Track failed sends and trigger recovery actions safely.',
-    href: '/notifications/failed',
+    label: 'WhatsApp Activity & Recovery',
+    description: 'Monitor WhatsApp delivery activity, failed notifications, provider status, and recovery actions.',
+    href: '/notifications/whatsapp-activity-recovery',
     icon: AlertTriangle,
     accent: { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-300', hoverBorder: 'hover:border-amber-200 dark:hover:border-amber-800' },
   },
@@ -57,6 +43,40 @@ const notificationCards: NotificationsCardItem[] = [
 
 export default function NotificationsLandingView() {
   const router = useRouter()
+  const [providersHref, setProvidersHref] = useState('/notifications/providers?channel=whatsapp&provider=meta&tab=configuration')
+  const [providersAction, setProvidersAction] = useState('Continue Setup')
+
+  useEffect(() => {
+    const loadProviderDestination = async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('notification_provider_configs')
+        .select('provider_name,is_active,is_default,config_public,last_test_status')
+        .eq('channel', 'whatsapp')
+
+      const records = data || []
+      const selected = records.find(record => record.is_default) || records.find(record => record.is_active) || records.find(record => record.provider_name === 'whatsapp_business')
+      if (!selected) return
+
+      const aliases: Record<string, string> = {
+        whatsapp_business: 'meta',
+        baileys: 'baileys-hostinger',
+        baileys_home: 'baileys-home',
+        twilio: 'twilio',
+        messagebird: 'messagebird'
+      }
+      const provider = aliases[selected.provider_name] || 'meta'
+      const tab = selected.provider_name === 'baileys' || selected.provider_name === 'baileys_home' ? 'status' : 'configuration'
+      const metaIncomplete = selected.provider_name === 'whatsapp_business' && !(
+        (selected.config_public as any)?.phone_number_id && (selected.config_public as any)?.waba_id
+      )
+
+      setProvidersHref(`/notifications/providers?channel=whatsapp&provider=${provider}&tab=${tab}`)
+      setProvidersAction(metaIncomplete ? 'Continue Setup' : 'Manage')
+    }
+
+    loadProviderDestination().catch(error => console.error('Failed to resolve notification provider destination', error))
+  }, [])
 
   return (
     <div className="w-full space-y-6">
@@ -82,6 +102,8 @@ export default function NotificationsLandingView() {
       <div className="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
         {notificationCards.map((item) => {
           const Icon = item.icon
+          const href = item.id === 'notification-providers' ? providersHref : item.href
+          const action = item.id === 'notification-providers' ? providersAction : 'Open'
           return (
             <div
               key={item.id}
@@ -98,10 +120,10 @@ export default function NotificationsLandingView() {
               </div>
 
               <button
-                onClick={() => router.push(item.href)}
+                onClick={() => router.push(href)}
                 className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors group"
               >
-                <span className="flex-1 text-left">Open</span>
+                <span className="flex-1 text-left">{action}</span>
                 <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
             </div>

@@ -220,11 +220,23 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
             Product Catalog
           </h1>
           <p className="text-gray-600 mt-1">
-            {isIndependentUser 
+            {isIndependentUser
               ? 'Browse products from our extensive catalog'
               : 'Browse and order products from our extensive catalog'
             }
           </p>
+        </div>
+        {/* Catalog context toggle (non-invasive): Storefront vs RoadTour */}
+        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <span className="px-4 py-2 text-sm font-medium rounded-md bg-white text-gray-900 shadow-sm">
+            Storefront Catalog
+          </span>
+          <a
+            href="/engagement/product-catalog/roadtour"
+            className="px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900"
+          >
+            RoadTour Catalog
+          </a>
         </div>
       </div>
 

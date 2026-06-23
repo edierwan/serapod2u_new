@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { callGateway } from '@/app/api/settings/whatsapp/_utils'
+import { createClient } from '@/lib/supabase/server'
+import { isAdminUser, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 
 // Normalize phone number for Baileys (Malaysia preferred)
 // Removes non-digits, replaces leading 0 with 60
@@ -18,7 +19,7 @@ function normalizeBaileysPhone(phone: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { channel, provider, credentials, config, to } = body
+    const { channel, to } = body
 
     if (!to) {
       return NextResponse.json({ error: 'Recipient number (to) is required' }, { status: 400 })
@@ -28,51 +29,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only WhatsApp channel is supported for now' }, { status: 400 })
     }
 
-    if (provider === 'baileys') {
-        const { base_url } = config || {}
-        const { api_key } = credentials || {}
-
-        if (!base_url || !api_key) {
-            return NextResponse.json({ error: 'Missing Baileys configuration (Base URL or API Key)' }, { status: 400 })
-        }
-
+    if (channel === 'whatsapp') {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        if (!await isAdminUser(supabase, user.id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        const { data: profile } = await supabase.from('users').select('organization_id').eq('id', user.id).single()
+        if (!profile?.organization_id) return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
         const normalizedPhone = normalizeBaileysPhone(to)
         const message = 'This is a test message from Serapod2u Notification Settings.'
-
-        // Call Baileys Gateway using centralized utility
-        // Uses legacy endpoints (single-tenant)
-        
         try {
-            // Use callGateway which handles URL sanitization and legacy endpoint mapping
-            const result = await callGateway(
-                base_url,
-                api_key,
-                'POST',
-                '/messages/send',
-                {
-                    to: normalizedPhone,
-                    text: message
-                }
-            );
-
-            return NextResponse.json({ success: true, message: 'Test message sent successfully via Baileys', data: result })
-
+            const sent = await sendWhatsAppMessage(supabase, profile.organization_id, { to: normalizedPhone, text: message })
+            return NextResponse.json({ success: true, message: `Test message sent via ${sent.providerName}`, data: sent.response })
         } catch (error: any) {
-            console.error('Baileys send error:', error)
-             return NextResponse.json({ 
-                error: `Failed to send Baileys message: ${error.message}` 
-            }, { status: 500 })
+            return NextResponse.json({ error: error.message }, { status: 500 })
         }
-    } else if (provider === 'twilio') {
-        // Mock for Twilio for now as focus is Baileys
-         // In a real implementation we would instantiate Twilio client here
-        return NextResponse.json({ 
-            success: true, 
-            message: 'Twilio test logic not implemented in this update (mock success)' 
-        })
     }
-    
-    return NextResponse.json({ error: `Provider ${provider} not supported for testing` }, { status: 400 })
+    return NextResponse.json({ error: `Channel ${channel} is not supported for testing` }, { status: 400 })
 
   } catch (error: any) {
     console.error('Test API error:', error)
