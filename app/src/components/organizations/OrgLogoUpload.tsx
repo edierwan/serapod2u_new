@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Upload, X, Building2 } from 'lucide-react'
+import { resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
 
 // Image compression utility for organization logos
 // Logos are displayed small (~100-150px), so we compress to ~5-10KB
@@ -74,6 +75,8 @@ interface OrgLogoUploadProps {
   currentLogoUrl?: string | null
   orgName: string
   onLogoChange: (file: File | null) => void
+  onLogoRemove?: () => void
+  onError?: (message: string) => void
   error?: string
 }
 
@@ -81,10 +84,17 @@ export default function OrgLogoUpload({
   currentLogoUrl, 
   orgName, 
   onLogoChange,
+  onLogoRemove,
+  onError,
   error 
 }: OrgLogoUploadProps) {
-  const [logoPreview, setLogoPreview] = useState<string | null>(currentLogoUrl || null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(() => resolveOrganizationLogoUrl(currentLogoUrl) || null)
+  const [processing, setProcessing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setLogoPreview(resolveOrganizationLogoUrl(currentLogoUrl) || null)
+  }, [currentLogoUrl])
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -92,6 +102,7 @@ export default function OrgLogoUpload({
 
     if (!file.type.startsWith('image/')) {
       onLogoChange(null)
+      onError?.('Please select a valid image file')
       return
     }
 
@@ -101,15 +112,19 @@ export default function OrgLogoUpload({
         fileInputRef.current.value = ''
       }
       onLogoChange(null)
+      onError?.('AVIF images are not supported. Please use JPG, PNG, GIF, or WebP.')
       return
     }
 
     if (file.size > 5 * 1024 * 1024) {
       onLogoChange(null)
+      onError?.('Image must be less than 5MB')
       return
     }
 
     try {
+      setProcessing(true)
+      onError?.('')
       // Compress the image before upload
       const compressedFile = await compressImage(file)
       
@@ -130,15 +145,18 @@ export default function OrgLogoUpload({
       }
       reader.readAsDataURL(file)
       onLogoChange(file)
+    } finally {
+      setProcessing(false)
     }
   }
 
-  const resetLogoUpload = () => {
-    setLogoPreview(currentLogoUrl || null)
+  const removeLogo = () => {
+    setLogoPreview(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
     onLogoChange(null)
+    onLogoRemove?.()
   }
 
   return (
@@ -168,17 +186,19 @@ export default function OrgLogoUpload({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
+              disabled={processing}
               className="flex-1"
             >
               <Upload className="w-4 h-4 mr-2" />
-              {logoPreview ? 'Change Logo' : 'Upload Logo'}
+              {processing ? 'Processing...' : logoPreview ? 'Change Logo' : 'Upload Logo'}
             </Button>
             {logoPreview && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={resetLogoUpload}
+                onClick={removeLogo}
+                aria-label={`Remove ${orgName} logo`}
               >
                 <X className="w-4 h-4" />
               </Button>

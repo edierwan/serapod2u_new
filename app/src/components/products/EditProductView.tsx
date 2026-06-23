@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, Package, Save, X, Image as ImageIcon, Star, Trash2, Upload } from 'lucide-react'
-import Image from 'next/image'
+import SafeImage from '@/components/shared/SafeImage'
 import { compressProductImage } from '@/lib/utils/imageCompression'
 import {
   AlertDialog,
@@ -273,6 +273,8 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
     if (!productId) return
 
     try {
+      const removed = productImages.find(img => img.id === imageId)
+
       // Delete from database
       const { error: dbError } = await supabase
         .from('product_images')
@@ -281,17 +283,32 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
 
       if (dbError) throw dbError
 
-      // Delete from storage
-      const urlParts = imageUrl.split('/')
-      const fileName = urlParts[urlParts.length - 1]
-      const filePath = `products/${fileName}`
+      // If the primary image was removed, promote the next remaining image so
+      // the product is never left without a primary (Product List falls back to
+      // the first image, but we keep the DB explicit and consistent).
+      const remaining = productImages.filter(img => img.id !== imageId)
+      const promoted = removed?.is_primary && remaining.length > 0 ? remaining[0] : null
+      if (promoted) {
+        await supabase
+          .from('product_images')
+          .update({ is_primary: true })
+          .eq('id', promoted.id)
+      }
 
-      await supabase.storage
-        .from('product-images')
-        .remove([filePath])
+      // Delete from storage (strip any query string before deriving the path so
+      // we never target the wrong object). Only delete objects in this bucket.
+      const fileName = imageUrl.split('?')[0].split('/').pop()
+      if (fileName) {
+        await supabase.storage
+          .from('product-images')
+          .remove([`products/${fileName}`])
+      }
 
       // Update local state
-      setProductImages(prev => prev.filter(img => img.id !== imageId))
+      setProductImages(remaining.map(img => ({
+        ...img,
+        is_primary: img.id === promoted?.id ? true : img.is_primary,
+      })))
 
       toast({
         title: 'Success',
@@ -491,12 +508,13 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                     }
                   }}
                 >
-                  <Image
+                  <SafeImage
                     src={image.image_url}
-                    alt="Product image"
-                    fill
-                    className="object-contain bg-gray-50"
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                    alt={formData.product_name || 'Product image'}
+                    className="absolute inset-0 h-full w-full object-contain bg-gray-50"
+                    fallbackClassName="absolute inset-0 h-full w-full bg-gray-50"
+                    fallbackIcon={ImageIcon}
+                    fallbackIconClassName="h-10 w-10 text-gray-300"
                   />
                   
                   {/* Primary Badge */}

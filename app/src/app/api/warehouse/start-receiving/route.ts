@@ -4,11 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  const { batch_id } = await request.json()
+  const { batch_id, mode } = await request.json()
 
   if (!batch_id) {
     return NextResponse.json({ error: 'Batch ID is required' }, { status: 400 })
   }
+
+  // 'full' (Receive All: worker posts order+buffer inventory) or
+  // 'partial' (worker does QR-only; inventory posted from receipt quantities).
+  const receivingMode = mode === 'partial' ? 'partial' : 'full'
 
   // Check current status
   const { data: batch, error: fetchError } = await supabase
@@ -36,8 +40,9 @@ export async function POST(request: NextRequest) {
   
   const { error: updateError } = await supabase
     .from('qr_batches')
-    .update({ 
+    .update({
       receiving_status: 'queued',
+      receiving_mode: receivingMode,
       last_error: metadata,
       updated_at: new Date().toISOString()
     })

@@ -1,0 +1,29 @@
+{
+  "recommended_repo_folder": "/public/brands/ellbow/mobile/",
+  "formats": {
+    "png": "1024x1024 transparent PNG for hero, cards, retina displays and source assets",
+    "webp": "512x512 optimized WebP for production mobile/web use",
+    "hero_background": "1080x720 PNG/WebP; use object-fit: cover"
+  },
+  "mapping": {
+    "heroMascot": "png/01-ellbow-cat-mascot-full.png",
+    "heroBackground": "webp/15-ellbow-mobile-hero-background.webp",
+    "verifiedBadge": "png/04-ellbow-verified-shield-cat.png",
+    "campaignThumbnail": "webp/16-ellbow-campaign-thumbnail.webp",
+    "points": "png/11-ellbow-points-reward-icon.png",
+    "home": "webp/05-ellbow-home-icon.webp",
+    "rewards": "webp/06-ellbow-rewards-gift-icon.webp",
+    "scan": "webp/07-ellbow-scan-icon.webp",
+    "product": "webp/08-ellbow-product-pack-icon.webp",
+    "profile": "webp/09-ellbow-profile-avatar-icon.webp"
+  },
+  "recommended_render_sizes_css_px": {
+    "heroMascot": "190-250",
+    "verifiedBadge": "56-72",
+    "campaignThumbnail": "72-88",
+    "pointsIcon": "52-64",
+    "bottomNavigationIcon": "28-34",
+    "centerScanIcon": "44-54",
+    "featuredRewardImage": "96-130"
+  }
+}

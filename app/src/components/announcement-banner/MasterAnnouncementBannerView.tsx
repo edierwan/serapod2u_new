@@ -65,7 +65,11 @@ interface BannerConfig {
         products?: PageBannerSettings
         profile?: PageBannerSettings
     }
+    programConfigs?: Partial<Record<BannerProgram, BannerProgramConfig>>
 }
+
+type BannerProgram = 'cellera' | 'ellbow'
+type BannerProgramConfig = Omit<BannerConfig, 'programConfigs'>
 
 interface MasterBannerConfig {
     id?: string
@@ -105,6 +109,64 @@ const pageLabels = {
     profile: { name: 'Profile', icon: '👤' }
 }
 
+const programLabels: Record<BannerProgram, { name: string; description: string; accent: string }> = {
+    cellera: {
+        name: 'Cellera Loyalty',
+        description: 'Legacy Cellera/Vape customer journey banners',
+        accent: 'bg-blue-600'
+    },
+    ellbow: {
+        name: 'Ellbow Loyalty',
+        description: 'Pet-food RoadTour mobile experience banners',
+        accent: 'bg-[#3f9b94]'
+    }
+}
+
+const createDefaultBannerConfig = (enabled = false): BannerProgramConfig => ({
+    enabled,
+    template: 'grid',
+    items: [],
+    pageSettings: {
+        home: { ...defaultPageSettings },
+        rewards: { ...defaultPageSettings },
+        products: { ...defaultPageSettings },
+        profile: { ...defaultPageSettings }
+    }
+})
+
+const stripProgramConfigs = (config?: Partial<BannerConfig> | null): BannerProgramConfig => {
+    const source = config || {}
+    return {
+        enabled: source.enabled ?? false,
+        template: source.template || 'grid',
+        items: source.items || [],
+        placement: source.placement,
+        autoSlide: source.autoSlide,
+        slideInterval: source.slideInterval,
+        showDots: source.showDots,
+        showProgress: source.showProgress,
+        pageSettings: {
+            home: { ...defaultPageSettings, ...(source.pageSettings?.home || {}) },
+            rewards: { ...defaultPageSettings, ...(source.pageSettings?.rewards || {}) },
+            products: { ...defaultPageSettings, ...(source.pageSettings?.products || {}) },
+            profile: { ...defaultPageSettings, ...(source.pageSettings?.profile || {}) }
+        }
+    }
+}
+
+const normalizeProgramBannerConfig = (config?: BannerConfig | null): BannerConfig => {
+    const cellera = stripProgramConfigs(config?.programConfigs?.cellera || config)
+    const ellbow = stripProgramConfigs(config?.programConfigs?.ellbow || createDefaultBannerConfig(false))
+
+    return {
+        ...cellera,
+        programConfigs: {
+            cellera,
+            ellbow
+        }
+    }
+}
+
 const linkOptions = [
     { value: 'short_link', label: '{short_link} (App)' },
     { value: 'page_rewards', label: '{page_rewards}' },
@@ -138,6 +200,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
     const [uploadingImage, setUploadingImage] = useState(false)
     const [masterConfig, setMasterConfig] = useState<MasterBannerConfig | null>(null)
     const [activeBannerTab, setActiveBannerTab] = useState<'home' | 'rewards' | 'products' | 'profile'>('home')
+    const [activeProgram, setActiveProgram] = useState<BannerProgram>('cellera')
     const { toast } = useToast()
 
     useEffect(() => {
@@ -152,14 +215,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
 
             if (data.success) {
                 const config = data.data
-                if (!config.banner_config.pageSettings) {
-                    config.banner_config.pageSettings = {
-                        home: { ...defaultPageSettings },
-                        rewards: { ...defaultPageSettings },
-                        products: { ...defaultPageSettings },
-                        profile: { ...defaultPageSettings }
-                    }
-                }
+                config.banner_config = normalizeProgramBannerConfig(config.banner_config)
                 setMasterConfig(config)
             } else {
                 toast({
@@ -232,7 +288,11 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
             const data = await res.json()
 
             if (data.success) {
-                setMasterConfig({ ...data.data, is_new: false })
+                setMasterConfig({
+                    ...data.data,
+                    banner_config: normalizeProgramBannerConfig(data.data.banner_config),
+                    is_new: false
+                })
                 toast({
                     title: "Saved",
                     description: "Master announcement banner configuration has been saved",
@@ -258,40 +318,54 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
 
     const updateConfig = (updates: Partial<BannerConfig>) => {
         if (!masterConfig) return
+        const currentProgramConfig = getActiveProgramConfig()
+        const nextProgramConfig = stripProgramConfigs({
+            ...currentProgramConfig,
+            ...updates
+        })
+        const nextProgramConfigs = {
+            ...(masterConfig.banner_config.programConfigs || {}),
+            [activeProgram]: nextProgramConfig
+        }
+
         setMasterConfig({
             ...masterConfig,
             banner_config: {
-                ...masterConfig.banner_config,
-                ...updates
+                ...(activeProgram === 'cellera' ? nextProgramConfig : stripProgramConfigs(masterConfig.banner_config.programConfigs?.cellera || masterConfig.banner_config)),
+                programConfigs: nextProgramConfigs
             }
         })
     }
 
+    const getActiveProgramConfig = (): BannerProgramConfig => {
+        if (!masterConfig) return createDefaultBannerConfig(false)
+        const normalized = normalizeProgramBannerConfig(masterConfig.banner_config)
+        return stripProgramConfigs(normalized.programConfigs?.[activeProgram])
+    }
+
     const getPageSettings = (page: 'home' | 'rewards' | 'products' | 'profile'): PageBannerSettings => {
-        return masterConfig?.banner_config.pageSettings?.[page] || defaultPageSettings
+        return getActiveProgramConfig().pageSettings?.[page] || defaultPageSettings
     }
 
     const updatePageSettings = (page: 'home' | 'rewards' | 'products' | 'profile', updates: Partial<PageBannerSettings>) => {
         if (!masterConfig) return
         const currentSettings = getPageSettings(page)
-        setMasterConfig({
-            ...masterConfig,
-            banner_config: {
-                ...masterConfig.banner_config,
-                pageSettings: {
-                    ...masterConfig.banner_config.pageSettings,
-                    [page]: {
-                        ...currentSettings,
-                        ...updates
-                    }
-                }
+        const currentProgramConfig = getActiveProgramConfig()
+        const nextPageSettings = {
+            ...currentProgramConfig.pageSettings,
+            [page]: {
+                ...currentSettings,
+                ...updates
             }
-        })
+        }
+        updateConfig({ pageSettings: nextPageSettings })
     }
+
+    const activeProgramConfig = getActiveProgramConfig()
 
     const addBanner = (placement: 'top' | 'bottom') => {
         if (!masterConfig) return
-        const newItems = [...masterConfig.banner_config.items]
+        const newItems = [...activeProgramConfig.items]
         newItems.push({
             id: crypto.randomUUID(),
             image_url: '',
@@ -306,13 +380,13 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
 
     const removeBanner = (id: string) => {
         if (!masterConfig) return
-        const newItems = masterConfig.banner_config.items.filter(i => i.id !== id)
+        const newItems = activeProgramConfig.items.filter(i => i.id !== id)
         updateConfig({ items: newItems })
     }
 
     const updateBannerItem = (id: string, updates: Partial<BannerItem>) => {
         if (!masterConfig) return
-        const newItems = masterConfig.banner_config.items.map(item =>
+        const newItems = activeProgramConfig.items.map(item =>
             item.id === id ? { ...item, ...updates } : item
         )
         updateConfig({ items: newItems })
@@ -590,17 +664,53 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
             <Alert className="bg-blue-50 border-blue-200">
                 <Info className="w-4 h-4 text-blue-600" />
                 <AlertDescription className="text-blue-800">
-                    <strong>How it works:</strong> Configure banners for each page. Each section (Top/Bottom) can use Slider or Stacked display mode.
-                    Individual journeys can override these settings with their own banners.
+                    <strong>How it works:</strong> Choose a loyalty program, then configure banners for each page. Existing unscoped banners remain under Cellera Loyalty; Ellbow Loyalty uses its own isolated banner set.
                 </AlertDescription>
             </Alert>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Loyalty Program</CardTitle>
+                    <CardDescription>Select which mobile experience these announcement banners belong to.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {(['cellera', 'ellbow'] as const).map((program) => {
+                            const selected = activeProgram === program
+                            const programConfig = stripProgramConfigs(normalizeProgramBannerConfig(masterConfig.banner_config).programConfigs?.[program])
+                            const activeCount = programConfig.items.filter(i => i.is_active !== false).length
+                            return (
+                                <button
+                                    key={program}
+                                    type="button"
+                                    onClick={() => setActiveProgram(program)}
+                                    className={`rounded-xl border-2 p-4 text-left transition ${selected ? 'border-gray-900 bg-gray-50 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`h-3 w-3 rounded-full ${programLabels[program].accent}`} />
+                                                <p className="font-semibold text-gray-900">{programLabels[program].name}</p>
+                                            </div>
+                                            <p className="mt-1 text-sm text-gray-500">{programLabels[program].description}</p>
+                                        </div>
+                                        <Badge variant={selected ? 'default' : 'secondary'}>
+                                            {activeCount}/{programConfig.items.length}
+                                        </Badge>
+                                    </div>
+                                </button>
+                            )
+                        })}
+                    </div>
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-xl ${masterConfig.banner_config.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
-                                {masterConfig.banner_config.enabled ? (
+                            <div className={`p-3 rounded-xl ${activeProgramConfig.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                {activeProgramConfig.enabled ? (
                                     <CheckCircle2 className="w-6 h-6 text-green-600" />
                                 ) : (
                                     <EyeOff className="w-6 h-6 text-gray-400" />
@@ -609,21 +719,21 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                             <div>
                                 <h3 className="font-semibold text-lg">Master Banner System</h3>
                                 <p className="text-sm text-gray-600">
-                                    {masterConfig.banner_config.enabled
-                                        ? 'Banners will display on customer journeys without custom banners'
-                                        : 'No banners will be displayed by default'}
+                                    {activeProgramConfig.enabled
+                                        ? `${programLabels[activeProgram].name} banners will display on matching customer journeys without custom banners`
+                                        : `${programLabels[activeProgram].name} banners are disabled`}
                                 </p>
                             </div>
                         </div>
                         <Switch
-                            checked={masterConfig.banner_config.enabled}
+                            checked={activeProgramConfig.enabled}
                             onCheckedChange={(checked) => updateConfig({ enabled: checked })}
                         />
                     </div>
                 </CardContent>
             </Card>
 
-            {masterConfig.banner_config.enabled && (
+            {activeProgramConfig.enabled && (
                 <Card>
                     <CardHeader className="pb-0">
                         <CardTitle className="flex items-center gap-2">
@@ -638,7 +748,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                         <Tabs value={activeBannerTab} onValueChange={(v) => setActiveBannerTab(v as typeof activeBannerTab)}>
                             <TabsList className="grid w-full grid-cols-4 h-auto p-1">
                                 {(['home', 'rewards', 'products', 'profile'] as const).map((page) => {
-                                    const pageItems = masterConfig.banner_config.items.filter(i => (i.page || 'home') === page)
+                                    const pageItems = activeProgramConfig.items.filter(i => (i.page || 'home') === page)
                                     const activeCount = pageItems.filter(i => i.is_active !== false).length
                                     return (
                                         <TabsTrigger
@@ -663,7 +773,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     <BannerSection
                                         title="Top Banners (Before Content)"
                                         placement="top"
-                                        items={masterConfig.banner_config.items.filter(i =>
+                                        items={activeProgramConfig.items.filter(i =>
                                             (i.page || 'home') === page && i.placement !== 'bottom'
                                         )}
                                         template={getPageSettings(page).topTemplate}
@@ -674,7 +784,7 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                     <BannerSection
                                         title="Bottom Banners (After Content)"
                                         placement="bottom"
-                                        items={masterConfig.banner_config.items.filter(i =>
+                                        items={activeProgramConfig.items.filter(i =>
                                             (i.page || 'home') === page && i.placement === 'bottom'
                                         )}
                                         template={getPageSettings(page).bottomTemplate}
@@ -693,12 +803,12 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-6">
                             <div className="text-center">
-                                <div className="text-3xl font-bold text-blue-600">{masterConfig.banner_config.items.length}</div>
+                                <div className="text-3xl font-bold text-blue-600">{activeProgramConfig.items.length}</div>
                                 <div className="text-xs text-gray-500">Total Banners</div>
                             </div>
                             <div className="h-10 w-px bg-gray-200" />
                             {(['home', 'rewards', 'products', 'profile'] as const).map((page) => {
-                                const count = masterConfig.banner_config.items.filter(i => (i.page || 'home') === page).length
+                                const count = activeProgramConfig.items.filter(i => (i.page || 'home') === page).length
                                 return (
                                     <div key={page} className="text-center">
                                         <div className="text-xl font-semibold text-gray-700">{count}</div>
@@ -707,8 +817,8 @@ export default function MasterAnnouncementBannerView({ userProfile }: { userProf
                                 )
                             })}
                         </div>
-                        <Badge className={masterConfig.banner_config.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
-                            {masterConfig.banner_config.enabled ? (
+                        <Badge className={activeProgramConfig.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+                            {activeProgramConfig.enabled ? (
                                 <>
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
                                     System Enabled

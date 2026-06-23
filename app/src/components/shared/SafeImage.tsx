@@ -40,10 +40,15 @@ export default function SafeImage({
     fallbackIconClassName = 'h-4 w-4 text-slate-300',
     ...imgProps
 }: SafeImageProps) {
-    const [failed, setFailed] = useState(false)
+    const [failedSrc, setFailedSrc] = useState('')
 
-    const resolved = getStorageUrl(src) || (src ? String(src).trim() : '')
-    const showImage = resolved && !failed
+    const normalizedSrc = src ? String(src).trim() : ''
+    const resolved = /^(blob:|data:)/i.test(normalizedSrc)
+        ? normalizedSrc
+        : getStorageUrl(normalizedSrc) || normalizedSrc
+    // Remember which source failed. A permanently broken URL is not retried
+    // on re-render, while a newly selected or freshly saved source is attempted.
+    const showImage = resolved && failedSrc !== resolved
 
     if (!showImage) {
         return (
@@ -63,7 +68,7 @@ export default function SafeImage({
             src={resolved}
             alt={alt}
             className={className}
-            onError={() => setFailed(true)}
+            onError={() => setFailedSrc(resolved)}
             {...imgProps}
         />
     )

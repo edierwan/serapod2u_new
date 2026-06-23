@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
+import { markWarrantyBufferReceived } from '@/lib/warehouse/qrEligibility'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
@@ -323,23 +324,54 @@ export async function GET(request: NextRequest) {
       console.log(`✅ [${workerId}] Chunk ${chunksProcessed}: +${updatedInChunk} (total: ${totalProcessed}, rate: ${rate}/s)`)
     }
 
-    // Step 5: Record inventory movements
-    // IMPORTANT: Query the database for ACTUAL counts of received codes, not the in-memory counts.
-    // This handles multi-run scenarios where the worker times out and continues across multiple runs.
-    // The in-memory cumulativeVariantCounts only has codes processed in THIS run.
-    console.log(`📊 [${workerId}] Querying actual variant counts from received codes...`)
+    // Step 5a: QR ELIGIBILITY for warranty buffer codes — BOTH modes.
+    // ------------------------------------------------------------------------
+    // Buffer/warranty QR codes are part of QR eligibility: for both full and
+    // partial first-receipts they must transition to received_warehouse so the
+    // codes are scannable (mirrors the full-receive QR flow). This is a pure QR
+    // status change; it never creates inventory. Inventory for the buffer is
+    // recorded only by the full-receive path below.
+    // ------------------------------------------------------------------------
+    const orderVariantIds: string[] = (order?.order_items || [])
+      .map((i: any) => i.variant_id)
+      .filter(Boolean)
 
-    const actualVariantCounts = await getActualReceivedCounts(supabase, batch.id)
+    let bufferMarked = new Map<string, number>()
+    if (warrantyBonusPercent > 0 && orderVariantIds.length > 0) {
+      bufferMarked = await markWarrantyBufferReceived(supabase, batch.id, orderVariantIds, warrantyBonusPercent)
+      await dbLog(`Buffer eligibility marked: ${Array.from(bufferMarked.values()).reduce((a, b) => a + b, 0)} codes`)
+    }
 
-    if (warehouseOrgId && actualVariantCounts.size > 0) {
-      console.log(`📊 [${workerId}] Recording inventory for ${actualVariantCounts.size} variants (total units: ${Array.from(actualVariantCounts.values()).reduce((a, b) => a + b, 0)})`)
-      await recordInventoryMovements(
-        supabase, batch.id, warehouseOrgId, manufacturerOrgId,
-        companyId, orderId, orderNo, receivedBy,
-        actualVariantCounts, variantPriceMap, warrantyBonusPercent
-      )
+    // Step 5b: Inventory movements.
+    // ------------------------------------------------------------------------
+    // BACKEND SEPARATION (partial receiving):
+    // When receiving_mode === 'partial', the worker is responsible ONLY for QR /
+    // master / buffer status transitions (eligibility). Inventory for partial
+    // receipts is posted separately from the physically-counted quantities via
+    // the post_warehouse_receipt RPC (see /api/warehouse/confirm-receipt). We
+    // must NOT derive inventory from the number of received QR codes here, and we
+    // must NOT auto-add the warranty buffer to inventory.
+    //
+    // For 'full' mode (Receive All) or legacy batches (receiving_mode null) we
+    // preserve the original behaviour: post full order + configured buffer.
+    // ------------------------------------------------------------------------
+    if (batch.receiving_mode === 'partial') {
+      console.log(`🧾 [${workerId}] Partial mode: buffer marked for eligibility only; skipping QR-derived inventory (handled by receipt posting)`)
     } else {
-      console.log(`⚠️ [${workerId}] No variant counts found to record`)
+      console.log(`📊 [${workerId}] Querying actual variant counts from received codes...`)
+
+      const actualVariantCounts = await getActualReceivedCounts(supabase, batch.id)
+
+      if (warehouseOrgId && actualVariantCounts.size > 0) {
+        console.log(`📊 [${workerId}] Recording inventory for ${actualVariantCounts.size} variants (total units: ${Array.from(actualVariantCounts.values()).reduce((a, b) => a + b, 0)})`)
+        await recordInventoryMovements(
+          supabase, batch.id, warehouseOrgId, manufacturerOrgId,
+          companyId, orderId, orderNo, receivedBy,
+          actualVariantCounts, variantPriceMap, bufferMarked
+        )
+      } else {
+        console.log(`⚠️ [${workerId}] No variant counts found to record`)
+      }
     }
 
     // Step 6: Mark as completed
@@ -479,7 +511,7 @@ async function claimBatch(supabase: any, workerId: string): Promise<{
       .eq('id', batchId)
       .eq('receiving_status', 'queued')
       .select(`
-        id, receiving_status, receiving_progress, created_by, last_error, order_id, total_unique_codes,
+        id, receiving_status, receiving_progress, receiving_mode, created_by, last_error, order_id, total_unique_codes,
         orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
       `)
       .single()
@@ -494,7 +526,7 @@ async function claimBatch(supabase: any, workerId: string): Promise<{
   const { data: processingBatches } = await supabase
     .from('qr_batches')
     .select(`
-      id, receiving_status, receiving_progress, receiving_worker_id, receiving_heartbeat,
+      id, receiving_status, receiving_progress, receiving_mode, receiving_worker_id, receiving_heartbeat,
       created_by, last_error, order_id, total_unique_codes,
       orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
     `)
@@ -536,7 +568,7 @@ async function claimBatch(supabase: any, workerId: string): Promise<{
   const { data: failedBatches } = await supabase
     .from('qr_batches')
     .select(`
-      id, receiving_status, receiving_progress, created_by, last_error, order_id, total_unique_codes,
+      id, receiving_status, receiving_progress, receiving_mode, created_by, last_error, order_id, total_unique_codes,
       orders (id, order_no, buyer_org_id, seller_org_id, company_id, order_items (variant_id, unit_price))
     `)
     .eq('receiving_status', 'failed')
@@ -778,12 +810,19 @@ async function getActualReceivedCountsFallback(supabase: any, batchId: string): 
 }
 
 /**
- * Record inventory movements after processing
+ * Record inventory movements after processing (FULL receive only).
+ *
+ * Posts the order additions per variant plus the warranty-bonus movement for the
+ * buffer codes that were already transitioned by markWarrantyBufferReceived()
+ * (passed in via bufferMarked). This function no longer touches QR statuses —
+ * buffer eligibility is handled separately so both full and partial modes share
+ * the same QR transition logic.
  */
 async function recordInventoryMovements(
   supabase: any, batchId: string, warehouseOrgId: string, manufacturerOrgId: string,
   companyId: string, orderId: string, orderNo: string, receivedBy: string,
-  variantCounts: Map<string, number>, variantPriceMap: Map<string, number>, warrantyBonusPercent: number
+  variantCounts: Map<string, number>, variantPriceMap: Map<string, number>,
+  bufferMarked: Map<string, number>
 ) {
   for (const [variantId, quantity] of Array.from(variantCounts.entries())) {
     const unitCost = variantPriceMap.get(variantId) || 0
@@ -809,46 +848,28 @@ async function recordInventoryMovements(
       console.error(`Error recording stock movement for variant ${variantId}:`, e)
     }
 
-    // Handle warranty bonus
-    const bonusQuantity = Math.floor(quantity * (warrantyBonusPercent / 100))
+    // Warranty-bonus inventory for the buffer codes already marked eligible.
+    const bonusQuantity = bufferMarked.get(variantId) || 0
     if (bonusQuantity > 0) {
-      const { data: bufferCodes } = await supabase
-        .from('qr_codes')
-        .select('id')
-        .eq('batch_id', batchId)
-        .eq('variant_id', variantId)
-        .eq('is_buffer', true)
-        .in('status', ['buffer_available', 'available', 'created'])
-        .limit(bonusQuantity)
-
-      if (bufferCodes && bufferCodes.length > 0) {
-        const bufferIds = bufferCodes.map((b: any) => b.id)
-
-        await supabase
-          .from('qr_codes')
-          .update({ status: 'received_warehouse' })
-          .in('id', bufferIds)
-
-        try {
-          await supabase.rpc('record_stock_movement', {
-            p_movement_type: 'warranty_bonus',
-            p_variant_id: variantId,
-            p_organization_id: warehouseOrgId,
-            p_quantity_change: bufferCodes.length,
-            p_unit_cost: 0,
-            p_manufacturer_id: manufacturerOrgId,
-            p_warehouse_location: null,
-            p_reason: 'manufacturer_warranty',
-            p_notes: `${warrantyBonusPercent}% warranty bonus for ${orderNo}`,
-            p_reference_type: 'order',
-            p_reference_id: orderId,
-            p_reference_no: orderNo,
-            p_company_id: companyId,
-            p_created_by: receivedBy
-          })
-        } catch (e) {
-          console.error(`Error recording warranty bonus for variant ${variantId}:`, e)
-        }
+      try {
+        await supabase.rpc('record_stock_movement', {
+          p_movement_type: 'warranty_bonus',
+          p_variant_id: variantId,
+          p_organization_id: warehouseOrgId,
+          p_quantity_change: bonusQuantity,
+          p_unit_cost: 0,
+          p_manufacturer_id: manufacturerOrgId,
+          p_warehouse_location: null,
+          p_reason: 'manufacturer_warranty',
+          p_notes: `Warranty bonus for ${orderNo}`,
+          p_reference_type: 'order',
+          p_reference_id: orderId,
+          p_reference_no: orderNo,
+          p_company_id: companyId,
+          p_created_by: receivedBy
+        })
+      } catch (e) {
+        console.error(`Error recording warranty bonus for variant ${variantId}:`, e)
       }
     }
   }

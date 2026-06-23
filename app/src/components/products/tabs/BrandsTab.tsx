@@ -6,11 +6,11 @@ import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
-import { getStorageUrl } from '@/lib/utils'
 import BrandDialog from '../dialogs/BrandDialog'
+import BrandLogo from '../BrandLogo'
+import { normalizePersistedBrandLogo, persistedBrandLogoMatches } from '@/lib/brands/logo'
 
 interface Brand {
   id: string
@@ -78,25 +78,43 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
       setIsSaving(true)
 
       if (editingBrand) {
-        const { error } = await supabase
+        const expectedLogo = normalizePersistedBrandLogo(brandData.logo_url)
+        const { data, error } = await supabase
           .from('brands')
-          .update(brandData)
+          .update({ ...brandData, logo_url: expectedLogo })
           .eq('id', editingBrand.id)
+          .select('*')
+          .single()
 
         if (error) throw error
+        if (!data || !persistedBrandLogoMatches(data.logo_url, expectedLogo)) {
+          throw new Error('Brand logo was not persisted. Please try again.')
+        }
+        setBrands(current => current.map(item => item.id === data.id ? data as Brand : item))
         toast({
           title: 'Success',
           description: 'Brand updated successfully'
         })
       } else {
-        const { error } = await supabase
+        const expectedLogo = normalizePersistedBrandLogo(brandData.logo_url)
+        const { data, error } = await supabase
           .from('brands')
           .insert([{
-            ...brandData,
+            brand_name: brandData.brand_name!,
+            brand_code: brandData.brand_code!,
+            brand_description: brandData.brand_description || null,
+            is_active: brandData.is_active !== false,
+            logo_url: expectedLogo,
             created_by: userProfile.id
           }])
+          .select('*')
+          .single()
 
         if (error) throw error
+        if (!data || !persistedBrandLogoMatches(data.logo_url, expectedLogo)) {
+          throw new Error('Brand logo was not persisted. Please try again.')
+        }
+        setBrands(current => [...current, data as Brand])
         toast({
           title: 'Success',
           description: 'Brand created successfully'
@@ -216,15 +234,6 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
     return sortDirection === 'asc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />
   }
 
-  const getBrandInitials = (name: string): string => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2)
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -304,20 +313,11 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
                   <TableCell className="text-center text-sm text-gray-500 font-medium">{index + 1}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        {brand.logo_url && (
-                          <AvatarImage
-                            src={getStorageUrl(brand.logo_url) || brand.logo_url}
-                            alt={brand.brand_name}
-                            onError={(e) => {
-                              console.log('Brand logo load error:', brand.brand_name, brand.logo_url)
-                            }}
-                          />
-                        )}
-                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
-                          {getBrandInitials(brand.brand_name)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <BrandLogo
+                        name={brand.brand_name}
+                        logoUrl={brand.logo_url}
+                        className="w-10 h-10 rounded-full border border-slate-100 object-contain"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-gray-900">{brand.brand_name}</div>
                         <div className="text-xs text-gray-500">{brand.brand_code}</div>
