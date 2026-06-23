@@ -22867,6 +22867,117 @@ export type Database = {
           },
         ]
       }
+      warehouse_receipts: {
+        Row: {
+          batch_id: string
+          company_id: string
+          created_at: string
+          cumulative_received: number
+          extra_received: number
+          id: string
+          idempotency_key: string | null
+          notes: string | null
+          order_id: string
+          ordered_total: number
+          posting_status: string
+          receipt_no: string
+          receipt_type: string
+          received_at: string
+          received_by: string | null
+          total_received: number
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          company_id: string
+          created_at?: string
+          cumulative_received?: number
+          extra_received?: number
+          id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          order_id: string
+          ordered_total?: number
+          posting_status?: string
+          receipt_no: string
+          receipt_type: string
+          received_at?: string
+          received_by?: string | null
+          total_received?: number
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          company_id?: string
+          created_at?: string
+          cumulative_received?: number
+          extra_received?: number
+          id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          order_id?: string
+          ordered_total?: number
+          posting_status?: string
+          receipt_no?: string
+          receipt_type?: string
+          received_at?: string
+          received_by?: string | null
+          total_received?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      warehouse_receipt_items: {
+        Row: {
+          batch_id: string
+          company_id: string
+          created_at: string
+          cumulative_received: number
+          extra_received: number
+          id: string
+          order_id: string
+          ordered_qty: number
+          previously_received: number
+          product_id: string | null
+          received_now: number
+          receipt_id: string
+          stock_movement_id: string | null
+          variant_id: string
+        }
+        Insert: {
+          batch_id: string
+          company_id: string
+          created_at?: string
+          cumulative_received?: number
+          extra_received?: number
+          id?: string
+          order_id: string
+          ordered_qty?: number
+          previously_received?: number
+          product_id?: string | null
+          received_now?: number
+          receipt_id: string
+          stock_movement_id?: string | null
+          variant_id: string
+        }
+        Update: {
+          batch_id?: string
+          company_id?: string
+          created_at?: string
+          cumulative_received?: number
+          extra_received?: number
+          id?: string
+          order_id?: string
+          ordered_qty?: number
+          previously_received?: number
+          product_id?: string | null
+          received_now?: number
+          receipt_id?: string
+          stock_movement_id?: string | null
+          variant_id?: string
+        }
+        Relationships: []
+      }
       qr_batches: {
         Row: {
           buffer_percent: number | null
@@ -22889,6 +23000,7 @@ export type Database = {
           qr_inserted_count: number | null
           receiving_completed_at: string | null
           receiving_heartbeat: string | null
+          receiving_mode: string | null
           receiving_progress: number | null
           receiving_started_at: string | null
           receiving_status: string | null
@@ -22920,6 +23032,7 @@ export type Database = {
           qr_inserted_count?: number | null
           receiving_completed_at?: string | null
           receiving_heartbeat?: string | null
+          receiving_mode?: string | null
           receiving_progress?: number | null
           receiving_started_at?: string | null
           receiving_status?: string | null
@@ -22951,6 +23064,7 @@ export type Database = {
           qr_inserted_count?: number | null
           receiving_completed_at?: string | null
           receiving_heartbeat?: string | null
+          receiving_mode?: string | null
           receiving_progress?: number | null
           receiving_started_at?: string | null
           receiving_status?: string | null
@@ -39687,6 +39801,25 @@ export type Database = {
           p_source_table: string
         }
         Returns: boolean
+      }
+      next_warehouse_receipt_no: {
+        Args: { p_batch_id: string }
+        Returns: string
+      }
+      post_warehouse_receipt: {
+        Args: {
+          p_batch_id: string
+          p_order_id: string
+          p_company_id: string
+          p_warehouse_org_id: string
+          p_manufacturer_org_id: string
+          p_receipt_type: string
+          p_received_by: string
+          p_items: Json
+          p_idempotency_key?: string
+          p_notes?: string
+        }
+        Returns: Json
       }
       refresh_all_materialized_views: {
         Args: Record<PropertyKey, never>

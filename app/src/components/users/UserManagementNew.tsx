@@ -65,6 +65,13 @@ import {
 } from "@/components/ui/tooltip";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
+const PROGRAM_FILTER_OPTIONS = [
+  { value: "", label: "All Programs" },
+  { value: "Cellera", label: "Cellera" },
+  { value: "Ellbow", label: "Ellbow" },
+  { value: "Cellera + Ellbow", label: "Cellera + Ellbow" },
+  { value: "Not Enrolled", label: "Not Enrolled" },
+] as const;
 
 const formatRelativeTime = (dateString: string | null): string => {
   if (!dateString) return "Never";
@@ -125,6 +132,11 @@ interface User {
   avatar_url: string | null;
   role_code: string;
   organization_id: string;
+  loyalty_program_user_memberships?: Array<{
+    status: string | null;
+    participant_type: string | null;
+    loyalty_programs?: { code: string | null; name: string | null } | Array<{ code: string | null; name: string | null }> | null;
+  }>;
 }
 
 interface UserProfile {
@@ -167,6 +179,27 @@ type SortDirection = "asc" | "desc";
 
 const getUserDisplayName = (user: Pick<User, "call_name" | "full_name" | "email">): string => {
   return user.call_name?.trim() || user.full_name?.trim() || user.email || "No Name";
+};
+
+const getSingleRelation = <T,>(relation: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(relation)) return relation[0] ?? null;
+  return relation ?? null;
+};
+
+const getProgramLabelFromMemberships = (
+  memberships?: User["loyalty_program_user_memberships"],
+): string => {
+  const activeCodes = new Set(
+    (memberships || [])
+      .filter((membership) => (membership.status || "active") === "active")
+      .map((membership) => getSingleRelation(membership.loyalty_programs)?.code)
+      .filter((code): code is string => code === "cellera" || code === "ellbow"),
+  );
+
+  if (activeCodes.has("cellera") && activeCodes.has("ellbow")) return "Cellera + Ellbow";
+  if (activeCodes.has("cellera")) return "Cellera";
+  if (activeCodes.has("ellbow")) return "Ellbow";
+  return "Not Enrolled";
 };
 
 const normalizeComparableField = (value: unknown, field?: string) => {
@@ -245,6 +278,7 @@ export default function UserManagementNew({
   const [orgFilter, setOrgFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [orgTypeFilter, setOrgTypeFilter] = useState("");
+  const [programFilter, setProgramFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -322,7 +356,7 @@ export default function UserManagementNew({
       let hasMore = true;
 
       while (hasMore) {
-        let query = supabase
+        let query = (supabase as any)
           .from("users")
           .select(
             `
@@ -330,6 +364,14 @@ export default function UserManagementNew({
             roles:role_code (
               role_name,
               role_level
+            ),
+            loyalty_program_user_memberships!loyalty_program_user_memberships_user_id_fkey (
+              status,
+              participant_type,
+              loyalty_programs!loyalty_program_user_memberships_program_owner_fk (
+                code,
+                name
+              )
             )
           `,
             { count: "exact" }
@@ -1222,13 +1264,16 @@ export default function UserManagementNew({
           (statusFilter === "verified" && user.is_verified) ||
           (statusFilter === "unverified" && !user.is_verified) ||
           (statusFilter === "consumer-verified" && hasConsumerLaneConfirmation(user));
+        const matchesProgram =
+          !programFilter || getProgramLabelFromMemberships(user.loyalty_program_user_memberships) === programFilter;
 
         return (
           matchesSearch &&
           matchesRole &&
           matchesOrg &&
           matchesOrgType &&
-          matchesStatus
+          matchesStatus &&
+          matchesProgram
         );
       })
       .sort((a, b) => {
@@ -1285,6 +1330,7 @@ export default function UserManagementNew({
     orgFilter,
     orgTypeFilter,
     statusFilter,
+    programFilter,
     sortField,
     sortDirection,
     organizations,
@@ -1308,6 +1354,7 @@ export default function UserManagementNew({
     orgFilter,
     orgTypeFilter,
     statusFilter,
+    programFilter,
     pageSize,
   ]);
 
@@ -1657,7 +1704,7 @@ export default function UserManagementNew({
       <Card>
         <CardContent className="pt-6 space-y-4">
           {/* Filters Row */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Role Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1736,6 +1783,23 @@ export default function UserManagementNew({
                 <option value="verified">Verified</option>
                 <option value="unverified">Unverified</option>
                 <option value="consumer-verified">Consumer Verified</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Program
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => setProgramFilter(e.target.value)}
+                value={programFilter}
+              >
+                {PROGRAM_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value || "all"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -1891,6 +1955,7 @@ export default function UserManagementNew({
                           )}
                         </button>
                       </TableHead>
+                      <TableHead>Program</TableHead>
                       <TableHead>
                         <button
                           onClick={() => handleSort("referral_phone")}
@@ -2030,6 +2095,11 @@ export default function UserManagementNew({
                               );
                             })()}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-gray-900">
+                            {getProgramLabelFromMemberships(user.loyalty_program_user_memberships)}
+                          </span>
                         </TableCell>
                         <TableCell>
                           {(() => {
