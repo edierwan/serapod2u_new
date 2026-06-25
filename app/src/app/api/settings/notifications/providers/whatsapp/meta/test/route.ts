@@ -13,6 +13,8 @@ type MetaTestRequest = {
   to?: string
   provider_name?: string
   config?: Record<string, unknown>
+  // Fallback for unsaved edits only. Saved production configs are resolved
+  // server-side from notification_provider_configs.config_encrypted.
   credentials?: Record<string, unknown>
 }
 
@@ -57,15 +59,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 })
     }
 
-    const body = await request.json() as MetaTestRequest
+    const body = await request.json().catch(() => ({})) as MetaTestRequest
     const action = body.action
     const providerName = asString(body.provider_name) || 'whatsapp_business'
-    const phoneNumberId = asString(body.config?.phone_number_id)
-    const accessToken = asString(body.credentials?.access_token)
-
-    if (!phoneNumberId || !accessToken) {
-      return NextResponse.json({ error: 'Phone Number ID and Permanent Access Token are required.' }, { status: 400 })
-    }
 
     // Resolve the org + saved provider record so we can report which config the
     // credentials came from and detect stale/mismatched credentials (e.g. a Phone
@@ -77,11 +73,16 @@ export async function POST(request: NextRequest) {
       .single()
     const orgId = userProfile?.organization_id || null
 
-    let savedConfig: { id?: string; config_public?: Record<string, any>; is_active?: boolean } | null = null
+    let savedConfig: {
+      id?: string
+      config_public?: Record<string, any>
+      config_encrypted?: Record<string, any> | string | null
+      is_active?: boolean
+    } | null = null
     if (orgId) {
       const { data } = await supabase
         .from('notification_provider_configs')
-        .select('id, config_public, is_active')
+        .select('id, config_public, config_encrypted, is_active')
         .eq('org_id', orgId)
         .eq('channel', 'whatsapp')
         .eq('provider_name', providerName)
@@ -89,14 +90,41 @@ export async function POST(request: NextRequest) {
       savedConfig = (data as any) || null
     }
 
+    let savedSecrets: Record<string, any> = {}
+    try {
+      savedSecrets = typeof savedConfig?.config_encrypted === 'string'
+        ? JSON.parse(savedConfig.config_encrypted)
+        : (savedConfig?.config_encrypted || {}) as Record<string, any>
+    } catch {
+      savedSecrets = {}
+    }
+
     const savedPhoneNumberId = asString(savedConfig?.config_public?.phone_number_id)
+    const requestPhoneNumberId = asString(body.config?.phone_number_id)
+    const phoneNumberId = savedPhoneNumberId || requestPhoneNumberId
+    const savedAccessToken = asString(savedSecrets.access_token)
+    const requestAccessToken = asString(body.credentials?.access_token)
+    const accessToken = savedAccessToken || requestAccessToken
+
+    if (!phoneNumberId || !accessToken) {
+      return NextResponse.json({
+        error: 'Phone Number ID and Permanent Access Token are required.',
+        diagnostic: {
+          provider: providerName,
+          config_record_id: savedConfig?.id || null,
+          credential_source: savedAccessToken ? 'saved_provider_config' : requestAccessToken ? 'request_fallback' : 'missing',
+          phone_number_id_masked: phoneNumberId ? maskTail(phoneNumberId) : null,
+        },
+      }, { status: 400 })
+    }
+
     const phoneNumberIdMatchesSaved = savedPhoneNumberId ? savedPhoneNumberId === phoneNumberId : null
 
     // Safe metadata only — no access token, app secret, or full Phone Number ID.
     const diagnostic = {
       provider: providerName,
       config_record_id: savedConfig?.id || null,
-      credential_source: savedConfig?.id ? 'saved_provider_config' : 'request_only',
+      credential_source: savedAccessToken ? 'saved_provider_config' : 'request_fallback',
       graph_api_version: GRAPH_API_VERSION,
       phone_number_id_masked: maskTail(phoneNumberId),
       saved_phone_number_id_masked: savedPhoneNumberId ? maskTail(savedPhoneNumberId) : null,

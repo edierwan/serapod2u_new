@@ -150,6 +150,16 @@ export default function WhatsAppSubTabs({
         return p ? `${path}?provider=${encodeURIComponent(p)}` : path
     }
 
+    const readJsonResponse = async (response: Response, fallbackLabel: string) => {
+        const contentType = response.headers.get('content-type') || ''
+        if (!contentType.toLowerCase().includes('application/json')) {
+            const text = await response.text().catch(() => '')
+            const preview = text.trim().replace(/\s+/g, ' ').slice(0, 120)
+            throw new Error(`${fallbackLabel} returned HTTP ${response.status} ${response.statusText || ''} with ${contentType || 'unknown content type'}${preview ? `: ${preview}` : ''}`)
+        }
+        return response.json()
+    }
+
     const urlTab = searchParams.get('tab') || searchParams.get('whatsapp_tab')
     const urlProvider = searchParams.get('provider')
     const [activeTab, setActiveTab] = useState(VALID_TABS.has(urlTab || '') ? urlTab! : 'configuration')
@@ -858,6 +868,11 @@ export default function WhatsAppSubTabs({
 
         try {
             setMetaAction(action)
+            const credentials = whatsappConfig.id ? undefined : {
+                access_token: sensitiveData.access_token || '',
+                app_secret: sensitiveData.app_secret || '',
+                webhook_verify_token: sensitiveData.webhook_verify_token || ''
+            }
             const response = await fetch('/api/settings/notifications/providers/whatsapp/meta/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -866,14 +881,10 @@ export default function WhatsAppSubTabs({
                     to: action === 'test-message' ? metaTestRecipient.trim() : undefined,
                     provider_name: whatsappConfig.provider_name,
                     config: whatsappConfig.config_public,
-                    credentials: {
-                        access_token: sensitiveData.access_token || '',
-                        app_secret: sensitiveData.app_secret || '',
-                        webhook_verify_token: sensitiveData.webhook_verify_token || ''
-                    }
+                    credentials
                 })
             })
-            const result = await response.json()
+            const result = await readJsonResponse(response, 'WhatsApp provider test')
             if (!response.ok) {
                 // Surface safe diagnostics (Meta error code, masked Phone Number ID, hint)
                 // so credential/config mismatches are obvious without exposing secrets.

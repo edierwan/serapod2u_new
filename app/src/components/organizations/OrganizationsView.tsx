@@ -191,6 +191,35 @@ function getSingleRelation<T>(relation: T | T[] | null | undefined): T | null {
   return relation ?? null
 }
 
+function getSupabaseErrorFields(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return {
+      message: error instanceof Error ? error.message : String(error || 'Unknown error'),
+      code: null,
+      details: null,
+      hint: null,
+    }
+  }
+
+  const supabaseError = error as {
+    message?: unknown
+    code?: unknown
+    details?: unknown
+    hint?: unknown
+  }
+
+  return {
+    message: typeof supabaseError.message === 'string' ? supabaseError.message : 'Unknown Supabase error',
+    code: typeof supabaseError.code === 'string' ? supabaseError.code : null,
+    details: typeof supabaseError.details === 'string' ? supabaseError.details : null,
+    hint: typeof supabaseError.hint === 'string' ? supabaseError.hint : null,
+  }
+}
+
+function logSupabaseError(context: string, error: unknown) {
+  console.error(context, getSupabaseErrorFields(error))
+}
+
 function getProgramLabel(org: Organization) {
   const activeCodes = new Set(
     (org.loyalty_program_organization_memberships || [])
@@ -357,14 +386,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           org_types:organization_types(type_name, type_description),
           parent_org:organizations!parent_org_id(org_name, org_code),
           payment_terms(term_name, deposit_percentage, balance_percentage),
-          states(state_name),
-          loyalty_program_organization_memberships!loyalty_program_organization_memberships_member_organization_id_fkey (
-            status,
-            loyalty_programs!loyalty_program_org_memberships_program_owner_fk (
-              code,
-              name
-            )
-          )
+          states(state_name)
         `)
         .eq('is_active', true)  // Only fetch active organizations
 
@@ -380,12 +402,47 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       const { data, error } = await query.order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Error fetching organizations:', error)
+        logSupabaseError('Error fetching organizations:', error)
         return
       }
 
       // Get all org IDs for batch stats query
       const orgIds = (data as any[])?.map((org: any) => org.id) || []
+
+      let loyaltyMembershipsByOrgId = new Map<string, any[]>()
+      if (orgIds.length > 0) {
+        try {
+          const response = await fetch('/api/loyalty/memberships/organizations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organizationIds: orgIds }),
+          })
+          const membershipPayload = await response.json().catch(() => null)
+
+          if (!response.ok) {
+            logSupabaseError('Error fetching organization loyalty memberships:', membershipPayload?.error || {
+              message: `Request failed with status ${response.status}`,
+              details: response.statusText,
+            })
+          }
+
+          const membershipData = response.ok && Array.isArray(membershipPayload?.memberships)
+            ? membershipPayload.memberships
+            : []
+
+          loyaltyMembershipsByOrgId = (membershipData || []).reduce((map: Map<string, any[]>, membership: any) => {
+            const orgMemberships = map.get(membership.member_organization_id) || []
+            orgMemberships.push({
+              status: membership.status,
+              loyalty_programs: membership.loyalty_programs,
+            })
+            map.set(membership.member_organization_id, orgMemberships)
+            return map
+          }, new Map<string, any[]>())
+        } catch (membershipError) {
+          logSupabaseError('Error fetching organization loyalty memberships:', membershipError)
+        }
+      }
 
       console.log('🔍 Fetching stats for org IDs:', orgIds)
 
@@ -394,7 +451,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         .rpc('get_org_stats_batch', { p_org_ids: orgIds })
 
       if (statsError) {
-        console.error('❌ Error fetching org stats:', statsError)
+        logSupabaseError('❌ Error fetching org stats:', statsError)
       } else {
         console.log('✅ Stats data received:', statsData)
       }
@@ -431,6 +488,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           logo_url: normalizePersistedOrganizationLogo(org.logo_url),
           org_types: Array.isArray(org.org_types) ? org.org_types[0] : org.org_types,
           parent_org: Array.isArray(org.parent_org) ? org.parent_org[0] : org.parent_org,
+          loyalty_program_organization_memberships: loyaltyMembershipsByOrgId.get(org.id) || [],
           children_count: stats.children_count,
           users_count: stats.users_count,
           products_count: stats.products_count,
