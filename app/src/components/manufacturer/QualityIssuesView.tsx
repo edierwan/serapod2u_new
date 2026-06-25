@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, Di
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
+import SafeImage from '@/components/shared/SafeImage'
 import {
     getEvidenceFileName,
     getIssueDisplayStatus,
@@ -1515,14 +1516,12 @@ function CreateIssueModal({
                                                         isSelected ? 'bg-orange-50' : 'hover:bg-slate-50',
                                                     )}
                                                 >
-                                                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50">
-                                                        {variant.image_url ? (
-                                                            // eslint-disable-next-line @next/next/no-img-element
-                                                            <img src={variant.image_url} alt="" className="h-full w-full object-cover" />
-                                                        ) : (
-                                                            <Package className="h-4 w-4 text-slate-300" />
-                                                        )}
-                                                    </div>
+                                                    <SafeImage
+                                                        src={variant.image_url}
+                                                        alt={variant.product_name}
+                                                        className="h-10 w-10 flex-shrink-0 rounded-md border border-slate-200 object-cover"
+                                                        fallbackClassName="h-10 w-10 flex-shrink-0 rounded-md border border-slate-200 bg-slate-50"
+                                                    />
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-sm font-medium text-slate-900">{variant.product_name}</p>
                                                         <p className="truncate text-xs text-slate-600">
@@ -1553,14 +1552,13 @@ function CreateIssueModal({
                         {selectedVariant && (
                             <div className="rounded-md border border-orange-200 bg-orange-50/70 p-3">
                                 <div className="flex items-start gap-3">
-                                    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-orange-200 bg-white">
-                                        {selectedVariant.image_url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={selectedVariant.image_url} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <Package className="h-5 w-5 text-slate-300" />
-                                        )}
-                                    </div>
+                                    <SafeImage
+                                        src={selectedVariant.image_url}
+                                        alt={selectedVariant.product_name}
+                                        className="h-16 w-16 flex-shrink-0 rounded-md border border-orange-200 object-cover"
+                                        fallbackClassName="h-16 w-16 flex-shrink-0 rounded-md border border-orange-200 bg-white"
+                                        fallbackIconClassName="h-5 w-5 text-slate-300"
+                                    />
                                     <div className="min-w-0 flex-1">
                                         <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">Selected Product</p>
                                         <p className="truncate text-sm font-semibold text-slate-900">{selectedVariant.product_name}</p>
