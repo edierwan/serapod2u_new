@@ -135,10 +135,7 @@ const normalizeSmtpConfig = (config: Record<string, any> = {}) => {
   delete savedConfig.mail_host
   const normalized = { ...SMTP_DEFAULTS, ...savedConfig }
 
-  if (!normalized.smtp_host || (
-    normalized.domain === SMTP_DEFAULTS.domain &&
-    normalized.smtp_host === 'mail.serapod2u.com'
-  )) {
+  if (!normalized.smtp_host) {
     normalized.smtp_host = SMTP_DEFAULTS.smtp_host
   }
 
@@ -516,6 +513,30 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const handleEmailAction = async (action: 'connection' | 'test-email') => {
     if (!emailConfig) return
 
+    const recordTestResult = async (status: 'success' | 'failed', error?: string) => {
+      const testedAt = new Date().toISOString()
+      setEmailConfig({
+        ...emailConfig,
+        last_test_status: status,
+        last_test_at: testedAt,
+        last_test_error: error
+      })
+
+      if (!emailConfig.id) return true
+
+      const { error: updateError } = await (supabase as any)
+        .from('notification_provider_configs')
+        .update({
+          last_test_status: status,
+          last_test_at: testedAt,
+          last_test_error: error || null
+        })
+        .eq('id', emailConfig.id)
+        .eq('org_id', userProfile.organizations.id)
+
+      return !updateError
+    }
+
     if (emailConfig.provider_name !== 'smtp') {
       alert('Connection and test-email support for this provider is not implemented yet. You can still save its existing configuration.')
       return
@@ -541,20 +562,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Email provider test failed')
 
-      setEmailConfig({
-        ...emailConfig,
-        last_test_status: 'success',
-        last_test_at: new Date().toISOString(),
-        last_test_error: undefined
-      })
-      alert(action === 'connection' ? 'SMTP connection verified successfully.' : 'Test email sent successfully.')
+      const statusSaved = await recordTestResult('success')
+      const successMessage = action === 'connection' ? 'SMTP connection verified successfully.' : 'Test email sent successfully.'
+      alert(statusSaved ? successMessage : `${successMessage} The test status could not be saved.`)
     } catch (error: any) {
-      setEmailConfig({
-        ...emailConfig,
-        last_test_status: 'failed',
-        last_test_at: new Date().toISOString(),
-        last_test_error: error.message
-      })
+      await recordTestResult('failed', error.message)
       alert(`Email test failed: ${error.message}`)
     } finally {
       setEmailAction(null)
