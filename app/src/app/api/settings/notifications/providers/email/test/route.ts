@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +14,25 @@ type EmailTestRequest = {
 
 const asString = (value: unknown) => typeof value === 'string' ? value.trim() : ''
 
+const isLoopbackAddress = (address: string) => {
+  if (isIP(address) === 4) return address.startsWith('127.')
+  if (isIP(address) === 6) {
+    const normalized = address.toLowerCase()
+    return normalized === '::1' || normalized.startsWith('::ffff:127.')
+  }
+  return false
+}
+
+const safeErrorCode = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
+}
+
 export async function POST(request: NextRequest) {
+  let attemptedHost = ''
+  let attemptedPort: number | undefined
+  let resolvedAddresses: string[] = []
+
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -26,15 +46,43 @@ export async function POST(request: NextRequest) {
     const fromEmail = asString(config.from_email)
     const fromName = asString(config.from_name) || 'Serapod2U'
     const replyTo = asString(config.reply_to)
-    const security = asString(config.security) || 'starttls'
+    const security = (asString(config.security) || 'starttls').toLowerCase()
     const port = Number(config.port || (security === 'ssl' ? 465 : 587))
+    attemptedHost = host
+    attemptedPort = port
 
-    if (!host || !username || !password || !fromEmail || !Number.isInteger(port)) {
-      return NextResponse.json({ error: 'SMTP host, port, username, password, and from email are required.' }, { status: 400 })
+    if (!host || !username || !password || !fromEmail || !Number.isInteger(port) || port < 1 || port > 65_535) {
+      return NextResponse.json({
+        error: 'SMTP host, valid port, username, password, and from email are required.',
+        attemptedHost,
+        attemptedPort,
+        resolvedAddresses
+      }, { status: 400 })
+    }
+
+    if (!['starttls', 'ssl', 'none'].includes(security)) {
+      return NextResponse.json({
+        error: 'SMTP security must be STARTTLS, SSL/TLS, or None.',
+        attemptedHost,
+        attemptedPort,
+        resolvedAddresses
+      }, { status: 400 })
     }
 
     if (body.action === 'test-email' && (!body.to || !/^\S+@\S+\.\S+$/.test(body.to))) {
       return NextResponse.json({ error: 'Enter a valid test recipient email address.' }, { status: 400 })
+    }
+
+    const addresses = await lookup(host, { all: true, verbatim: true })
+    resolvedAddresses = [...new Set(addresses.map(({ address }) => address))]
+
+    if (resolvedAddresses.some(isLoopbackAddress)) {
+      return NextResponse.json({
+        error: `SMTP host ${host} resolves to a loopback address. Correct the production container DNS/hosts configuration before testing SMTP.`,
+        attemptedHost,
+        attemptedPort,
+        resolvedAddresses
+      }, { status: 422 })
     }
 
     const nodemailer = require('nodemailer')
@@ -59,12 +107,32 @@ export async function POST(request: NextRequest) {
         subject: 'Serapod2U email delivery test',
         text: 'This test confirms that your Serapod2U SMTP provider can send notification email.'
       })
-      return NextResponse.json({ success: true, messageId: info.messageId })
+      return NextResponse.json({
+        success: true,
+        messageId: info.messageId,
+        attemptedHost,
+        attemptedPort,
+        resolvedAddresses
+      })
     }
 
-    return NextResponse.json({ success: true })
-  } catch (error: any) {
-    console.error('SMTP provider test failed:', error)
-    return NextResponse.json({ error: error?.message || 'SMTP provider test failed' }, { status: 500 })
+    return NextResponse.json({ success: true, attemptedHost, attemptedPort, resolvedAddresses })
+  } catch (error: unknown) {
+    const code = safeErrorCode(error)
+    const errorMessage = error instanceof Error ? error.message : 'SMTP provider test failed'
+    console.error('SMTP provider test failed', {
+      host: attemptedHost,
+      port: attemptedPort,
+      resolvedAddresses,
+      code,
+      message: errorMessage
+    })
+    return NextResponse.json({
+      error: errorMessage,
+      attemptedHost,
+      attemptedPort,
+      resolvedAddresses,
+      ...(code ? { code } : {})
+    }, { status: 500 })
   }
 }

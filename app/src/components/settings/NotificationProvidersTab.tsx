@@ -135,10 +135,7 @@ const normalizeSmtpConfig = (config: Record<string, any> = {}) => {
   delete savedConfig.mail_host
   const normalized = { ...SMTP_DEFAULTS, ...savedConfig }
 
-  if (!normalized.smtp_host || (
-    normalized.domain === SMTP_DEFAULTS.domain &&
-    normalized.smtp_host === 'mail.serapod2u.com'
-  )) {
+  if (!normalized.smtp_host) {
     normalized.smtp_host = SMTP_DEFAULTS.smtp_host
   }
 
@@ -516,6 +513,30 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
   const handleEmailAction = async (action: 'connection' | 'test-email') => {
     if (!emailConfig) return
 
+    const recordTestResult = async (status: 'success' | 'failed', error?: string) => {
+      const testedAt = new Date().toISOString()
+      setEmailConfig({
+        ...emailConfig,
+        last_test_status: status,
+        last_test_at: testedAt,
+        last_test_error: error
+      })
+
+      if (!emailConfig.id) return true
+
+      const { error: updateError } = await (supabase as any)
+        .from('notification_provider_configs')
+        .update({
+          last_test_status: status,
+          last_test_at: testedAt,
+          last_test_error: error || null
+        })
+        .eq('id', emailConfig.id)
+        .eq('org_id', userProfile.organizations.id)
+
+      return !updateError
+    }
+
     if (emailConfig.provider_name !== 'smtp') {
       alert('Connection and test-email support for this provider is not implemented yet. You can still save its existing configuration.')
       return
@@ -541,20 +562,11 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Email provider test failed')
 
-      setEmailConfig({
-        ...emailConfig,
-        last_test_status: 'success',
-        last_test_at: new Date().toISOString(),
-        last_test_error: undefined
-      })
-      alert(action === 'connection' ? 'SMTP connection verified successfully.' : 'Test email sent successfully.')
+      const statusSaved = await recordTestResult('success')
+      const successMessage = action === 'connection' ? 'SMTP connection verified successfully.' : 'Test email sent successfully.'
+      alert(statusSaved ? successMessage : `${successMessage} The test status could not be saved.`)
     } catch (error: any) {
-      setEmailConfig({
-        ...emailConfig,
-        last_test_status: 'failed',
-        last_test_at: new Date().toISOString(),
-        last_test_error: error.message
-      })
+      await recordTestResult('failed', error.message)
       alert(`Email test failed: ${error.message}`)
     } finally {
       setEmailAction(null)
@@ -1239,7 +1251,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     <div className="space-y-1.5">
                       <Label>SMTP server hostname</Label>
                       <Input value={emailConfig.config_public.smtp_host || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, smtp_host: e.target.value } })} />
-                      <p className="text-xs text-slate-500">Use the main Mailcow hostname with a valid TLS certificate. Sender email can still use your selected domain.</p>
+                      <p className="text-xs text-slate-500">Use <span className="font-semibold">mail.getouch.co</span> as the SMTP server hostname because it matches the Mailcow TLS certificate. Sender emails can still use <span className="font-semibold">@serapod2u.com</span>.</p>
+                      {String(emailConfig.config_public.smtp_host || '').trim().toLowerCase() === 'mail.serapod2u.com' && (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs leading-4 text-amber-800">
+                          TLS certificate mismatch: mail.serapod2u.com is not covered by the current Mailcow certificate. Use mail.getouch.co unless the certificate is updated to include mail.serapod2u.com.
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label>From name</Label>
