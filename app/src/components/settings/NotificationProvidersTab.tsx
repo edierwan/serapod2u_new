@@ -1251,7 +1251,12 @@ export default function NotificationProvidersTab({ userProfile }: NotificationPr
                     <div className="space-y-1.5">
                       <Label>SMTP server hostname</Label>
                       <Input value={emailConfig.config_public.smtp_host || ''} onChange={(e) => setEmailConfig({ ...emailConfig, config_public: { ...emailConfig.config_public, smtp_host: e.target.value } })} />
-                      <p className="text-xs text-slate-500">Use the main Mailcow hostname with a valid TLS certificate. Sender email can still use your selected domain.</p>
+                      <p className="text-xs text-slate-500">Use <span className="font-semibold">mail.getouch.co</span> as the SMTP server hostname because it matches the Mailcow TLS certificate. Sender emails can still use <span className="font-semibold">@serapod2u.com</span>.</p>
+                      {String(emailConfig.config_public.smtp_host || '').trim().toLowerCase() === 'mail.serapod2u.com' && (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs leading-4 text-amber-800">
+                          TLS certificate mismatch: mail.serapod2u.com is not covered by the current Mailcow certificate. Use mail.getouch.co unless the certificate is updated to include mail.serapod2u.com.
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label>From name</Label>
