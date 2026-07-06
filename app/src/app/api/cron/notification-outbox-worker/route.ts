@@ -3,6 +3,7 @@ import { createHash, createHmac } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppConfig, callGateway, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
+import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
 
 /**
  * CRON: /api/cron/notification-outbox-worker
@@ -170,11 +171,16 @@ async function sendEmailWithActiveProvider(supabase: any, orgId: string, to: str
         }
 
         if (config.provider_name === 'smtp') {
+            const smtpHost = String(publicConfig.smtp_host || '').trim()
+            const security = String(publicConfig.security || 'starttls').toLowerCase()
+            const endpoint = await resolveSmtpEndpoint(smtpHost)
             const nodemailer = require('nodemailer')
             const transporter = nodemailer.createTransport({
-                host: publicConfig.smtp_host,
+                host: endpoint.connectHost,
                 port: Number(publicConfig.port || 587),
-                secure: publicConfig.security === 'ssl' || Number(publicConfig.port) === 465,
+                secure: security === 'ssl',
+                requireTLS: security === 'starttls',
+                tls: { servername: endpoint.tlsServername },
                 auth: { user: publicConfig.username || secrets.username, pass: secrets.password },
             })
             const result = await transporter.sendMail({ from: `"${fromName}" <${fromEmail}>`, to, subject, text: body })
