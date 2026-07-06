@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { resolveSmtpEndpoint, SmtpEndpointError } from '@/lib/email/smtp-endpoint'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,15 +13,6 @@ type EmailTestRequest = {
 
 const asString = (value: unknown) => typeof value === 'string' ? value.trim() : ''
 
-const isLoopbackAddress = (address: string) => {
-  if (isIP(address) === 4) return address.startsWith('127.')
-  if (isIP(address) === 6) {
-    const normalized = address.toLowerCase()
-    return normalized === '::1' || normalized.startsWith('::ffff:127.')
-  }
-  return false
-}
-
 const safeErrorCode = (error: unknown) => {
   if (!error || typeof error !== 'object' || !('code' in error)) return undefined
   return typeof error.code === 'string' ? error.code : undefined
@@ -30,6 +20,8 @@ const safeErrorCode = (error: unknown) => {
 
 export async function POST(request: NextRequest) {
   let attemptedHost = ''
+  let connectHost = ''
+  let tlsServername = ''
   let attemptedPort: number | undefined
   let resolvedAddresses: string[] = []
 
@@ -73,24 +65,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Enter a valid test recipient email address.' }, { status: 400 })
     }
 
-    const addresses = await lookup(host, { all: true, verbatim: true })
-    resolvedAddresses = [...new Set(addresses.map(({ address }) => address))]
-
-    if (resolvedAddresses.some(isLoopbackAddress)) {
-      return NextResponse.json({
-        error: `SMTP host ${host} resolves to a loopback address. Correct the production container DNS/hosts configuration before testing SMTP.`,
-        attemptedHost,
-        attemptedPort,
-        resolvedAddresses
-      }, { status: 422 })
-    }
+    const endpoint = await resolveSmtpEndpoint(host)
+    connectHost = endpoint.connectHost
+    tlsServername = endpoint.tlsServername
+    resolvedAddresses = endpoint.resolvedAddresses
 
     const nodemailer = require('nodemailer')
     const transporter = nodemailer.createTransport({
-      host,
+      host: connectHost,
       port,
       secure: security === 'ssl',
       requireTLS: security === 'starttls',
+      tls: { servername: tlsServername },
       auth: { user: username, pass: password },
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
@@ -110,29 +96,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         messageId: info.messageId,
-        attemptedHost,
-        attemptedPort,
+        smtp_host: attemptedHost,
+        connect_host: connectHost,
+        port: attemptedPort,
+        tls_servername: tlsServername,
         resolvedAddresses
       })
     }
 
-    return NextResponse.json({ success: true, attemptedHost, attemptedPort, resolvedAddresses })
+    return NextResponse.json({
+      success: true,
+      smtp_host: attemptedHost,
+      connect_host: connectHost,
+      port: attemptedPort,
+      tls_servername: tlsServername,
+      resolvedAddresses
+    })
   } catch (error: unknown) {
+    if (error instanceof SmtpEndpointError) {
+      connectHost = error.endpoint.connectHost
+      tlsServername = error.endpoint.tlsServername
+      resolvedAddresses = error.endpoint.resolvedAddresses
+    }
     const code = safeErrorCode(error)
     const errorMessage = error instanceof Error ? error.message : 'SMTP provider test failed'
     console.error('SMTP provider test failed', {
-      host: attemptedHost,
+      smtpHost: attemptedHost,
+      connectHost,
       port: attemptedPort,
+      tlsServername,
       resolvedAddresses,
       code,
       message: errorMessage
     })
     return NextResponse.json({
       error: errorMessage,
-      attemptedHost,
-      attemptedPort,
+      smtp_host: attemptedHost,
+      connect_host: connectHost,
+      port: attemptedPort,
+      tls_servername: tlsServername,
       resolvedAddresses,
       ...(code ? { code } : {})
-    }, { status: 500 })
+    }, { status: error instanceof SmtpEndpointError ? 422 : 500 })
   }
 }
