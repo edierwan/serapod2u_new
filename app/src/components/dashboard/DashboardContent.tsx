@@ -157,6 +157,8 @@ import { PostVisitImpactReportView } from '@/modules/roadtour/components/analyti
 import { ShopImpactDetailView } from '@/modules/roadtour/components/analytics/ShopImpactDetailView'
 import { AccountManagerImpactPerformanceView } from '@/modules/roadtour/components/analytics/AccountManagerImpactPerformanceView'
 import { FollowUpPriorityQueueView } from '@/modules/roadtour/components/analytics/FollowUpPriorityQueueView'
+import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/analytics/MonthlyKpiPerformanceReportView'
+import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
@@ -512,8 +514,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <AccountManagerImpactPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-follow-up-priority':
         return <FollowUpPriorityQueueView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-monthly-kpi-report':
+        return <MonthlyKpiPerformanceReportView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-whatsapp':
         return <RoadtourWhatsAppMonitoringView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-kpi-settings':
+        return <RoadtourKpiSettingsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-settings':
         return <RoadtourSettingsView userProfile={userProfile} />
 

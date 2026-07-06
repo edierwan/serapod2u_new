@@ -1,4 +1,4 @@
-import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, TrendingUp, Store, UserCheck, Flag } from 'lucide-react'
+import { BookOpen, MessageSquare, Map, Settings, BarChart3, QrCode, ClipboardList, Users, Smartphone, TrendingUp, Store, UserCheck, Flag, Target, CalendarCheck } from 'lucide-react'
 
 export interface RoadtourNavChild {
     id: string
@@ -39,6 +39,7 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
             { id: 'roadtour-shop-impact', label: 'Shop Impact Detail', icon: Store },
             { id: 'roadtour-am-impact', label: 'Account Manager Impact', icon: UserCheck },
             { id: 'roadtour-follow-up-priority', label: 'Follow-Up Priority Queue', icon: Flag },
+            { id: 'roadtour-monthly-kpi-report', label: 'Monthly KPI Performance Report', icon: CalendarCheck },
             { id: 'roadtour-whatsapp', label: 'WhatsApp Monitoring', icon: Smartphone },
         ],
     },
@@ -49,6 +50,7 @@ export const roadtourNavGroups: RoadtourNavGroup[] = [
         description: 'Configure RoadTour module settings, surveys, user registration, and preferences.',
         children: [
             { id: 'roadtour-surveys', label: 'Surveys', icon: ClipboardList },
+            { id: 'roadtour-kpi-settings', label: 'KPI & Incentive Settings', icon: Target },
             { id: 'roadtour-settings', label: 'RoadTour Settings', icon: Settings },
         ],
     },
