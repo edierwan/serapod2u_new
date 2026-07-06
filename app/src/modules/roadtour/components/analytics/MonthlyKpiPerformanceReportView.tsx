@@ -60,47 +60,7 @@ function buildMonthOptions(): string[] {
     return options
 }
 
-/** Illustrative dataset shown only when no KPI cycle/data exists for the selection. */
-function buildDemoReport(kpiMonth: string): KpiReportData {
-    const period = deriveKpiMonthPeriod(kpiMonth)
-    const teams = [
-        { team_id: 'demo-1', team_name: 'North Penang Team', leader_user_id: null, leader_name: 'Yusri', member_count: 5, team_target: 7000, actual_scans: 6350, achievement_percent: 90.7, incentive_budget: 1600, estimated_payout: 1600, status: 'on_track' as const },
-        { team_id: 'demo-2', team_name: 'Central Penang Team', leader_user_id: null, leader_name: 'Safwan', member_count: 7, team_target: 8000, actual_scans: 7320, achievement_percent: 91.5, incentive_budget: 1500, estimated_payout: 1300, status: 'on_track' as const },
-        { team_id: 'demo-3', team_name: 'Seberang Team', leader_user_id: null, leader_name: 'Aravin', member_count: 9, team_target: 6000, actual_scans: 4790, achievement_percent: 79.8, incentive_budget: 1000, estimated_payout: 500, status: 'at_risk' as const },
-    ]
-    return {
-        cycle: {
-            id: 'demo', kpi_month: kpiMonth, status: 'active', period_label: period.label,
-            period_start: period.periodStart, period_end: period.periodEnd,
-            freeze_members_targets: true, lock_campaign_qr_attribution: true,
-        },
-        summary: {
-            total_team_target: 21000, actual_scans: 18460, overall_achievement_percent: 87.9,
-            ams_achieved: 14, ams_total: 21, incentive_estimated_payout: 3400,
-            teams_on_track: 2, teams_total: 3, unassigned_scans: 0,
-        },
-        teams,
-        ams: [
-            { am_user_id: 'd1', am_name: 'Yusri', team_id: 'demo-1', team_name: 'North Penang Team', assigned_target: 2000, actual_scans: 2050, achievement_percent: 102.5, incentive_earned: 450, rank: 1, status: 'achieved' },
-            { am_user_id: 'd2', am_name: 'Safwan', team_id: 'demo-2', team_name: 'Central Penang Team', assigned_target: 1500, actual_scans: 1420, achievement_percent: 94.7, incentive_earned: 300, rank: 2, status: 'on_track' },
-            { am_user_id: 'd3', am_name: 'Aravin', team_id: 'demo-3', team_name: 'Seberang Team', assigned_target: 1200, actual_scans: 920, achievement_percent: 76.7, incentive_earned: 150, rank: 3, status: 'at_risk' },
-            { am_user_id: 'd4', am_name: 'Fitri', team_id: 'demo-2', team_name: 'Central Penang Team', assigned_target: 1200, actual_scans: 1100, achievement_percent: 91.7, incentive_earned: 250, rank: 4, status: 'on_track' },
-            { am_user_id: 'd5', am_name: 'Amirul', team_id: 'demo-1', team_name: 'North Penang Team', assigned_target: 1200, actual_scans: 1050, achievement_percent: 87.5, incentive_earned: 200, rank: 5, status: 'on_track' },
-            { am_user_id: 'd6', am_name: 'Bob', team_id: 'demo-3', team_name: 'Seberang Team', assigned_target: 1000, actual_scans: 880, achievement_percent: 88.0, incentive_earned: 180, rank: 6, status: 'on_track' },
-        ],
-        top_campaigns: [
-            { rank: 1, campaign_id: 'c1', campaign_name: 'Grand Opening – Gurney Plaza', team_name: 'North Penang Team', actual_scans: 3250, percent_of_total: 17.6 },
-            { rank: 2, campaign_id: 'c2', campaign_name: 'Weekend Special – Queensbay Mall', team_name: 'Central Penang Team', actual_scans: 2480, percent_of_total: 13.4 },
-            { rank: 3, campaign_id: 'c3', campaign_name: 'Hari Raya Promo – Penang Times Square', team_name: 'Seberang Team', actual_scans: 2120, percent_of_total: 11.5 },
-            { rank: 4, campaign_id: 'c4', campaign_name: 'Back to School – Sunway Carnival', team_name: 'Central Penang Team', actual_scans: 1980, percent_of_total: 10.7 },
-            { rank: 5, campaign_id: 'c5', campaign_name: 'Flash Sale Weekend – Komtar', team_name: 'North Penang Team', actual_scans: 1750, percent_of_total: 9.5 },
-        ],
-        chart_team_achievement: teams.map((t) => ({ team_name: t.team_name, target: t.team_target, actual: t.actual_scans, achievement_percent: t.achievement_percent })),
-        chart_payout_by_team: teams.map((t) => ({ team_name: t.team_name, payout: t.estimated_payout })),
-    }
-}
-
-export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
+export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: Props) {
     const supabase = createClient()
     const companyId = userProfile?.organizations?.id
 
@@ -119,7 +79,6 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
     const [report, setReport] = useState<KpiReportData | null>(null)
     const [loading, setLoading] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
-    const [isDemo, setIsDemo] = useState(false)
     const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
 
     const period = useMemo(() => deriveKpiMonthPeriod(selectedMonth), [selectedMonth])
@@ -162,14 +121,8 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
             const res = await fetch(`/api/roadtour/kpi/report?${params.toString()}`)
             const json = await res.json()
             if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load KPI report.')
-            if (json.data) {
-                setReport(json.data)
-                setIsDemo(false)
-            } else {
-                // No cycle configured for this month/event: show an illustrative demo.
-                setReport(buildDemoReport(selectedMonth))
-                setIsDemo(true)
-            }
+            // json.data is null when no KPI cycle exists for the month/event.
+            setReport(json.data ?? null)
         } catch (err: any) {
             setLoadError(err.message || 'Failed to load KPI report.')
             setReport(null)
@@ -193,7 +146,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
     }, [report])
 
     const handleExportExcel = useCallback(async () => {
-        if (!companyId || !selectedRunId || isDemo) return
+        if (!companyId || !selectedRunId || !report || report.teams.length === 0) return
         try {
             setExporting('excel')
             const params = new URLSearchParams({
@@ -221,10 +174,10 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
         } finally {
             setExporting(null)
         }
-    }, [companyId, isDemo, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
+    }, [companyId, report, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
 
     const handleExportPdf = useCallback(async () => {
-        if (!report) return
+        if (!report || report.teams.length === 0) return
         try {
             setExporting('pdf')
             const [{ default: jsPDF }, autoTableModule] = await Promise.all([
@@ -239,7 +192,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
             doc.text('Monthly KPI Performance Report', 14, 16)
             doc.setFontSize(10)
             doc.setTextColor(100)
-            doc.text(`KPI Month: ${monthLabel}   Period: ${report.cycle.period_label}${isDemo ? '   (DEMO DATA)' : ''}`, 14, 23)
+            doc.text(`KPI Month: ${monthLabel}   Period: ${report.cycle.period_label}`, 14, 23)
             doc.text('KPI attribution is based on campaign QR / selected AM at scan time.', 14, 28)
 
             autoTable(doc, {
@@ -296,9 +249,11 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
         } finally {
             setExporting(null)
         }
-    }, [isDemo, report])
+    }, [report])
 
     const s = report?.summary
+    // A cycle with at least one team is the only case with real, exportable data.
+    const hasReportData = Boolean(report && report.teams.length > 0)
 
     if (!companyId) {
         return <Card><EmptyBlock title="Organization required" description="Your profile is not linked to an organization." /></Card>
@@ -381,11 +336,11 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
                         Period auto: {period.label} (Calendar Month) — monthly report includes all campaigns under the selected event, including those created mid-month.
                     </div>
                     <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={handleExportExcel} disabled={exporting !== null || isDemo || !report}>
+                        <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={handleExportExcel} disabled={exporting !== null || !hasReportData}>
                             {exporting === 'excel' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1" />}
                             Export Excel
                         </Button>
-                        <Button size="sm" variant="outline" className="text-rose-700 border-rose-200" onClick={handleExportPdf} disabled={exporting !== null || !report}>
+                        <Button size="sm" variant="outline" className="text-rose-700 border-rose-200" onClick={handleExportPdf} disabled={exporting !== null || !hasReportData}>
                             {exporting === 'pdf' ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FileText className="h-4 w-4 mr-1" />}
                             Export PDF
                         </Button>
@@ -404,15 +359,34 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
                 </Card>
             )}
 
+            {/* No KPI cycle configured for the selected month + event. */}
+            {!loading && !loadError && !report && selectedRunId && (
+                <Card>
+                    <EmptyBlock
+                        title="No KPI cycle configured for this month and RoadTour Event."
+                        description={`Create a KPI cycle for ${formatKpiMonthLabel(selectedMonth)} to start tracking scan achievement and incentives.`}
+                    />
+                    <div className="text-center pb-6">
+                        <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Create KPI Cycle</Button>
+                    </div>
+                </Card>
+            )}
+
             {!loading && !loadError && report && (
                 <>
-                    {isDemo && (
-                        <div className="border border-violet-200 bg-violet-50 text-violet-800 text-sm rounded-md px-3 py-2">
-                            Demo preview — no KPI cycle is configured for {formatKpiMonthLabel(selectedMonth)} and this event yet.
-                            Configure one under RoadTour → Settings → KPI &amp; Incentive Settings to see live data.
-                        </div>
+                    {/* Cycle exists but no teams — nothing to report yet. */}
+                    {!hasReportData && (
+                        <Card>
+                            <EmptyBlock
+                                title="No KPI teams configured for this cycle."
+                                description="Add teams and assign account managers so their monthly scan achievement can be tracked."
+                            />
+                            <div className="text-center pb-6">
+                                <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Configure KPI Teams</Button>
+                            </div>
+                        </Card>
                     )}
-                    {!isDemo && s && s.unassigned_scans > 0 && (
+                    {hasReportData && s && s.unassigned_scans > 0 && (
                         <div className="border border-amber-200 bg-amber-50 text-amber-800 text-sm rounded-md px-3 py-2">
                             {formatNumber(s.unassigned_scans)} successful scans this month belong to AMs who are not in any KPI team; they are excluded from team totals.
                         </div>
@@ -422,7 +396,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile }: Props) {
                     <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
                         <KpiCard label="Total Team Target" value={formatNumber(s!.total_team_target)} sub="scans" icon={Target} accent="violet" />
                         <KpiCard label="Actual Scans" value={formatNumber(s!.actual_scans)} sub="scans" icon={Scan} accent="blue" />
-                        <KpiCard label="Overall Achievement" value={`${s!.overall_achievement_percent.toFixed(1)}%`} icon={TrendingUp} accent="green" />
+                        <KpiCard label="Overall Achievement" value={s!.total_team_target > 0 ? `${s!.overall_achievement_percent.toFixed(1)}%` : '—'} icon={TrendingUp} accent="green" />
                         <KpiCard label="AMs Achieved KPI" value={`${s!.ams_achieved} / ${s!.ams_total}`} icon={Users} accent="cyan" />
                         <KpiCard label="Incentive Estimated Payout" value={`RM ${formatNumber(Math.round(s!.incentive_estimated_payout))}`} icon={Wallet} accent="amber" />
                         <KpiCard label="Teams On Track" value={`${s!.teams_on_track} / ${s!.teams_total}`} icon={Flag} accent="rose" />
