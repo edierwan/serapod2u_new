@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
             leaderUserId: String(searchParams.get('leader_id') || '').trim() || null,
             status: ALLOWED_STATUS.has(statusParam) ? statusParam : null,
         })
-        if (!report) return jsonError('No KPI cycle found for the selected month and event.', 404)
+        if (!report) return jsonError('No KPI Plan report data for the selected month and event.', 404)
 
         const wb = new ExcelJS.Workbook()
         wb.creator = 'Serapod2U RoadTour KPI'
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
             { metric: 'Report', value: 'Monthly KPI Performance Report' },
             { metric: 'KPI Month', value: formatKpiMonthLabel(report.cycle.kpi_month) },
             { metric: 'Period (auto)', value: report.cycle.period_label },
-            { metric: 'Cycle Status', value: report.cycle.status },
+            { metric: 'Plan Status', value: report.cycle.status },
             { metric: 'Total Team Target (scans)', value: report.summary.total_team_target },
             { metric: 'Actual Scans', value: report.summary.actual_scans },
             { metric: 'Overall Achievement', value: `${report.summary.overall_achievement_percent.toFixed(1)}%` },

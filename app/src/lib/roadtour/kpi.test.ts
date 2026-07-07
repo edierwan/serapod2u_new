@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    addKpiMonths,
     amPerformanceStatus,
     autoDistributeTarget,
     achievementPercent,
+    compareKpiMonth,
     computeAmIncentive,
     computeLeaderBonus,
+    currentKpiMonth,
     deriveKpiMonthPeriod,
+    effectiveIncentiveRules,
+    enumeratePlanMonths,
     formatKpiMonthLabel,
+    isMonthInEffectiveRange,
     isValidKpiMonth,
     previousKpiMonth,
+    resolveLeaderId,
     teamPerformanceStatus,
 } from './kpi'
 
@@ -94,13 +101,17 @@ describe('incentives', () => {
     const rules = [
         { applies_to: 'all_ams' as const, achievement_threshold_percent: 100, incentive_amount: 200, status: 'active' },
         { applies_to: 'all_ams' as const, achievement_threshold_percent: 120, incentive_amount: 300, status: 'active' },
+        { applies_to: 'all_ams' as const, achievement_threshold_percent: 140, incentive_amount: 400, status: 'active' },
         { applies_to: 'team_leader' as const, achievement_threshold_percent: 100, incentive_amount: 500, status: 'active' },
+        { applies_to: 'team_leader' as const, achievement_threshold_percent: 120, incentive_amount: 800, status: 'active' },
     ]
 
-    it('awards the highest achieved tier to an AM', () => {
+    it('AM incentive: highest achieved tier wins (not stacked)', () => {
         expect(computeAmIncentive(rules, 99)).toBe(0)
         expect(computeAmIncentive(rules, 100)).toBe(200)
         expect(computeAmIncentive(rules, 125)).toBe(300)
+        expect(computeAmIncentive(rules, 140)).toBe(400)
+        expect(computeAmIncentive(rules, 999)).toBe(400) // capped at the top tier, never summed
     })
 
     it('ignores inactive rules', () => {
@@ -114,8 +125,75 @@ describe('incentives', () => {
         expect(computeAmIncentive(scoped, 110, 'team-b')).toBe(0)
     })
 
-    it('awards leader bonus on team achievement', () => {
-        expect(computeLeaderBonus(rules, 100.5)).toBe(500)
+    it('leader bonus is additive across met tiers on team achievement', () => {
         expect(computeLeaderBonus(rules, 99.9)).toBe(0)
+        expect(computeLeaderBonus(rules, 100.5)).toBe(500)
+        expect(computeLeaderBonus(rules, 125)).toBe(1300) // 500 + 800, additive
+    })
+})
+
+describe('effectiveIncentiveRules (leader bonus optional)', () => {
+    const rules = [
+        { applies_to: 'all_ams' as const, achievement_threshold_percent: 100, incentive_amount: 200 },
+        { applies_to: 'team_leader' as const, achievement_threshold_percent: 100, incentive_amount: 500 },
+    ]
+
+    it('keeps every rule when leader bonus is enabled', () => {
+        expect(effectiveIncentiveRules(rules, true)).toHaveLength(2)
+    })
+
+    it('drops team_leader tiers when leader bonus is disabled (AM tiers untouched)', () => {
+        const result = effectiveIncentiveRules(rules, false)
+        expect(result).toHaveLength(1)
+        expect(result.every((r) => r.applies_to === 'all_ams')).toBe(true)
+        // With leader bonus off, a leader earns only their own AM incentive.
+        expect(computeLeaderBonus(result, 150)).toBe(0)
+    })
+})
+
+describe('resolveLeaderId (leader must be a selected member)', () => {
+    it('keeps the leader while they remain a member', () => {
+        expect(resolveLeaderId('edi', ['edi', 'fitri', 'kit'])).toBe('edi')
+    })
+
+    it('resets to no leader when removed from the member list', () => {
+        expect(resolveLeaderId('edi', ['fitri', 'kit'])).toBe('')
+        expect(resolveLeaderId('', ['edi'])).toBe('')
+    })
+})
+
+describe('plan month helpers (report dropdown lists only configured months)', () => {
+    it('addKpiMonths shifts across year boundaries', () => {
+        expect(addKpiMonths('2026-01', -1)).toBe('2025-12')
+        expect(addKpiMonths('2026-12', 1)).toBe('2027-01')
+        expect(addKpiMonths('2026-05', 3)).toBe('2026-08')
+    })
+
+    it('compareKpiMonth orders months', () => {
+        expect(compareKpiMonth('2026-05', '2026-06')).toBe(-1)
+        expect(compareKpiMonth('2026-06', '2026-06')).toBe(0)
+        expect(compareKpiMonth('2026-07', '2026-06')).toBe(1)
+    })
+
+    it('isMonthInEffectiveRange honours inclusive bounds and open-ended plans', () => {
+        expect(isMonthInEffectiveRange('2026-05', '2026-05', '2026-08')).toBe(true)
+        expect(isMonthInEffectiveRange('2026-08', '2026-05', '2026-08')).toBe(true)
+        expect(isMonthInEffectiveRange('2026-04', '2026-05', '2026-08')).toBe(false)
+        expect(isMonthInEffectiveRange('2026-09', '2026-05', '2026-08')).toBe(false)
+        expect(isMonthInEffectiveRange('2030-01', '2026-05', null)).toBe(true) // open-ended
+    })
+
+    it('enumeratePlanMonths lists only months within the window, capped at the current month', () => {
+        const now = new Date(2026, 6, 15) // local July 15 2026 (TZ-independent month/year)
+        // Closed window entirely in the past → exactly its months, newest first.
+        expect(enumeratePlanMonths('2026-05', '2026-07', now)).toEqual(['2026-07', '2026-06', '2026-05'])
+        // Open-ended plan → capped at the current month, never future months.
+        expect(enumeratePlanMonths('2026-05', null, now)).toEqual(['2026-07', '2026-06', '2026-05'])
+        // A window that ends before it starts collapses to the single start month.
+        expect(enumeratePlanMonths('2026-07', '2026-05', now)).toEqual(['2026-07'])
+    })
+
+    it('currentKpiMonth formats YYYY-MM', () => {
+        expect(currentKpiMonth(new Date(2026, 6, 1))).toBe('2026-07')
     })
 })

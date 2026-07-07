@@ -17,6 +17,8 @@ import {
     computeAmIncentive,
     computeLeaderBonus,
     deriveKpiMonthPeriod,
+    effectiveIncentiveRules,
+    isMonthInEffectiveRange,
     kpiMonthFromDate,
     teamPerformanceStatus,
     type KpiPerformanceStatus,
@@ -100,19 +102,83 @@ export interface KpiReport {
 
 const SCAN_PAGE_SIZE = 1000
 
-/** Compute the monthly KPI report, or null when no cycle exists for the month/event. */
-export async function computeKpiReport(admin: any, filters: KpiReportFilters): Promise<KpiReport | null> {
-    const period = deriveKpiMonthPeriod(filters.kpiMonth)
+/**
+ * Resolve the KPI configuration for a month/event.
+ *
+ * Preferred path: a durable KPI Plan whose effective window covers the month —
+ * its config cycle supplies teams/rules and the report is auto-generated for
+ * that month (no manual monthly cycle needed). leader_bonus_enabled comes from
+ * the plan. Legacy fallback: a standalone cycle for the exact month.
+ * Returns null when nothing is configured for the month.
+ */
+async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<{
+    configCycleId: string
+    leaderBonusEnabled: boolean
+    status: string
+    freeze_members_targets: boolean
+    lock_campaign_qr_attribution: boolean
+} | null> {
+    // KPI plans may not exist yet on un-migrated environments; ignore the error.
+    const { data: plans } = await admin
+        .from('roadtour_kpi_plans')
+        .select('id, effective_from_month, effective_to_month, status, leader_bonus_enabled, config_cycle_id, reporting_scope')
+        .eq('org_id', filters.orgId)
+        .eq('roadtour_run_id', filters.roadtourRunId)
+        .neq('status', 'draft')
+        .order('effective_from_month', { ascending: false })
 
+    for (const plan of plans || []) {
+        if (!plan.config_cycle_id) continue
+        const from = String(plan.effective_from_month).slice(0, 7)
+        const to = plan.effective_to_month ? String(plan.effective_to_month).slice(0, 7) : null
+        if (!isMonthInEffectiveRange(filters.kpiMonth, from, to)) continue
+        return {
+            configCycleId: plan.config_cycle_id,
+            leaderBonusEnabled: Boolean(plan.leader_bonus_enabled),
+            status: plan.status,
+            freeze_members_targets: true,
+            lock_campaign_qr_attribution: true,
+        }
+    }
+
+    // Legacy fallback — a cycle for the exact month. Note: we intentionally do
+    // NOT reference the kpi_plan_id column here so the report still works on
+    // environments where the first KPI migration is applied but this plan
+    // refinement migration has not been run yet.
+    const period = deriveKpiMonthPeriod(filters.kpiMonth)
     const { data: cycle, error: cycleError } = await admin
         .from('roadtour_kpi_cycles')
-        .select('id, org_id, roadtour_run_id, kpi_month, period_start, period_end, status, freeze_members_targets, lock_campaign_qr_attribution')
+        .select('id, status, freeze_members_targets, lock_campaign_qr_attribution')
         .eq('org_id', filters.orgId)
         .eq('roadtour_run_id', filters.roadtourRunId)
         .eq('kpi_month', period.periodStart)
         .maybeSingle()
     if (cycleError) throw cycleError
     if (!cycle) return null
+    return {
+        configCycleId: cycle.id,
+        leaderBonusEnabled: true, // legacy cycles had no plan-level toggle
+        status: cycle.status,
+        freeze_members_targets: cycle.freeze_members_targets,
+        lock_campaign_qr_attribution: cycle.lock_campaign_qr_attribution,
+    }
+}
+
+/** Compute the monthly KPI report, or null when nothing is configured for the month/event. */
+export async function computeKpiReport(admin: any, filters: KpiReportFilters): Promise<KpiReport | null> {
+    const period = deriveKpiMonthPeriod(filters.kpiMonth)
+
+    const config = await resolveKpiConfig(admin, filters)
+    if (!config) return null
+    const cycle = {
+        id: config.configCycleId,
+        status: config.status,
+        freeze_members_targets: config.freeze_members_targets,
+        lock_campaign_qr_attribution: config.lock_campaign_qr_attribution,
+        period_start: period.periodStart,
+        period_end: period.periodEnd,
+        kpi_month: period.periodStart,
+    }
 
     const [teamsRes, membersRes, rulesRes, campaignsRes] = await Promise.all([
         admin.from('roadtour_kpi_teams').select('id, team_name, leader_user_id, monthly_team_target, incentive_budget, status').eq('kpi_cycle_id', cycle.id).order('created_at'),
@@ -125,11 +191,15 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
     }
     const teams = teamsRes.data || []
     const members = membersRes.data || []
-    const rules = (rulesRes.data || []).map((r: any) => ({
-        ...r,
-        achievement_threshold_percent: Number(r.achievement_threshold_percent),
-        incentive_amount: Number(r.incentive_amount),
-    }))
+    // Leader-bonus tiers only count when the plan has leader bonus enabled.
+    const rules = effectiveIncentiveRules(
+        (rulesRes.data || []).map((r: any) => ({
+            ...r,
+            achievement_threshold_percent: Number(r.achievement_threshold_percent),
+            incentive_amount: Number(r.incentive_amount),
+        })),
+        config.leaderBonusEnabled,
+    )
     const campaigns = campaignsRes.data || []
     const campaignNameById = new Map<string, string>(campaigns.map((c: any) => [c.id, c.name]))
     const campaignIds = campaigns.map((c: any) => c.id)

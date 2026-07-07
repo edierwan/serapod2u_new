@@ -18,10 +18,11 @@ import {
 } from 'lucide-react'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
-    KPI_STATUS_LABEL, deriveKpiMonthPeriod, formatKpiMonthLabel,
+    KPI_STATUS_LABEL, currentKpiMonth, deriveKpiMonthPeriod, enumeratePlanMonths,
+    formatKpiMonthLabel, kpiMonthFromDate,
     type KpiPerformanceStatus,
 } from '@/lib/roadtour/kpi'
-import type { KpiReportData } from '@/modules/roadtour/types/kpi'
+import type { KpiPlanRow, KpiReportData } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, KpiCard, LoadingBlock, PageHeader, formatNumber } from './shared'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
@@ -50,27 +51,15 @@ const POLICY_NOTES = [
     'Historical scan attribution is not rewritten when AM changes.',
 ]
 
-function buildMonthOptions(): string[] {
-    const now = new Date()
-    const options: string[] = []
-    for (let offset = 1; offset >= -12; offset--) {
-        const d = new Date(now.getFullYear(), now.getMonth() + offset, 1)
-        options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    }
-    return options
-}
-
 export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: Props) {
     const supabase = createClient()
     const companyId = userProfile?.organizations?.id
 
-    const monthOptions = useMemo(buildMonthOptions, [])
     const [runs, setRuns] = useState<RoadtourRun[]>([])
     const [runsLoading, setRunsLoading] = useState(true)
-    const [selectedMonth, setSelectedMonth] = useState(() => {
-        const now = new Date()
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    })
+    const [plans, setPlans] = useState<KpiPlanRow[]>([])
+    const [plansLoading, setPlansLoading] = useState(false)
+    const [selectedMonth, setSelectedMonth] = useState(() => currentKpiMonth())
     const [selectedRunId, setSelectedRunId] = useState('')
     const [teamFilter, setTeamFilter] = useState('all')
     const [leaderFilter, setLeaderFilter] = useState('all')
@@ -105,8 +94,51 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [companyId])
 
+    // Load KPI plans for the selected event so the month dropdown lists ONLY
+    // months that actually have a configured plan (no long historical list).
+    useEffect(() => {
+        if (!companyId || !selectedRunId) { setPlans([]); return }
+        let cancelled = false
+        const load = async () => {
+            try {
+                setPlansLoading(true)
+                const res = await fetch(`/api/roadtour/kpi/plans?org_id=${encodeURIComponent(companyId)}&roadtour_run_id=${encodeURIComponent(selectedRunId)}`)
+                const json = await res.json().catch(() => ({}))
+                if (cancelled) return
+                setPlans(res.ok && json.success ? (json.data || []) : [])
+            } catch {
+                if (!cancelled) setPlans([])
+            } finally {
+                if (!cancelled) setPlansLoading(false)
+            }
+        }
+        load()
+        return () => { cancelled = true }
+    }, [companyId, selectedRunId])
+
+    // Only non-draft plans generate monthly reports; union their effective windows.
+    const reportablePlans = useMemo(() => plans.filter((p) => p.status !== 'draft'), [plans])
+    const hasConfiguredPlan = reportablePlans.length > 0
+    const monthOptions = useMemo(() => {
+        const set = new Set<string>()
+        for (const p of reportablePlans) {
+            const from = kpiMonthFromDate(p.effective_from_month)
+            const to = p.effective_to_month ? kpiMonthFromDate(p.effective_to_month) : null
+            for (const m of enumeratePlanMonths(from, to)) set.add(m)
+        }
+        return [...set].sort((a, b) => (a < b ? 1 : -1))
+    }, [reportablePlans])
+
+    // Keep the selected month inside the configured set (default to newest month).
+    useEffect(() => {
+        if (monthOptions.length === 0) return
+        if (!monthOptions.includes(selectedMonth)) setSelectedMonth(monthOptions[0])
+    }, [monthOptions, selectedMonth])
+
     const loadReport = useCallback(async () => {
         if (!companyId || !selectedRunId) return
+        // No configured plan → skip the fetch; the empty state handles it.
+        if (!hasConfiguredPlan) { setReport(null); setLoadError(null); setLoading(false); return }
         try {
             setLoading(true)
             setLoadError(null)
@@ -121,7 +153,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             const res = await fetch(`/api/roadtour/kpi/report?${params.toString()}`)
             const json = await res.json()
             if (!res.ok || !json.success) throw new Error(json.error || 'Failed to load KPI report.')
-            // json.data is null when no KPI cycle exists for the month/event.
+            // json.data is null when no KPI Plan covers the month/event.
             setReport(json.data ?? null)
         } catch (err: any) {
             setLoadError(err.message || 'Failed to load KPI report.')
@@ -129,7 +161,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
         } finally {
             setLoading(false)
         }
-    }, [companyId, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
+    }, [companyId, hasConfiguredPlan, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
 
     useEffect(() => { loadReport() }, [loadReport])
 
@@ -271,9 +303,9 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             <Card className="p-3 sm:p-4">
                 <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
                     <div>
-                        <label className="text-xs font-medium text-muted-foreground">KPI Month</label>
-                        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                        <label className="text-xs font-medium text-muted-foreground">Report Month</label>
+                        <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={!hasConfiguredPlan || monthOptions.length === 0}>
+                            <SelectTrigger><SelectValue placeholder={hasConfiguredPlan ? 'Select month' : 'No KPI Plan'} /></SelectTrigger>
                             <SelectContent>
                                 {monthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                             </SelectContent>
@@ -359,16 +391,26 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 </Card>
             )}
 
-            {/* No KPI cycle configured for the selected month + event. */}
-            {!loading && !loadError && !report && selectedRunId && (
+            {/* No KPI Plan configured for the selected event. */}
+            {!loading && !loadError && !report && selectedRunId && !hasConfiguredPlan && !plansLoading && (
                 <Card>
                     <EmptyBlock
-                        title="No KPI cycle configured for this month and RoadTour Event."
-                        description={`Create a KPI cycle for ${formatKpiMonthLabel(selectedMonth)} to start tracking scan achievement and incentives.`}
+                        title="No KPI Plan configured for this RoadTour Event."
+                        description="Create a KPI Plan once for this event. Monthly reports are then generated automatically for each month in the plan window."
                     />
                     <div className="text-center pb-6">
-                        <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Create KPI Cycle</Button>
+                        <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Create KPI Plan</Button>
                     </div>
+                </Card>
+            )}
+
+            {/* Plan exists but the selected month has no report data yet. */}
+            {!loading && !loadError && !report && selectedRunId && hasConfiguredPlan && (
+                <Card>
+                    <EmptyBlock
+                        title={`No KPI report data for ${formatKpiMonthLabel(selectedMonth)}.`}
+                        description="This month has no scan activity under the active KPI Plan yet."
+                    />
                 </Card>
             )}
 
@@ -378,11 +420,11 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                     {!hasReportData && (
                         <Card>
                             <EmptyBlock
-                                title="No KPI teams configured for this cycle."
+                                title="No KPI teams configured for this plan."
                                 description="Add teams and assign account managers so their monthly scan achievement can be tracked."
                             />
                             <div className="text-center pb-6">
-                                <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Configure KPI Teams</Button>
+                                <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Configure Teams</Button>
                             </div>
                         </Card>
                     )}
@@ -410,7 +452,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                             </CardHeader>
                             <CardContent>
                                 {report.chart_team_achievement.length === 0 ? (
-                                    <EmptyBlock title="No teams configured" description="Add teams to the KPI cycle to see achievement." />
+                                    <EmptyBlock title="No teams configured" description="Add teams to the KPI Plan to see achievement." />
                                 ) : (
                                     <div className="h-72">
                                         <ResponsiveContainer width="100%" height="100%">
@@ -613,7 +655,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                 </ul>
                                 <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800 flex items-center gap-2">
                                     <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                                    Cycle status: {report.cycle.status} · Period {report.cycle.period_label}
+                                    Plan status: {report.cycle.status} · Period {report.cycle.period_label}
                                 </div>
                             </CardContent>
                         </Card>

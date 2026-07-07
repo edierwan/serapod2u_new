@@ -66,6 +66,27 @@ export interface KpiCycleRow {
     rules: KpiIncentiveRuleRow[]
 }
 
+export type KpiPlanStatus = 'draft' | 'active' | 'archived'
+
+export interface KpiPlanRow {
+    id: string
+    org_id: string
+    roadtour_run_id: string
+    plan_name: string | null
+    effective_from_month: string // 'YYYY-MM-01'
+    effective_to_month: string | null // 'YYYY-MM-01' or null (open-ended)
+    reporting_scope: KpiReportingScope
+    status: KpiPlanStatus
+    leader_bonus_enabled: boolean
+    config_cycle_id: string | null
+    activated_at: string | null
+    created_at: string
+    updated_at: string
+    // Nested config (from the plan's config cycle).
+    teams: KpiTeamRow[]
+    rules: KpiIncentiveRuleRow[]
+}
+
 export interface KpiAmOption {
     id: string
     full_name: string

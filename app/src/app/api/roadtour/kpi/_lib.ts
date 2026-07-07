@@ -48,7 +48,8 @@ export function jsonError(message: string, status = 400) {
     return NextResponse.json({ success: false, error: message }, { status })
 }
 
-export const CYCLE_SELECT = 'id, org_id, roadtour_run_id, kpi_month, period_start, period_end, reporting_scope, status, freeze_members_targets, lock_campaign_qr_attribution, activated_at, created_at, updated_at'
+export const PLAN_SELECT = 'id, org_id, roadtour_run_id, plan_name, effective_from_month, effective_to_month, reporting_scope, status, leader_bonus_enabled, config_cycle_id, activated_at, created_at, updated_at'
+export const CYCLE_SELECT = 'id, org_id, roadtour_run_id, kpi_plan_id, kpi_month, period_start, period_end, reporting_scope, status, freeze_members_targets, lock_campaign_qr_attribution, activated_at, created_at, updated_at'
 export const TEAM_SELECT = 'id, org_id, kpi_cycle_id, team_name, leader_user_id, monthly_team_target, incentive_budget, status, created_at, updated_at'
 export const MEMBER_SELECT = 'id, org_id, kpi_cycle_id, team_id, am_user_id, auto_target_scans, manual_target_scans, target_source, created_at'
 export const RULE_SELECT = 'id, org_id, kpi_cycle_id, team_id, rule_name, applies_to, achievement_threshold_percent, incentive_amount, bonus_type, status, created_at, updated_at'
@@ -80,6 +81,39 @@ export async function loadCycleForUpdate(ctx: KpiAdminContext, cycleId: string):
     const denied = assertOrgAccess(ctx, cycle.org_id)
     if (denied) return denied
     return cycle
+}
+
+/**
+ * Load a KPI plan and verify the caller can access its org.
+ * Returns the plan row or an error response.
+ */
+export async function loadPlanForUpdate(ctx: KpiAdminContext, planId: string): Promise<any | NextResponse> {
+    const { data: plan, error } = await ctx.admin
+        .from('roadtour_kpi_plans')
+        .select(PLAN_SELECT)
+        .eq('id', planId)
+        .maybeSingle()
+    if (error) {
+        if (isMissingKpiSchema(error)) return jsonError('RoadTour KPI plan tables are not migrated yet.', 503)
+        return jsonError(error.message || 'Failed to load KPI plan.', 500)
+    }
+    if (!plan) return jsonError('KPI plan not found.', 404)
+    const denied = assertOrgAccess(ctx, plan.org_id)
+    if (denied) return denied
+    return plan
+}
+
+/** Attach nested teams (with members) + rules to a config cycle, for plan detail responses. */
+export async function loadCycleConfig(admin: any, cycleId: string | null): Promise<{ teams: any[]; rules: any[] }> {
+    if (!cycleId) return { teams: [], rules: [] }
+    const [teamsRes, membersRes, rulesRes] = await Promise.all([
+        admin.from('roadtour_kpi_teams').select(TEAM_SELECT).eq('kpi_cycle_id', cycleId).order('created_at'),
+        admin.from('roadtour_kpi_team_members').select(MEMBER_SELECT).eq('kpi_cycle_id', cycleId).order('created_at'),
+        admin.from('roadtour_kpi_incentive_rules').select(RULE_SELECT).eq('kpi_cycle_id', cycleId).order('created_at'),
+    ])
+    const members = membersRes.data || []
+    const teams = (teamsRes.data || []).map((t: any) => ({ ...t, members: members.filter((m: any) => m.team_id === t.id) }))
+    return { teams, rules: rulesRes.data || [] }
 }
 
 export interface KpiMemberInput {

@@ -92,6 +92,58 @@ export function kpiMonthFromDate(value: string): string {
     return value.slice(0, 7)
 }
 
+/** 'YYYY-MM' for the current calendar month (server/client local time). */
+export function currentKpiMonth(now: Date = new Date()): string {
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`
+}
+
+/** Shift a KPI month by `delta` whole months (delta may be negative). */
+export function addKpiMonths(kpiMonth: string, delta: number): string {
+    if (!isValidKpiMonth(kpiMonth)) throw new Error(`Invalid KPI month: ${kpiMonth}`)
+    const [yearStr, monthStr] = kpiMonth.split('-')
+    const zeroBased = Number(yearStr) * 12 + (Number(monthStr) - 1) + delta
+    const year = Math.floor(zeroBased / 12)
+    const month = (zeroBased % 12 + 12) % 12
+    return `${year}-${pad(month + 1)}`
+}
+
+/** Compare two KPI months: -1 if a<b, 0 if equal, 1 if a>b. */
+export function compareKpiMonth(a: string, b: string): number {
+    return a === b ? 0 : a < b ? -1 : 1
+}
+
+/**
+ * True when `month` falls inside a plan's effective window.
+ * `to` is inclusive; a null `to` means the plan is open-ended.
+ */
+export function isMonthInEffectiveRange(month: string, from: string, to: string | null): boolean {
+    if (compareKpiMonth(month, from) < 0) return false
+    if (to && compareKpiMonth(month, to) > 0) return false
+    return true
+}
+
+/**
+ * List the KPI months ('YYYY-MM') a plan covers, newest first.
+ * An open-ended plan (null `to`) is capped at the current month so the report
+ * month dropdown never shows unconfigured future months.
+ */
+export function enumeratePlanMonths(from: string, to: string | null, now: Date = new Date()): string[] {
+    if (!isValidKpiMonth(from)) return []
+    const end = to && isValidKpiMonth(to)
+        ? (compareKpiMonth(to, currentKpiMonth(now)) < 0 ? to : currentKpiMonth(now))
+        : currentKpiMonth(now)
+    // If the plan starts in the future, still surface its first month.
+    const stop = compareKpiMonth(end, from) < 0 ? from : end
+    const months: string[] = []
+    let cursor = stop
+    // Guard against pathological ranges (max 240 months / 20 years).
+    for (let i = 0; i < 240 && compareKpiMonth(cursor, from) >= 0; i++) {
+        months.push(cursor)
+        cursor = addKpiMonths(cursor, -1)
+    }
+    return months
+}
+
 /**
  * Even auto-distribution of a team target across members.
  * Remainder scans go to the first members so the total always matches.
@@ -101,6 +153,16 @@ export function autoDistributeTarget(teamTarget: number, memberCount: number): n
     const base = Math.floor(teamTarget / memberCount)
     const remainder = teamTarget - base * memberCount
     return Array.from({ length: memberCount }, (_, i) => base + (i < remainder ? 1 : 0))
+}
+
+/**
+ * Rule 4 helper: a team leader must be one of the selected members. Returns the
+ * leader id unchanged when they are still a member, otherwise '' ("No leader").
+ * Used to reset the leader when they are removed from the member list.
+ */
+export function resolveLeaderId(leaderId: string, memberIds: string[]): string {
+    if (!leaderId) return ''
+    return memberIds.includes(leaderId) ? leaderId : ''
 }
 
 export function achievementPercent(actual: number, target: number): number {
@@ -150,6 +212,19 @@ export function computeAmIncentive(rules: KpiIncentiveRuleLike[], amPercent: num
         if (!best || rule.achievement_threshold_percent > best.achievement_threshold_percent) best = rule
     }
     return best ? Number(best.incentive_amount) : 0
+}
+
+/**
+ * Filter incentive rules to those that apply given the plan's leader-bonus
+ * switch. When leader bonus is OFF, team_leader tiers are dropped entirely so a
+ * leader earns only their own AM incentive. AM tiers are always kept.
+ */
+export function effectiveIncentiveRules<T extends { applies_to: KpiRuleAppliesTo }>(
+    rules: T[],
+    leaderBonusEnabled: boolean,
+): T[] {
+    if (leaderBonusEnabled) return rules
+    return rules.filter((r) => r.applies_to !== 'team_leader')
 }
 
 /**

@@ -18,11 +18,11 @@
 #    Copy the *_NEXT_PUBLIC_* / service-role / cron values from the current
 #    Coolify staging app's Environment Variables so the bundle matches today.
 #
-# 2. In Coolify, change the staging resource (uuid ao0gw084g0skgoo0ko4wwsco) from
-#    a git/Dockerfile source to a "Docker Image" source:
-#      Image: ghcr.io/edierwan/serapod2u_new:staging
-#    and turn OFF "Auto Deploy" on the git source so a `git push` no longer
-#    triggers an on-box build. Keep all its existing runtime env vars.
+# 2. In Coolify, keep the staging resource (uuid ao0gw084g0skgoo0ko4wwsco) on its
+#    git source with the Coolify deploy WEBHOOK enabled. Coolify's own webhook is
+#    the single deployment trigger for staging — this workflow only builds and
+#    publishes the prebuilt image to GHCR so Coolify has an up-to-date image to
+#    pull. Do NOT re-add an API deploy call here (see note below).
 #
 # 3. Add GHCR pull credentials in Coolify (the repo/package is private):
 #      Coolify → Sources/Registries → add a Docker registry
@@ -30,8 +30,12 @@
 #        Username: edierwan
 #        Password: a GitHub PAT with `read:packages`
 #
-# After setup: pushing to `staging` builds here, pushes the image, and Coolify
-# pulls + restarts — no build ever runs on the VPS again.
+# NOTE (2026-07-07): the old `trigger-coolify` job that called the Coolify API
+# (`GET /api/v1/deploy?uuid=…&force=true`) was REMOVED. When Coolify's git webhook
+# auto-deploy is also enabled, a single push to `staging` fired TWO deployments
+# (Coolify webhook + this API call). Deployment is now handled solely by the
+# Coolify webhook. If a future setup turns the webhook OFF and relies on GHCR
+# image pulls only, re-introduce a single deploy trigger — never both at once.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Deploy Staging (image → GHCR → Coolify pull)
@@ -95,16 +99,7 @@ jobs:
             SUPABASE_SERVICE_ROLE_KEY=${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
             CRON_SECRET=${{ secrets.STAGING_CRON_SECRET }}
 
-  trigger-coolify:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger Coolify to pull the new image
-        run: |
-          curl --fail-with-body -sS -X GET \
-            "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_UUID}&force=true" \
-            -H "Authorization: Bearer ${COOLIFY_TOKEN}"
-        env:
-          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-          COOLIFY_UUID: ${{ secrets.COOLIFY_STAGING_UUID }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+  # NOTE: the `trigger-coolify` job (Coolify API `GET /api/v1/deploy`) was removed
+  # on 2026-07-07 to stop duplicate staging deployments. Coolify's own git webhook
+  # is now the single deployment trigger. Do not re-add an API deploy call unless
+  # the webhook is disabled.
