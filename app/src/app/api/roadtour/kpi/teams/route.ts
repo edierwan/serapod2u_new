@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { MEMBER_SELECT, TEAM_SELECT, buildMemberRows, jsonError, loadCycleForUpdate, parseMembers, requireKpiAdmin } from '../_lib'
+import { MEMBER_SELECT, TEAM_SELECT, buildMemberRows, isMissingColumn, jsonError, loadCycleForUpdate, parseMembers, requireKpiAdmin } from '../_lib'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,25 +24,33 @@ export async function POST(request: NextRequest) {
         if (!teamName) return jsonError('Team name is required.')
         const teamTarget = Number(body?.monthly_team_target ?? 0)
         if (!Number.isInteger(teamTarget) || teamTarget < 0) return jsonError('Monthly team target must be a non-negative integer.')
-        const incentiveBudget = Number(body?.incentive_budget ?? 0)
-        if (!Number.isFinite(incentiveBudget) || incentiveBudget < 0) return jsonError('Incentive budget must be non-negative.')
+        // "Max Incentive / AM" — accept the new field name, fall back to the
+        // legacy incentive_budget key. Both DB columns are kept in sync.
+        const maxIncentivePerAm = Number(body?.max_incentive_per_am ?? body?.incentive_budget ?? 0)
+        if (!Number.isFinite(maxIncentivePerAm) || maxIncentivePerAm < 0) return jsonError('Max Incentive / AM must be non-negative.')
         const leaderUserId = String(body?.leader_user_id || '').trim() || null
         const members = parseMembers(body?.members ?? [])
         if (typeof members === 'string') return jsonError(members)
 
-        const { data: team, error: teamError } = await ctx.admin
-            .from('roadtour_kpi_teams')
-            .insert({
+        const insertTeam = (includeCap: boolean) => {
+            const row: Record<string, any> = {
                 org_id: cycle.org_id,
                 kpi_cycle_id: cycleId,
                 team_name: teamName,
                 leader_user_id: leaderUserId,
                 monthly_team_target: teamTarget,
-                incentive_budget: incentiveBudget,
+                incentive_budget: maxIncentivePerAm,
                 status: cycle.status === 'active' ? 'active' : 'draft',
-            })
-            .select(TEAM_SELECT)
-            .single()
+            }
+            if (includeCap) row.max_incentive_per_am = maxIncentivePerAm
+            return ctx.admin.from('roadtour_kpi_teams').insert(row).select(TEAM_SELECT).single()
+        }
+        let { data: team, error: teamError } = await insertTeam(true)
+        // Rolling deploy: the additive max_incentive_per_am column may not exist
+        // yet — retry without it (incentive_budget still carries the cap value).
+        if (teamError && isMissingColumn(teamError, 'max_incentive_per_am')) {
+            ({ data: team, error: teamError } = await insertTeam(false))
+        }
         if (teamError) {
             if (teamError.code === '23505') return jsonError('A team with this name already exists in the cycle.', 409)
             return jsonError(teamError.message || 'Failed to create team.', 500)

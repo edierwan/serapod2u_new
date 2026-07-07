@@ -243,7 +243,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 8,
-                head: [['Team Name', 'Leader', 'Members', 'Team Target', 'Actual Scans', 'Achievement %', 'Incentive Budget', 'Est. Payout', 'Status']],
+                head: [['Team Name', 'Leader', 'Members', 'Team Target', 'Actual Scans', 'Achievement %', 'Max Incentive / AM', 'Est. Payout', 'Status']],
                 body: report.teams.map((t) => [
                     t.team_name, t.leader_name, t.member_count,
                     t.team_target.toLocaleString(), t.actual_scans.toLocaleString(),
@@ -365,7 +365,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                     <div className="flex items-center gap-1.5 text-xs text-blue-700">
                         <Info className="h-3.5 w-3.5" />
-                        Period auto: {period.label} (Calendar Month). Month options are limited to configured KPI Plan months — monthly report includes all campaigns under the selected event, including those created mid-month.
+                        Period auto: {period.label} (Calendar Month). Month options are limited to configured KPI Plan months — monthly report includes all campaigns under the selected event, including those created mid-month. Multiple campaigns per shop are supported: each scan counts for the campaign/QR AM at scan time. For shop recovery or AM takeover, create a new Campaign under the same Event; historical scans stay with the original campaign/AM.
                     </div>
                     <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={handleExportExcel} disabled={exporting !== null || !hasReportData}>
@@ -523,7 +523,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                     <TableHead className="text-right">Team Target (Scans)</TableHead>
                                                     <TableHead className="text-right">Actual Scans</TableHead>
                                                     <TableHead className="text-right">Achievement %</TableHead>
-                                                    <TableHead className="text-right">Incentive Budget</TableHead>
+                                                    <TableHead className="text-right">Max Incentive / AM</TableHead>
                                                     <TableHead className="text-right">Est. Payout</TableHead>
                                                     <TableHead>Status</TableHead>
                                                 </TableRow>

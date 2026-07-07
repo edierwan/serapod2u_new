@@ -19,7 +19,7 @@ import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
     autoDistributeTarget, compareKpiMonth, currentKpiMonth, deriveEffectiveFromOptions,
     deriveEffectiveToOptions, deriveKpiMonthPeriod, formatKpiMonthLabel, kpiMonthFromDate,
-    monthKeyFromDate, resolveLeaderId,
+    monthKeyFromDate, resolveLeaderId, validateAmIncentiveTier,
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, LoadingBlock, PageHeader } from './analytics/shared'
@@ -30,9 +30,14 @@ const POLICY_RULES = [
     'A KPI Plan is created once per RoadTour Event and reused every month.',
     'Monthly reports are generated automatically for each month in the plan window.',
     'Team/member structure is frozen after the plan is activated.',
-    'New campaign QR scans contribute to the AM assigned in that campaign.',
-    'Historical scan attribution is not rewritten when AM changes.',
+    'For shop recovery or AM takeover, create a new Campaign under the same Event — not a new Event.',
+    'New campaign QR scans count to the new campaign/AM.',
+    'Historical scan attribution is not rewritten when the AM or campaign changes.',
+    'Leader bonus is optional and additive; the AM incentive cap applies only to individual AM incentive.',
 ]
+
+/** Highlighted note explaining the shop-recovery / AM-takeover workflow. */
+const RECOVERY_NOTE = 'For shop recovery or AM takeover, create a new Campaign under the same RoadTour Event. New campaign QR scans count to the new AM; historical scans remain with the original campaign/AM.'
 
 function PlanStatusBadge({ status }: { status: string }) {
     if (status === 'active') return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">Active</Badge>
@@ -83,7 +88,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const [leaderId, setLeaderId] = useState('')
     const [memberIds, setMemberIds] = useState<string[]>([])
     const [teamTarget, setTeamTarget] = useState('')
-    const [incentiveBudget, setIncentiveBudget] = useState('')
+    const [maxIncentivePerAm, setMaxIncentivePerAm] = useState('')
     const [manualOverride, setManualOverride] = useState(false)
     const [manualTargets, setManualTargets] = useState<Record<string, string>>({})
     const [memberSearch, setMemberSearch] = useState('')
@@ -161,6 +166,33 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const amTiers = useMemo(() => (plan?.rules || []).filter((r) => r.applies_to === 'all_ams'), [plan])
     const leaderTiers = useMemo(() => (plan?.rules || []).filter((r) => r.applies_to === 'team_leader'), [plan])
 
+    // Per-AM incentive cap for tier validation: the highest Max Incentive / AM
+    // configured across the plan's teams (a tier must be payable to at least the
+    // best-capped AM). Runtime clamps each AM to their own team's cap.
+    const maxIncentiveCap = useMemo(
+        () => (plan?.teams || []).reduce((max, t) => Math.max(max, Number(t.incentive_budget) || 0), 0),
+        [plan],
+    )
+
+    // Live validation for the incentive tier dialog. AM tiers must be capped and
+    // strictly monotonic (shared logic with the API); leader tiers only need a
+    // positive threshold + amount. Save is disabled while this is non-null.
+    const tierError = useMemo<string | null>(() => {
+        const threshold = Number(tierForm.achievement_threshold_percent)
+        const amount = Number(tierForm.incentive_amount)
+        if (tierForm.incentive_amount.trim() === '' || !Number.isFinite(amount)) return 'Enter an incentive amount.'
+        if (tierForm.applies_to === 'team_leader') {
+            if (!Number.isFinite(threshold) || threshold <= 0) return 'Team achievement % must be greater than 0.'
+            if (amount <= 0) return 'Bonus amount must be greater than RM0.'
+            return null
+        }
+        return validateAmIncentiveTier(
+            { id: tierForm.id, achievement_threshold_percent: threshold, incentive_amount: amount },
+            amTiers.map((r: any) => ({ id: r.id, achievement_threshold_percent: Number(r.achievement_threshold_percent), incentive_amount: Number(r.incentive_amount) })),
+            maxIncentiveCap,
+        )
+    }, [tierForm, amTiers, maxIncentiveCap])
+
     const loadPlans = useCallback(async () => {
         if (!companyId) return
         const res = await fetch(`/api/roadtour/kpi/plans?org_id=${encodeURIComponent(companyId)}`)
@@ -211,7 +243,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         setLeaderId('')
         setMemberIds([])
         setTeamTarget('')
-        setIncentiveBudget('')
+        setMaxIncentivePerAm('')
         setManualOverride(false)
         setManualTargets({})
         setMemberSearch('')
@@ -223,7 +255,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         setLeaderId(team.leader_user_id || '')
         setMemberIds(team.members.map((m) => m.am_user_id))
         setTeamTarget(String(team.monthly_team_target))
-        setIncentiveBudget(team.incentive_budget ? String(team.incentive_budget) : '')
+        setMaxIncentivePerAm(team.incentive_budget ? String(team.incentive_budget) : '')
         const overrides: Record<string, string> = {}
         let hasManual = false
         for (const m of team.members) {
@@ -303,7 +335,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
             team_name: teamName.trim(),
             leader_user_id: leaderId || null,
             monthly_team_target: target,
-            incentive_budget: Number(incentiveBudget || 0),
+            max_incentive_per_am: Number(maxIncentivePerAm || 0),
             members,
         }
         try {
@@ -321,7 +353,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         } finally {
             setSaving(false)
         }
-    }, [callApi, configCycleId, editingTeamId, incentiveBudget, leaderId, loadPlans, manualOverride, manualTargets, memberIds, plan, resetTeamBuilder, teamName, teamTarget])
+    }, [callApi, configCycleId, editingTeamId, maxIncentivePerAm, leaderId, loadPlans, manualOverride, manualTargets, memberIds, plan, resetTeamBuilder, teamName, teamTarget])
 
     const handleDeleteTeam = useCallback(async (teamId: string) => {
         if (!window.confirm('Delete this team and its member assignments?')) return
@@ -346,11 +378,8 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
             bonus_type: 'cash',
             status: tierForm.status,
         }
-        if (!Number.isFinite(payload.achievement_threshold_percent) || payload.achievement_threshold_percent <= 0) {
-            toast({ title: 'Enter a valid achievement %', variant: 'destructive' }); return
-        }
-        if (!Number.isFinite(payload.incentive_amount) || payload.incentive_amount < 0) {
-            toast({ title: 'Enter a valid amount', variant: 'destructive' }); return
+        if (tierError) {
+            toast({ title: 'Invalid incentive tier', description: tierError, variant: 'destructive' }); return
         }
         try {
             setSaving(true)
@@ -367,7 +396,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         } finally {
             setSaving(false)
         }
-    }, [callApi, configCycleId, loadPlans, plan, tierForm])
+    }, [callApi, configCycleId, loadPlans, plan, tierForm, tierError])
 
     const handleDeleteTier = useCallback(async (ruleId: string) => {
         if (!window.confirm('Delete this incentive tier?')) return
@@ -522,7 +551,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         <div className="text-lg font-bold">{summary.targetTotal.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">scans</span></div>
                                     </div>
                                     <div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Incentive Budget</div>
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Max Incentive / AM</div>
                                         <div className="text-lg font-bold">RM {summary.budgetTotal.toLocaleString()}</div>
                                     </div>
                                 </div>
@@ -669,8 +698,9 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             <Input type="number" min={0} value={teamTarget} onChange={(e) => setTeamTarget(e.target.value)} placeholder="e.g. 7000" disabled={isFrozen} />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Incentive Budget (RM)</label>
-                                            <Input type="number" min={0} value={incentiveBudget} onChange={(e) => setIncentiveBudget(e.target.value)} placeholder="e.g. 1600" />
+                                            <label className="text-xs font-medium text-muted-foreground">Max Incentive / AM (RM)</label>
+                                            <Input type="number" min={0} value={maxIncentivePerAm} onChange={(e) => setMaxIncentivePerAm(e.target.value)} placeholder="e.g. 500" />
+                                            <p className="mt-1 text-xs text-muted-foreground">Maximum individual AM incentive for this KPI plan. AM tier payouts cannot exceed this cap.</p>
                                         </div>
                                     </div>
 
@@ -897,7 +927,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         <ShieldCheck className="h-4 w-4 text-blue-600" /> KPI Policy &amp; Attribution Rules
                                     </CardTitle>
                                 </CardHeader>
-                                <CardContent>
+                                <CardContent className="space-y-3">
                                     <ul className="grid gap-2 sm:grid-cols-2 text-sm">
                                         {POLICY_RULES.map((rule) => (
                                             <li key={rule} className="flex items-start gap-2">
@@ -906,6 +936,9 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             </li>
                                         ))}
                                     </ul>
+                                    <div className="rounded-md border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
+                                        {RECOVERY_NOTE}
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>
@@ -984,18 +1017,21 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">
                                     {tierForm.applies_to === 'team_leader'
                                         ? 'Leader bonus is additive and based on total team achievement.'
-                                        : 'AM incentive uses highest-tier-wins based on the AM’s achievement vs target.'}
+                                        : `AM incentive uses highest-tier-wins based on the AM’s achievement vs target. Higher achievement must pay more, and payouts are capped at Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''}.`}
                                 </div>
                                 <div className="grid gap-3 grid-cols-2">
                                     <div>
                                         <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Team Achievement (%)' : 'Achievement (%)'}</label>
-                                        <Input type="number" min={1} value={tierForm.achievement_threshold_percent} onChange={(e) => setTierForm((p) => ({ ...p, achievement_threshold_percent: e.target.value }))} />
+                                        <Input type="number" min={tierForm.applies_to === 'team_leader' ? 1 : 100} value={tierForm.achievement_threshold_percent} onChange={(e) => setTierForm((p) => ({ ...p, achievement_threshold_percent: e.target.value }))} />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Bonus (RM)' : 'Incentive (RM)'}</label>
                                         <Input type="number" min={0} value={tierForm.incentive_amount} onChange={(e) => setTierForm((p) => ({ ...p, incentive_amount: e.target.value }))} placeholder="e.g. 200" />
                                     </div>
                                 </div>
+                                {tierError && (
+                                    <p className="text-xs text-red-600">{tierError}</p>
+                                )}
                                 <div>
                                     <label className="text-xs font-medium text-muted-foreground">Status</label>
                                     <Select value={tierForm.status} onValueChange={(v) => setTierForm((p) => ({ ...p, status: v }))}>
@@ -1009,7 +1045,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                             </div>
                             <DialogFooter>
                                 <Button variant="outline" onClick={() => setTierDialogOpen(false)}>Cancel</Button>
-                                <Button onClick={handleSaveTier} disabled={saving}>
+                                <Button onClick={handleSaveTier} disabled={saving || Boolean(tierError)}>
                                     {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />} Save Tier
                                 </Button>
                             </DialogFooter>

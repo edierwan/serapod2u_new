@@ -64,6 +64,20 @@ export function isMissingKpiSchema(error: { code?: string | null; message?: stri
 }
 
 /**
+ * True when a write failed because a specific column does not exist yet — used
+ * so the max_incentive_per_am cap can be written best-effort even when its
+ * additive migration has not been applied on a rolling deploy. Callers retry
+ * the write without the column.
+ */
+export function isMissingColumn(error: { code?: string | null; message?: string | null } | null | undefined, column: string): boolean {
+    if (!error) return false
+    const message = String(error.message || '').toLowerCase()
+    return error.code === '42703'
+        || error.code === 'PGRST204'
+        || (message.includes(column.toLowerCase()) && (message.includes('does not exist') || message.includes('could not find') || message.includes('schema cache')))
+}
+
+/**
  * Load a cycle and verify the caller can access its org.
  * Returns the cycle row or an error response.
  */
@@ -159,6 +173,35 @@ export function buildMemberRows(args: {
         manual_target_scans: m.manual_target_scans ?? null,
         target_source: m.manual_target_scans != null ? 'manual' : 'auto',
     }))
+}
+
+/**
+ * Load the existing AM incentive tiers for a cycle plus the effective per-AM
+ * cap (the highest Max Incentive / AM configured across the cycle's teams — a
+ * tier must be payable to at least the best-capped AM). Used to validate a new
+ * or edited AM tier server-side. `excludeRuleId` drops the tier being edited.
+ */
+export async function loadAmTierContext(admin: any, cycleId: string, excludeRuleId?: string | null): Promise<{
+    existingTiers: { id: string; achievement_threshold_percent: number; incentive_amount: number }[]
+    maxIncentivePerAm: number
+}> {
+    const [rulesRes, teamsRes] = await Promise.all([
+        admin.from('roadtour_kpi_incentive_rules')
+            .select('id, achievement_threshold_percent, incentive_amount, applies_to')
+            .eq('kpi_cycle_id', cycleId)
+            .eq('applies_to', 'all_ams'),
+        admin.from('roadtour_kpi_teams').select('incentive_budget').eq('kpi_cycle_id', cycleId),
+    ])
+    const existingTiers = (rulesRes.data || [])
+        .filter((r: any) => !(excludeRuleId && r.id === excludeRuleId))
+        .map((r: any) => ({
+            id: r.id,
+            achievement_threshold_percent: Number(r.achievement_threshold_percent),
+            incentive_amount: Number(r.incentive_amount),
+        }))
+    const maxIncentivePerAm = (teamsRes.data || [])
+        .reduce((max: number, t: any) => Math.max(max, Number(t.incentive_budget) || 0), 0)
+    return { existingTiers, maxIncentivePerAm }
 }
 
 /** Fetch AM display names for a set of user ids. */

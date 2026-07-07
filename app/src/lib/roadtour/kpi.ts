@@ -217,6 +217,46 @@ export function deriveEffectiveToOptions(opts: {
     return [...set].sort((a, b) => compareKpiMonth(a, b))
 }
 
+export interface KpiScanSnapshot {
+    /** AM snapshotted on the scan row at scan time. */
+    account_manager_user_id: string
+    campaign_id: string
+}
+
+export interface KpiScanTally {
+    /** Successful scans per AM (drives AM achievement). */
+    scansByAm: Map<string, number>
+    /** Successful scans per campaign (drives the top-campaigns table). */
+    scansByCampaign: Map<string, number>
+    /** Per campaign, scans split by the team of the snapshotted AM. */
+    scansByCampaignTeam: Map<string, Map<string, number>>
+}
+
+/**
+ * Attribute successful scans to AMs / campaigns / teams using ONLY the AM
+ * snapshot carried on each scan row. This is what lets multiple campaigns run
+ * under the same RoadTour Event — including several campaigns for the same shop
+ * handled by different AMs — resolve cleanly: a scan always counts for the AM
+ * (and their team) recorded on that scan, so historical attribution is never
+ * rewritten when a shop is later handed to a new campaign/AM.
+ */
+export function attributeScans(scans: KpiScanSnapshot[], teamIdByAm: Map<string, string>): KpiScanTally {
+    const scansByAm = new Map<string, number>()
+    const scansByCampaign = new Map<string, number>()
+    const scansByCampaignTeam = new Map<string, Map<string, number>>()
+    for (const scan of scans) {
+        scansByAm.set(scan.account_manager_user_id, (scansByAm.get(scan.account_manager_user_id) || 0) + 1)
+        scansByCampaign.set(scan.campaign_id, (scansByCampaign.get(scan.campaign_id) || 0) + 1)
+        const teamId = teamIdByAm.get(scan.account_manager_user_id)
+        if (teamId) {
+            const perTeam = scansByCampaignTeam.get(scan.campaign_id) || new Map<string, number>()
+            perTeam.set(teamId, (perTeam.get(teamId) || 0) + 1)
+            scansByCampaignTeam.set(scan.campaign_id, perTeam)
+        }
+    }
+    return { scansByAm, scansByCampaign, scansByCampaignTeam }
+}
+
 /**
  * List the KPI months ('YYYY-MM') a plan covers, newest first.
  * An open-ended plan (null `to`) is capped at the current month so the report
@@ -296,8 +336,19 @@ export interface KpiIncentiveRuleLike {
  * AM incentive: tiered — the highest-threshold active rule the AM has met wins
  * (e.g. Base 100% = RM200, Exceed 120% = RM300 → an AM at 125% earns RM300).
  * Rules scoped to a specific team only apply to that team's members.
+ *
+ * `maxIncentivePerAm` is the per-AM monthly cap (from the AM's team). When set
+ * and positive, the winning tier payout is clamped to it — an individual AM can
+ * never earn more than the cap, no matter how many tiers they clear. The cap
+ * applies ONLY to AM incentive; leader bonus (computeLeaderBonus) is separate
+ * and additive.
  */
-export function computeAmIncentive(rules: KpiIncentiveRuleLike[], amPercent: number, teamId?: string | null): number {
+export function computeAmIncentive(
+    rules: KpiIncentiveRuleLike[],
+    amPercent: number,
+    teamId?: string | null,
+    maxIncentivePerAm?: number | null,
+): number {
     let best: KpiIncentiveRuleLike | null = null
     for (const rule of rules) {
         if (rule.status !== 'active') continue
@@ -306,7 +357,71 @@ export function computeAmIncentive(rules: KpiIncentiveRuleLike[], amPercent: num
         if (amPercent < rule.achievement_threshold_percent) continue
         if (!best || rule.achievement_threshold_percent > best.achievement_threshold_percent) best = rule
     }
-    return best ? Number(best.incentive_amount) : 0
+    const payout = best ? Number(best.incentive_amount) : 0
+    if (maxIncentivePerAm && maxIncentivePerAm > 0) return Math.min(payout, maxIncentivePerAm)
+    return payout
+}
+
+/** Format a ringgit amount for validation messages (no trailing .00 for whole values). */
+export function formatRm(amount: number): string {
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2)
+}
+
+export interface AmTierInput {
+    id?: string | null
+    achievement_threshold_percent: number
+    incentive_amount: number
+}
+
+/**
+ * Validate a single AM incentive tier against the rest of the AM tier set and
+ * the per-AM cap. Returns a human-readable error message, or null when valid.
+ * Shared by the settings modal (inline error + disabled Save) and the API so
+ * the rules can never be persisted in an illogical state. Rules enforced:
+ *  1. threshold >= 100%
+ *  2. threshold unique within the AM tier set
+ *  3. amount > 0
+ *  4. amount <= Max Incentive / AM (when a cap is configured)
+ *  5. a higher threshold must pay strictly more than every lower tier
+ *  6. a lower threshold must pay strictly less than every higher tier
+ */
+export function validateAmIncentiveTier(
+    candidate: AmTierInput,
+    existingTiers: AmTierInput[],
+    maxIncentivePerAm?: number | null,
+): string | null {
+    const threshold = Number(candidate.achievement_threshold_percent)
+    const amount = Number(candidate.incentive_amount)
+    if (!Number.isFinite(threshold) || threshold < 100) {
+        return 'Achievement threshold must be at least 100%.'
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return 'Incentive amount must be greater than RM0.'
+    }
+    if (maxIncentivePerAm && maxIncentivePerAm > 0 && amount > maxIncentivePerAm) {
+        return `Incentive cannot exceed the RM${formatRm(maxIncentivePerAm)} max incentive per AM.`
+    }
+    const others = existingTiers.filter((t) => !(candidate.id && t.id === candidate.id))
+    if (others.some((t) => Number(t.achievement_threshold_percent) === threshold)) {
+        return `A tier for ${threshold}% already exists.`
+    }
+    let lower: AmTierInput | null = null // greatest threshold below the candidate
+    let higher: AmTierInput | null = null // least threshold above the candidate
+    for (const t of others) {
+        const tThreshold = Number(t.achievement_threshold_percent)
+        if (tThreshold < threshold) {
+            if (!lower || tThreshold > Number(lower.achievement_threshold_percent)) lower = t
+        } else if (tThreshold > threshold) {
+            if (!higher || tThreshold < Number(higher.achievement_threshold_percent)) higher = t
+        }
+    }
+    if (lower && amount <= Number(lower.incentive_amount)) {
+        return `Incentive for ${threshold}% must be higher than RM${formatRm(Number(lower.incentive_amount))} because it is above the ${Number(lower.achievement_threshold_percent)}% tier.`
+    }
+    if (higher && amount >= Number(higher.incentive_amount)) {
+        return `Incentive for ${threshold}% must be lower than RM${formatRm(Number(higher.incentive_amount))} because it is below the ${Number(higher.achievement_threshold_percent)}% tier.`
+    }
+    return null
 }
 
 /**

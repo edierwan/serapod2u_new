@@ -14,6 +14,7 @@
 import {
     achievementPercent,
     amPerformanceStatus,
+    attributeScans,
     computeAmIncentive,
     computeLeaderBonus,
     deriveKpiMonthPeriod,
@@ -226,22 +227,11 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
         if (!data || data.length < SCAN_PAGE_SIZE) break
     }
 
-    const scansByAm = new Map<string, number>()
-    const scansByCampaign = new Map<string, number>()
-    const scansByCampaignTeam = new Map<string, Map<string, number>>()
     const teamIdByAm = new Map<string, string>()
     for (const m of members) teamIdByAm.set(m.am_user_id, m.team_id)
-
-    for (const scan of scans) {
-        scansByAm.set(scan.account_manager_user_id, (scansByAm.get(scan.account_manager_user_id) || 0) + 1)
-        scansByCampaign.set(scan.campaign_id, (scansByCampaign.get(scan.campaign_id) || 0) + 1)
-        const teamId = teamIdByAm.get(scan.account_manager_user_id)
-        if (teamId) {
-            const perTeam = scansByCampaignTeam.get(scan.campaign_id) || new Map<string, number>()
-            perTeam.set(teamId, (perTeam.get(teamId) || 0) + 1)
-            scansByCampaignTeam.set(scan.campaign_id, perTeam)
-        }
-    }
+    // Attribution is driven purely by each scan's snapshotted AM, so multiple
+    // campaigns per shop (e.g. an AM takeover) resolve to the right AM/team.
+    const { scansByAm, scansByCampaign, scansByCampaignTeam } = attributeScans(scans, teamIdByAm)
 
     // Resolve display names for leaders + AMs.
     const userIds = [...new Set([...members.map((m: any) => m.am_user_id), ...teams.map((t: any) => t.leader_user_id).filter(Boolean)])]
@@ -259,6 +249,8 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
         const target = m.manual_target_scans ?? m.auto_target_scans
         const actual = scansByAm.get(m.am_user_id) || 0
         const percent = achievementPercent(actual, target)
+        // Per-AM incentive cap ("Max Incentive / AM"), held on the team.
+        const maxIncentivePerAm = Number(team?.incentive_budget) || 0
         return {
             am_user_id: m.am_user_id,
             am_name: nameById.get(m.am_user_id) || 'Unknown',
@@ -267,7 +259,7 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
             assigned_target: target,
             actual_scans: actual,
             achievement_percent: percent,
-            incentive_earned: computeAmIncentive(rules, percent, m.team_id),
+            incentive_earned: computeAmIncentive(rules, percent, m.team_id, maxIncentivePerAm),
             status: amPerformanceStatus(percent),
         }
     })

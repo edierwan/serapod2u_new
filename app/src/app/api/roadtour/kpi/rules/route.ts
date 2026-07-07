@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { RULE_SELECT, jsonError, loadCycleForUpdate, requireKpiAdmin } from '../_lib'
+import { validateAmIncentiveTier } from '@/lib/roadtour/kpi'
+
+import { RULE_SELECT, jsonError, loadAmTierContext, loadCycleForUpdate, requireKpiAdmin } from '../_lib'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +34,17 @@ export async function POST(request: NextRequest) {
         if (!Number.isFinite(amount) || amount < 0) return jsonError('Incentive amount must be non-negative.')
         const teamId = String(body?.team_id || '').trim() || null
         if (appliesTo === 'specific_team' && !teamId) return jsonError('A team is required for team-specific rules.')
+
+        // AM incentive tiers must form a logical, capped, strictly-increasing set.
+        if (appliesTo === 'all_ams') {
+            const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, cycleId)
+            const tierError = validateAmIncentiveTier(
+                { achievement_threshold_percent: threshold, incentive_amount: amount },
+                existingTiers,
+                maxIncentivePerAm,
+            )
+            if (tierError) return jsonError(tierError)
+        }
 
         const { data, error } = await ctx.admin
             .from('roadtour_kpi_incentive_rules')

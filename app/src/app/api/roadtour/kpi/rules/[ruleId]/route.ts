@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { RULE_SELECT, jsonError, loadCycleForUpdate, requireKpiAdmin } from '../../_lib'
+import { validateAmIncentiveTier } from '@/lib/roadtour/kpi'
+
+import { RULE_SELECT, jsonError, loadAmTierContext, loadCycleForUpdate, requireKpiAdmin } from '../../_lib'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +65,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const appliesTo = updates.applies_to ?? rule.applies_to
         const teamId = updates.team_id !== undefined ? updates.team_id : rule.team_id
         if (appliesTo === 'specific_team' && !teamId) return jsonError('A team is required for team-specific rules.')
+
+        // Re-validate the whole AM tier set against the edited values (self excluded).
+        if (appliesTo === 'all_ams') {
+            const effectiveThreshold = updates.achievement_threshold_percent ?? Number(rule.achievement_threshold_percent)
+            const effectiveAmount = updates.incentive_amount ?? Number(rule.incentive_amount)
+            const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, rule.kpi_cycle_id, ruleId)
+            const tierError = validateAmIncentiveTier(
+                { id: ruleId, achievement_threshold_percent: effectiveThreshold, incentive_amount: effectiveAmount },
+                existingTiers,
+                maxIncentivePerAm,
+            )
+            if (tierError) return jsonError(tierError)
+        }
 
         const { data, error } = await ctx.admin
             .from('roadtour_kpi_incentive_rules')

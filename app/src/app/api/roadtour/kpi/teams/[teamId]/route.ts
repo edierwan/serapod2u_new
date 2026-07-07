@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { MEMBER_SELECT, TEAM_SELECT, buildMemberRows, jsonError, loadCycleForUpdate, parseMembers, requireKpiAdmin } from '../../_lib'
+import { MEMBER_SELECT, TEAM_SELECT, buildMemberRows, isMissingColumn, jsonError, loadCycleForUpdate, parseMembers, requireKpiAdmin } from '../../_lib'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,14 +44,23 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             if (!Number.isInteger(teamTarget) || teamTarget < 0) return jsonError('Monthly team target must be a non-negative integer.')
             updates.monthly_team_target = teamTarget
         }
-        if (body?.incentive_budget !== undefined) {
-            const budget = Number(body.incentive_budget)
-            if (!Number.isFinite(budget) || budget < 0) return jsonError('Incentive budget must be non-negative.')
-            updates.incentive_budget = budget
+        // "Max Incentive / AM" — accept the new field name, fall back to the
+        // legacy incentive_budget key. Both DB columns are kept in sync.
+        const capRaw = body?.max_incentive_per_am ?? body?.incentive_budget
+        if (capRaw !== undefined) {
+            const cap = Number(capRaw)
+            if (!Number.isFinite(cap) || cap < 0) return jsonError('Max Incentive / AM must be non-negative.')
+            updates.incentive_budget = cap
+            updates.max_incentive_per_am = cap
         }
 
         if (Object.keys(updates).length > 0) {
-            const { error: updateError } = await ctx.admin.from('roadtour_kpi_teams').update(updates).eq('id', teamId)
+            let { error: updateError } = await ctx.admin.from('roadtour_kpi_teams').update(updates).eq('id', teamId)
+            // Rolling deploy: retry without the additive cap column if absent.
+            if (updateError && isMissingColumn(updateError, 'max_incentive_per_am')) {
+                const { max_incentive_per_am, ...fallback } = updates
+                ;({ error: updateError } = await ctx.admin.from('roadtour_kpi_teams').update(fallback).eq('id', teamId))
+            }
             if (updateError) {
                 if (updateError.code === '23505') return jsonError('A team with this name already exists in the cycle.', 409)
                 return jsonError(updateError.message || 'Failed to update team.', 500)

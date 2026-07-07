@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
             { header: 'Team Target (Scans)', key: 'target', width: 18 },
             { header: 'Actual Scans', key: 'actual', width: 14 },
             { header: 'Achievement %', key: 'percent', width: 15 },
-            { header: 'Incentive Budget (RM)', key: 'budget', width: 20 },
+            { header: 'Max Incentive / AM (RM)', key: 'budget', width: 22 },
             { header: 'Est. Payout (RM)', key: 'payout', width: 17 },
             { header: 'Status', key: 'status', width: 14 },
         ]

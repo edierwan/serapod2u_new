@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
     addKpiMonths,
     amPerformanceStatus,
+    attributeScans,
     autoDistributeTarget,
     achievementPercent,
     compareKpiMonth,
@@ -22,6 +23,7 @@ import {
     previousKpiMonth,
     resolveLeaderId,
     teamPerformanceStatus,
+    validateAmIncentiveTier,
 } from './kpi'
 
 describe('deriveKpiMonthPeriod', () => {
@@ -133,6 +135,116 @@ describe('incentives', () => {
         expect(computeLeaderBonus(rules, 99.9)).toBe(0)
         expect(computeLeaderBonus(rules, 100.5)).toBe(500)
         expect(computeLeaderBonus(rules, 125)).toBe(1300) // 500 + 800, additive
+    })
+
+    it('Max Incentive / AM caps the winning tier payout', () => {
+        // Cap RM500: tiers 100=200, 120=300, 140=500. Nothing exceeds the cap.
+        expect(computeAmIncentive(rules, 145, null, 500)).toBe(400) // top met tier RM400, under cap
+        // A generous tier above the cap is clamped to the cap.
+        const richer = [...rules, { applies_to: 'all_ams' as const, achievement_threshold_percent: 160, incentive_amount: 900, status: 'active' }]
+        expect(computeAmIncentive(richer, 200, null, 500)).toBe(500) // clamped to cap
+        expect(computeAmIncentive(richer, 200, null, 0)).toBe(900) // 0/undefined cap = no cap
+        expect(computeAmIncentive(richer, 200, null)).toBe(900)
+    })
+
+    it('cap applies only to AM incentive; leader bonus stays additive and separate', () => {
+        // An AM who leads: own AM incentive is capped, leader bonus is not.
+        const amPart = computeAmIncentive(rules, 200, null, 250) // capped to 250 (would be 400)
+        const leaderPart = computeLeaderBonus(rules, 125) // 500 + 800 = 1300, uncapped
+        expect(amPart).toBe(250)
+        expect(leaderPart).toBe(1300)
+        expect(amPart + leaderPart).toBe(1550)
+    })
+})
+
+describe('validateAmIncentiveTier (illogical payouts are blocked)', () => {
+    const existing = [
+        { id: 'a', achievement_threshold_percent: 100, incentive_amount: 200 },
+        { id: 'b', achievement_threshold_percent: 120, incentive_amount: 300 },
+    ]
+    const CAP = 500
+
+    it('accepts a valid, strictly-increasing, capped tier', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 140, incentive_amount: 500 }, existing, CAP)).toBeNull()
+    })
+
+    it('rejects a threshold below 100%', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 90, incentive_amount: 400 }, existing, CAP))
+            .toBe('Achievement threshold must be at least 100%.')
+    })
+
+    it('rejects a non-positive amount', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 150, incentive_amount: 0 }, existing, CAP))
+            .toBe('Incentive amount must be greater than RM0.')
+    })
+
+    it('rejects an amount above the Max Incentive / AM cap', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 140, incentive_amount: 600 }, existing, CAP))
+            .toBe('Incentive cannot exceed the RM500 max incentive per AM.')
+    })
+
+    it('rejects a duplicate threshold', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 120, incentive_amount: 350 }, existing, CAP))
+            .toBe('A tier for 120% already exists.')
+    })
+
+    it('rejects a higher threshold that pays less than a lower tier (200% = RM100)', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 200, incentive_amount: 100 }, existing, CAP))
+            .toBe('Incentive for 200% must be higher than RM300 because it is above the 120% tier.')
+    })
+
+    it('rejects a lower threshold that pays more than a higher tier (110% = RM500)', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 110, incentive_amount: 500 }, existing, CAP))
+            .toBe('Incentive for 110% must be lower than RM300 because it is below the 120% tier.')
+    })
+
+    it('excludes the tier being edited from its own uniqueness/monotonicity checks', () => {
+        // Editing tier "b" (120%) to RM350 is fine — it is not compared against itself.
+        expect(validateAmIncentiveTier({ id: 'b', achievement_threshold_percent: 120, incentive_amount: 350 }, existing, CAP)).toBeNull()
+    })
+
+    it('no cap configured → cap check is skipped', () => {
+        expect(validateAmIncentiveTier({ achievement_threshold_percent: 140, incentive_amount: 9000 }, existing, 0)).toBeNull()
+    })
+})
+
+describe('attributeScans (multiple campaigns / AM takeover, no history rewrite)', () => {
+    it('splits same-shop scans across campaigns by the snapshotted AM/team', () => {
+        const teamIdByAm = new Map([['edi', 'team-1'], ['fitri', 'team-2']])
+        // Same shop, two campaigns: Campaign A (AM Edi) then Campaign B (AM Fitri).
+        const scans = [
+            { account_manager_user_id: 'edi', campaign_id: 'camp-A' },
+            { account_manager_user_id: 'edi', campaign_id: 'camp-A' },
+            { account_manager_user_id: 'fitri', campaign_id: 'camp-B' },
+        ]
+        const { scansByAm, scansByCampaign, scansByCampaignTeam } = attributeScans(scans, teamIdByAm)
+        expect(scansByAm.get('edi')).toBe(2)
+        expect(scansByAm.get('fitri')).toBe(1)
+        expect(scansByCampaign.get('camp-A')).toBe(2)
+        expect(scansByCampaign.get('camp-B')).toBe(1)
+        // Each campaign's scans aggregate to the team of its AM.
+        expect(scansByCampaignTeam.get('camp-A')?.get('team-1')).toBe(2)
+        expect(scansByCampaignTeam.get('camp-B')?.get('team-2')).toBe(1)
+    })
+
+    it('attribution follows each scan snapshot, not the AM’s later campaign', () => {
+        // Edi later works Campaign B too, but historical Campaign A scans stay Edi's.
+        const teamIdByAm = new Map([['edi', 'team-1'], ['fitri', 'team-2']])
+        const scans = [
+            { account_manager_user_id: 'edi', campaign_id: 'camp-A' }, // historical
+            { account_manager_user_id: 'fitri', campaign_id: 'camp-B' }, // recovery AM
+        ]
+        const { scansByAm } = attributeScans(scans, teamIdByAm)
+        expect(scansByAm.get('edi')).toBe(1)
+        expect(scansByAm.get('fitri')).toBe(1)
+    })
+
+    it('ignores team aggregation for scans whose AM is unassigned', () => {
+        const teamIdByAm = new Map([['edi', 'team-1']])
+        const scans = [{ account_manager_user_id: 'ghost', campaign_id: 'camp-X' }]
+        const { scansByAm, scansByCampaignTeam } = attributeScans(scans, teamIdByAm)
+        expect(scansByAm.get('ghost')).toBe(1) // counted (surfaces as unassigned)
+        expect(scansByCampaignTeam.get('camp-X')).toBeUndefined() // no team bucket
     })
 })
 
