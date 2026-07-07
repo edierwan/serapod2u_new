@@ -146,44 +146,72 @@ export function enumerateMonthRange(from: string, to: string): string[] {
 }
 
 /**
- * Derive the KPI month options for a RoadTour Event, ascending.
+ * Effective From Month options for a KPI Plan, ascending.
  *
- * Rules (see product spec):
- *  - Event with a start/end period → only months inside that period.
- *  - Open-ended event (no end date) → current month + optional next month,
- *    starting no earlier than the event start month.
- *  - Always union in months already configured on a KPI Plan so existing
- *    selections stay visible even if the event period later shrinks.
- * No hardcoded 12–18 month list is generated.
+ * Setting up a plan is a near-term action, so the "from" dropdown is a short
+ * list — NOT the full event period (that would surface many irrelevant future
+ * months for a long event). Rules (see product spec):
+ *  - Always: previous, current and next calendar month.
+ *  - If the RoadTour Event starts in a *future* month (beyond next month),
+ *    include the event start month so the plan can begin with the event.
+ *  - Union in any already-configured plan from-months so existing selections
+ *    stay visible even when they fall outside the recent-months window.
+ * No long generated future list is produced.
  */
-export function deriveEventMonthOptions(opts: {
+export function deriveEffectiveFromOptions(opts: {
     startDate?: string | null
-    endDate?: string | null
     configuredMonths?: string[]
     now?: Date
-    includeNextMonth?: boolean
 }): string[] {
     const now = opts.now ?? new Date()
+    const cur = currentKpiMonth(now)
+    const nextMonth = addKpiMonths(cur, 1)
     const startMonth = monthKeyFromDate(opts.startDate)
-    const endMonth = monthKeyFromDate(opts.endDate)
-    const set = new Set<string>()
+    const set = new Set<string>([addKpiMonths(cur, -1), cur, nextMonth])
 
-    if (startMonth && endMonth) {
-        // Fixed-period event: exactly the months inside the event window.
-        for (const m of enumerateMonthRange(startMonth, endMonth)) set.add(m)
-    } else {
-        // Open-ended (or missing dates): current month, optional next month,
-        // never earlier than the event start month when one is known.
-        const cur = currentKpiMonth(now)
-        const candidates = opts.includeNextMonth === false ? [cur] : [cur, addKpiMonths(cur, 1)]
-        for (const m of candidates) {
-            if (startMonth && compareKpiMonth(m, startMonth) < 0) continue
-            set.add(m)
-        }
-    }
+    // Future event start (later than next month) — surface it directly.
+    if (startMonth && compareKpiMonth(startMonth, nextMonth) > 0) set.add(startMonth)
 
     for (const m of opts.configuredMonths || []) {
         if (isValidKpiMonth(m)) set.add(m)
+    }
+
+    return [...set].sort((a, b) => compareKpiMonth(a, b))
+}
+
+/**
+ * Effective To Month options for a KPI Plan, ascending. The UI adds a separate
+ * "Open-ended" choice; this returns only the concrete month options. Rules:
+ *  - Every option is >= the selected Effective From month.
+ *  - Event with an end date → months from `from` up to the event end month
+ *    (never beyond the event).
+ *  - Open-ended event → just `from` and the following month (no long list).
+ *  - Union in configured plan endpoint months (>= from) so existing selections
+ *    stay visible.
+ */
+export function deriveEffectiveToOptions(opts: {
+    from: string
+    endDate?: string | null
+    configuredMonths?: string[]
+}): string[] {
+    const { from } = opts
+    if (!isValidKpiMonth(from)) return []
+    const endMonth = monthKeyFromDate(opts.endDate)
+    const set = new Set<string>()
+
+    if (endMonth) {
+        // Fixed-period event: from → event end (inclusive), capped by the event.
+        for (const m of enumerateMonthRange(from, endMonth)) {
+            if (compareKpiMonth(m, from) >= 0) set.add(m)
+        }
+    } else {
+        // Open-ended event: keep it short — the from month and the next month.
+        set.add(from)
+        set.add(addKpiMonths(from, 1))
+    }
+
+    for (const m of opts.configuredMonths || []) {
+        if (isValidKpiMonth(m) && compareKpiMonth(m, from) >= 0) set.add(m)
     }
 
     return [...set].sort((a, b) => compareKpiMonth(a, b))

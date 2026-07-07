@@ -17,8 +17,8 @@ import {
 } from 'lucide-react'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
-    autoDistributeTarget, compareKpiMonth, currentKpiMonth, deriveEventMonthOptions,
-    deriveKpiMonthPeriod, enumerateMonthRange, formatKpiMonthLabel, kpiMonthFromDate,
+    autoDistributeTarget, compareKpiMonth, currentKpiMonth, deriveEffectiveFromOptions,
+    deriveEffectiveToOptions, deriveKpiMonthPeriod, formatKpiMonthLabel, kpiMonthFromDate,
     monthKeyFromDate, resolveLeaderId,
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
@@ -100,26 +100,58 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const configCycleId = plan?.config_cycle_id || null
     const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) || null, [runs, selectedRunId])
 
-    // Months already configured on the plan — kept selectable even if the event
-    // window later shrinks below them.
-    const configuredPlanMonths = useMemo(() => {
-        if (!plan) return []
-        const from = kpiMonthFromDate(plan.effective_from_month)
-        const to = plan.effective_to_month ? kpiMonthFromDate(plan.effective_to_month) : from
-        return enumerateMonthRange(from, to)
-    }, [plan])
+    // Configured plan endpoints for this event — kept selectable even when they
+    // fall outside the recent-months window (from-months) or the event end (to).
+    const eventPlans = useMemo(
+        () => plans.filter((p) => p.roadtour_run_id === selectedRunId && p.status !== 'archived'),
+        [plans, selectedRunId],
+    )
+    const configuredFromMonths = useMemo(
+        () => eventPlans.map((p) => kpiMonthFromDate(p.effective_from_month)),
+        [eventPlans],
+    )
+    const configuredEndpointMonths = useMemo(
+        () => eventPlans.flatMap((p) => [
+            kpiMonthFromDate(p.effective_from_month),
+            ...(p.effective_to_month ? [kpiMonthFromDate(p.effective_to_month)] : []),
+        ]),
+        [eventPlans],
+    )
 
-    // Month options are derived from the selected RoadTour Event period (+ configured
-    // plan months) — never a generated 12–18 month list. See deriveEventMonthOptions.
-    const effectiveMonthOptions = useMemo(
-        () => deriveEventMonthOptions({
+    // Effective From is a short setup list (previous/current/next month + a future
+    // event start + configured from-months) — never the full event period.
+    const fromMonthOptions = useMemo(
+        () => deriveEffectiveFromOptions({
             startDate: selectedRun?.start_date,
-            endDate: selectedRun?.end_date,
-            configuredMonths: configuredPlanMonths,
+            configuredMonths: configuredFromMonths,
         }),
-        [selectedRun, configuredPlanMonths],
+        [selectedRun, configuredFromMonths],
+    )
+    // Effective To is bounded by the selected From and the event end month.
+    const editFromMonth = plan ? kpiMonthFromDate(plan.effective_from_month) : ''
+    const editToMonthOptions = useMemo(
+        () => deriveEffectiveToOptions({
+            from: editFromMonth,
+            endDate: selectedRun?.end_date,
+            configuredMonths: configuredEndpointMonths,
+        }),
+        [editFromMonth, selectedRun, configuredEndpointMonths],
+    )
+    const createToMonthOptions = useMemo(
+        () => deriveEffectiveToOptions({
+            from: planFromMonth,
+            endDate: selectedRun?.end_date,
+            configuredMonths: configuredEndpointMonths,
+        }),
+        [planFromMonth, selectedRun, configuredEndpointMonths],
     )
     const eventHasFixedPeriod = Boolean(selectedRun?.start_date && selectedRun?.end_date)
+    // Default a new plan to the current month, unless the event starts later.
+    const defaultFromMonth = useMemo(() => {
+        const start = monthKeyFromDate(selectedRun?.start_date)
+        const cur = currentKpiMonth()
+        return start && compareKpiMonth(start, cur) > 0 ? start : cur
+    }, [selectedRun])
 
     const amById = useMemo(() => new Map(ams.map((a) => [a.id, a])), [ams])
     const isActive = plan?.status === 'active'
@@ -450,7 +482,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         </Select>
                                     </div>
                                     {!plan && (
-                                        <Button size="sm" onClick={() => { setPlanFromMonth(effectiveMonthOptions[0] || currentKpiMonth()); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }} disabled={saving || schemaMissing || !selectedRunId}>
+                                        <Button size="sm" onClick={() => { setPlanFromMonth(defaultFromMonth); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }} disabled={saving || schemaMissing || !selectedRunId}>
                                             <Plus className="h-4 w-4 mr-1" /> Create KPI Plan
                                         </Button>
                                     )}
@@ -520,7 +552,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             <Select value={kpiMonthFromDate(plan.effective_from_month)} onValueChange={(v) => patchPlan({ effective_from_month: v })}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    {effectiveMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                    {fromMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -530,9 +562,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">Open-ended</SelectItem>
-                                                    {effectiveMonthOptions
-                                                        .filter((m) => compareKpiMonth(m, kpiMonthFromDate(plan.effective_from_month)) >= 0)
-                                                        .map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                    {editToMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -549,7 +579,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                     </div>
 
                                     <p className="text-xs text-muted-foreground">
-                                        Month options are limited to the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''} / configured KPI data. Effective To must be on or after Effective From.
+                                        Month options are limited to recent setup months, the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''}, and configured KPI data. Effective To must be on or after Effective From.
                                     </p>
 
                                     <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
@@ -910,7 +940,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         <Select value={planFromMonth} onValueChange={setPlanFromMonth}>
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {effectiveMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                {fromMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -920,15 +950,13 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="none">Open-ended</SelectItem>
-                                                {effectiveMonthOptions
-                                                    .filter((m) => compareKpiMonth(m, planFromMonth) >= 0)
-                                                    .map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                {createToMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Month options are limited to the selected RoadTour Event period / configured KPI data. Effective To must be on or after Effective From.
+                                    Month options are limited to recent setup months, the selected RoadTour Event period, and configured KPI data. Effective To must be on or after Effective From.
                                 </p>
                                 <label className="flex items-center gap-2 text-sm">
                                     <Switch checked={planLeaderBonus} onCheckedChange={setPlanLeaderBonus} />

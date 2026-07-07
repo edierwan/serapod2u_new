@@ -9,7 +9,8 @@ import {
     computeAmIncentive,
     computeLeaderBonus,
     currentKpiMonth,
-    deriveEventMonthOptions,
+    deriveEffectiveFromOptions,
+    deriveEffectiveToOptions,
     deriveKpiMonthPeriod,
     effectiveIncentiveRules,
     enumerateMonthRange,
@@ -215,52 +216,76 @@ describe('event-derived month options (dropdown limited to event period / config
         expect(enumerateMonthRange('2026-05', '2026-05')).toEqual(['2026-05'])
     })
 
-    it('fixed-period event shows only months inside the event window (no 2027)', () => {
-        // Event = Road Tour For Ellbow 2026, July 2026 → Dec 2026.
-        const opts = deriveEventMonthOptions({
+    it('enumerateMonthRange caps runaway ranges at 60 months', () => {
+        // 5 years + 1 month would be 61 months; capped at 60.
+        expect(enumerateMonthRange('2020-01', '2025-01')).toHaveLength(60)
+    })
+})
+
+describe('deriveEffectiveFromOptions (short setup list — no long future months)', () => {
+    it('active event → only previous/current/next month, never far-future months', () => {
+        // Event = Road Tour For Ellbow, active (started July 2026), current month July.
+        const opts = deriveEffectiveFromOptions({
             startDate: '2026-07-01',
-            endDate: '2026-12-31',
-            now: new Date(2026, 6, 15),
+            now: new Date(2026, 6, 15), // July 2026
         })
-        expect(opts).toEqual(['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'])
+        expect(opts).toEqual(['2026-06', '2026-07', '2026-08'])
+        // The bug: Sep 2026 … Apr 2027 must NOT appear.
+        expect(opts.some((m) => ['2026-09', '2026-10', '2026-11', '2026-12'].includes(m))).toBe(false)
         expect(opts.some((m) => m.startsWith('2027'))).toBe(false)
     })
 
-    it('open-ended event shows only current + next month (>= event start), never random future', () => {
-        const opts = deriveEventMonthOptions({
+    it('long fixed-period event still shows only recent setup months (event period does not expand the From list)', () => {
+        // Event runs July 2026 → June 2027, but From stays short.
+        const opts = deriveEffectiveFromOptions({
             startDate: '2026-07-01',
-            endDate: null,
-            now: new Date(2026, 6, 15), // July 2026
-        })
-        expect(opts).toEqual(['2026-07', '2026-08'])
-        expect(opts.some((m) => m.startsWith('2027') && m !== '2027-01')).toBe(false)
-    })
-
-    it('open-ended event never lists months before the event start', () => {
-        const opts = deriveEventMonthOptions({
-            startDate: '2026-09-01',
-            endDate: null,
-            now: new Date(2026, 6, 15), // July, before the Sept start
-        })
-        // current (Jul) and next (Aug) precede the Sept start → excluded.
-        expect(opts).toEqual([])
-    })
-
-    it('unions configured plan months so existing selections stay visible', () => {
-        const opts = deriveEventMonthOptions({
-            startDate: '2026-07-01',
-            endDate: '2026-08-31',
-            configuredMonths: ['2026-11'], // configured outside the (shrunken) window
             now: new Date(2026, 6, 15),
         })
-        expect(opts).toEqual(['2026-07', '2026-08', '2026-11'])
+        expect(opts).toEqual(['2026-06', '2026-07', '2026-08'])
     })
 
-    it('Effective To options are always >= Effective From', () => {
-        const options = deriveEventMonthOptions({ startDate: '2026-07-01', endDate: '2026-12-31' })
-        const from = '2026-10'
-        const toOptions = options.filter((m) => compareKpiMonth(m, from) >= 0)
-        expect(toOptions).toEqual(['2026-10', '2026-11', '2026-12'])
-        expect(toOptions.every((m) => compareKpiMonth(m, from) >= 0)).toBe(true)
+    it('future event start (beyond next month) is included so the plan can begin with the event', () => {
+        const opts = deriveEffectiveFromOptions({
+            startDate: '2026-11-01',
+            now: new Date(2026, 6, 15), // July; event starts November
+        })
+        expect(opts).toEqual(['2026-06', '2026-07', '2026-08', '2026-11'])
+    })
+
+    it('unions configured plan from-months so an existing selection stays visible', () => {
+        const opts = deriveEffectiveFromOptions({
+            startDate: '2026-07-01',
+            configuredMonths: ['2026-03'], // plan already starts before the recent window
+            now: new Date(2026, 6, 15),
+        })
+        expect(opts).toEqual(['2026-03', '2026-06', '2026-07', '2026-08'])
+    })
+})
+
+describe('deriveEffectiveToOptions (bounded by From and event end)', () => {
+    it('fixed-period event → from up to the event end month (no months beyond the event)', () => {
+        const opts = deriveEffectiveToOptions({ from: '2026-10', endDate: '2026-12-31' })
+        expect(opts).toEqual(['2026-10', '2026-11', '2026-12'])
+        expect(opts.some((m) => m.startsWith('2027'))).toBe(false)
+    })
+
+    it('every option is >= the selected Effective From', () => {
+        const opts = deriveEffectiveToOptions({ from: '2026-10', endDate: '2026-12-31' })
+        expect(opts.every((m) => compareKpiMonth(m, '2026-10') >= 0)).toBe(true)
+    })
+
+    it('event ending before From collapses to just the From month', () => {
+        const opts = deriveEffectiveToOptions({ from: '2026-10', endDate: '2026-08-31' })
+        expect(opts).toEqual(['2026-10'])
+    })
+
+    it('open-ended event → short list of From + next month only (no long future list)', () => {
+        const opts = deriveEffectiveToOptions({ from: '2026-07', endDate: null })
+        expect(opts).toEqual(['2026-07', '2026-08'])
+    })
+
+    it('unions configured endpoint months (>= from) so an existing To stays visible', () => {
+        const opts = deriveEffectiveToOptions({ from: '2026-07', endDate: null, configuredMonths: ['2026-11'] })
+        expect(opts).toEqual(['2026-07', '2026-08', '2026-11'])
     })
 })
