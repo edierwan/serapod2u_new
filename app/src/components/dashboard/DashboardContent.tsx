@@ -119,6 +119,9 @@ import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagem
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
+import ReturnProductView from '@/components/supply-chain/returns/ReturnProductView'
+import ReturnSettingsView from '@/components/supply-chain/returns/ReturnSettingsView'
+import ReturnReportingView from '@/components/supply-chain/returns/ReturnReportingView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
 import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
@@ -475,6 +478,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
       case 'manufacturer-quality-issues':
         return <QualityIssuesView userProfile={userProfile} />
+
+      // Quality & Returns → Return Product module
+      case 'return-product':
+        return <ReturnProductView userProfile={userProfile} />
+      case 'return-settings':
+        return <ReturnSettingsView userProfile={userProfile} />
+      case 'return-reporting':
+        return <ReturnReportingView userProfile={userProfile} />
 
       case 'supply-chain':
         return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} bannerImageUrl={moduleBannerUrls.supply} />

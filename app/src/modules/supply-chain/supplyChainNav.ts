@@ -28,6 +28,8 @@ import {
     Settings as SettingsIcon,
     Building2,
     Trophy,
+    Undo2,
+    BarChart3,
     type LucideIcon,
 } from 'lucide-react'
 import { canOpenOrderEditor } from './h2m-access'
@@ -132,9 +134,11 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
         id: 'sc-quality',
         label: 'Quality & Returns',
         icon: ShieldCheck,
-        description: 'Manage product return cases, quality adjustments, and manufacturer acknowledgements.',
+        description: 'Create and manage product return cases from shops to warehouse.',
         children: [
-            { id: 'manufacturer-quality-issues', label: 'Product Return', icon: ShieldCheck },
+            { id: 'return-product', label: 'Return Product', icon: Undo2 },
+            { id: 'return-settings', label: 'Return Settings', icon: SettingsIcon, access: { allowedOrgTypes: ['HQ', 'WH', 'DIST'] } },
+            { id: 'return-reporting', label: 'Return Reporting', icon: BarChart3 },
         ],
     },
 ]
