@@ -17,8 +17,9 @@ import {
 } from 'lucide-react'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
-    addKpiMonths, autoDistributeTarget, currentKpiMonth, deriveKpiMonthPeriod,
-    formatKpiMonthLabel, kpiMonthFromDate, resolveLeaderId,
+    autoDistributeTarget, compareKpiMonth, currentKpiMonth, deriveEventMonthOptions,
+    deriveKpiMonthPeriod, enumerateMonthRange, formatKpiMonthLabel, kpiMonthFromDate,
+    monthKeyFromDate, resolveLeaderId,
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, LoadingBlock, PageHeader } from './analytics/shared'
@@ -32,14 +33,6 @@ const POLICY_RULES = [
     'New campaign QR scans contribute to the AM assigned in that campaign.',
     'Historical scan attribution is not rewritten when AM changes.',
 ]
-
-/** Effective-month options for the plan window selectors (configuration, not history browsing). */
-function buildEffectiveMonthOptions(): string[] {
-    const base = currentKpiMonth()
-    const options: string[] = []
-    for (let offset = -1; offset <= 12; offset++) options.push(addKpiMonths(base, offset))
-    return options
-}
 
 function PlanStatusBadge({ status }: { status: string }) {
     if (status === 'active') return <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">Active</Badge>
@@ -69,7 +62,6 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const supabase = createClient()
     const companyId = userProfile?.organizations?.id
 
-    const effectiveMonthOptions = useMemo(buildEffectiveMonthOptions, [])
     const [runs, setRuns] = useState<RoadtourRun[]>([])
     const [ams, setAms] = useState<KpiAmOption[]>([])
     const [plans, setPlans] = useState<KpiPlanRow[]>([])
@@ -106,6 +98,28 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         [plans, selectedRunId],
     )
     const configCycleId = plan?.config_cycle_id || null
+    const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) || null, [runs, selectedRunId])
+
+    // Months already configured on the plan — kept selectable even if the event
+    // window later shrinks below them.
+    const configuredPlanMonths = useMemo(() => {
+        if (!plan) return []
+        const from = kpiMonthFromDate(plan.effective_from_month)
+        const to = plan.effective_to_month ? kpiMonthFromDate(plan.effective_to_month) : from
+        return enumerateMonthRange(from, to)
+    }, [plan])
+
+    // Month options are derived from the selected RoadTour Event period (+ configured
+    // plan months) — never a generated 12–18 month list. See deriveEventMonthOptions.
+    const effectiveMonthOptions = useMemo(
+        () => deriveEventMonthOptions({
+            startDate: selectedRun?.start_date,
+            endDate: selectedRun?.end_date,
+            configuredMonths: configuredPlanMonths,
+        }),
+        [selectedRun, configuredPlanMonths],
+    )
+    const eventHasFixedPeriod = Boolean(selectedRun?.start_date && selectedRun?.end_date)
 
     const amById = useMemo(() => new Map(ams.map((a) => [a.id, a])), [ams])
     const isActive = plan?.status === 'active'
@@ -391,7 +405,6 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         [memberIds, amById],
     )
 
-    const selectedRun = runs.find((r) => r.id === selectedRunId)
     const fromLabel = plan ? formatKpiMonthLabel(kpiMonthFromDate(plan.effective_from_month)) : ''
     const toLabel = plan?.effective_to_month ? formatKpiMonthLabel(kpiMonthFromDate(plan.effective_to_month)) : 'Open-ended'
     const currentPeriod = deriveKpiMonthPeriod(currentKpiMonth())
@@ -437,7 +450,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         </Select>
                                     </div>
                                     {!plan && (
-                                        <Button size="sm" onClick={() => { setPlanFromMonth(currentKpiMonth()); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }} disabled={saving || schemaMissing || !selectedRunId}>
+                                        <Button size="sm" onClick={() => { setPlanFromMonth(effectiveMonthOptions[0] || currentKpiMonth()); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }} disabled={saving || schemaMissing || !selectedRunId}>
                                             <Plus className="h-4 w-4 mr-1" /> Create KPI Plan
                                         </Button>
                                     )}
@@ -517,7 +530,9 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="none">Open-ended</SelectItem>
-                                                    {effectiveMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                    {effectiveMonthOptions
+                                                        .filter((m) => compareKpiMonth(m, kpiMonthFromDate(plan.effective_from_month)) >= 0)
+                                                        .map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -532,6 +547,10 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             </Select>
                                         </div>
                                     </div>
+
+                                    <p className="text-xs text-muted-foreground">
+                                        Month options are limited to the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''} / configured KPI data. Effective To must be on or after Effective From.
+                                    </p>
 
                                     <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
                                         <span className="flex items-center gap-2 text-blue-800">
@@ -901,11 +920,16 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="none">Open-ended</SelectItem>
-                                                {effectiveMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                                {effectiveMonthOptions
+                                                    .filter((m) => compareKpiMonth(m, planFromMonth) >= 0)
+                                                    .map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Month options are limited to the selected RoadTour Event period / configured KPI data. Effective To must be on or after Effective From.
+                                </p>
                                 <label className="flex items-center gap-2 text-sm">
                                     <Switch checked={planLeaderBonus} onCheckedChange={setPlanLeaderBonus} />
                                     Enable leader bonus (additive, optional)

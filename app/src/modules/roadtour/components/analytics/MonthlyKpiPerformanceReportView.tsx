@@ -365,7 +365,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                     <div className="flex items-center gap-1.5 text-xs text-blue-700">
                         <Info className="h-3.5 w-3.5" />
-                        Period auto: {period.label} (Calendar Month) — monthly report includes all campaigns under the selected event, including those created mid-month.
+                        Period auto: {period.label} (Calendar Month). Month options are limited to configured KPI Plan months — monthly report includes all campaigns under the selected event, including those created mid-month.
                     </div>
                     <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={handleExportExcel} disabled={exporting !== null || !hasReportData}>

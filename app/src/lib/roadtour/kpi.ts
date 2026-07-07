@@ -122,6 +122,73 @@ export function isMonthInEffectiveRange(month: string, from: string, to: string 
     return true
 }
 
+/** Extract 'YYYY-MM' from a 'YYYY-MM-DD' / ISO date string, or null if unparseable. */
+export function monthKeyFromDate(dateStr: string | null | undefined): string | null {
+    if (!dateStr) return null
+    const m = /^(\d{4})-(\d{2})/.exec(String(dateStr))
+    if (!m) return null
+    const month = Number(m[2])
+    return month >= 1 && month <= 12 ? `${m[1]}-${m[2]}` : null
+}
+
+/** Inclusive ascending list of KPI months between two 'YYYY-MM' bounds (capped at 60 months). */
+export function enumerateMonthRange(from: string, to: string): string[] {
+    if (!isValidKpiMonth(from) || !isValidKpiMonth(to)) return []
+    const start = compareKpiMonth(from, to) <= 0 ? from : to
+    const end = compareKpiMonth(from, to) <= 0 ? to : from
+    const months: string[] = []
+    let cursor = start
+    for (let i = 0; i < 60 && compareKpiMonth(cursor, end) <= 0; i++) {
+        months.push(cursor)
+        cursor = addKpiMonths(cursor, 1)
+    }
+    return months
+}
+
+/**
+ * Derive the KPI month options for a RoadTour Event, ascending.
+ *
+ * Rules (see product spec):
+ *  - Event with a start/end period → only months inside that period.
+ *  - Open-ended event (no end date) → current month + optional next month,
+ *    starting no earlier than the event start month.
+ *  - Always union in months already configured on a KPI Plan so existing
+ *    selections stay visible even if the event period later shrinks.
+ * No hardcoded 12–18 month list is generated.
+ */
+export function deriveEventMonthOptions(opts: {
+    startDate?: string | null
+    endDate?: string | null
+    configuredMonths?: string[]
+    now?: Date
+    includeNextMonth?: boolean
+}): string[] {
+    const now = opts.now ?? new Date()
+    const startMonth = monthKeyFromDate(opts.startDate)
+    const endMonth = monthKeyFromDate(opts.endDate)
+    const set = new Set<string>()
+
+    if (startMonth && endMonth) {
+        // Fixed-period event: exactly the months inside the event window.
+        for (const m of enumerateMonthRange(startMonth, endMonth)) set.add(m)
+    } else {
+        // Open-ended (or missing dates): current month, optional next month,
+        // never earlier than the event start month when one is known.
+        const cur = currentKpiMonth(now)
+        const candidates = opts.includeNextMonth === false ? [cur] : [cur, addKpiMonths(cur, 1)]
+        for (const m of candidates) {
+            if (startMonth && compareKpiMonth(m, startMonth) < 0) continue
+            set.add(m)
+        }
+    }
+
+    for (const m of opts.configuredMonths || []) {
+        if (isValidKpiMonth(m)) set.add(m)
+    }
+
+    return [...set].sort((a, b) => compareKpiMonth(a, b))
+}
+
 /**
  * List the KPI months ('YYYY-MM') a plan covers, newest first.
  * An open-ended plan (null `to`) is capped at the current month so the report
