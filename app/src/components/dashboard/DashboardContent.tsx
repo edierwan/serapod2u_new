@@ -119,6 +119,9 @@ import RedeemGiftManagementView from '@/components/redeem-gift/RedeemGiftManagem
 import JourneyBuilderV2 from '@/components/journey/JourneyBuilderV2'
 import ScratchCardGameView from '@/components/dashboard/views/consumer-engagement/ScratchCardGameView'
 import QualityIssuesView from '@/components/manufacturer/QualityIssuesView'
+import ReturnProductView from '@/components/supply-chain/returns/ReturnProductView'
+import ReturnSettingsView from '@/components/supply-chain/returns/ReturnSettingsView'
+import ReturnReportingView from '@/components/supply-chain/returns/ReturnReportingView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
 import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
@@ -157,6 +160,8 @@ import { PostVisitImpactReportView } from '@/modules/roadtour/components/analyti
 import { ShopImpactDetailView } from '@/modules/roadtour/components/analytics/ShopImpactDetailView'
 import { AccountManagerImpactPerformanceView } from '@/modules/roadtour/components/analytics/AccountManagerImpactPerformanceView'
 import { FollowUpPriorityQueueView } from '@/modules/roadtour/components/analytics/FollowUpPriorityQueueView'
+import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/analytics/MonthlyKpiPerformanceReportView'
+import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
@@ -474,6 +479,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'manufacturer-quality-issues':
         return <QualityIssuesView userProfile={userProfile} />
 
+      // Quality & Returns → Return Product module
+      case 'return-product':
+        return <ReturnProductView userProfile={userProfile} />
+      case 'return-settings':
+        return <ReturnSettingsView userProfile={userProfile} />
+      case 'return-reporting':
+        return <ReturnReportingView userProfile={userProfile} />
+
       case 'supply-chain':
         return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} bannerImageUrl={moduleBannerUrls.supply} />
 
@@ -512,8 +525,12 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <AccountManagerImpactPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-follow-up-priority':
         return <FollowUpPriorityQueueView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-monthly-kpi-report':
+        return <MonthlyKpiPerformanceReportView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-whatsapp':
         return <RoadtourWhatsAppMonitoringView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-kpi-settings':
+        return <RoadtourKpiSettingsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-settings':
         return <RoadtourSettingsView userProfile={userProfile} />
 

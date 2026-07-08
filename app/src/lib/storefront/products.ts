@@ -8,8 +8,9 @@ import { getStorageUrl } from '@/lib/utils'
  * self-hosted storage URLs include the required anon apikey.
  */
 function toStorefrontMediaUrl(rawPath: string | null): string | null {
-  if (!rawPath) return null
-  return getStorageUrl(rawPath) || rawPath
+  const normalizedPath = rawPath?.trim()
+  if (!normalizedPath) return null
+  return getStorageUrl(normalizedPath) || normalizedPath
 }
 
 /** @deprecated Use toStorefrontMediaUrl instead */
@@ -89,6 +90,74 @@ interface ListProductsParams {
   limit?: number
 }
 
+interface ProductImageCandidate {
+  image_url?: string | null
+  is_active?: boolean | null
+  is_primary?: boolean | null
+  sort_order?: number | null
+}
+
+interface VariantMediaCandidate {
+  type?: string | null
+  url?: string | null
+  is_default?: boolean | null
+  sort_order?: number | null
+}
+
+interface ProductVariantCandidate {
+  image_url?: string | null
+  animation_url?: string | null
+  is_active?: boolean | null
+  is_default?: boolean | null
+  sort_order?: number | null
+  variant_media?: VariantMediaCandidate[] | null
+}
+
+function hasMediaValue(value: string | null | undefined): value is string {
+  return Boolean(value?.trim())
+}
+
+function byPreferredOrder<T extends { is_default?: boolean | null; sort_order?: number | null }>(a: T, b: T) {
+  const defaultDifference = Number(Boolean(b.is_default)) - Number(Boolean(a.is_default))
+  return defaultDifference || (a.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.sort_order ?? Number.MAX_SAFE_INTEGER)
+}
+
+/**
+ * Pick storefront card media without assuming every environment stores product
+ * uploads in the same table. New product-level images take precedence; variant
+ * fields and variant_media remain fallbacks for legacy and migrated records.
+ */
+export function selectStorefrontProductMedia(
+  productImages: ProductImageCandidate[] | null | undefined,
+  variants: ProductVariantCandidate[] | null | undefined
+) {
+  const orderedProductImages = [...(productImages || [])]
+    .filter((image) => image.is_active !== false && hasMediaValue(image.image_url))
+    .sort((a, b) => {
+      const primaryDifference = Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
+      return primaryDifference || (a.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.sort_order ?? Number.MAX_SAFE_INTEGER)
+    })
+
+  const orderedVariants = [...(variants || [])]
+    .filter((variant) => variant.is_active !== false)
+    .sort(byPreferredOrder)
+
+  const variantImage = orderedVariants.find((variant) => hasMediaValue(variant.image_url))?.image_url
+  const variantAnimation = orderedVariants.find((variant) => hasMediaValue(variant.animation_url))?.animation_url
+  const orderedVariantMedia = orderedVariants.flatMap((variant) =>
+    [...(variant.variant_media || [])]
+      .filter((media) => hasMediaValue(media.url))
+      .sort(byPreferredOrder)
+  )
+  const mediaImage = orderedVariantMedia.find((media) => media.type === 'image')?.url
+  const mediaAnimation = orderedVariantMedia.find((media) => media.type === 'video')?.url
+
+  return {
+    imageUrl: orderedProductImages[0]?.image_url?.trim() || variantImage?.trim() || mediaImage?.trim() || null,
+    animationUrl: variantAnimation?.trim() || mediaAnimation?.trim() || null,
+  }
+}
+
 // ── Functions ────────────────────────────────────────────────────
 
 export async function listProducts(params: ListProductsParams = {}) {
@@ -119,7 +188,18 @@ export async function listProducts(params: ListProductsParams = {}) {
       created_at,
       product_categories (id, category_name),
       brands (id, brand_name),
-      product_variants (id, variant_name, image_url, animation_url, suggested_retail_price, is_active)
+      product_images (image_url, is_active, is_primary, sort_order),
+      product_variants (
+        id,
+        variant_name,
+        image_url,
+        animation_url,
+        suggested_retail_price,
+        is_active,
+        is_default,
+        sort_order,
+        variant_media (type, url, is_default, sort_order)
+      )
     `, { count: 'exact' })
     .eq('is_active', true)
 
@@ -170,11 +250,9 @@ export async function listProducts(params: ListProductsParams = {}) {
 
     const startingPrice = prices.length > 0 ? Math.min(...prices) : null
 
-    // Get first available media from variants (image or animation/video)
-    const variantWithImage = activeVariants.find((v: any) => v.image_url)
-    const variantWithAnimation = activeVariants.find((v: any) => v.animation_url)
-    const firstImage = toStorefrontMediaUrl(variantWithImage?.image_url || null)
-    const firstAnimation = toStorefrontMediaUrl(variantWithAnimation?.animation_url || null)
+    const selectedMedia = selectStorefrontProductMedia(p.product_images, activeVariants)
+    const firstImage = toStorefrontMediaUrl(selectedMedia.imageUrl)
+    const firstAnimation = toStorefrontMediaUrl(selectedMedia.animationUrl)
 
     // Determine media type
     let mediaType: 'image' | 'video' | 'animation' = 'image'
