@@ -68,7 +68,7 @@ export default function ReturnSettingsView({ userProfile: _userProfile }: { user
     }
 
     return (
-        <div className="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
+        <div className="w-full space-y-4">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-xl font-semibold text-foreground">Return Settings</h1>
@@ -115,8 +115,10 @@ export default function ReturnSettingsView({ userProfile: _userProfile }: { user
                 </div>
             </section>
 
-            <MasterListEditor title="Return Reasons" items={reasons} onChange={setReasons} disabled={!canEdit} />
-            <MasterListEditor title="Return Conditions" items={conditions} onChange={setConditions} disabled={!canEdit} />
+            <div className="grid gap-4 lg:grid-cols-2">
+                <MasterListEditor title="Return Reasons" items={reasons} onChange={setReasons} disabled={!canEdit} />
+                <MasterListEditor title="Return Conditions" items={conditions} onChange={setConditions} disabled={!canEdit} />
+            </div>
 
             <section className="rounded-lg border border-border bg-card p-4">
                 <h2 className="mb-2 text-sm font-semibold text-foreground">PDF Instruction Text / Return Note</h2>
