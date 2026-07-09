@@ -82,6 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Header fields — editable while not terminal.
     if ('contact_person' in body) patch.contact_person = body.contact_person || null
     if ('contact_phone' in body) patch.contact_phone = body.contact_phone || null
+    if ('contact_email' in body) patch.contact_email = body.contact_email || null
     if ('notes' in body) patch.notes = body.notes || null
     if ('return_warehouse_id' in body) patch.return_warehouse_id = body.return_warehouse_id || null
     if (ctx.isManager && 'shop_org_id' in body && rc.status === 'return_draft' && body.shop_org_id) {
