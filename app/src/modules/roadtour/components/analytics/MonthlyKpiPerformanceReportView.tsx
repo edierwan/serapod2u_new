@@ -47,7 +47,8 @@ function KpiStatusPill({ status }: { status: KpiPerformanceStatus }) {
 const POLICY_NOTES = [
     'KPI month uses calendar month boundaries.',
     'Scan attribution follows campaign QR / selected AM at scan time.',
-    'AM incentive = monthly scans × RM/scan from the volume tier bracket (below 10,001 = RM 0).',
+    'AM incentive always uses the scan volume table (monthly scans × RM/scan bracket).',
+    'In By achievement mode, AM must meet an achievement gate before volume payout is unlocked.',
     'Point value (RM) uses the same volume tiers as KPI incentive.',
     'New campaigns created mid-month are included in the same KPI month if they belong to the selected event.',
     'Historical scan attribution is not rewritten when AM changes.',
@@ -262,14 +263,16 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 8,
-                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Tier RM/scan', 'Achievement %', 'Incentive Earned', 'Status']],
+                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Tier RM/scan', 'Volume Payout', 'Achievement %', 'Total Incentive', 'Status']],
                 body: report.ams.map((a) => [
                     a.rank, a.am_name, a.team_name,
                     a.assigned_target.toLocaleString(), a.actual_scans.toLocaleString(),
                     a.volume_tier_rate != null && a.volume_tier_rate > 0
                         ? `RM ${a.volume_tier_rate.toFixed(2)}`
-                        : report.cycle.am_incentive_mode === 'achievement_tiers' ? 'Custom' : '0',
-                    `${a.achievement_percent.toFixed(1)}%`, `RM ${a.incentive_earned.toLocaleString()}`,
+                        : '0',
+                    `RM ${a.volume_incentive.toLocaleString()}`,
+                    `${a.achievement_percent.toFixed(1)}%`,
+                    `RM ${a.incentive_earned.toLocaleString()}`,
                     KPI_STATUS_LABEL[a.status],
                 ]),
                 headStyles: { fillColor: [30, 64, 175] },
@@ -599,8 +602,9 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                     <TableHead className="text-right">Assigned Target</TableHead>
                                                     <TableHead className="text-right">Actual</TableHead>
                                                     <TableHead className="text-right">RM/scan</TableHead>
+                                                    <TableHead className="text-right">Volume Payout</TableHead>
                                                     <TableHead className="text-right">Achievement %</TableHead>
-                                                    <TableHead className="text-right">Incentive</TableHead>
+                                                    <TableHead className="text-right">Total Incentive</TableHead>
                                                     <TableHead className="text-right">Rank</TableHead>
                                                     <TableHead>Status</TableHead>
                                                 </TableRow>
@@ -615,8 +619,9 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                         <TableCell className="text-right text-muted-foreground">
                                                             {a.volume_tier_rate != null && a.volume_tier_rate > 0
                                                                 ? `RM ${a.volume_tier_rate.toFixed(2)}`
-                                                                : report.cycle.am_incentive_mode === 'achievement_tiers' ? 'Custom' : '0'}
+                                                                : '0'}
                                                         </TableCell>
+                                                        <TableCell className="text-right">RM {formatNumber(Math.round(a.volume_incentive))}</TableCell>
                                                         <TableCell className="text-right font-medium">{a.achievement_percent.toFixed(1)}%</TableCell>
                                                         <TableCell className="text-right">RM {formatNumber(Math.round(a.incentive_earned))}</TableCell>
                                                         <TableCell className="text-right">{a.rank}</TableCell>

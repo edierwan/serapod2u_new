@@ -497,12 +497,32 @@ export interface AmIncentiveEarningsResult {
     incentiveEarned: number
     volumeTierRate: number | null
     incentiveMode: KpiAmIncentiveMode
+    volumeIncentive: number
+    achievementBonus: number
+}
+
+/** True when an AM meets at least one active achievement gate tier. */
+export function hasMetAmAchievementGate(
+    rules: KpiIncentiveRuleLike[],
+    amPercent: number,
+    teamId?: string | null,
+): boolean {
+    let hasActiveTier = false
+    for (const rule of rules) {
+        if (rule.status !== 'active') continue
+        if (rule.applies_to === 'team_leader') continue
+        if (rule.applies_to === 'specific_team' && rule.team_id !== teamId) continue
+        hasActiveTier = true
+        if (amPercent >= rule.achievement_threshold_percent) return true
+    }
+    // No configured tiers → default gate at 100% achievement.
+    return !hasActiveTier && amPercent >= 100
 }
 
 /**
  * Compute AM incentive using the plan's selected model.
  * - volume_tiers: actual scans × bracket RM/scan
- * - achievement_tiers: highest met custom % tier (flat RM payout)
+ * - achievement_tiers: same volume payout once an achievement gate tier is met
  */
 export function computeAmIncentiveEarnings(
     mode: KpiAmIncentiveMode,
@@ -514,23 +534,23 @@ export function computeAmIncentiveEarnings(
         maxIncentivePerAm?: number | null
     },
 ): AmIncentiveEarningsResult {
-    if (mode === 'achievement_tiers') {
-        return {
-            incentiveMode: mode,
-            volumeTierRate: null,
-            incentiveEarned: computeAmIncentive(
-                args.amRules,
-                args.achievementPercent,
-                args.teamId,
-                args.maxIncentivePerAm,
-            ),
-        }
+    const capTotal = (amount: number) => {
+        if (args.maxIncentivePerAm && args.maxIncentivePerAm > 0) return Math.min(amount, args.maxIncentivePerAm)
+        return amount
     }
-    const rate = resolveVolumeTierRate(args.actualScans)
+    const volumeRate = resolveVolumeTierRate(args.actualScans)
+    const eligibleForVolumePayout = mode === 'volume_tiers'
+        || hasMetAmAchievementGate(args.amRules, args.achievementPercent, args.teamId)
+    const volumeIncentive = eligibleForVolumePayout
+        ? computeVolumeIncentive(args.actualScans, undefined)
+        : 0
+
     return {
         incentiveMode: mode,
-        volumeTierRate: rate,
-        incentiveEarned: computeVolumeIncentive(args.actualScans, args.maxIncentivePerAm),
+        volumeTierRate: eligibleForVolumePayout ? volumeRate : 0,
+        volumeIncentive,
+        achievementBonus: 0,
+        incentiveEarned: capTotal(volumeIncentive),
     }
 }
 
@@ -595,6 +615,22 @@ export interface AmTierInput {
  *  5. a higher threshold must pay strictly more than every lower tier
  *  6. a lower threshold must pay strictly less than every higher tier
  */
+/** Validate achievement-only AM tiers (threshold % only; payout comes from volume table). */
+export function validateAmAchievementThreshold(
+    candidate: { id?: string | null; achievement_threshold_percent: number },
+    existingTiers: { id?: string | null; achievement_threshold_percent: number }[],
+): string | null {
+    const threshold = Number(candidate.achievement_threshold_percent)
+    if (!Number.isFinite(threshold) || threshold < 100) {
+        return 'Achievement threshold must be at least 100%.'
+    }
+    const others = existingTiers.filter((t) => !(candidate.id && t.id === candidate.id))
+    if (others.some((t) => Number(t.achievement_threshold_percent) === threshold)) {
+        return `A tier for ${threshold}% already exists.`
+    }
+    return null
+}
+
 export function validateAmIncentiveTier(
     candidate: AmTierInput,
     existingTiers: AmTierInput[],

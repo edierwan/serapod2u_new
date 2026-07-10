@@ -73,6 +73,8 @@ export interface KpiReportAmRow {
     actual_scans: number
     achievement_percent: number
     volume_tier_rate: number | null
+    volume_incentive: number
+    achievement_bonus: number
     incentive_earned: number
     rank: number
     status: KpiPerformanceStatus
@@ -290,6 +292,8 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
             actual_scans: actual,
             achievement_percent: percent,
             volume_tier_rate: earnings.volumeTierRate,
+            volume_incentive: earnings.volumeIncentive,
+            achievement_bonus: earnings.achievementBonus,
             incentive_earned: earnings.incentiveEarned,
             status: amPerformanceStatus(percent),
         }

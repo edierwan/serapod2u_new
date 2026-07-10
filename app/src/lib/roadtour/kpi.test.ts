@@ -27,6 +27,7 @@ import {
     resolvePointValueRmForVolume,
     resolveVolumeTierRate,
     teamPerformanceStatus,
+    validateAmAchievementThreshold,
     validateAmIncentiveTier,
 } from './kpi'
 
@@ -151,17 +152,44 @@ describe('computeAmIncentiveEarnings (hybrid modes)', () => {
             amRules,
         })
         expect(result.volumeTierRate).toBe(0.10)
+        expect(result.volumeIncentive).toBe(1_500)
+        expect(result.achievementBonus).toBe(0)
         expect(result.incentiveEarned).toBe(1_500)
     })
 
-    it('achievement_tiers mode uses highest met % tier', () => {
+    it('achievement_tiers mode unlocks volume payout when gate is met', () => {
         const result = computeAmIncentiveEarnings('achievement_tiers', {
             actualScans: 15_000,
             achievementPercent: 125,
             amRules,
         })
-        expect(result.volumeTierRate).toBeNull()
-        expect(result.incentiveEarned).toBe(300)
+        expect(result.volumeTierRate).toBe(0.10)
+        expect(result.volumeIncentive).toBe(1_500)
+        expect(result.achievementBonus).toBe(0)
+        expect(result.incentiveEarned).toBe(1_500)
+    })
+
+    it('achievement_tiers mode pays 0 when achievement gate is not met', () => {
+        const result = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 15_000,
+            achievementPercent: 80,
+            amRules,
+        })
+        expect(result.volumeTierRate).toBe(0)
+        expect(result.volumeIncentive).toBe(0)
+        expect(result.achievementBonus).toBe(0)
+        expect(result.incentiveEarned).toBe(0)
+    })
+
+    it('caps volume payout when Max Incentive / AM is set', () => {
+        const result = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 15_000,
+            achievementPercent: 125,
+            amRules,
+            maxIncentivePerAm: 1_200,
+        })
+        expect(result.volumeIncentive).toBe(1_500)
+        expect(result.incentiveEarned).toBe(1_200)
     })
 })
 
@@ -216,6 +244,27 @@ describe('incentives', () => {
         expect(amPart).toBe(250)
         expect(leaderPart).toBe(1300)
         expect(amPart + leaderPart).toBe(1550)
+    })
+})
+
+describe('validateAmAchievementThreshold', () => {
+    const existing = [
+        { id: 'a', achievement_threshold_percent: 100 },
+        { id: 'b', achievement_threshold_percent: 120 },
+    ]
+
+    it('accepts a valid unique threshold', () => {
+        expect(validateAmAchievementThreshold({ achievement_threshold_percent: 140 }, existing)).toBeNull()
+    })
+
+    it('rejects thresholds below 100%', () => {
+        expect(validateAmAchievementThreshold({ achievement_threshold_percent: 90 }, existing))
+            .toBe('Achievement threshold must be at least 100%.')
+    })
+
+    it('rejects duplicate thresholds', () => {
+        expect(validateAmAchievementThreshold({ achievement_threshold_percent: 120 }, existing))
+            .toBe('A tier for 120% already exists.')
     })
 })
 

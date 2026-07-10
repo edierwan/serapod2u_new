@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { validateAmIncentiveTier } from '@/lib/roadtour/kpi'
+import { validateAmAchievementThreshold, validateAmIncentiveTier } from '@/lib/roadtour/kpi'
 
 import { RULE_SELECT, jsonError, loadAmTierContext, loadCycleForUpdate, requireKpiAdmin } from '../_lib'
 
@@ -70,18 +70,19 @@ export async function POST(request: NextRequest) {
         if (!ALLOWED_BONUS_TYPES.has(bonusType)) return jsonError('Invalid bonus type.')
         const threshold = Number(body?.achievement_threshold_percent)
         if (!Number.isFinite(threshold) || threshold <= 0) return jsonError('Achievement threshold must be a positive percentage.')
-        const amount = Number(body?.incentive_amount)
-        if (!Number.isFinite(amount) || amount < 0) return jsonError('Incentive amount must be non-negative.')
+        const amount = appliesTo === 'all_ams' ? 0 : Number(body?.incentive_amount)
+        if (appliesTo !== 'all_ams') {
+            if (!Number.isFinite(amount) || amount < 0) return jsonError('Incentive amount must be non-negative.')
+        }
         const teamId = String(body?.team_id || '').trim() || null
         if (appliesTo === 'specific_team' && !teamId) return jsonError('A team is required for team-specific rules.')
 
         // AM incentive tiers must form a logical, capped, strictly-increasing set.
         if (appliesTo === 'all_ams') {
-            const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, cycleId)
-            const tierError = validateAmIncentiveTier(
-                { achievement_threshold_percent: threshold, incentive_amount: amount },
+            const { existingTiers } = await loadAmTierContext(ctx.admin, cycleId)
+            const tierError = validateAmAchievementThreshold(
+                { achievement_threshold_percent: threshold },
                 existingTiers,
-                maxIncentivePerAm,
             )
             if (tierError) return jsonError(tierError)
         }

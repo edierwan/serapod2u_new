@@ -113,8 +113,9 @@ export async function GET(request: NextRequest) {
             { header: 'Assigned Target (Scans)', key: 'target', width: 20 },
             { header: 'Actual Scans', key: 'actual', width: 14 },
             { header: 'Tier RM/scan', key: 'tier_rate', width: 14 },
+            { header: 'Volume Payout (RM)', key: 'volume_base', width: 18 },
             { header: 'Achievement %', key: 'percent', width: 15 },
-            { header: 'Incentive Earned (RM)', key: 'incentive', width: 20 },
+            { header: 'Total Incentive (RM)', key: 'incentive', width: 20 },
             { header: 'Status', key: 'status', width: 14 },
         ]
         styleHeader(amSheet.getRow(1))
@@ -127,7 +128,8 @@ export async function GET(request: NextRequest) {
                 actual: a.actual_scans,
                 tier_rate: a.volume_tier_rate != null && a.volume_tier_rate > 0
                     ? Number(a.volume_tier_rate.toFixed(2))
-                    : report.cycle.am_incentive_mode === 'achievement_tiers' ? 'Custom' : 0,
+                    : 0,
+                volume_base: Number(a.volume_incentive.toFixed(2)),
                 percent: Number(a.achievement_percent.toFixed(1)),
                 incentive: Number(a.incentive_earned.toFixed(2)),
                 status: KPI_STATUS_LABEL[a.status],

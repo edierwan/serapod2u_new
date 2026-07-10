@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { validateAmIncentiveTier } from '@/lib/roadtour/kpi'
+import { validateAmAchievementThreshold, validateAmIncentiveTier } from '@/lib/roadtour/kpi'
 
 import { RULE_SELECT, jsonError, loadAmTierContext, loadCycleForUpdate, requireKpiAdmin } from '../../_lib'
 
@@ -71,7 +71,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             if (!Number.isFinite(threshold) || threshold <= 0) return jsonError('Achievement threshold must be a positive percentage.')
             updates.achievement_threshold_percent = threshold
         }
-        if (body?.incentive_amount !== undefined) {
+        if (body?.incentive_amount !== undefined && rule.applies_to !== 'all_ams') {
             const amount = Number(body.incentive_amount)
             if (!Number.isFinite(amount) || amount < 0) return jsonError('Incentive amount must be non-negative.')
             updates.incentive_amount = amount
@@ -86,14 +86,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         // Re-validate the whole AM tier set against the edited values (self excluded).
         if (appliesTo === 'all_ams') {
             const effectiveThreshold = updates.achievement_threshold_percent ?? Number(rule.achievement_threshold_percent)
-            const effectiveAmount = updates.incentive_amount ?? Number(rule.incentive_amount)
-            const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, rule.kpi_cycle_id, ruleId)
-            const tierError = validateAmIncentiveTier(
-                { id: ruleId, achievement_threshold_percent: effectiveThreshold, incentive_amount: effectiveAmount },
+            const { existingTiers } = await loadAmTierContext(ctx.admin, rule.kpi_cycle_id, ruleId)
+            const tierError = validateAmAchievementThreshold(
+                { id: ruleId, achievement_threshold_percent: effectiveThreshold },
                 existingTiers,
-                maxIncentivePerAm,
             )
             if (tierError) return jsonError(tierError)
+        } else if (appliesTo === 'team_leader') {
+            const effectiveThreshold = updates.achievement_threshold_percent ?? Number(rule.achievement_threshold_percent)
+            const effectiveAmount = updates.incentive_amount ?? Number(rule.incentive_amount)
+            if (!Number.isFinite(effectiveThreshold) || effectiveThreshold <= 0) {
+                return jsonError('Team achievement % must be greater than 0.')
+            }
+            if (!Number.isFinite(effectiveAmount) || effectiveAmount <= 0) {
+                return jsonError('Bonus amount must be greater than RM0.')
+            }
         }
 
         const { data, error } = await ctx.admin

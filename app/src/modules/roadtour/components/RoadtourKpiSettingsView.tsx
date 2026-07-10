@@ -19,7 +19,7 @@ import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
     autoDistributeTarget, compareKpiMonth, currentKpiMonth, deriveEffectiveFromOptions,
     deriveEffectiveToOptions, deriveKpiMonthPeriod, formatKpiMonthLabel, kpiMonthFromDate,
-    monthKeyFromDate, resolveLeaderId, validateAmIncentiveTier,
+    monthKeyFromDate, resolveLeaderId, validateAmAchievementThreshold,
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, LoadingBlock, PageHeader } from './analytics/shared'
@@ -184,19 +184,18 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     // positive threshold + amount. Save is disabled while this is non-null.
     const tierError = useMemo<string | null>(() => {
         const threshold = Number(tierForm.achievement_threshold_percent)
-        const amount = Number(tierForm.incentive_amount)
-        if (tierForm.incentive_amount.trim() === '' || !Number.isFinite(amount)) return 'Enter an incentive amount.'
         if (tierForm.applies_to === 'team_leader') {
+            const amount = Number(tierForm.incentive_amount)
+            if (tierForm.incentive_amount.trim() === '' || !Number.isFinite(amount)) return 'Enter a bonus amount.'
             if (!Number.isFinite(threshold) || threshold <= 0) return 'Team achievement % must be greater than 0.'
             if (amount <= 0) return 'Bonus amount must be greater than RM0.'
             return null
         }
-        return validateAmIncentiveTier(
-            { id: tierForm.id, achievement_threshold_percent: threshold, incentive_amount: amount },
-            amTiers.map((r: any) => ({ id: r.id, achievement_threshold_percent: Number(r.achievement_threshold_percent), incentive_amount: Number(r.incentive_amount) })),
-            maxIncentiveCap,
+        return validateAmAchievementThreshold(
+            { id: tierForm.id, achievement_threshold_percent: threshold },
+            amTiers.map((r: any) => ({ id: r.id, achievement_threshold_percent: Number(r.achievement_threshold_percent) })),
         )
-    }, [tierForm, amTiers, maxIncentiveCap])
+    }, [tierForm, amTiers])
 
     const loadPlans = useCallback(async () => {
         if (!companyId) return
@@ -392,7 +391,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
             applies_to: tierForm.applies_to,
             team_id: null,
             achievement_threshold_percent: Number(tierForm.achievement_threshold_percent),
-            incentive_amount: Number(tierForm.incentive_amount),
+            incentive_amount: tierForm.applies_to === 'team_leader' ? Number(tierForm.incentive_amount) : 0,
             bonus_type: 'cash',
             status: tierForm.status,
         }
@@ -981,24 +980,26 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                         <DialogContent className="sm:max-w-md">
                             <DialogHeader>
                                 <DialogTitle>
-                                    {tierForm.id ? 'Edit' : 'Add'} {tierForm.applies_to === 'team_leader' ? 'Leader Bonus Tier' : 'AM Incentive Tier'}
+                                    {tierForm.id ? 'Edit' : 'Add'} {tierForm.applies_to === 'team_leader' ? 'Leader Bonus Tier' : 'Achievement Gate'}
                                 </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-3">
                                 <div className="rounded-md border border-brand/20 bg-brand-muted/60 px-3 py-2 text-xs text-brand-charcoal dark:text-brand">
                                     {tierForm.applies_to === 'team_leader'
                                         ? 'Leader bonus is additive and based on total team achievement.'
-                                        : `AM incentive uses fixed volume tiers (monthly scans × RM/scan). Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''} caps the payout after tier calculation.`}
+                                        : 'Achievement gate only. When met, payout is calculated from the scan volume table (monthly scans × RM/scan).'}
                                 </div>
-                                <div className="grid gap-3 grid-cols-2">
+                                <div className={tierForm.applies_to === 'team_leader' ? 'grid gap-3 grid-cols-2' : 'space-y-3'}>
                                     <div>
                                         <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Team Achievement (%)' : 'Achievement (%)'}</label>
                                         <Input type="number" min={tierForm.applies_to === 'team_leader' ? 1 : 100} value={tierForm.achievement_threshold_percent} onChange={(e) => setTierForm((p) => ({ ...p, achievement_threshold_percent: e.target.value }))} />
                                     </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Bonus (RM)' : 'Incentive (RM)'}</label>
-                                        <Input type="number" min={0} value={tierForm.incentive_amount} onChange={(e) => setTierForm((p) => ({ ...p, incentive_amount: e.target.value }))} placeholder="e.g. 200" />
-                                    </div>
+                                    {tierForm.applies_to === 'team_leader' && (
+                                        <div>
+                                            <label className="text-xs font-medium text-muted-foreground">Bonus (RM)</label>
+                                            <Input type="number" min={0} value={tierForm.incentive_amount} onChange={(e) => setTierForm((p) => ({ ...p, incentive_amount: e.target.value }))} placeholder="e.g. 200" />
+                                        </div>
+                                    )}
                                 </div>
                                 {tierError && (
                                     <p className="text-xs text-red-600">{tierError}</p>

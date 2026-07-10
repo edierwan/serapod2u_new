@@ -131,8 +131,12 @@ export interface KpiReportAmRowData {
     assigned_target: number
     actual_scans: number
     achievement_percent: number
-    /** RM per scan when volume_tiers mode; null when custom achievement tiers are active. */
+    /** RM per scan from the AM's monthly scan-volume bracket. */
     volume_tier_rate: number | null
+    /** Base payout from scan volume (always counted). */
+    volume_incentive: number
+    /** Extra payout from achievement tiers (legacy; always 0 — payout uses volume table). */
+    achievement_bonus: number
     incentive_earned: number
     rank: number
     status: KpiPerformanceStatus

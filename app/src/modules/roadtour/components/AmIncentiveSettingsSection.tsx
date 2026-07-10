@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { KpiAmIncentiveMode } from '@/lib/roadtour/kpi'
 import { cn } from '@/lib/utils'
 import type { KpiIncentiveRuleRow } from '@/modules/roadtour/types/kpi'
-import { BarChart3, Pencil, Percent, Plus, Trash2, Wallet } from 'lucide-react'
+import { BarChart3, CheckCircle2, Pencil, Percent, Plus, Trash2, Wallet } from 'lucide-react'
 import { KpiVolumeTierTable } from './KpiVolumeTierTable'
 import { KpiSettingsSectionCard, kpiSubTabListClass, kpiSubTabTriggerClass } from './KpiSettingsUi'
 
@@ -64,7 +64,7 @@ export function AmIncentiveSettingsSection({
                             <Percent className="h-4 w-4 shrink-0 text-violet-600" />
                             <span className="text-left">
                                 <span className="block text-sm font-medium">By achievement %</span>
-                                <span className="block text-xs font-normal text-muted-foreground">Fixed RM per tier</span>
+                                <span className="block text-xs font-normal text-muted-foreground">Gate + volume payout</span>
                             </span>
                         </div>
                     </TabsTrigger>
@@ -82,25 +82,33 @@ export function AmIncentiveSettingsSection({
                 </TabsContent>
 
                 <TabsContent value="achievement_tiers" className="mt-0 space-y-3">
+                    <div className="rounded-xl border border-violet-200/70 bg-violet-50/60 px-3.5 py-2.5 text-sm text-violet-900">
+                        <span className="font-semibold">Formula:</span> when achievement gate is met → monthly scans × RM/scan from volume table.
+                    </div>
+                    <KpiVolumeTierTable compact />
+                    <div className="rounded-xl border border-brand/20 bg-brand-muted/50 px-3.5 py-2.5 text-xs text-brand-charcoal dark:text-orange-100">
+                        No manual RM amount per achievement tier. Payout always follows the scan volume brackets (RM 0.10 / 0.12 / 0.15 / 0.20).
+                    </div>
+
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="rounded-xl border border-violet-200/70 bg-violet-50/60 px-3.5 py-2.5 text-sm text-violet-900">
-                            <span className="font-semibold">Rule:</span> highest achievement % tier met wins (not stacked).
-                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            Add achievement gates (e.g. 100%, 120%). AM must meet a gate to unlock volume payout.
+                        </p>
                         <Button size="sm" onClick={onAddTier}>
                             <Plus className="h-4 w-4 mr-1" />
-                            Add tier
+                            Add gate
                         </Button>
                     </div>
 
                     {sortedTiers.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 px-4 py-10 text-center">
-                            <p className="text-sm font-medium">No custom tiers yet</p>
+                            <p className="text-sm font-medium">No achievement gates yet</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                e.g. 100% of target = RM 200, 120% = RM 300
+                                Without gates, AMs need at least 100% achievement to earn volume payout.
                             </p>
                             <Button size="sm" variant="outline" className="mt-4" onClick={onAddTier}>
                                 <Plus className="h-4 w-4 mr-1" />
-                                Add first tier
+                                Add first gate
                             </Button>
                         </div>
                     ) : (
@@ -115,11 +123,12 @@ export function AmIncentiveSettingsSection({
                                             {Number(rule.achievement_threshold_percent)}% of target
                                         </p>
                                         <p className="text-sm text-muted-foreground">
-                                            Pays <span className="font-semibold text-foreground">RM {Number(rule.incentive_amount).toLocaleString()}</span>
+                                            Unlocks <span className="font-semibold text-foreground">scan volume payout</span>
                                         </p>
                                     </div>
                                     {rule.status === 'active' ? (
                                         <Badge className="shrink-0 border border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                                            <CheckCircle2 className="mr-1 h-3 w-3" />
                                             Active
                                         </Badge>
                                     ) : (
