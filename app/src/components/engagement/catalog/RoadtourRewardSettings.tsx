@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, CheckCircle2, Coins, Info, Loader2, Map, Save, Sparkles } from 'lucide-react'
 import { toast } from '@/components/ui/use-toast'
+import { resolvePointValueRmForVolume, resolveVolumeTierRate } from '@/lib/roadtour/kpi'
+import { KpiVolumeTierTable } from '@/modules/roadtour/components/KpiVolumeTierTable'
 
 interface RoadtourRewardSettingsProps {
     userProfile: any
@@ -44,7 +46,6 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
     const [defaultPoints, setDefaultPoints] = useState(20)
     const [rewardMode, setRewardMode] = useState<'direct_scan' | 'survey_submit'>('survey_submit')
     const [surveyTemplateId, setSurveyTemplateId] = useState<string | null>(null)
-    const [pointValueRm, setPointValueRm] = useState(0.1)
     const [surveyTemplates, setSurveyTemplates] = useState<{ id: string; name: string }[]>([])
     const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
 
@@ -57,17 +58,6 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
         async function loadSettings() {
             try {
                 setLoading(true)
-
-                const { data: orgData } = await supabase
-                    .from('organizations')
-                    .select('settings')
-                    .eq('id', companyId)
-                    .single()
-
-                const orgSettings = (orgData?.settings as any) || {}
-                if (typeof orgSettings.point_value_rm === 'number') {
-                    setPointValueRm(orgSettings.point_value_rm)
-                }
 
                 const { data: templates } = await (supabase as any)
                     .from('roadtour_survey_templates')
@@ -92,7 +82,6 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                     setDefaultPoints(row.default_points)
                     setRewardMode(row.reward_mode)
                     setSurveyTemplateId(row.survey_template_id)
-                    if (row.point_value_rm_snapshot != null) setPointValueRm(row.point_value_rm_snapshot)
                 }
             } catch (error: any) {
                 console.error('Error loading RoadTour reward settings:', error)
@@ -105,16 +94,34 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
         loadSettings()
     }, [companyId, supabase])
 
-    const estimatedCost = useMemo(() => defaultPoints * pointValueRm, [defaultPoints, pointValueRm])
+    const tierExamples = useMemo(() => {
+        const volumes = [8_000, 15_000, 25_000, 35_000, 50_000]
+        return volumes.map((volume) => {
+            const rate = resolveVolumeTierRate(volume)
+            const pointValue = resolvePointValueRmForVolume(volume, defaultPoints)
+            return {
+                volume,
+                rate,
+                pointValue,
+                costPerReward: defaultPoints * pointValue,
+            }
+        })
+    }, [defaultPoints])
+
+    const snapshotPointValue = useMemo(
+        () => resolvePointValueRmForVolume(15_001, defaultPoints),
+        [defaultPoints],
+    )
 
     const summary = useMemo(() => {
         const parts = [`Each successful RoadTour reward grants ${defaultPoints} points.`]
-        parts.push(`Estimated cost per reward: RM ${estimatedCost.toFixed(2)}.`)
+        parts.push('Point value (RM) follows the same volume tiers as KPI incentive (based on monthly scans).')
+        parts.push(`At 15,001+ scans/month: RM ${resolveVolumeTierRate(15_001).toFixed(2)}/scan → RM ${(defaultPoints * resolvePointValueRmForVolume(15_001, defaultPoints)).toFixed(2)} per reward.`)
         parts.push(rewardMode === 'survey_submit'
             ? 'Reward will be released after survey submission.'
             : 'Reward will be released immediately after a valid scan.')
         return parts
-    }, [defaultPoints, estimatedCost, rewardMode])
+    }, [defaultPoints, rewardMode])
 
     const handleSave = async () => {
         try {
@@ -130,7 +137,7 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                 default_points: defaultPoints,
                 reward_mode: rewardMode,
                 survey_template_id: rewardMode === 'survey_submit' ? surveyTemplateId : null,
-                point_value_rm_snapshot: pointValueRm,
+                point_value_rm_snapshot: snapshotPointValue,
                 updated_by: userProfile.id,
                 updated_at: new Date().toISOString(),
             }
@@ -208,19 +215,34 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                             <Input type="number" min={1} value={defaultPoints} onChange={(e) => setDefaultPoints(parseInt(e.target.value || '0', 10) || 0)} />
                             <p className="text-xs text-muted-foreground">Suggested: 20 points per successful RoadTour reward.</p>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Point Value (RM)</Label>
-                            <Input value={pointValueRm.toFixed(2)} readOnly disabled />
-                            <p className="text-xs text-muted-foreground">This follows the organization point value configured under Point Collection.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Point Value &amp; KPI Incentive Tiers (monthly scans)</Label>
+                        <p className="text-xs text-muted-foreground">
+                            RM/scan applies to KPI incentive. Point value = RM/scan ÷ default reward points (same bracket).
+                        </p>
+                        <KpiVolumeTierTable />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Estimated Cost Per Reward (by monthly scan volume)</Label>
+                        <div className="rounded-lg border divide-y text-sm">
+                            {tierExamples.map((ex) => (
+                                <div key={ex.volume} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+                                    <span className="text-muted-foreground">{ex.volume.toLocaleString()} scans</span>
+                                    <span className="font-medium text-blue-700">
+                                        {ex.rate === 0
+                                            ? 'RM 0.00 / reward'
+                                            : `RM ${ex.costPerReward.toFixed(2)} / reward (RM ${ex.rate.toFixed(2)}/scan)`}
+                                    </span>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
                     <div className="grid gap-6 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label>Estimated Cost Per Reward</Label>
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">RM {estimatedCost.toFixed(2)}</div>
-                        </div>
-                        <div className="space-y-2">
+                        <div className="space-y-2 md:col-span-2">
                             <Label>Reward Mode</Label>
                             <Select value={rewardMode} onValueChange={(value) => setRewardMode(value as 'direct_scan' | 'survey_submit')}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>

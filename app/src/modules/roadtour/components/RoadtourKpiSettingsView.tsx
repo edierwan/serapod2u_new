@@ -4,16 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/use-toast'
 import {
-    BarChart3, CalendarDays, CheckCircle2, Loader2, Pencil, Plus,
-    Settings as SettingsIcon, ShieldCheck, Target, Trash2, Trophy, Users, Wallet,
+    CalendarDays, CheckCircle2, Loader2, Pencil, Plus,
+    Settings as SettingsIcon, ShieldCheck, Trash2, Trophy, Users, Wallet,
 } from 'lucide-react'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
@@ -23,6 +23,8 @@ import {
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, LoadingBlock, PageHeader } from './analytics/shared'
+import { AmIncentiveSettingsSection } from './AmIncentiveSettingsSection'
+import { KpiFieldLabel, KpiHintBanner, kpiSubTabListClass, kpiSubTabTriggerClass, KpiSettingsSectionCard, KpiSettingsTabsPanel, kpiTabListClass, kpiTabTriggerClass, KpiTeamSidebar, KpiTierRow } from './KpiSettingsUi'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -34,6 +36,8 @@ const POLICY_RULES = [
     'New campaign QR scans count to the new campaign/AM.',
     'Historical scan attribution is not rewritten when the AM or campaign changes.',
     'Leader bonus is optional and additive; the AM incentive cap applies only to individual AM incentive.',
+    'AM KPI incentive uses fixed volume tiers: monthly scans × RM/scan rate (below 10,001 scans = RM 0).',
+    'Point value (RM) follows the same volume tiers as KPI incentive.',
 ]
 
 /** Highlighted note explaining the shop-recovery / AM-takeover workflow. */
@@ -96,6 +100,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     // Incentive tier dialog state.
     const [tierDialogOpen, setTierDialogOpen] = useState(false)
     const [tierForm, setTierForm] = useState<TierFormState>(emptyTierForm('all_ams'))
+    const [settingsTab, setSettingsTab] = useState<'setup' | 'teams' | 'incentives' | 'rules'>('setup')
 
     // The live (draft or active) plan for the selected event.
     const plan: KpiPlanRow | null = useMemo(
@@ -268,6 +273,16 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         setManualTargets(overrides)
     }, [])
 
+    const selectTeamForEdit = useCallback((team: KpiTeamRow) => {
+        loadTeamIntoBuilder(team)
+        setSettingsTab('teams')
+    }, [loadTeamIntoBuilder])
+
+    const startNewTeam = useCallback(() => {
+        resetTeamBuilder()
+        setSettingsTab('teams')
+    }, [resetTeamBuilder])
+
     const callApi = useCallback(async (path: string, init?: RequestInit) => {
         const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...init })
         const json = await res.json().catch(() => ({}))
@@ -314,8 +329,11 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const patchPlan = useCallback(async (updates: Record<string, any>) => {
         if (!plan) return
         try {
-            await callApi(`/api/roadtour/kpi/plans/${plan.id}`, { method: 'PATCH', body: JSON.stringify(updates) })
+            const json = await callApi(`/api/roadtour/kpi/plans/${plan.id}`, { method: 'PATCH', body: JSON.stringify(updates) })
             await loadPlans()
+            if (json.schemaWarning) {
+                toast({ title: 'Migration required', description: json.schemaWarning, variant: 'destructive' })
+            }
         } catch (err: any) {
             toast({ title: 'Error', description: err.message, variant: 'destructive' })
         }
@@ -475,84 +493,97 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     }
 
     return (
-        <div className="space-y-4 pb-24">
-            <PageHeader
-                overline="RoadTour Settings"
-                title="RoadTour KPI & Incentive Settings"
-                description="Create a KPI Plan once per RoadTour Event. Monthly performance reports are generated automatically for every month in the plan window — no need to set up a new cycle each month."
-            />
+        <div className="space-y-6 pb-28">
+            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-slate-50/80 via-background to-brand-muted/50 p-5 shadow-sm dark:from-slate-900/40 dark:to-brand-muted/10 sm:p-6">
+                <PageHeader
+                    overline="RoadTour Settings"
+                    title="RoadTour KPI & Incentive Settings"
+                    description="Create a KPI Plan once per RoadTour Event. Monthly performance reports are generated automatically for every month in the plan window — no need to set up a new cycle each month."
+                />
+            </div>
 
-            {loading && <Card><LoadingBlock /></Card>}
+            {loading && (
+                <Card className="rounded-2xl border-border/70 shadow-sm">
+                    <LoadingBlock />
+                </Card>
+            )}
 
             {!loading && schemaMissing && (
-                <div className="border border-amber-200 bg-amber-50 text-amber-800 text-sm rounded-md px-3 py-2">
+                <KpiHintBanner tone="amber">
                     The RoadTour KPI Plan database migration has not been applied to this environment yet. Apply
                     supabase/migrations/20260707_roadtour_kpi_plan_refinement.sql to enable KPI Plans.
-                </div>
+                </KpiHintBanner>
             )}
 
             {!loading && (
                 <>
-                    {/* KPI Plan summary / creation */}
-                    <Card className="border-blue-100 bg-blue-50/40">
-                        <CardHeader className="pb-2">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <CardTitle className="text-base flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-blue-600" />
-                                    {isActive ? 'Active KPI Plan' : 'KPI Plan'}
-                                </CardTitle>
+                    <Card className="overflow-hidden rounded-2xl border-border/70 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.06)]">
+                        <div className="border-b border-border/60 bg-gradient-to-r from-brand-muted/35 via-background to-muted/30 px-5 py-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-brand/30 bg-brand-muted/80 shadow-sm">
+                                        <CalendarDays className="h-4.5 w-4.5 text-brand" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h2 className="text-base font-semibold text-foreground">{isActive ? 'Active KPI Plan' : 'KPI Plan'}</h2>
+                                        <p className="text-sm text-muted-foreground">One plan per RoadTour event</p>
+                                    </div>
+                                </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <div className="min-w-[200px]">
+                                    <div className="min-w-[210px]">
                                         <Select value={selectedRunId} onValueChange={setSelectedRunId}>
-                                            <SelectTrigger className="h-9"><SelectValue placeholder="Select event" /></SelectTrigger>
+                                            <SelectTrigger className="h-9 border-border/70 bg-background">
+                                                <SelectValue placeholder="Select event" />
+                                            </SelectTrigger>
                                             <SelectContent>
                                                 {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     {!plan && (
-                                        <Button size="sm" onClick={() => { setPlanFromMonth(defaultFromMonth); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }} disabled={saving || schemaMissing || !selectedRunId}>
+                                        <Button
+                                            size="sm"
+                                            className="bg-brand text-white hover:bg-brand/90"
+                                            onClick={() => { setPlanFromMonth(defaultFromMonth); setPlanToMonth(''); setPlanLeaderBonus(false); setPlanDialogOpen(true) }}
+                                            disabled={saving || schemaMissing || !selectedRunId}
+                                        >
                                             <Plus className="h-4 w-4 mr-1" /> Create KPI Plan
                                         </Button>
                                     )}
                                     {plan && (
-                                        <Button size="sm" variant="outline" className="text-rose-600 border-rose-200" onClick={handleArchive} disabled={saving}>
+                                        <Button size="sm" variant="outline" className="border-border/70 bg-background/90 hover:bg-muted/60" onClick={handleArchive} disabled={saving}>
                                             Archive Plan
                                         </Button>
                                     )}
                                 </div>
                             </div>
-                        </CardHeader>
-                        <CardContent>
+                        </div>
+                        <CardContent className="bg-gradient-to-b from-background to-muted/[0.18] p-4 sm:p-5">
                             {plan ? (
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7 text-sm">
-                                    <div>
-                                        <div className="text-xs text-muted-foreground">Event</div>
-                                        <div className="font-semibold truncate">{selectedRun?.name || '—'}</div>
+                                <div className="grid gap-2.5 text-sm sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Event</p>
+                                        <p className="font-semibold truncate">{selectedRun?.name || '—'}</p>
                                     </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground">Effective From</div>
-                                        <div className="font-semibold">{fromLabel}</div>
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Window</p>
+                                        <p className="font-semibold">{fromLabel} → {toLabel}</p>
                                     </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground">Effective To</div>
-                                        <div className="font-semibold">{toLabel}</div>
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Status</p>
+                                        <div className="mt-0.5"><PlanStatusBadge status={plan.status} /></div>
                                     </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground">Status</div>
-                                        <PlanStatusBadge status={plan.status} />
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Teams / AMs</p>
+                                        <p className="font-semibold tabular-nums">{summary.teams} / {summary.ams}</p>
                                     </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Teams / AMs</div>
-                                        <div className="text-lg font-bold">{summary.teams} / {summary.ams}</div>
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Monthly target</p>
+                                        <p className="font-semibold tabular-nums">{summary.targetTotal.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">scans</span></p>
                                     </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Target className="h-3 w-3" /> Monthly Target</div>
-                                        <div className="text-lg font-bold">{summary.targetTotal.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">scans</span></div>
-                                    </div>
-                                    <div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Max Incentive / AM</div>
-                                        <div className="text-lg font-bold">RM {summary.budgetTotal.toLocaleString()}</div>
+                                    <div className="rounded-lg border border-border/70 bg-card/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Max / AM</p>
+                                        <p className="font-semibold tabular-nums">RM {summary.budgetTotal.toLocaleString()}</p>
                                     </div>
                                 </div>
                             ) : (
@@ -565,82 +596,112 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                     </Card>
 
                     {plan && (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                        {/* Left column: plan window + team builder */}
-                        <div className="space-y-4">
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <SettingsIcon className="h-4 w-4 text-blue-600" /> KPI Plan Window
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="grid gap-3 sm:grid-cols-3">
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Effective From Month</label>
-                                            <Select value={kpiMonthFromDate(plan.effective_from_month)} onValueChange={(v) => patchPlan({ effective_from_month: v })}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    {fromMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Effective To Month (optional)</label>
-                                            <Select value={plan.effective_to_month ? kpiMonthFromDate(plan.effective_to_month) : 'none'} onValueChange={(v) => patchPlan({ effective_to_month: v === 'none' ? '' : v })}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="none">Open-ended</SelectItem>
-                                                    {editToMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Reporting Scope</label>
-                                            <Select value={plan.reporting_scope} onValueChange={(v) => patchPlan({ reporting_scope: v })}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="all_campaigns">All surveys/shops under event</SelectItem>
-                                                    <SelectItem value="selected_campaigns">Selected campaigns only</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                    <Tabs value={settingsTab} onValueChange={(v) => setSettingsTab(v as typeof settingsTab)} className="w-full">
+                        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm">
+                            <TabsList className={kpiTabListClass}>
+                                <TabsTrigger value="setup" className={kpiTabTriggerClass}>
+                                    <SettingsIcon className="h-4 w-4 shrink-0" />
+                                    <span>Plan setup</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="teams" className={kpiTabTriggerClass}>
+                                    <Users className="h-4 w-4 shrink-0" />
+                                    <span>Teams</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="incentives" className={kpiTabTriggerClass}>
+                                    <Wallet className="h-4 w-4 shrink-0" />
+                                    <span>Incentives</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="rules" className={kpiTabTriggerClass}>
+                                    <ShieldCheck className="h-4 w-4 shrink-0" />
+                                    <span>Rules</span>
+                                </TabsTrigger>
+                            </TabsList>
 
-                                    <p className="text-xs text-muted-foreground">
-                                        Month options are limited to recent setup months, the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''}, and configured KPI data. Effective To must be on or after Effective From.
-                                    </p>
-
-                                    <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
-                                        <span className="flex items-center gap-2 text-blue-800">
-                                            <CalendarDays className="h-4 w-4" /> Current Report Month (auto)
-                                        </span>
-                                        <span className="font-semibold text-blue-800">{formatKpiMonthLabel(currentKpiMonth())} · {currentPeriod.label}</span>
+                            <KpiSettingsTabsPanel>
+                        <TabsContent value="setup" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                            <KpiSettingsSectionCard
+                                icon={SettingsIcon}
+                                tone="slate"
+                                title="KPI Plan Window"
+                                description="When monthly reports run and which campaigns they include."
+                                contentClassName="space-y-4"
+                            >
+                                <div className="grid gap-4 sm:grid-cols-3">
+                                    <div>
+                                        <KpiFieldLabel>Effective From Month</KpiFieldLabel>
+                                        <Select value={kpiMonthFromDate(plan.effective_from_month)} onValueChange={(v) => patchPlan({ effective_from_month: v })}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                {fromMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-
-                                    <div className="rounded-md border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs text-sky-800">
-                                        Reports are produced monthly from this single plan. Changing AM assignment affects new scans only; historical scans keep their original campaign/QR attribution.
+                                    <div>
+                                        <KpiFieldLabel>Effective To Month (optional)</KpiFieldLabel>
+                                        <Select value={plan.effective_to_month ? kpiMonthFromDate(plan.effective_to_month) : 'none'} onValueChange={(v) => patchPlan({ effective_to_month: v === 'none' ? '' : v })}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Open-ended</SelectItem>
+                                                {editToMonthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            <Users className="h-4 w-4 text-blue-600" /> Selected Team Detail / Team Builder
-                                        </CardTitle>
-                                        {editingTeamId && <Button size="sm" variant="ghost" onClick={resetTeamBuilder}>New Team</Button>}
+                                    <div>
+                                        <KpiFieldLabel>Reporting Scope</KpiFieldLabel>
+                                        <Select value={plan.reporting_scope} onValueChange={(v) => patchPlan({ reporting_scope: v })}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all_campaigns">All surveys/shops under event</SelectItem>
+                                                <SelectItem value="selected_campaigns">Selected campaigns only</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="grid gap-3 sm:grid-cols-3">
+                                </div>
+
+                                <p className="text-xs leading-relaxed text-muted-foreground">
+                                    Month options are limited to recent setup months, the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''}, and configured KPI data. Effective To must be on or after Effective From.
+                                </p>
+
+                                <KpiHintBanner tone="blue" className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="flex items-center gap-2 font-medium">
+                                        <CalendarDays className="h-4 w-4 shrink-0" /> Current Report Month (auto)
+                                    </span>
+                                    <span className="font-semibold">{formatKpiMonthLabel(currentKpiMonth())} · {currentPeriod.label}</span>
+                                </KpiHintBanner>
+
+                                <KpiHintBanner tone="sky">
+                                    Reports are produced monthly from this single plan. Changing AM assignment affects new scans only; historical scans keep their original campaign/QR attribution.
+                                </KpiHintBanner>
+                            </KpiSettingsSectionCard>
+                        </TabsContent>
+
+                        <TabsContent value="teams" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                            <div className="grid w-full gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:items-start">
+                                <KpiTeamSidebar
+                                    teams={plan.teams}
+                                    selectedTeamId={editingTeamId}
+                                    amById={amById}
+                                    isFrozen={isFrozen}
+                                    onSelectTeam={selectTeamForEdit}
+                                    onAddTeam={startNewTeam}
+                                    onDeleteTeam={handleDeleteTeam}
+                                />
+
+                                <KpiSettingsSectionCard
+                                    icon={Users}
+                                    tone="violet"
+                                    title={editingTeamId ? 'Edit Team' : 'New Team'}
+                                    description="Select a team on the left or create a new one."
+                                    headerAction={editingTeamId ? <Button size="sm" variant="outline" onClick={startNewTeam}>New Team</Button> : undefined}
+                                    contentClassName="space-y-4"
+                                >
+                                    <div className="grid gap-4 sm:grid-cols-3">
                                         <div className="sm:col-span-1">
-                                            <label className="text-xs font-medium text-muted-foreground">Team Name</label>
+                                            <KpiFieldLabel>Team Name</KpiFieldLabel>
                                             <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="e.g. North Penang Team" disabled={isFrozen} />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Leader</label>
+                                            <KpiFieldLabel>Leader</KpiFieldLabel>
                                             <Select value={leaderId || 'none'} onValueChange={(v) => setLeaderId(v === 'none' ? '' : v)} disabled={isFrozen || memberIds.length === 0}>
                                                 <SelectTrigger><SelectValue placeholder={memberIds.length === 0 ? 'Select members first' : 'No leader'} /></SelectTrigger>
                                                 <SelectContent>
@@ -650,17 +711,17 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             </Select>
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Member Count</label>
-                                            <div className="h-10 flex items-center">
+                                            <KpiFieldLabel>Member Count</KpiFieldLabel>
+                                            <div className="flex h-10 items-center">
                                                 <Badge variant="secondary" className="text-sm">{memberCount} AMs</Badge>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="text-xs font-medium text-muted-foreground">Members</label>
+                                        <KpiFieldLabel>Members</KpiFieldLabel>
                                         {memberIds.length > 0 && (
-                                            <div className="flex flex-wrap gap-1.5 my-1.5">
+                                            <div className="my-1.5 flex flex-wrap gap-1.5">
                                                 {memberIds.map((id) => (
                                                     <Badge key={id} variant="outline" className="gap-1">
                                                         {amById.get(id)?.full_name || 'Unknown'}
@@ -672,15 +733,15 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                             </div>
                                         )}
                                         {!isFrozen && (
-                                            <div className="border rounded-md">
-                                                <Input className="border-0 border-b rounded-b-none focus-visible:ring-0" placeholder="Search account managers…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
-                                                <div className="max-h-36 overflow-y-auto p-1">
-                                                    {filteredAmOptions.length === 0 && <div className="text-xs text-muted-foreground px-2 py-2">No account managers found.</div>}
+                                            <div className="overflow-hidden rounded-xl border border-border/70">
+                                                <Input className="rounded-none border-0 border-b bg-muted/20 focus-visible:ring-0" placeholder="Search account managers…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
+                                                <div className="max-h-40 overflow-y-auto p-1.5">
+                                                    {filteredAmOptions.length === 0 && <div className="px-2 py-2 text-xs text-muted-foreground">No account managers found.</div>}
                                                     {filteredAmOptions.map((a) => {
                                                         const checked = memberIds.includes(a.id)
                                                         return (
                                                             <button key={a.id} type="button"
-                                                                className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center justify-between hover:bg-muted ${checked ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted ${checked ? 'bg-brand-muted text-brand-charcoal ring-1 ring-brand/25 dark:text-brand' : ''}`}
                                                                 onClick={() => setMemberIds((prev) => checked ? prev.filter((x) => x !== a.id) : [...prev, a.id])}>
                                                                 <span>{a.full_name}</span>
                                                                 {checked && <CheckCircle2 className="h-4 w-4" />}
@@ -692,47 +753,46 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         )}
                                     </div>
 
-                                    <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="grid gap-4 sm:grid-cols-2">
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Monthly Cumulative Team Target (scans)</label>
+                                            <KpiFieldLabel>Monthly Team Target (scans)</KpiFieldLabel>
                                             <Input type="number" min={0} value={teamTarget} onChange={(e) => setTeamTarget(e.target.value)} placeholder="e.g. 7000" disabled={isFrozen} />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-medium text-muted-foreground">Max Incentive / AM (RM)</label>
+                                            <KpiFieldLabel>Max Incentive / AM (RM)</KpiFieldLabel>
                                             <Input type="number" min={0} value={maxIncentivePerAm} onChange={(e) => setMaxIncentivePerAm(e.target.value)} placeholder="e.g. 500" />
-                                            <p className="mt-1 text-xs text-muted-foreground">Maximum individual AM incentive for this KPI plan. AM tier payouts cannot exceed this cap.</p>
                                         </div>
                                     </div>
 
                                     {memberCount > 0 && Number(teamTarget) > 0 && (
-                                        <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm text-indigo-800">
-                                            <span className="font-medium">Auto-distribution:</span>{' '}
+                                        <KpiHintBanner tone="indigo">
+                                            <span className="font-semibold">Auto-distribution:</span>{' '}
                                             {memberCount} members × {perAmAuto.toLocaleString()} scans ≈ {Number(teamTarget).toLocaleString()}
-                                        </div>
+                                        </KpiHintBanner>
                                     )}
 
-                                    <label className="flex items-center gap-2 text-sm">
+                                    <label className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5 text-sm">
                                         <Switch checked={manualOverride} onCheckedChange={setManualOverride} disabled={isFrozen} />
-                                        Allow manual AM target override
+                                        <span>Allow manual AM target override</span>
                                     </label>
 
                                     {memberCount > 0 && (
-                                        <div>
-                                            <div className="text-xs font-medium text-muted-foreground mb-1">
-                                                Auto Target Per AM {manualOverride ? '(override enabled)' : '(default-only)'}
-                                            </div>
-                                            <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                                        <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                Per-AM target {manualOverride ? '(manual)' : '(auto)'}
+                                            </p>
+                                            <div className="space-y-1.5">
                                                 {memberIds.map((id, i) => (
-                                                    <div key={id} className="flex items-center justify-between gap-2 text-sm border-b py-1">
+                                                    <div key={id} className="flex items-center justify-between gap-2 text-sm">
                                                         <span className="truncate">{amById.get(id)?.full_name || 'Unknown'}</span>
                                                         {manualOverride ? (
-                                                            <Input type="number" min={0} className="h-7 w-24 text-right"
+                                                            <Input type="number" min={0} className="h-8 w-28 text-right"
                                                                 placeholder={String(autoTargets[i] ?? 0)}
                                                                 value={manualTargets[id] ?? ''}
                                                                 onChange={(e) => setManualTargets((prev) => ({ ...prev, [id]: e.target.value }))}
                                                                 disabled={isFrozen} />
                                                         ) : (
-                                                            <span className="text-muted-foreground">{(autoTargets[i] ?? 0).toLocaleString()} scans</span>
+                                                            <span className="tabular-nums text-muted-foreground">{(autoTargets[i] ?? 0).toLocaleString()} scans</span>
                                                         )}
                                                     </div>
                                                 ))}
@@ -740,221 +800,132 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         </div>
                                     )}
 
-                                    <div className="flex justify-end gap-2">
+                                    <div className="flex justify-end gap-2 border-t border-border/50 pt-4">
                                         <Button onClick={handleSaveTeam} disabled={saving || isFrozen}>
                                             {saving && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
                                             {editingTeamId ? 'Update Team' : 'Add Team'}
                                         </Button>
                                     </div>
                                     {isFrozen && (
-                                        <div className="text-xs text-amber-700">
+                                        <KpiHintBanner tone="amber" className="text-xs">
                                             Members &amp; targets are frozen because this plan is active. Archive the plan to make structural changes.
-                                        </div>
+                                        </KpiHintBanner>
                                     )}
-                                </CardContent>
-                            </Card>
-                        </div>
+                                </KpiSettingsSectionCard>
+                            </div>
+                        </TabsContent>
 
-                        {/* Right column: team structure + incentives + policy */}
-                        <div className="space-y-4">
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            <BarChart3 className="h-4 w-4 text-blue-600" /> Team KPI Structure
-                                        </CardTitle>
-                                        <Button size="sm" variant="outline" onClick={resetTeamBuilder} disabled={isFrozen}>
-                                            <Plus className="h-4 w-4 mr-1" /> Add Team
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {plan.teams.length === 0 ? (
-                                        <EmptyBlock title="No teams yet" description="Use the Team Builder to add the first team for this KPI Plan." />
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Team Name</TableHead>
-                                                        <TableHead>Leader</TableHead>
-                                                        <TableHead className="text-right">Members</TableHead>
-                                                        <TableHead className="text-right">Monthly Target</TableHead>
-                                                        <TableHead className="text-right">Auto / AM</TableHead>
-                                                        <TableHead className="text-right">Actions</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {plan.teams.map((t) => {
-                                                        const autoPerAm = t.members.length > 0 ? Math.floor(t.monthly_team_target / t.members.length) : 0
-                                                        return (
-                                                            <TableRow key={t.id} className={editingTeamId === t.id ? 'bg-blue-50/50' : ''}>
-                                                                <TableCell className="font-medium">{t.team_name}</TableCell>
-                                                                <TableCell>{t.leader_user_id ? (amById.get(t.leader_user_id)?.full_name || '—') : '—'}</TableCell>
-                                                                <TableCell className="text-right">{t.members.length}</TableCell>
-                                                                <TableCell className="text-right">{t.monthly_team_target.toLocaleString()}</TableCell>
-                                                                <TableCell className="text-right">{autoPerAm.toLocaleString()}</TableCell>
-                                                                <TableCell className="text-right">
-                                                                    <div className="flex justify-end gap-1">
-                                                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => loadTeamIntoBuilder(t)}><Pencil className="h-3.5 w-3.5" /></Button>
-                                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600" onClick={() => handleDeleteTeam(t.id)} disabled={isFrozen}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                                                    </div>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        )
-                                                    })}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
-                                    )}
-                                </CardContent>
-                            </Card>
+                        <TabsContent value="incentives" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                            <div className="grid w-full gap-5 xl:grid-cols-2 xl:items-start">
+                            <AmIncentiveSettingsSection
+                                mode={(plan.am_incentive_mode || 'volume_tiers') as 'volume_tiers' | 'achievement_tiers'}
+                                amTiers={amTiers}
+                                onModeChange={(m) => patchPlan({ am_incentive_mode: m })}
+                                onAddTier={() => { setTierForm(emptyTierForm('all_ams')); setTierDialogOpen(true) }}
+                                onEditTier={(r) => {
+                                    setTierForm({
+                                        id: r.id,
+                                        rule_name: r.rule_name,
+                                        applies_to: 'all_ams',
+                                        achievement_threshold_percent: String(Number(r.achievement_threshold_percent)),
+                                        incentive_amount: String(Number(r.incentive_amount)),
+                                        status: r.status,
+                                    })
+                                    setTierDialogOpen(true)
+                                }}
+                                onDeleteTier={handleDeleteTier}
+                            />
 
-                            {/* AM Incentive Tiers */}
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className="text-base flex items-center gap-2">
-                                                <Wallet className="h-4 w-4 text-blue-600" /> AM Incentive Tiers
-                                            </CardTitle>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                Applies to every AM (including the leader). Based on the AM&apos;s actual scans vs their assigned monthly target.
-                                                <span className="font-medium text-blue-700"> Highest achieved tier wins</span> — payouts are not stacked.
-                                            </p>
+                            <KpiSettingsSectionCard
+                                icon={Trophy}
+                                tone="amber"
+                                title="Leader Bonus"
+                                description="Optional additive bonus for team leaders."
+                                headerAction={
+                                    <label className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/10 px-3 py-1.5 text-sm">
+                                        <Switch checked={plan.leader_bonus_enabled} onCheckedChange={(v) => patchPlan({ leader_bonus_enabled: v })} />
+                                        {plan.leader_bonus_enabled ? 'On' : 'Off'}
+                                    </label>
+                                }
+                                contentClassName="space-y-4"
+                            >
+                                {!plan.leader_bonus_enabled ? (
+                                    <p className="text-sm text-muted-foreground">Leader bonus is off. Turn it on to add team-achievement bonus tiers.</p>
+                                ) : (
+                                    <>
+                                        <div className="flex justify-end">
+                                            <Button size="sm" onClick={() => { setTierForm(emptyTierForm('team_leader')); setTierDialogOpen(true) }}>
+                                                <Plus className="h-4 w-4 mr-1" /> Add Bonus Tier
+                                            </Button>
                                         </div>
-                                        <Button size="sm" variant="outline" onClick={() => { setTierForm(emptyTierForm('all_ams')); setTierDialogOpen(true) }}>
-                                            <Plus className="h-4 w-4 mr-1" /> Add Tier
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {amTiers.length === 0 ? (
-                                        <EmptyBlock title="No AM tiers yet" description="e.g. 100% = RM200, 120% = RM300, 140% = RM400." />
-                                    ) : (
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Achievement</TableHead>
-                                                    <TableHead className="text-right">Incentive</TableHead>
-                                                    <TableHead>Status</TableHead>
-                                                    <TableHead className="text-right">Actions</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {[...amTiers].sort((a, b) => Number(a.achievement_threshold_percent) - Number(b.achievement_threshold_percent)).map((r) => (
-                                                    <TableRow key={r.id}>
-                                                        <TableCell className="font-medium">{Number(r.achievement_threshold_percent)}% of target</TableCell>
-                                                        <TableCell className="text-right">RM {Number(r.incentive_amount).toLocaleString()}</TableCell>
-                                                        <TableCell>{r.status === 'active' ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
-                                                        <TableCell className="text-right">
-                                                            <div className="flex justify-end gap-1">
-                                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setTierForm({ id: r.id, rule_name: r.rule_name, applies_to: 'all_ams', achievement_threshold_percent: String(Number(r.achievement_threshold_percent)), incentive_amount: String(Number(r.incentive_amount)), status: r.status }); setTierDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600" onClick={() => handleDeleteTier(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                                            </div>
-                                                        </TableCell>
-                                                    </TableRow>
+                                        {leaderTiers.length === 0 ? (
+                                            <EmptyBlock title="No leader bonus tiers yet" description="e.g. Team reaches 100% = RM500, 120% = RM800." />
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {[...leaderTiers].sort((a, b) => Number(a.achievement_threshold_percent) - Number(b.achievement_threshold_percent)).map((r) => (
+                                                    <KpiTierRow
+                                                        key={r.id}
+                                                        title={`Team reaches ${Number(r.achievement_threshold_percent)}%`}
+                                                        subtitle={`Bonus RM ${Number(r.incentive_amount).toLocaleString()}`}
+                                                        actions={
+                                                            <>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setTierForm({ id: r.id, rule_name: r.rule_name, applies_to: 'team_leader', achievement_threshold_percent: String(Number(r.achievement_threshold_percent)), incentive_amount: String(Number(r.incentive_amount)), status: r.status }); setTierDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-600" onClick={() => handleDeleteTier(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                                            </>
+                                                        }
+                                                    />
                                                 ))}
-                                            </TableBody>
-                                        </Table>
-                                    )}
-                                </CardContent>
-                            </Card>
-
-                            {/* Leader Bonus */}
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <CardTitle className="text-base flex items-center gap-2">
-                                                <Trophy className="h-4 w-4 text-amber-500" /> Leader Bonus
-                                            </CardTitle>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                Optional. When ON, the leader bonus is <span className="font-medium text-amber-700">additive</span> — paid on top of the leader&apos;s own AM incentive, based on total team achievement.
-                                            </p>
-                                        </div>
-                                        <label className="flex items-center gap-2 text-sm whitespace-nowrap">
-                                            <Switch checked={plan.leader_bonus_enabled} onCheckedChange={(v) => patchPlan({ leader_bonus_enabled: v })} />
-                                            {plan.leader_bonus_enabled ? 'On' : 'Off'}
-                                        </label>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    {!plan.leader_bonus_enabled ? (
-                                        <div className="text-sm text-muted-foreground">Leader bonus is off. Turn it on to add team-achievement bonus tiers for team leaders.</div>
-                                    ) : (
-                                        <>
-                                            <div className="flex justify-end mb-2">
-                                                <Button size="sm" variant="outline" onClick={() => { setTierForm(emptyTierForm('team_leader')); setTierDialogOpen(true) }}>
-                                                    <Plus className="h-4 w-4 mr-1" /> Add Bonus Tier
-                                                </Button>
                                             </div>
-                                            {leaderTiers.length === 0 ? (
-                                                <EmptyBlock title="No leader bonus tiers yet" description="e.g. Team reaches 100% = RM500, 120% = RM800." />
-                                            ) : (
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Team Achievement</TableHead>
-                                                            <TableHead className="text-right">Bonus</TableHead>
-                                                            <TableHead className="text-right">Actions</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {[...leaderTiers].sort((a, b) => Number(a.achievement_threshold_percent) - Number(b.achievement_threshold_percent)).map((r) => (
-                                                            <TableRow key={r.id}>
-                                                                <TableCell className="font-medium">Team reaches {Number(r.achievement_threshold_percent)}%</TableCell>
-                                                                <TableCell className="text-right">RM {Number(r.incentive_amount).toLocaleString()}</TableCell>
-                                                                <TableCell className="text-right">
-                                                                    <div className="flex justify-end gap-1">
-                                                                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setTierForm({ id: r.id, rule_name: r.rule_name, applies_to: 'team_leader', achievement_threshold_percent: String(Number(r.achievement_threshold_percent)), incentive_amount: String(Number(r.incentive_amount)), status: r.status }); setTierDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                                                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600" onClick={() => handleDeleteTier(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                                                                    </div>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            )}
-                                        </>
-                                    )}
-                                </CardContent>
-                            </Card>
+                                        )}
+                                    </>
+                                )}
+                            </KpiSettingsSectionCard>
+                            </div>
+                        </TabsContent>
 
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base flex items-center gap-2">
-                                        <ShieldCheck className="h-4 w-4 text-blue-600" /> KPI Policy &amp; Attribution Rules
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <ul className="grid gap-2 sm:grid-cols-2 text-sm">
-                                        {POLICY_RULES.map((rule) => (
-                                            <li key={rule} className="flex items-start gap-2">
-                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-                                                <span>{rule}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    <div className="rounded-md border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-800">
-                                        {RECOVERY_NOTE}
-                                    </div>
-                                </CardContent>
-                            </Card>
+                        <TabsContent value="rules" className="mt-0 focus-visible:outline-none focus-visible:ring-0">
+                            <KpiSettingsSectionCard
+                                icon={ShieldCheck}
+                                tone="slate"
+                                title="KPI Policy & Attribution Rules"
+                                description="Reference — how plans, reports, and scan attribution work."
+                                contentClassName="space-y-4"
+                            >
+                                <ul className="grid w-full gap-2.5 sm:grid-cols-2">
+                                    {POLICY_RULES.map((rule) => (
+                                        <li key={rule} className="flex items-start gap-2.5 rounded-lg bg-muted/15 px-3 py-2.5 text-sm">
+                                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                                            <span className="leading-relaxed">{rule}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <KpiHintBanner tone="amber" className="text-xs">
+                                    {RECOVERY_NOTE}
+                                </KpiHintBanner>
+                            </KpiSettingsSectionCard>
+                        </TabsContent>
+                            </KpiSettingsTabsPanel>
                         </div>
-                    </div>
+                    </Tabs>
                     )}
 
                     {/* Footer actions */}
                     {plan && (
-                        <div className="fixed bottom-0 left-0 right-0 z-20 border-t bg-background/95 backdrop-blur px-4 py-3">
-                            <div className="max-w-screen-2xl mx-auto flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => { resetTeamBuilder(); loadPlans() }} disabled={saving}>Cancel</Button>
-                                <Button variant="outline" onClick={() => { loadPlans(); toast({ title: 'Draft saved', description: 'All changes are saved as you edit.' }) }} disabled={saving}>Save Draft</Button>
-                                <Button onClick={handleActivate} disabled={plan.status !== 'draft' || saving}>
-                                    {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
-                                    Activate KPI Plan
-                                </Button>
+                        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-border/70 bg-background/90 px-4 py-3 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md">
+                            <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-3">
+                                <div className="text-sm text-muted-foreground">
+                                    {plan.status === 'draft'
+                                        ? 'Draft plan — review teams and incentives, then activate when ready.'
+                                        : 'Active plan — structural team changes are frozen until archived.'}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button variant="outline" onClick={() => { resetTeamBuilder(); loadPlans() }} disabled={saving}>Cancel</Button>
+                                    <Button variant="outline" onClick={() => { loadPlans(); toast({ title: 'Draft saved', description: 'All changes are saved as you edit.' }) }} disabled={saving}>Save Draft</Button>
+                                    <Button onClick={handleActivate} disabled={plan.status !== 'draft' || saving}>
+                                        {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
+                                        Activate KPI Plan
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1014,10 +985,10 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-3">
-                                <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">
+                                <div className="rounded-md border border-brand/20 bg-brand-muted/60 px-3 py-2 text-xs text-brand-charcoal dark:text-brand">
                                     {tierForm.applies_to === 'team_leader'
                                         ? 'Leader bonus is additive and based on total team achievement.'
-                                        : `AM incentive uses highest-tier-wins based on the AM’s achievement vs target. Higher achievement must pay more, and payouts are capped at Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''}.`}
+                                        : `AM incentive uses fixed volume tiers (monthly scans × RM/scan). Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''} caps the payout after tier calculation.`}
                                 </div>
                                 <div className="grid gap-3 grid-cols-2">
                                     <div>

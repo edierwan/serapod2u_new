@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { deriveKpiMonthPeriod, isValidKpiMonth } from '@/lib/roadtour/kpi'
 import {
-    CYCLE_SELECT, PLAN_SELECT,
-    assertOrgAccess, isMissingKpiSchema, jsonError, loadCycleConfig, requireKpiAdmin,
+    CYCLE_SELECT, PLAN_SELECT, PLAN_SELECT_LEGACY,
+    assertOrgAccess, isMissingColumn, isMissingKpiSchema, jsonError, loadCycleConfig, requireKpiAdmin,
 } from '../_lib'
+import { normalizeAmIncentiveMode } from '@/lib/roadtour/kpi'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,24 @@ export async function GET(request: NextRequest) {
         if (runId) query = query.eq('roadtour_run_id', runId)
 
         const { data: plans, error } = await query
+        if (error && isMissingColumn(error, 'am_incentive_mode')) {
+            let legacyQuery = ctx.admin
+                .from('roadtour_kpi_plans')
+                .select(PLAN_SELECT_LEGACY)
+                .eq('org_id', orgId)
+                .order('effective_from_month', { ascending: false })
+            if (runId) legacyQuery = legacyQuery.eq('roadtour_run_id', runId)
+            const legacy = await legacyQuery
+            if (legacy.error) {
+                if (isMissingKpiSchema(legacy.error)) return NextResponse.json({ success: true, data: [], schemaMissing: true })
+                return jsonError(legacy.error.message || 'Failed to list KPI plans.', 500)
+            }
+            const data = await Promise.all((legacy.data || []).map(async (plan: any) => {
+                const config = await loadCycleConfig(ctx.admin, plan.config_cycle_id)
+                return { ...plan, am_incentive_mode: 'volume_tiers', config_cycle_id: plan.config_cycle_id, teams: config.teams, rules: config.rules }
+            }))
+            return NextResponse.json({ success: true, data })
+        }
         if (error) {
             if (isMissingKpiSchema(error)) return NextResponse.json({ success: true, data: [], schemaMissing: true })
             return jsonError(error.message || 'Failed to list KPI plans.', 500)
@@ -45,7 +64,13 @@ export async function GET(request: NextRequest) {
 
         const data = await Promise.all((plans || []).map(async (plan: any) => {
             const config = await loadCycleConfig(ctx.admin, plan.config_cycle_id)
-            return { ...plan, config_cycle_id: plan.config_cycle_id, teams: config.teams, rules: config.rules }
+            return {
+                ...plan,
+                am_incentive_mode: normalizeAmIncentiveMode(plan.am_incentive_mode),
+                config_cycle_id: plan.config_cycle_id,
+                teams: config.teams,
+                rules: config.rules,
+            }
         }))
 
         return NextResponse.json({ success: true, data })
