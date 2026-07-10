@@ -18,9 +18,9 @@ import {
 } from 'lucide-react'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import {
-    KPI_STATUS_LABEL, currentKpiMonth, deriveKpiMonthPeriod, enumeratePlanMonths,
+    KPI_STATUS_LABEL, currentKpiMonth, deriveKpiPeriodWindow, enumeratePlanMonths,
     formatKpiMonthLabel, kpiMonthFromDate,
-    type KpiPerformanceStatus,
+    type KpiPerformanceStatus, type KpiPeriodType,
 } from '@/lib/roadtour/kpi'
 import type { KpiPlanRow, KpiReportData } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, KpiCard, LoadingBlock, PageHeader, formatNumber } from './shared'
@@ -47,6 +47,9 @@ function KpiStatusPill({ status }: { status: KpiPerformanceStatus }) {
 const POLICY_NOTES = [
     'KPI month uses calendar month boundaries.',
     'Scan attribution follows campaign QR / selected AM at scan time.',
+    'AM incentive always uses the scan volume table (monthly scans × RM/scan bracket).',
+    'In By achievement mode, AM must meet an achievement gate before volume payout is unlocked.',
+    'Point value (RM) uses the same volume tiers as KPI incentive.',
     'New campaigns created mid-month are included in the same KPI month if they belong to the selected event.',
     'Historical scan attribution is not rewritten when AM changes.',
 ]
@@ -60,6 +63,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
     const [plans, setPlans] = useState<KpiPlanRow[]>([])
     const [plansLoading, setPlansLoading] = useState(false)
     const [selectedMonth, setSelectedMonth] = useState(() => currentKpiMonth())
+    const [periodType, setPeriodType] = useState<KpiPeriodType>('monthly')
     const [selectedRunId, setSelectedRunId] = useState('')
     const [teamFilter, setTeamFilter] = useState('all')
     const [leaderFilter, setLeaderFilter] = useState('all')
@@ -70,7 +74,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
     const [loadError, setLoadError] = useState<string | null>(null)
     const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null)
 
-    const period = useMemo(() => deriveKpiMonthPeriod(selectedMonth), [selectedMonth])
+    const period = useMemo(() => deriveKpiPeriodWindow(selectedMonth, periodType), [selectedMonth, periodType])
 
     useEffect(() => {
         if (!companyId) return
@@ -145,6 +149,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             const params = new URLSearchParams({
                 org_id: companyId,
                 kpi_month: selectedMonth,
+                period_type: periodType,
                 roadtour_run_id: selectedRunId,
             })
             if (teamFilter !== 'all') params.set('team_id', teamFilter)
@@ -161,12 +166,12 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
         } finally {
             setLoading(false)
         }
-    }, [companyId, hasConfiguredPlan, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
+    }, [companyId, hasConfiguredPlan, leaderFilter, periodType, selectedMonth, selectedRunId, statusFilter, teamFilter])
 
     useEffect(() => { loadReport() }, [loadReport])
 
     // Reset row filters when the month/event changes.
-    useEffect(() => { setTeamFilter('all'); setLeaderFilter('all'); setStatusFilter('all') }, [selectedMonth, selectedRunId])
+    useEffect(() => { setTeamFilter('all'); setLeaderFilter('all'); setStatusFilter('all') }, [selectedMonth, selectedRunId, periodType])
 
     const teamOptions = report?.teams || []
     const leaderOptions = useMemo(() => {
@@ -184,6 +189,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             const params = new URLSearchParams({
                 org_id: companyId,
                 kpi_month: selectedMonth,
+                period_type: periodType,
                 roadtour_run_id: selectedRunId,
             })
             if (teamFilter !== 'all') params.set('team_id', teamFilter)
@@ -198,7 +204,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             const url = URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = url
-            link.download = `roadtour-monthly-kpi-${selectedMonth}.xlsx`
+            link.download = `roadtour-${periodType}-kpi-${selectedMonth}.xlsx`
             link.click()
             URL.revokeObjectURL(url)
         } catch (err: any) {
@@ -206,7 +212,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
         } finally {
             setExporting(null)
         }
-    }, [companyId, report, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
+    }, [companyId, periodType, report, leaderFilter, selectedMonth, selectedRunId, statusFilter, teamFilter])
 
     const handleExportPdf = useCallback(async () => {
         if (!report || report.teams.length === 0) return
@@ -221,10 +227,11 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             const monthLabel = formatKpiMonthLabel(report.cycle.kpi_month)
 
             doc.setFontSize(16)
-            doc.text('Monthly KPI Performance Report', 14, 16)
+            const reportTitle = `${report.cycle.period_type[0].toUpperCase()}${report.cycle.period_type.slice(1)} KPI Performance Report`
+            doc.text(reportTitle, 14, 16)
             doc.setFontSize(10)
             doc.setTextColor(100)
-            doc.text(`KPI Month: ${monthLabel}   Period: ${report.cycle.period_label}`, 14, 23)
+            doc.text(`Anchor Month: ${monthLabel}   Period: ${report.cycle.period_label} (${report.cycle.period_type})`, 14, 23)
             doc.text('KPI attribution is based on campaign QR / selected AM at scan time.', 14, 28)
 
             autoTable(doc, {
@@ -256,11 +263,16 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 8,
-                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Achievement %', 'Incentive Earned', 'Status']],
+                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Tier RM/scan', 'Volume Payout', 'Achievement %', 'Total Incentive', 'Status']],
                 body: report.ams.map((a) => [
                     a.rank, a.am_name, a.team_name,
                     a.assigned_target.toLocaleString(), a.actual_scans.toLocaleString(),
-                    `${a.achievement_percent.toFixed(1)}%`, `RM ${a.incentive_earned.toLocaleString()}`,
+                    a.volume_tier_rate != null && a.volume_tier_rate > 0
+                        ? `RM ${a.volume_tier_rate.toFixed(2)}`
+                        : '0',
+                    `RM ${a.volume_incentive.toLocaleString()}`,
+                    `${a.achievement_percent.toFixed(1)}%`,
+                    `RM ${a.incentive_earned.toLocaleString()}`,
                     KPI_STATUS_LABEL[a.status],
                 ]),
                 headStyles: { fillColor: [30, 64, 175] },
@@ -275,7 +287,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 headStyles: { fillColor: [30, 64, 175] },
             })
 
-            doc.save(`roadtour-monthly-kpi-${report.cycle.kpi_month}.pdf`)
+            doc.save(`roadtour-${report.cycle.period_type}-kpi-${report.cycle.kpi_month}.pdf`)
         } catch (err: any) {
             toast({ title: 'Export failed', description: err.message, variant: 'destructive' })
         } finally {
@@ -295,19 +307,31 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
         <div className="space-y-4">
             <PageHeader
                 overline="RoadTour Analytics"
-                title="Monthly KPI Performance Report"
-                description="Track monthly scan achievement vs KPI targets for RoadTour teams, AMs, and incentives. KPI attribution is based on campaign QR / selected AM at scan time."
+                title="KPI Performance Report"
+                description="Track KPI scan achievement vs targets for RoadTour teams, AMs, and incentives by period. Attribution is based on campaign QR / selected AM at scan time."
             />
 
-            {/* Filter bar — KPI month only, no From/To date range. */}
+            {/* Filter bar — anchor month + period type; no custom From/To date range. */}
             <Card className="p-3 sm:p-4">
-                <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+                <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-7">
                     <div>
-                        <label className="text-xs font-medium text-muted-foreground">Report Month</label>
+                        <label className="text-xs font-medium text-muted-foreground">Anchor Month</label>
                         <Select value={selectedMonth} onValueChange={setSelectedMonth} disabled={!hasConfiguredPlan || monthOptions.length === 0}>
                             <SelectTrigger><SelectValue placeholder={hasConfiguredPlan ? 'Select month' : 'No KPI Plan'} /></SelectTrigger>
                             <SelectContent>
                                 {monthOptions.map((m) => <SelectItem key={m} value={m}>{formatKpiMonthLabel(m)}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <label className="text-xs font-medium text-muted-foreground">Period Type</label>
+                        <Select value={periodType} onValueChange={(v) => setPeriodType(v as KpiPeriodType)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="weekly">Weekly</SelectItem>
+                                <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="quarterly">Quarterly</SelectItem>
+                                <SelectItem value="yearly">Yearly</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -365,7 +389,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                     <div className="flex items-center gap-1.5 text-xs text-blue-700">
                         <Info className="h-3.5 w-3.5" />
-                        Period auto: {period.label} (Calendar Month). Month options are limited to configured KPI Plan months — monthly report includes all campaigns under the selected event, including those created mid-month. Multiple campaigns per shop are supported: each scan counts for the campaign/QR AM at scan time. For shop recovery or AM takeover, create a new Campaign under the same Event; historical scans stay with the original campaign/AM.
+                        Period auto: {period.label}. Month options are limited to configured KPI Plan months; selected period windows include all campaigns under the selected event, including those created mid-period. Multiple campaigns per shop are supported: each scan counts for the campaign/QR AM at scan time.
                     </div>
                     <div className="flex gap-2">
                         <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-200" onClick={handleExportExcel} disabled={exporting !== null || !hasReportData}>
@@ -380,7 +404,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 </div>
             </Card>
 
-            {loading && <Card><LoadingBlock label="Computing monthly KPI report…" /></Card>}
+            {loading && <Card><LoadingBlock label="Computing KPI report…" /></Card>}
 
             {!loading && loadError && (
                 <Card>
@@ -396,7 +420,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 <Card>
                     <EmptyBlock
                         title="No KPI Plan configured for this RoadTour Event."
-                        description="Create a KPI Plan once for this event. Monthly reports are then generated automatically for each month in the plan window."
+                        description="Create a KPI Plan once for this event. KPI reports are then generated by period for months in the plan window."
                     />
                     <div className="text-center pb-6">
                         <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Create KPI Plan</Button>
@@ -404,12 +428,12 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                 </Card>
             )}
 
-            {/* Plan exists but the selected month has no report data yet. */}
+            {/* Plan exists but the selected period has no report data yet. */}
             {!loading && !loadError && !report && selectedRunId && hasConfiguredPlan && (
                 <Card>
                     <EmptyBlock
                         title={`No KPI report data for ${formatKpiMonthLabel(selectedMonth)}.`}
-                        description="This month has no scan activity under the active KPI Plan yet."
+                        description={`No scan activity was found in the selected ${periodType} period under the active KPI Plan.`}
                     />
                 </Card>
             )}
@@ -421,7 +445,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                         <Card>
                             <EmptyBlock
                                 title="No KPI teams configured for this plan."
-                                description="Add teams and assign account managers so their monthly scan achievement can be tracked."
+                                description="Add teams and assign account managers so their KPI achievement can be tracked."
                             />
                             <div className="text-center pb-6">
                                 <Button onClick={() => onViewChange('roadtour-kpi-settings')}>Configure Teams</Button>
@@ -430,7 +454,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                     )}
                     {hasReportData && s && s.unassigned_scans > 0 && (
                         <div className="border border-amber-200 bg-amber-50 text-amber-800 text-sm rounded-md px-3 py-2">
-                            {formatNumber(s.unassigned_scans)} successful scans this month belong to AMs who are not in any KPI team; they are excluded from team totals.
+                            {formatNumber(s.unassigned_scans)} successful scans in the selected period belong to AMs who are not in any KPI team; they are excluded from team totals.
                         </div>
                     )}
 
@@ -476,7 +500,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                             </CardHeader>
                             <CardContent>
                                 {report.chart_payout_by_team.every((p) => p.payout === 0) ? (
-                                    <EmptyBlock title="No estimated payout yet" description="Payouts appear once incentive rules and scan progress exist." />
+                                    <EmptyBlock title="No estimated payout yet" description="Payouts appear once AMs record successful scans in the selected period." />
                                 ) : (
                                     <div className="h-72">
                                         <ResponsiveContainer width="100%" height="100%">
@@ -577,8 +601,10 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                     <TableHead>Team</TableHead>
                                                     <TableHead className="text-right">Assigned Target</TableHead>
                                                     <TableHead className="text-right">Actual</TableHead>
+                                                    <TableHead className="text-right">RM/scan</TableHead>
+                                                    <TableHead className="text-right">Volume Payout</TableHead>
                                                     <TableHead className="text-right">Achievement %</TableHead>
-                                                    <TableHead className="text-right">Incentive</TableHead>
+                                                    <TableHead className="text-right">Total Incentive</TableHead>
                                                     <TableHead className="text-right">Rank</TableHead>
                                                     <TableHead>Status</TableHead>
                                                 </TableRow>
@@ -590,6 +616,12 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                         <TableCell className="text-xs">{a.team_name}</TableCell>
                                                         <TableCell className="text-right">{formatNumber(a.assigned_target)}</TableCell>
                                                         <TableCell className="text-right">{formatNumber(a.actual_scans)}</TableCell>
+                                                        <TableCell className="text-right text-muted-foreground">
+                                                            {a.volume_tier_rate != null && a.volume_tier_rate > 0
+                                                                ? `RM ${a.volume_tier_rate.toFixed(2)}`
+                                                                : '0'}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">RM {formatNumber(Math.round(a.volume_incentive))}</TableCell>
                                                         <TableCell className="text-right font-medium">{a.achievement_percent.toFixed(1)}%</TableCell>
                                                         <TableCell className="text-right">RM {formatNumber(Math.round(a.incentive_earned))}</TableCell>
                                                         <TableCell className="text-right">{a.rank}</TableCell>
@@ -612,7 +644,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                             </CardHeader>
                             <CardContent>
                                 {report.top_campaigns.length === 0 ? (
-                                    <EmptyBlock title="No scans recorded this month" description="Successful campaign QR scans will appear here." />
+                                    <EmptyBlock title="No scans recorded in this period" description="Successful campaign QR scans will appear here." />
                                 ) : (
                                     <Table>
                                         <TableHeader>
@@ -664,7 +696,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
             )}
 
             {!loading && !loadError && !report && !runsLoading && runs.length === 0 && (
-                <Card><EmptyBlock title="No RoadTour Events" description="Create a RoadTour Event and campaigns before configuring monthly KPIs." /></Card>
+                <Card><EmptyBlock title="No RoadTour Events" description="Create a RoadTour Event and campaigns before configuring KPI reporting." /></Card>
             )}
         </div>
     )

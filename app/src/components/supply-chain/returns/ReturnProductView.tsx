@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
     Plus, RefreshCw, Search, Trash2, Loader2, FileText, Eye, Printer,
-    ArrowLeft, PackageOpen, Ban, Save, ChevronRight,
+    ArrowLeft, PackageOpen, Ban, Save, ChevronRight, Store, ExternalLink,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -104,7 +104,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
     }
 
     return (
-        <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+        <div className="w-full space-y-4">
             <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                 <div>
                     <h1 className="text-xl font-semibold text-foreground">Return Product</h1>
@@ -211,6 +211,7 @@ function ReturnCaseEditor({
     const [warehouseId, setWarehouseId] = useState<string>(meta.settings.default_return_warehouse_id || '')
     const [contactPerson, setContactPerson] = useState('')
     const [contactPhone, setContactPhone] = useState('')
+    const [contactEmail, setContactEmail] = useState('')
     const [notes, setNotes] = useState('')
     const [items, setItems] = useState<EditorItem[]>([])
 
@@ -234,6 +235,7 @@ function ReturnCaseEditor({
             setWarehouseId(c.return_warehouse_id || '')
             setContactPerson(c.contact_person || '')
             setContactPhone(c.contact_phone || '')
+            setContactEmail(c.contact_email || '')
             setNotes(c.notes || '')
             setItems((c.items || []).map((it) => ({ ...it, _key: newKey() })))
             setWh({
@@ -253,6 +255,36 @@ function ReturnCaseEditor({
     }, [caseId, isNew, toast])
 
     useEffect(() => { loadCase() }, [loadCase])
+
+    // The currently selected shop's master record (used for auto-fill + info card).
+    const selectedShop = useMemo(
+        () => meta.shops.find((s) => s.id === shopId) || rc?.shop || null,
+        [meta.shops, shopId, rc?.shop],
+    )
+
+    // Replace the contact fields with the selected shop's master data. Called when
+    // the shop is (re)selected — the user can still override the fields afterwards.
+    const applyShopContacts = useCallback((id: string) => {
+        const shop = meta.shops.find((s) => s.id === id)
+        setContactPerson(shop?.contact_name || '')
+        setContactPhone(shop?.contact_phone || '')
+        setContactEmail(shop?.contact_email || '')
+    }, [meta.shops])
+
+    // Shop-login: prefill contact from the user's own shop master data on a new case.
+    useEffect(() => {
+        if (isNew && !meta.isManager && shopId) applyShopContacts(shopId)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Deep-link to the selected shop's organization edit page, scrolled to the
+    // Contact Information block. Opened in a new tab so the return draft is kept.
+    const openShopContactEditor = () => {
+        if (!shopId) return
+        // The org id travels in the URL; the edit page resolves it and scrolls to
+        // the #contact-information block. Opened in a new tab to keep the draft.
+        window.open(`/supply-chain/organizations/${shopId}/edit#contact-information`, '_blank')
+    }
 
     const totals = useMemo(() => {
         const qty = items.reduce((s, it) => s + Number(it.quantity || 0), 0)
@@ -292,6 +324,7 @@ function ReturnCaseEditor({
         return_warehouse_id: warehouseId || null,
         contact_person: contactPerson || null,
         contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
         notes: notes || null,
         items: items.map((it) => ({
             product_id: it.product_id, variant_id: it.variant_id, sku: it.sku,
@@ -376,7 +409,7 @@ function ReturnCaseEditor({
         ...(rc || ({} as ReturnCase)),
         return_no: rc?.return_no || 'DRAFT',
         status,
-        contact_person: contactPerson, contact_phone: contactPhone, notes,
+        contact_person: contactPerson, contact_phone: contactPhone, contact_email: contactEmail, notes,
         shop: meta.shops.find((s) => s.id === shopId) || rc?.shop || null,
         warehouse: meta.warehouses.find((w) => w.id === warehouseId) || rc?.warehouse || null,
         items,
@@ -397,7 +430,7 @@ function ReturnCaseEditor({
     const shopName = meta.shops.find((s) => s.id === shopId)?.org_name || rc?.shop?.org_name || '—'
 
     return (
-        <div className="mx-auto max-w-6xl space-y-4 p-4 md:p-6">
+        <div className="w-full space-y-4">
             {/* Header bar */}
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-2">
@@ -422,26 +455,12 @@ function ReturnCaseEditor({
                     {/* Return Information */}
                     <section className="rounded-lg border border-border bg-card p-4">
                         <h2 className="mb-3 text-sm font-semibold text-foreground">Return Information</h2>
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                             <Field label="Return No.">
                                 <Input value={rc?.return_no || 'Auto-generated'} readOnly disabled />
                             </Field>
                             <Field label="Current Status">
                                 <Input value={RETURN_STATUS_LABELS[status]} readOnly disabled />
-                            </Field>
-                            <Field label="Return From Shop" required>
-                                {meta.isManager ? (
-                                    <Select value={shopId} onValueChange={setShopId} disabled={!isDraft}>
-                                        <SelectTrigger><SelectValue placeholder="Select shop" /></SelectTrigger>
-                                        <SelectContent>
-                                            {meta.shops.map((s) => (
-                                                <SelectItem key={s.id} value={s.id}>{s.org_name}{s.org_code ? ` (${s.org_code})` : ''}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                ) : (
-                                    <Input value={shopName} readOnly disabled />
-                                )}
                             </Field>
                             <Field label="Return Warehouse">
                                 <Select value={warehouseId} onValueChange={setWarehouseId} disabled={readOnly}>
@@ -453,11 +472,33 @@ function ReturnCaseEditor({
                                     </SelectContent>
                                 </Select>
                             </Field>
+                            <Field label="Return From Shop" required>
+                                {meta.isManager ? (
+                                    <Select value={shopId} onValueChange={(v) => { setShopId(v); applyShopContacts(v) }} disabled={!isDraft}>
+                                        <SelectTrigger><SelectValue placeholder="Select shop" /></SelectTrigger>
+                                        <SelectContent>
+                                            {meta.shops.map((s) => (
+                                                <SelectItem key={s.id} value={s.id}>{s.org_name}{s.org_code ? ` (${s.org_code})` : ''}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <Input value={shopName} readOnly disabled />
+                                )}
+                            </Field>
                             <Field label="Contact Person">
                                 <Input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} disabled={readOnly} placeholder="Name" />
                             </Field>
                             <Field label="Contact Phone">
                                 <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} disabled={readOnly} placeholder="Phone" />
+                            </Field>
+                            <Field label="Contact Email">
+                                <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} disabled={readOnly} placeholder="name@example.com" />
+                                {selectedShop && !selectedShop.contact_email && (
+                                    <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
+                                        Email not updated yet in shop master data.
+                                    </span>
+                                )}
                             </Field>
                             {!isNew && (
                                 <>
@@ -466,6 +507,35 @@ function ReturnCaseEditor({
                                 </>
                             )}
                         </div>
+
+                        {/* Compact shop master-data card + shortcut to edit shop contact */}
+                        {selectedShop && (
+                            <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                    <Store className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <div className="min-w-0 text-sm">
+                                        <div className="font-medium text-foreground">
+                                            {selectedShop.org_name || '—'}
+                                            {selectedShop.org_code && <span className="ml-1 text-xs text-muted-foreground">({selectedShop.org_code})</span>}
+                                        </div>
+                                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                            <span>Contact: {selectedShop.contact_name || '—'}</span>
+                                            <span>Phone: {selectedShop.contact_phone || '—'}</span>
+                                            <span>
+                                                Email: {selectedShop.contact_email
+                                                    ? selectedShop.contact_email
+                                                    : <span className="text-amber-600 dark:text-amber-400">Email not updated yet</span>}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {meta.isManager && (
+                                    <Button type="button" variant="outline" size="sm" onClick={openShopContactEditor} className="shrink-0 gap-1.5">
+                                        <ExternalLink className="h-3.5 w-3.5" /> Edit Shop Contact
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </section>
 
                     {/* Return Items */}

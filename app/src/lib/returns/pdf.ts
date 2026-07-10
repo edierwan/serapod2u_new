@@ -52,6 +52,7 @@ export async function generateReturnPdf(
                 shop?.org_code ? `Code: ${shop.org_code}` : '',
                 rc.contact_person ? `Contact: ${rc.contact_person}` : (shop?.contact_name ? `Contact: ${shop.contact_name}` : ''),
                 rc.contact_phone ? `Phone: ${rc.contact_phone}` : (shop?.contact_phone ? `Phone: ${shop.contact_phone}` : ''),
+                rc.contact_email ? `Email: ${rc.contact_email}` : (shop?.contact_email ? `Email: ${shop.contact_email}` : ''),
                 [shop?.address, shop?.city, shop?.postal_code].filter(Boolean).join(', '),
             ].filter(Boolean).join('\n'),
             [

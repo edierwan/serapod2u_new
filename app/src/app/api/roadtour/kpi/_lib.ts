@@ -48,7 +48,8 @@ export function jsonError(message: string, status = 400) {
     return NextResponse.json({ success: false, error: message }, { status })
 }
 
-export const PLAN_SELECT = 'id, org_id, roadtour_run_id, plan_name, effective_from_month, effective_to_month, reporting_scope, status, leader_bonus_enabled, config_cycle_id, activated_at, created_at, updated_at'
+export const PLAN_SELECT = 'id, org_id, roadtour_run_id, plan_name, effective_from_month, effective_to_month, reporting_scope, status, leader_bonus_enabled, am_incentive_mode, config_cycle_id, activated_at, created_at, updated_at'
+export const PLAN_SELECT_LEGACY = 'id, org_id, roadtour_run_id, plan_name, effective_from_month, effective_to_month, reporting_scope, status, leader_bonus_enabled, config_cycle_id, activated_at, created_at, updated_at'
 export const CYCLE_SELECT = 'id, org_id, roadtour_run_id, kpi_plan_id, kpi_month, period_start, period_end, reporting_scope, status, freeze_members_targets, lock_campaign_qr_attribution, activated_at, created_at, updated_at'
 export const TEAM_SELECT = 'id, org_id, kpi_cycle_id, team_name, leader_user_id, monthly_team_target, incentive_budget, status, created_at, updated_at'
 export const MEMBER_SELECT = 'id, org_id, kpi_cycle_id, team_id, am_user_id, auto_target_scans, manual_target_scans, target_source, created_at'
@@ -58,6 +59,8 @@ export const RULE_SELECT = 'id, org_id, kpi_cycle_id, team_id, rule_name, applie
 export function isMissingKpiSchema(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
     if (!error) return false
     const message = String(error.message || '').toLowerCase()
+    // Column-only gaps (additive migrations) are not "schema missing".
+    if (message.includes('column') && message.includes('could not find')) return false
     return error.code === '42P01'
         || error.code === 'PGRST205'
         || (message.includes('roadtour_kpi_') && (message.includes('does not exist') || message.includes('could not find') || message.includes('schema cache')))
@@ -102,13 +105,25 @@ export async function loadCycleForUpdate(ctx: KpiAdminContext, cycleId: string):
  * Returns the plan row or an error response.
  */
 export async function loadPlanForUpdate(ctx: KpiAdminContext, planId: string): Promise<any | NextResponse> {
-    const { data: plan, error } = await ctx.admin
+    let { data: plan, error } = await ctx.admin
         .from('roadtour_kpi_plans')
         .select(PLAN_SELECT)
         .eq('id', planId)
         .maybeSingle()
+    if (error && isMissingColumn(error, 'am_incentive_mode')) {
+        const legacy = await ctx.admin
+            .from('roadtour_kpi_plans')
+            .select(PLAN_SELECT_LEGACY)
+            .eq('id', planId)
+            .maybeSingle()
+        plan = legacy.data ? { ...legacy.data, am_incentive_mode: 'volume_tiers' } : null
+        error = legacy.error
+    }
     if (error) {
         if (isMissingKpiSchema(error)) return jsonError('RoadTour KPI plan tables are not migrated yet.', 503)
+        if (isMissingColumn(error, 'am_incentive_mode')) {
+            return jsonError('Apply supabase/migrations/20260709_roadtour_kpi_am_incentive_mode.sql to enable Custom tiers.', 503)
+        }
         return jsonError(error.message || 'Failed to load KPI plan.', 500)
     }
     if (!plan) return jsonError('KPI plan not found.', 404)

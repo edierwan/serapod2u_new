@@ -1,6 +1,8 @@
 import type {
+    KpiAmIncentiveMode,
     KpiBonusType,
     KpiCycleStatus,
+    KpiPeriodType,
     KpiPerformanceStatus,
     KpiReportingScope,
     KpiRuleAppliesTo,
@@ -78,6 +80,7 @@ export interface KpiPlanRow {
     reporting_scope: KpiReportingScope
     status: KpiPlanStatus
     leader_bonus_enabled: boolean
+    am_incentive_mode?: KpiAmIncentiveMode
     config_cycle_id: string | null
     activated_at: string | null
     created_at: string
@@ -128,6 +131,12 @@ export interface KpiReportAmRowData {
     assigned_target: number
     actual_scans: number
     achievement_percent: number
+    /** RM per scan from the AM's monthly scan-volume bracket. */
+    volume_tier_rate: number | null
+    /** Base payout from scan volume (always counted). */
+    volume_incentive: number
+    /** Extra payout from achievement tiers (legacy; always 0 — payout uses volume table). */
+    achievement_bonus: number
     incentive_earned: number
     rank: number
     status: KpiPerformanceStatus
@@ -150,8 +159,10 @@ export interface KpiReportData {
         period_label: string
         period_start: string
         period_end: string
+        period_type: KpiPeriodType
         freeze_members_targets: boolean
         lock_campaign_qr_attribution: boolean
+        am_incentive_mode: KpiAmIncentiveMode
     }
     summary: KpiReportSummaryData
     teams: KpiReportTeamRowData[]
