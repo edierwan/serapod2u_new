@@ -9,6 +9,46 @@ export const dynamic = 'force-dynamic'
 const ALLOWED_APPLIES_TO = new Set(['all_ams', 'team_leader', 'specific_team'])
 const ALLOWED_BONUS_TYPES = new Set(['cash', 'other'])
 
+/** List incentive rules for a KPI cycle (Read in CRUD). */
+export async function GET(request: NextRequest) {
+    try {
+        const ctx = await requireKpiAdmin()
+        if (ctx instanceof NextResponse) return ctx
+
+        const { searchParams } = new URL(request.url)
+        const cycleId = String(searchParams.get('kpi_cycle_id') || '').trim()
+        if (!cycleId) return jsonError('kpi_cycle_id is required.')
+        const cycle = await loadCycleForUpdate(ctx, cycleId)
+        if (cycle instanceof NextResponse) return cycle
+
+        let query = ctx.admin
+            .from('roadtour_kpi_incentive_rules')
+            .select(RULE_SELECT)
+            .eq('kpi_cycle_id', cycleId)
+            .order('created_at')
+
+        const appliesTo = String(searchParams.get('applies_to') || '').trim()
+        if (appliesTo) {
+            if (!ALLOWED_APPLIES_TO.has(appliesTo)) return jsonError('Invalid applies_to value.')
+            query = query.eq('applies_to', appliesTo)
+        }
+        const status = String(searchParams.get('status') || '').trim()
+        if (status) {
+            if (status !== 'active' && status !== 'inactive') return jsonError('Invalid status value.')
+            query = query.eq('status', status)
+        }
+        const teamId = String(searchParams.get('team_id') || '').trim()
+        if (teamId) query = query.eq('team_id', teamId)
+
+        const { data, error } = await query
+        if (error) return jsonError(error.message || 'Failed to load incentive rules.', 500)
+        return NextResponse.json({ success: true, data: data || [] })
+    } catch (error: any) {
+        console.error('RoadTour KPI rules list API error:', error)
+        return jsonError(error.message || 'Internal server error', 500)
+    }
+}
+
 /** Create an incentive rule inside a KPI cycle. */
 export async function POST(request: NextRequest) {
     try {

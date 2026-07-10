@@ -20,6 +20,23 @@ async function loadRule(ctx: any, ruleId: string) {
     return rule
 }
 
+/** Get one incentive rule by id (Read in CRUD). */
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ ruleId: string }> }) {
+    try {
+        const ctx = await requireKpiAdmin()
+        if (ctx instanceof NextResponse) return ctx
+        const { ruleId } = await params
+        const rule = await loadRule(ctx, ruleId)
+        if (rule instanceof NextResponse) return rule
+        const cycle = await loadCycleForUpdate(ctx, rule.kpi_cycle_id)
+        if (cycle instanceof NextResponse) return cycle
+        return NextResponse.json({ success: true, data: rule })
+    } catch (error: any) {
+        console.error('RoadTour KPI rule detail API error:', error)
+        return jsonError(error.message || 'Internal server error', 500)
+    }
+}
+
 /** Update an incentive rule. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ ruleId: string }> }) {
     try {
