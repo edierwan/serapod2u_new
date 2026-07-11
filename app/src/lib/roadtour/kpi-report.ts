@@ -2,8 +2,8 @@
  * Monthly KPI Performance Report computation (server-side).
  *
  * Attribution rules:
- * - Actual scans = successful roadtour_scan_events within the selected KPI
- *   reporting window (weekly/monthly/quarterly/yearly), Malaysia time.
+ * - Actual scans = successful roadtour_scan_events within the KPI month
+ *   (calendar month boundaries, Malaysia time).
  * - Each scan counts for the AM snapshotted on the scan row at scan time
  *   (account_manager_user_id); historical attribution is never rewritten.
  * - Scans belong to the selected Event via the snapshotted roadtour_run_id,
@@ -15,23 +15,19 @@ import {
     achievementPercent,
     amPerformanceStatus,
     attributeScans,
-    computeAmIncentiveEarnings,
+    computeAmIncentive,
     computeLeaderBonus,
-    deriveKpiPeriodWindow,
+    deriveKpiMonthPeriod,
     effectiveIncentiveRules,
     isMonthInEffectiveRange,
     kpiMonthFromDate,
-    normalizeAmIncentiveMode,
     teamPerformanceStatus,
-    type KpiAmIncentiveMode,
-    type KpiPeriodType,
     type KpiPerformanceStatus,
 } from './kpi'
 
 export interface KpiReportFilters {
     orgId: string
     kpiMonth: string
-    periodType?: KpiPeriodType
     roadtourRunId: string
     teamId?: string | null
     leaderUserId?: string | null
@@ -72,9 +68,6 @@ export interface KpiReportAmRow {
     assigned_target: number
     actual_scans: number
     achievement_percent: number
-    volume_tier_rate: number | null
-    volume_incentive: number
-    achievement_bonus: number
     incentive_earned: number
     rank: number
     status: KpiPerformanceStatus
@@ -97,10 +90,8 @@ export interface KpiReport {
         period_label: string
         period_start: string
         period_end: string
-        period_type: KpiPeriodType
         freeze_members_targets: boolean
         lock_campaign_qr_attribution: boolean
-        am_incentive_mode: KpiAmIncentiveMode
     }
     summary: KpiReportSummary
     teams: KpiReportTeamRow[]
@@ -124,31 +115,20 @@ const SCAN_PAGE_SIZE = 1000
 async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<{
     configCycleId: string
     leaderBonusEnabled: boolean
-    amIncentiveMode: KpiAmIncentiveMode
     status: string
     freeze_members_targets: boolean
     lock_campaign_qr_attribution: boolean
 } | null> {
     // KPI plans may not exist yet on un-migrated environments; ignore the error.
-    const { data: plans, error: plansError } = await admin
+    const { data: plans } = await admin
         .from('roadtour_kpi_plans')
-        .select('id, effective_from_month, effective_to_month, status, leader_bonus_enabled, am_incentive_mode, config_cycle_id, reporting_scope')
+        .select('id, effective_from_month, effective_to_month, status, leader_bonus_enabled, config_cycle_id, reporting_scope')
         .eq('org_id', filters.orgId)
         .eq('roadtour_run_id', filters.roadtourRunId)
         .neq('status', 'draft')
         .order('effective_from_month', { ascending: false })
 
-    const planRows = plansError && String(plansError.message || '').toLowerCase().includes('am_incentive_mode')
-        ? (await admin
-            .from('roadtour_kpi_plans')
-            .select('id, effective_from_month, effective_to_month, status, leader_bonus_enabled, config_cycle_id, reporting_scope')
-            .eq('org_id', filters.orgId)
-            .eq('roadtour_run_id', filters.roadtourRunId)
-            .neq('status', 'draft')
-            .order('effective_from_month', { ascending: false })).data
-        : plans
-
-    for (const plan of planRows || []) {
+    for (const plan of plans || []) {
         if (!plan.config_cycle_id) continue
         const from = String(plan.effective_from_month).slice(0, 7)
         const to = plan.effective_to_month ? String(plan.effective_to_month).slice(0, 7) : null
@@ -156,7 +136,6 @@ async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<
         return {
             configCycleId: plan.config_cycle_id,
             leaderBonusEnabled: Boolean(plan.leader_bonus_enabled),
-            amIncentiveMode: normalizeAmIncentiveMode(plan.am_incentive_mode),
             status: plan.status,
             freeze_members_targets: true,
             lock_campaign_qr_attribution: true,
@@ -167,7 +146,7 @@ async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<
     // NOT reference the kpi_plan_id column here so the report still works on
     // environments where the first KPI migration is applied but this plan
     // refinement migration has not been run yet.
-    const period = deriveKpiPeriodWindow(filters.kpiMonth, filters.periodType || 'monthly')
+    const period = deriveKpiMonthPeriod(filters.kpiMonth)
     const { data: cycle, error: cycleError } = await admin
         .from('roadtour_kpi_cycles')
         .select('id, status, freeze_members_targets, lock_campaign_qr_attribution')
@@ -180,7 +159,6 @@ async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<
     return {
         configCycleId: cycle.id,
         leaderBonusEnabled: true, // legacy cycles had no plan-level toggle
-        amIncentiveMode: 'volume_tiers',
         status: cycle.status,
         freeze_members_targets: cycle.freeze_members_targets,
         lock_campaign_qr_attribution: cycle.lock_campaign_qr_attribution,
@@ -189,8 +167,7 @@ async function resolveKpiConfig(admin: any, filters: KpiReportFilters): Promise<
 
 /** Compute the monthly KPI report, or null when nothing is configured for the month/event. */
 export async function computeKpiReport(admin: any, filters: KpiReportFilters): Promise<KpiReport | null> {
-    const periodType = filters.periodType || 'monthly'
-    const period = deriveKpiPeriodWindow(filters.kpiMonth, periodType)
+    const period = deriveKpiMonthPeriod(filters.kpiMonth)
 
     const config = await resolveKpiConfig(admin, filters)
     if (!config) return null
@@ -266,23 +243,14 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
     }
     const teamById = new Map<string, any>(teams.map((t: any) => [t.id, t]))
 
-    const amIncentiveMode = config.amIncentiveMode
-    const amRules = rules.filter((r) => r.applies_to === 'all_ams' || r.applies_to === 'specific_team')
-
     // AM rows.
     let amRows: Omit<KpiReportAmRow, 'rank'>[] = members.map((m: any) => {
         const team = teamById.get(m.team_id)
         const target = m.manual_target_scans ?? m.auto_target_scans
         const actual = scansByAm.get(m.am_user_id) || 0
         const percent = achievementPercent(actual, target)
+        // Per-AM incentive cap ("Max Incentive / AM"), held on the team.
         const maxIncentivePerAm = Number(team?.incentive_budget) || 0
-        const earnings = computeAmIncentiveEarnings(amIncentiveMode, {
-            actualScans: actual,
-            achievementPercent: percent,
-            amRules,
-            teamId: m.team_id,
-            maxIncentivePerAm,
-        })
         return {
             am_user_id: m.am_user_id,
             am_name: nameById.get(m.am_user_id) || 'Unknown',
@@ -291,10 +259,7 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
             assigned_target: target,
             actual_scans: actual,
             achievement_percent: percent,
-            volume_tier_rate: earnings.volumeTierRate,
-            volume_incentive: earnings.volumeIncentive,
-            achievement_bonus: earnings.achievementBonus,
-            incentive_earned: earnings.incentiveEarned,
+            incentive_earned: computeAmIncentive(rules, percent, m.team_id, maxIncentivePerAm),
             status: amPerformanceStatus(percent),
         }
     })
@@ -378,10 +343,8 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
             period_label: period.label,
             period_start: cycle.period_start,
             period_end: cycle.period_end,
-            period_type: periodType,
             freeze_members_targets: cycle.freeze_members_targets,
             lock_campaign_qr_attribution: cycle.lock_campaign_qr_attribution,
-            am_incentive_mode: amIncentiveMode,
         },
         summary,
         teams: teamRows,

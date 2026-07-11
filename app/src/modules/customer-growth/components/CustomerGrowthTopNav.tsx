@@ -118,16 +118,16 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
     // ── Render ────────────────────────────────────────────────────
 
     return (
-        <div className="sticky top-0 z-40 border-b border-border/70 bg-background/95 backdrop-blur print:hidden">
+        <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
-            <div className="flex h-10 items-center gap-1.5 px-3">
+            <div className="flex items-center h-11 px-3 gap-2">
                 {/* Domain badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <button
                         onClick={() => router.push('/customer-growth')}
-                        className="flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/40 px-2.5 py-1 text-[13px] font-medium text-foreground transition-colors hover:bg-muted"
+                        className="flex items-center gap-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2.5 py-0.5 rounded text-sm font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors"
                     >
-                        <UsersRound className="h-3 w-3 text-brand" />
+                        <UsersRound className="h-3 w-3" />
                         <span>Customer & Growth</span>
                     </button>
                 </div>
@@ -155,11 +155,11 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                     onClick={() => setOpenGroupId(open ? null : group.id)}
                                     onKeyDown={(e) => handleGroupKeyDown(e, group.id)}
                                     className={cn(
-                                        'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium whitespace-nowrap transition-colors',
+                                        'flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors',
                                         active
-                                            ? 'bg-muted text-foreground'
-                                            : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
-                                        open && !active && 'bg-muted/60 text-foreground'
+                                            ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'
+                                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                                        open && !active && 'bg-accent text-accent-foreground'
                                     )}
                                 >
                                     <Icon className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                 id={`cg-dropdown-${group.id}`}
                                 role="menu"
                                 aria-label={`${group.label} submenu`}
-                                className="absolute z-50 min-w-[200px] animate-in fade-in-0 zoom-in-95 rounded-md border border-border bg-popover py-1 shadow-sm duration-100"
+                                className="absolute min-w-[200px] bg-popover border border-border rounded-lg shadow-lg py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
                                 style={{ left: dropdownStyle.left, top: dropdownStyle.top + 4 }}
                             >
                                 {group.children.map((child) => {
@@ -201,8 +201,8 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                             className={cn(
                                                 'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors',
                                                 childActive
-                                                    ? 'bg-muted text-foreground font-medium'
-                                                    : 'text-foreground hover:bg-muted/70'
+                                                    ? 'bg-teal-50 text-teal-700 font-semibold dark:bg-teal-900/30 dark:text-teal-300'
+                                                    : 'text-foreground hover:bg-accent'
                                             )}
                                         >
                                             <ChildIcon className="h-3.5 w-3.5 shrink-0" />
@@ -219,7 +219,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:bg-muted/70"
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent"
                         aria-label="Toggle Customer & Growth menu"
                     >
                         <MenuIcon className="h-4 w-4" />
@@ -231,7 +231,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
 
             {/* ─── Mobile dropdown ─────────────────────────────────── */}
             {mobileMenuOpen && (
-                <div className="md:hidden max-h-[60vh] overflow-y-auto border-t border-border bg-card">
+                <div className="md:hidden border-t border-border bg-card max-h-[60vh] overflow-y-auto">
                     {customerGrowthNavGroups.map((group) => {
                         const active = isGroupActive(group)
                         const open = openGroupId === group.id
@@ -244,8 +244,8 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                     className={cn(
                                         'w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
                                         active
-                                            ? 'bg-muted text-foreground'
-                                            : 'text-foreground hover:bg-muted/70'
+                                            ? 'bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200'
+                                            : 'text-foreground hover:bg-accent'
                                     )}
                                 >
                                     <Icon className="h-4 w-4" />
@@ -259,7 +259,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                 </button>
 
                                 {open && (
-                                    <div className="bg-muted/30">
+                                    <div className="bg-accent/30">
                                         {group.children.map((child) => {
                                             const ChildIcon = child.icon
                                             const childActive = isChildActive(child)
@@ -269,10 +269,10 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                                     key={child.id}
                                                     onClick={() => handleNav(child.route)}
                                                     className={cn(
-                                                        'w-full flex items-center gap-2.5 py-2 pl-10 pr-4 text-sm transition-colors',
+                                                        'w-full flex items-center gap-2.5 pl-10 pr-4 py-2 text-sm transition-colors',
                                                         childActive
-                                                            ? 'bg-muted text-foreground font-medium'
-                                                            : 'text-muted-foreground hover:bg-muted/70'
+                                                            ? 'bg-teal-50 text-teal-700 font-semibold dark:bg-teal-900/30 dark:text-teal-300'
+                                                            : 'text-muted-foreground hover:bg-accent'
                                                     )}
                                                 >
                                                     <ChildIcon className="h-3.5 w-3.5 shrink-0" />
