@@ -51,12 +51,6 @@ module.exports = {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
   			},
-  			brand: {
-  				DEFAULT: 'hsl(var(--brand))',
-  				foreground: 'hsl(var(--brand-foreground))',
-  				charcoal: 'hsl(var(--brand-charcoal))',
-  				muted: 'hsl(var(--brand-muted))',
-  			},
   			chart: {
   				'1': 'hsl(var(--chart-1))',
   				'2': 'hsl(var(--chart-2))',

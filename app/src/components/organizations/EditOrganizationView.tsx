@@ -160,19 +160,6 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.state_id])
 
-  // Deep-link support: when the URL carries #contact-information (e.g. opened from
-  // the Return Product "Edit Shop Contact" shortcut), scroll to that section once
-  // the organization has finished loading.
-  useEffect(() => {
-    if (loading || organization === null) return
-    if (typeof window === 'undefined') return
-    if (window.location.hash !== '#contact-information') return
-    const t = setTimeout(() => {
-      document.getElementById('contact-information')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 150)
-    return () => clearTimeout(t)
-  }, [loading, organization])
-
   const loadParentOrganizations = async () => {
     try {
       const { data, error } = await supabase
@@ -1156,7 +1143,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       )}
 
       {/* Contact Information */}
-      <Card id="contact-information" className="scroll-mt-24">
+      <Card>
         <CardHeader>
           <CardTitle>Contact Information</CardTitle>
           <CardDescription>Primary contact details for this organization</CardDescription>

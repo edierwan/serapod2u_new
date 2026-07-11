@@ -47,7 +47,6 @@ export interface ReturnCase {
     return_warehouse_id: string | null
     contact_person: string | null
     contact_phone: string | null
-    contact_email: string | null
     status: ReturnStatus
     notes: string | null
     received_by: string | null

@@ -98,7 +98,6 @@ export async function POST(request: NextRequest) {
             return_warehouse_id: warehouseId,
             contact_person: body.contact_person || null,
             contact_phone: body.contact_phone || null,
-            contact_email: body.contact_email || null,
             notes: body.notes || null,
             status: 'return_draft',
             created_by: ctx.userId,
