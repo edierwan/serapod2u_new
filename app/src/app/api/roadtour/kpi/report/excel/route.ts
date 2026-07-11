@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 
-import { KPI_STATUS_LABEL, formatKpiMonthLabel, isValidKpiMonth, type KpiPerformanceStatus, type KpiPeriodType } from '@/lib/roadtour/kpi'
+import { KPI_STATUS_LABEL, formatKpiMonthLabel, isValidKpiMonth, type KpiPerformanceStatus } from '@/lib/roadtour/kpi'
 import { computeKpiReport } from '@/lib/roadtour/kpi-report'
 import { assertOrgAccess, jsonError, requireKpiAdmin } from '../../_lib'
 
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_STATUS = new Set<KpiPerformanceStatus>(['achieved', 'on_track', 'at_risk', 'needs_focus'])
-const ALLOWED_PERIOD_TYPES = new Set<KpiPeriodType>(['weekly', 'monthly', 'quarterly', 'yearly'])
 
 const HEADER_FILL: ExcelJS.Fill = {
     type: 'pattern',
@@ -35,17 +34,14 @@ export async function GET(request: NextRequest) {
         if (denied) return denied
 
         const kpiMonth = String(searchParams.get('kpi_month') || '').trim()
-        const periodType = String(searchParams.get('period_type') || 'monthly').trim() as KpiPeriodType
         const runId = String(searchParams.get('roadtour_run_id') || '').trim()
         if (!isValidKpiMonth(kpiMonth)) return jsonError('KPI month must be in YYYY-MM format.')
-        if (!ALLOWED_PERIOD_TYPES.has(periodType)) return jsonError('period_type must be one of: weekly, monthly, quarterly, yearly.')
         if (!runId) return jsonError('RoadTour Event is required.')
         const statusParam = String(searchParams.get('status') || '').trim() as KpiPerformanceStatus
 
         const report = await computeKpiReport(ctx.admin, {
             orgId,
             kpiMonth,
-            periodType,
             roadtourRunId: runId,
             teamId: String(searchParams.get('team_id') || '').trim() || null,
             leaderUserId: String(searchParams.get('leader_id') || '').trim() || null,
@@ -64,10 +60,9 @@ export async function GET(request: NextRequest) {
         ]
         styleHeader(summary.getRow(1))
         summary.addRows([
-            { metric: 'Report', value: `${report.cycle.period_type[0].toUpperCase()}${report.cycle.period_type.slice(1)} KPI Performance Report` },
-            { metric: 'Anchor Month', value: formatKpiMonthLabel(report.cycle.kpi_month) },
+            { metric: 'Report', value: 'Monthly KPI Performance Report' },
+            { metric: 'KPI Month', value: formatKpiMonthLabel(report.cycle.kpi_month) },
             { metric: 'Period (auto)', value: report.cycle.period_label },
-            { metric: 'Period Type', value: report.cycle.period_type },
             { metric: 'Plan Status', value: report.cycle.status },
             { metric: 'Total Team Target (scans)', value: report.summary.total_team_target },
             { metric: 'Actual Scans', value: report.summary.actual_scans },
@@ -112,7 +107,6 @@ export async function GET(request: NextRequest) {
             { header: 'Team', key: 'team', width: 26 },
             { header: 'Assigned Target (Scans)', key: 'target', width: 20 },
             { header: 'Actual Scans', key: 'actual', width: 14 },
-            { header: 'Tier RM/scan', key: 'tier_rate', width: 14 },
             { header: 'Achievement %', key: 'percent', width: 15 },
             { header: 'Incentive Earned (RM)', key: 'incentive', width: 20 },
             { header: 'Status', key: 'status', width: 14 },
@@ -125,9 +119,6 @@ export async function GET(request: NextRequest) {
                 team: a.team_name,
                 target: a.assigned_target,
                 actual: a.actual_scans,
-                tier_rate: a.volume_tier_rate != null && a.volume_tier_rate > 0
-                    ? Number(a.volume_tier_rate.toFixed(2))
-                    : report.cycle.am_incentive_mode === 'achievement_tiers' ? 'Custom' : 0,
                 percent: Number(a.achievement_percent.toFixed(1)),
                 incentive: Number(a.incentive_earned.toFixed(2)),
                 status: KPI_STATUS_LABEL[a.status],
@@ -154,7 +145,7 @@ export async function GET(request: NextRequest) {
         }
 
         const buffer = await wb.xlsx.writeBuffer()
-        const filename = `roadtour-${report.cycle.period_type}-kpi-${report.cycle.kpi_month}.xlsx`
+        const filename = `roadtour-monthly-kpi-${report.cycle.kpi_month}.xlsx`
         return new Response(buffer, {
             status: 200,
             headers: {

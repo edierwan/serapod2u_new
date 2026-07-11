@@ -5,8 +5,7 @@
  * There is intentionally no From/To date support in this module.
  */
 
-export type KpiAmIncentiveMode = 'volume_tiers' | 'achievement_tiers'
-export type KpiPeriodType = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+export type KpiCycleStatus = 'draft' | 'active' | 'closed'
 export type KpiReportingScope = 'all_campaigns' | 'selected_campaigns'
 export type KpiRuleAppliesTo = 'all_ams' | 'team_leader' | 'specific_team'
 export type KpiBonusType = 'cash' | 'other'
@@ -33,10 +32,6 @@ export interface KpiMonthPeriod {
     scanTimeToExclusive: string
     /** e.g. '1 Jun 2026 – 30 Jun 2026' */
     label: string
-}
-
-export interface KpiPeriodWindow extends KpiMonthPeriod {
-    periodType: KpiPeriodType
 }
 
 const MONTH_RE = /^(\d{4})-(\d{2})$/
@@ -72,91 +67,6 @@ export function deriveKpiMonthPeriod(kpiMonth: string): KpiMonthPeriod {
         scanTimeFrom: `${kpiMonth}-01T00:00:00${KPI_TZ_OFFSET}`,
         scanTimeToExclusive: `${nextYear}-${pad(nextMonth)}-01T00:00:00${KPI_TZ_OFFSET}`,
         label: `1 ${SHORT_MONTHS[month - 1]} ${year} – ${lastDay} ${SHORT_MONTHS[month - 1]} ${year}`,
-    }
-}
-
-function toDateWithOffset(datePart: string): string {
-    return `${datePart}T00:00:00${KPI_TZ_OFFSET}`
-}
-
-function datePartFromUtcDate(d: Date): string {
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
-}
-
-function addDaysUtc(d: Date, days: number): Date {
-    const copy = new Date(d.getTime())
-    copy.setUTCDate(copy.getUTCDate() + days)
-    return copy
-}
-
-/**
- * Generic KPI reporting window using an anchor month.
- * - weekly: ISO-like Monday-Sunday week containing anchor month's first day
- * - monthly: calendar month (existing behavior)
- * - quarterly: calendar quarter containing the anchor month
- * - yearly: calendar year containing the anchor month
- */
-export function deriveKpiPeriodWindow(anchorMonth: string, periodType: KpiPeriodType): KpiPeriodWindow {
-    const monthPeriod = deriveKpiMonthPeriod(anchorMonth)
-    if (periodType === 'monthly') {
-        return { ...monthPeriod, periodType: 'monthly' }
-    }
-
-    const [yearStr, monthStr] = anchorMonth.split('-')
-    const year = Number(yearStr)
-    const month = Number(monthStr)
-
-    if (periodType === 'quarterly') {
-        const quarterIndex = Math.floor((month - 1) / 3)
-        const startMonth = quarterIndex * 3 + 1
-        const endMonth = startMonth + 2
-        const lastDay = new Date(Date.UTC(year, endMonth, 0)).getUTCDate()
-        const periodStart = `${year}-${pad(startMonth)}-01`
-        const periodEnd = `${year}-${pad(endMonth)}-${pad(lastDay)}`
-        const nextMonth = endMonth === 12 ? 1 : endMonth + 1
-        const nextYear = endMonth === 12 ? year + 1 : year
-        return {
-            kpiMonth: anchorMonth,
-            periodType: 'quarterly',
-            periodStart,
-            periodEnd,
-            scanTimeFrom: toDateWithOffset(periodStart),
-            scanTimeToExclusive: toDateWithOffset(`${nextYear}-${pad(nextMonth)}-01`),
-            label: `Q${quarterIndex + 1} ${year} (${periodStart} – ${periodEnd})`,
-        }
-    }
-
-    if (periodType === 'yearly') {
-        const periodStart = `${year}-01-01`
-        const periodEnd = `${year}-12-31`
-        return {
-            kpiMonth: anchorMonth,
-            periodType: 'yearly',
-            periodStart,
-            periodEnd,
-            scanTimeFrom: toDateWithOffset(periodStart),
-            scanTimeToExclusive: toDateWithOffset(`${year + 1}-01-01`),
-            label: `${year} (${periodStart} – ${periodEnd})`,
-        }
-    }
-
-    // weekly
-    const firstDayOfAnchorMonthUtc = new Date(Date.UTC(year, month - 1, 1))
-    const day = firstDayOfAnchorMonthUtc.getUTCDay() // Sun=0..Sat=6
-    const daysFromMonday = (day + 6) % 7
-    const monday = addDaysUtc(firstDayOfAnchorMonthUtc, -daysFromMonday)
-    const sunday = addDaysUtc(monday, 6)
-    const nextMonday = addDaysUtc(monday, 7)
-    const periodStart = datePartFromUtcDate(monday)
-    const periodEnd = datePartFromUtcDate(sunday)
-    return {
-        kpiMonth: anchorMonth,
-        periodType: 'weekly',
-        periodStart,
-        periodEnd,
-        scanTimeFrom: toDateWithOffset(periodStart),
-        scanTimeToExclusive: toDateWithOffset(datePartFromUtcDate(nextMonday)),
-        label: `Week (${periodStart} – ${periodEnd})`,
     }
 }
 
@@ -412,126 +322,6 @@ export function amPerformanceStatus(
     if (percent >= onTrackThreshold) return 'on_track'
     if (percent >= needsFocusThreshold) return 'at_risk'
     return 'needs_focus'
-}
-
-/** Volume bracket for KPI incentive and point-value RM (flat rate per scan in bracket). */
-export interface KpiVolumeTier {
-    /** Inclusive lower bound (monthly successful scans). */
-    min: number
-    /** Inclusive upper bound; null = open-ended. */
-    max: number | null
-    /** RM earned per scan when total monthly volume falls in this bracket. */
-    ratePerScan: number
-}
-
-/**
- * Standard RoadTour KPI / point-value tiers (flat bracket rate).
- * Below 10,001 scans → no incentive (rate 0).
- */
-export const DEFAULT_KPI_VOLUME_TIERS: KpiVolumeTier[] = [
-    { min: 0, max: 10_000, ratePerScan: 0 },
-    { min: 10_001, max: 20_000, ratePerScan: 0.10 },
-    { min: 20_001, max: 30_000, ratePerScan: 0.12 },
-    { min: 30_001, max: 40_000, ratePerScan: 0.15 },
-    { min: 40_001, max: null, ratePerScan: 0.20 },
-]
-
-export function resolveVolumeTier(
-    volume: number,
-    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
-): KpiVolumeTier {
-    const v = Math.max(0, Math.floor(Number(volume) || 0))
-    for (const tier of tiers) {
-        if (v >= tier.min && (tier.max === null || v <= tier.max)) return tier
-    }
-    return tiers[0]
-}
-
-/** RM per scan for the monthly volume bracket (same rate used for KPI incentive). */
-export function resolveVolumeTierRate(
-    volume: number,
-    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
-): number {
-    return resolveVolumeTier(volume, tiers).ratePerScan
-}
-
-export function formatVolumeTierRange(tier: KpiVolumeTier): string {
-    if (tier.max === null) return `${tier.min.toLocaleString()}+`
-    return `${tier.min.toLocaleString()} — ${tier.max.toLocaleString()}`
-}
-
-/**
- * Monthly AM KPI incentive: actual scans × bracket rate (flat bracket).
- * Optional per-AM cap still applies after calculation.
- */
-export function computeVolumeIncentive(
-    volume: number,
-    maxIncentivePerAm?: number | null,
-    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
-): number {
-    const v = Math.max(0, Math.floor(Number(volume) || 0))
-    const payout = v * resolveVolumeTierRate(v, tiers)
-    if (maxIncentivePerAm && maxIncentivePerAm > 0) return Math.min(payout, maxIncentivePerAm)
-    return payout
-}
-
-/**
- * Point value (RM per point) aligned with the volume tier.
- * Converts the per-scan bracket rate using points granted per successful reward.
- */
-export function resolvePointValueRmForVolume(
-    volume: number,
-    pointsPerReward = 20,
-    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
-): number {
-    const pts = Math.max(1, Math.floor(Number(pointsPerReward) || 1))
-    return resolveVolumeTierRate(volume, tiers) / pts
-}
-
-/** Normalize plan/cycle incentive mode with a safe default. */
-export function normalizeAmIncentiveMode(value: unknown): KpiAmIncentiveMode {
-    return value === 'achievement_tiers' ? 'achievement_tiers' : 'volume_tiers'
-}
-
-export interface AmIncentiveEarningsResult {
-    incentiveEarned: number
-    volumeTierRate: number | null
-    incentiveMode: KpiAmIncentiveMode
-}
-
-/**
- * Compute AM incentive using the plan's selected model.
- * - volume_tiers: actual scans × bracket RM/scan
- * - achievement_tiers: highest met custom % tier (flat RM payout)
- */
-export function computeAmIncentiveEarnings(
-    mode: KpiAmIncentiveMode,
-    args: {
-        actualScans: number
-        achievementPercent: number
-        amRules: KpiIncentiveRuleLike[]
-        teamId?: string | null
-        maxIncentivePerAm?: number | null
-    },
-): AmIncentiveEarningsResult {
-    if (mode === 'achievement_tiers') {
-        return {
-            incentiveMode: mode,
-            volumeTierRate: null,
-            incentiveEarned: computeAmIncentive(
-                args.amRules,
-                args.achievementPercent,
-                args.teamId,
-                args.maxIncentivePerAm,
-            ),
-        }
-    }
-    const rate = resolveVolumeTierRate(args.actualScans)
-    return {
-        incentiveMode: mode,
-        volumeTierRate: rate,
-        incentiveEarned: computeVolumeIncentive(args.actualScans, args.maxIncentivePerAm),
-    }
 }
 
 export interface KpiIncentiveRuleLike {

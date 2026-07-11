@@ -5,7 +5,7 @@ import { decorateCase } from '@/lib/returns/compute'
 import { RETURN_STATUS_LABELS, type ReturnStatus } from '@/lib/returns/constants'
 import type { ReturnSettings } from '@/lib/returns/types'
 
-const ORG_SELECT = 'id, org_code, org_name, contact_name, contact_phone, contact_email'
+const ORG_SELECT = 'id, org_code, org_name'
 
 async function loadSettings(admin: any): Promise<ReturnSettings> {
     const { data } = await admin.from('return_settings').select('*').eq('id', 1).maybeSingle()
@@ -63,9 +63,6 @@ export async function GET(request: NextRequest) {
         { header: 'Return No', key: 'return_no', width: 20 },
         { header: 'Shop', key: 'shop', width: 26 },
         { header: 'Warehouse', key: 'warehouse', width: 26 },
-        { header: 'Contact Person', key: 'contact_person', width: 20 },
-        { header: 'Contact Phone', key: 'contact_phone', width: 18 },
-        { header: 'Contact Email', key: 'contact_email', width: 26 },
         { header: 'Status', key: 'status', width: 18 },
         { header: 'Total Qty', key: 'qty', width: 12 },
         { header: 'Total Value (RM)', key: 'value', width: 16 },
@@ -81,9 +78,6 @@ export async function GET(request: NextRequest) {
             return_no: r.return_no,
             shop: r.shop?.org_name || '',
             warehouse: r.warehouse?.org_name || '',
-            contact_person: r.contact_person || r.shop?.contact_name || '',
-            contact_phone: r.contact_phone || r.shop?.contact_phone || '',
-            contact_email: r.contact_email || r.shop?.contact_email || '',
             status: RETURN_STATUS_LABELS[r.status as ReturnStatus] || r.status,
             qty: r.total_qty ?? 0,
             value: Number(r.total_value ?? 0).toFixed(2),

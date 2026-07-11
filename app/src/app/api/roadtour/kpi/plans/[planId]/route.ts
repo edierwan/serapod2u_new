@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { isValidKpiMonth, normalizeAmIncentiveMode, type KpiAmIncentiveMode } from '@/lib/roadtour/kpi'
+import { isValidKpiMonth } from '@/lib/roadtour/kpi'
 import {
     CYCLE_SELECT, PLAN_SELECT,
-    isMissingColumn,
     jsonError, loadCycleConfig, loadPlanForUpdate, requireKpiAdmin,
 } from '../../_lib'
 
@@ -47,13 +46,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
         if (body?.plan_name !== undefined) updates.plan_name = String(body.plan_name).trim() || null
         if (body?.leader_bonus_enabled !== undefined) updates.leader_bonus_enabled = Boolean(body.leader_bonus_enabled)
-        if (body?.am_incentive_mode !== undefined) {
-            const mode = String(body.am_incentive_mode).trim()
-            if (mode !== 'volume_tiers' && mode !== 'achievement_tiers') {
-                return jsonError('Invalid AM incentive mode.')
-            }
-            updates.am_incentive_mode = mode as KpiAmIncentiveMode
-        }
         if (body?.reporting_scope !== undefined) {
             const scope = String(body.reporting_scope).trim()
             if (!ALLOWED_SCOPES.has(scope)) return jsonError('Invalid reporting scope.')
@@ -89,19 +81,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             .select(PLAN_SELECT)
             .single()
         if (error) {
-            if (isMissingColumn(error, 'am_incentive_mode') && updates.am_incentive_mode !== undefined) {
-                const { am_incentive_mode, ...fallback } = updates
-                const retry = await ctx.admin.from('roadtour_kpi_plans').update(fallback).eq('id', planId).select(PLAN_SELECT).single()
-                if (retry.error) {
-                    if (retry.error.code === '23505') return jsonError('Another active or draft KPI plan already exists for this event.', 409)
-                    return jsonError(retry.error.message || 'Failed to update KPI plan.', 500)
-                }
-                return NextResponse.json({
-                    success: true,
-                    data: { ...retry.data, am_incentive_mode: normalizeAmIncentiveMode(body?.am_incentive_mode) },
-                    schemaWarning: 'Apply supabase/migrations/20260709_roadtour_kpi_am_incentive_mode.sql to persist Custom tiers.',
-                })
-            }
             if (error.code === '23505') return jsonError('Another active or draft KPI plan already exists for this event.', 409)
             return jsonError(error.message || 'Failed to update KPI plan.', 500)
         }
