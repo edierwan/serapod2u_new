@@ -1,0 +1,957 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mc:/Users/UsEr/Downloads/serapod2u_new/app[39m
+
+ [32m✓[39m src/lib/wa-recovery/templates.test.ts[2m > [22mwa-recovery template composition[2m > [22mbuilds a registration recovery message with recipient name and timestamp[32m 55[2mms[22m[39m
+ [32m✓[39m src/lib/wa-recovery/templates.test.ts[2m > [22mwa-recovery template composition[2m > [22mfalls back to a safe greeting when the contact name is unknown[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/wa-recovery/templates.test.ts[2m > [22mwa-recovery template composition[2m > [22muses the general restored template when there is no purpose match[32m 1[2mms[22m[39m
+[90mstdout[2m | src/app/api/user/profile/route.test.ts[2m > [22m[2mGET /api/user/profile[2m > [22m[2mreturns personal bank details for a shop-linked user
+[22m[39m✅ User authenticated: safwan@example.com
+
+[90mstdout[2m | src/app/api/user/profile/route.test.ts[2m > [22m[2mGET /api/user/profile[2m > [22m[2mreturns personal bank details for a shop-linked user
+[22m[39mUser profile fetched: {
+  fullName: [32m'Muhammad Safwan Bin Abdullah'[39m,
+  avatarUrl: [1mnull[22m,
+  phone: [32m'+60136960042'[39m,
+  organizationId: [32m'org-1'[39m
+}
+
+ [32m✓[39m src/app/api/user/profile/route.test.ts[2m > [22mGET /api/user/profile[2m > [22mreturns personal bank details for a shop-linked user[33m 2396[2mms[22m[39m
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account
+[22m[39m🎁 Reward Redemption Request: { reward_id: [32m'reward-1'[39m, user_id: [32m'user-1'[39m }
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account
+[22m[39m✅ Shop-linked mobile user: Evape Shop ID: org-1
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account
+[22m[39m✅ Reward found: RM500 Cashback Points required: [33m5000[39m
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account
+[22m[39m💰 Mobile wallet balance: [33m6090[39m Required: [33m5000[39m Source: consumer_view
+📝 Recording redemption: {
+  wallet_scope: [32m'consumer'[39m,
+  wallet_owner_user_id: [32m'user-1'[39m,
+  reporting_shop_id: [32m'org-1'[39m,
+  consumer_phone: [32m'+60136960042'[39m,
+  points_amount: [33m-5000[39m,
+  balance_after: [33m1090[39m,
+  reward_name: [32m'RM500 Cashback'[39m
+}
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account
+[22m[39m✅ Transaction recorded: txn-1-abcdef
+
+ [32m✓[39m src/app/api/consumer/redeem-reward/route.test.ts[2m > [22mPOST /api/consumer/redeem-reward[2m > [22maccepts cashback redemption for a shop-linked guest when the user row has a valid personal bank account[33m 1967[2mms[22m[39m
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2mrejects cashback redemption when the personal bank_id is missing even if the account number exists
+[22m[39m🎁 Reward Redemption Request: { reward_id: [32m'reward-1'[39m, user_id: [32m'user-1'[39m }
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2mrejects cashback redemption when the personal bank_id is missing even if the account number exists
+[22m[39m✅ Shop-linked mobile user: Evape Shop ID: org-1
+
+[90mstdout[2m | src/app/api/consumer/redeem-reward/route.test.ts[2m > [22m[2mPOST /api/consumer/redeem-reward[2m > [22m[2mrejects cashback redemption when the personal bank_id is missing even if the account number exists
+[22m[39m✅ Reward found: RM500 Cashback Points required: [33m5000[39m
+
+ [32m✓[39m src/app/api/consumer/redeem-reward/route.test.ts[2m > [22mPOST /api/consumer/redeem-reward[2m > [22mrejects cashback redemption when the personal bank_id is missing even if the account number exists[32m 22[2mms[22m[39m
+ [32m✓[39m src/app/api/organization/update-bank-details/route.test.ts[2m > [22mPOST /api/organization/update-bank-details[2m > [22mkeeps organization bank updates writing organizations.bank_id[33m 2749[2mms[22m[39m
+ [31m×[39m src/app/api/user/update-profile/route.test.ts[2m > [22mPOST /api/user/update-profile[2m > [22mwrites personal bank fields to users and does not touch organizations for shop-linked users[33m 5060[2mms[22m[39m
+[31m   → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32m✓[39m src/modules/roadtour/lib/visit-tracking.test.ts[2m > [22mvisit tracking helpers[2m > [22mformats visit date and time as separate labels[32m 42[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/lib/visit-tracking.test.ts[2m > [22mvisit tracking helpers[2m > [22mkeeps participant name and phone when both are available[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/lib/visit-tracking.test.ts[2m > [22mvisit tracking helpers[2m > [22mfalls back to phone or placeholder when participant data is incomplete[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/lib/visit-tracking.test.ts[2m > [22mvisit tracking helpers[2m > [22mformats participant csv values without dropping phone fallback[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveKpiMonthPeriod[2m > [22mderives June 2026 as 1 Jun – 30 Jun[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveKpiMonthPeriod[2m > [22mhandles 31-day months and December year rollover[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveKpiMonthPeriod[2m > [22mhandles February in leap and non-leap years[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveKpiMonthPeriod[2m > [22mrejects invalid months[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mpreviousKpiMonth[2m > [22msteps back within a year and across January[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mformatKpiMonthLabel[2m > [22mformats June 2026[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mautoDistributeTarget[2m > [22msplits evenly: 7000 across 7 members = 1000 each[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mautoDistributeTarget[2m > [22massigns remainder to first members and always sums to the target[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mautoDistributeTarget[2m > [22mreturns empty for zero members[32m 35[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mperformance status[2m > [22mclassifies teams: Achieved / On Track / At Risk[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mperformance status[2m > [22mclassifies AMs with a Needs Focus band[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mperformance status[2m > [22machievementPercent guards zero targets[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvolume tier incentives (KPI + point value)[2m > [22mresolveVolumeTierRate picks the flat bracket rate[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvolume tier incentives (KPI + point value)[2m > [22mcomputeVolumeIncentive = scans × bracket rate (flat)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvolume tier incentives (KPI + point value)[2m > [22mcomputeVolumeIncentive respects Max Incentive / AM cap[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvolume tier incentives (KPI + point value)[2m > [22mresolvePointValueRmForVolume aligns point value with scan tier rate[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mcomputeAmIncentiveEarnings (hybrid modes)[2m > [22mvolume_tiers mode uses scans × bracket rate[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mcomputeAmIncentiveEarnings (hybrid modes)[2m > [22machievement_tiers mode unlocks volume payout when gate is met[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mcomputeAmIncentiveEarnings (hybrid modes)[2m > [22machievement_tiers mode pays 0 when achievement gate is not met[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mcomputeAmIncentiveEarnings (hybrid modes)[2m > [22mcaps volume payout when Max Incentive / AM is set[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mAM incentive: highest achieved tier wins (not stacked)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mignores inactive rules[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mapplies team-scoped rules only to that team[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mleader bonus is additive across met tiers on team achievement[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mMax Incentive / AM caps the winning tier payout[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mincentives[2m > [22mcap applies only to AM incentive; leader bonus stays additive and separate[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmAchievementThreshold[2m > [22maccepts a valid unique threshold[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmAchievementThreshold[2m > [22mrejects thresholds below 100%[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmAchievementThreshold[2m > [22mrejects duplicate thresholds[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22maccepts a valid, strictly-increasing, capped tier[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects a threshold below 100%[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects a non-positive amount[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects an amount above the Max Incentive / AM cap[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects a duplicate threshold[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects a higher threshold that pays less than a lower tier (200% = RM100)[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mrejects a lower threshold that pays more than a higher tier (110% = RM500)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mexcludes the tier being edited from its own uniqueness/monotonicity checks[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mvalidateAmIncentiveTier (illogical payouts are blocked)[2m > [22mno cap configured → cap check is skipped[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mattributeScans (multiple campaigns / AM takeover, no history rewrite)[2m > [22msplits same-shop scans across campaigns by the snapshotted AM/team[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mattributeScans (multiple campaigns / AM takeover, no history rewrite)[2m > [22mattribution follows each scan snapshot, not the AM’s later campaign[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mattributeScans (multiple campaigns / AM takeover, no history rewrite)[2m > [22mignores team aggregation for scans whose AM is unassigned[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22meffectiveIncentiveRules (leader bonus optional)[2m > [22mkeeps every rule when leader bonus is enabled[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22meffectiveIncentiveRules (leader bonus optional)[2m > [22mdrops team_leader tiers when leader bonus is disabled (AM tiers untouched)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mresolveLeaderId (leader must be a selected member)[2m > [22mkeeps the leader while they remain a member[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mresolveLeaderId (leader must be a selected member)[2m > [22mresets to no leader when removed from the member list[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mplan month helpers (report dropdown lists only configured months)[2m > [22maddKpiMonths shifts across year boundaries[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mplan month helpers (report dropdown lists only configured months)[2m > [22mcompareKpiMonth orders months[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mplan month helpers (report dropdown lists only configured months)[2m > [22misMonthInEffectiveRange honours inclusive bounds and open-ended plans[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mplan month helpers (report dropdown lists only configured months)[2m > [22menumeratePlanMonths lists only months within the window, capped at the current month[32m 2[2mms[22m[39m
+ [31m×[39m src/app/api/auth/register/request-code/route.test.ts[2m > [22mPOST /api/auth/register/request-code[2m > [22mrejects OTP start when no authoritative shop selection is submitted[33m 5172[2mms[22m[39m
+[31m   → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mplan month helpers (report dropdown lists only configured months)[2m > [22mcurrentKpiMonth formats YYYY-MM[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mevent-derived month options (dropdown limited to event period / configured data)[2m > [22mmonthKeyFromDate extracts YYYY-MM from date strings[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mevent-derived month options (dropdown limited to event period / configured data)[2m > [22menumerateMonthRange is inclusive ascending and order-tolerant[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mevent-derived month options (dropdown limited to event period / configured data)[2m > [22menumerateMonthRange caps runaway ranges at 60 months[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveFromOptions (short setup list — no long future months)[2m > [22mactive event → only previous/current/next month, never far-future months[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveFromOptions (short setup list — no long future months)[2m > [22mlong fixed-period event still shows only recent setup months (event period does not expand the From list)[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveFromOptions (short setup list — no long future months)[2m > [22mfuture event start (beyond next month) is included so the plan can begin with the event[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveFromOptions (short setup list — no long future months)[2m > [22munions configured plan from-months so an existing selection stays visible[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveToOptions (bounded by From and event end)[2m > [22mfixed-period event → from up to the event end month (no months beyond the event)[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveToOptions (bounded by From and event end)[2m > [22mevery option is >= the selected Effective From[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveToOptions (bounded by From and event end)[2m > [22mevent ending before From collapses to just the From month[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveToOptions (bounded by From and event end)[2m > [22mopen-ended event → short list of From + next month only (no long future list)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/kpi.test.ts[2m > [22mderiveEffectiveToOptions (bounded by From and event end)[2m > [22munions configured endpoint months (>= from) so an existing To stays visible[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-resolution.test.ts[2m > [22mresolveRegistrationLinkSelection[2m > [22mrejects a shop selection when the text no longer matches the selected shop id[32m 7[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-resolution.test.ts[2m > [22mresolveRegistrationLinkSelection[2m > [22mrejects a reference selection when the submitted phone does not match the selected reference id[32m 2[2mms[22m[39m
+ [31m×[39m src/lib/engagement/registration-link-resolution.test.ts[2m > [22mresolveRegistrationLinkSelection[2m > [22mreturns canonical shop and reference data when both selections are valid[32m 57[2mms[22m[39m
+[31m   → expected { ok: true, …(7) } to deeply equal { ok: true, …(6) }[39m
+ [32m✓[39m src/app/api/orders/actors/route.test.tsx[2m > [22morder actor organization isolation[2m > [22mallows a Manufacturer user to resolve actors for its own order[32m 18[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/actors/route.test.tsx[2m > [22morder actor organization isolation[2m > [22mreturns 403 when a Manufacturer requests another manufacturer order[32m 3[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/actors/route.test.tsx[2m > [22morder actor organization isolation[2m > [22mretains full company access for HQ Admin level 10[32m 4[2mms[22m[39m
+ [32m✓[39m src/app/api/auth/register/request-code/route.test.ts[2m > [22mPOST /api/auth/register/request-code[2m > [22mrejects OTP start when no authoritative reference selection is submitted[33m 463[2mms[22m[39m
+ [32m✓[39m src/app/api/auth/register/request-code/route.test.ts[2m > [22mPOST /api/auth/register/request-code[2m > [22mrejects OTP start when the password is too short[33m 330[2mms[22m[39m
+ [32m✓[39m src/app/api/auth/register/request-code/route.test.ts[2m > [22mPOST /api/auth/register/request-code[2m > [22mrejects OTP start when confirm password does not match[32m 199[2mms[22m[39m
+ [32m✓[39m src/app/api/users/reset-password/route.test.tsx[2m > [22mPOST /api/users/reset-password[2m > [22mallows role level 10 and records a password-free audit entry[32m 156[2mms[22m[39m
+ [32m✓[39m src/app/api/users/reset-password/route.test.tsx[2m > [22mPOST /api/users/reset-password[2m > [22mreturns 403 for direct requests from role level 1[32m 3[2mms[22m[39m
+ [32m✓[39m src/app/api/users/reset-password/route.test.tsx[2m > [22mPOST /api/users/reset-password[2m > [22mreturns 403 for direct requests from role level 20[32m 3[2mms[22m[39m
+ [32m✓[39m src/app/api/users/reset-password/route.test.tsx[2m > [22mPOST /api/users/reset-password[2m > [22mreturns 403 for direct requests from role level 30[32m 2[2mms[22m[39m
+ [32m✓[39m src/app/api/users/reset-password/route.test.tsx[2m > [22mPOST /api/users/reset-password[2m > [22mreturns 403 for direct requests from role level 40[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationLinkSelections[2m > [22mrequires both reference and shop selections[32m 6[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationLinkSelections[2m > [22mrejects typed values without stable selected ids[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationLinkSelections[2m > [22maccepts only canonical selections with both ids present[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationLinkSelections[2m > [22maccepts a prepared new-shop draft when the displayed shop value still matches it[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationLinkSelections[2m > [22mrejects edited shop text after a prepared draft is no longer an exact match[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationPasswordFields[2m > [22mrequires password and confirm password[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationPasswordFields[2m > [22mrejects short passwords before submit[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationPasswordFields[2m > [22mshows mismatch for different passwords[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/registration-link-selection.test.ts[2m > [22mvalidateRegistrationPasswordFields[2m > [22mshows success when the passwords match[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns no_response when both windows are zero[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns newly_activated when only after has activity[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns no_response when after is zero and before had activity[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns improved when after exceeds before[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns maintained when before equals after[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyImpactStatus[2m > [22mreturns dropped when after is less than before[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mcomputeScanLiftPercent[2m > [22mreturns null when before is zero[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mcomputeScanLiftPercent[2m > [22mcomputes percent change when before is positive[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns high when there is no scan in 7 or more days[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns high when the drop is greater than 50 percent[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns medium when there is no response between 3 and 6 days[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns medium for newly activated shops[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns healthy for strong positive lift[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22mreturns low otherwise[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mclassifyFollowUpPriority[2m > [22muses the selected window when classifying no-response shops[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mgetLatestVisitRowsByShop[2m > [22mkeeps only the latest visit per shop[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mrecommendedAction[2m > [22mreturns immediate visit for high no_response[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mrecommendedAction[2m > [22mreturns nurture engagement for medium newly_activated[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mrecommendedAction[2m > [22mreturns praise and upsell for low improved[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/types/analytics.test.ts[2m > [22mrecommendedFollowUpDate[2m > [22mreturns an ISO yyyy-mm-dd date string[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/email/smtp-endpoint.test.ts[2m > [22mSMTP endpoint resolution[2m > [22muses an IP override while retaining the SMTP TLS hostname[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/email/smtp-endpoint.test.ts[2m > [22mSMTP endpoint resolution[2m > [22mrejects loopback DNS when there is no valid override[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/email/smtp-endpoint.test.ts[2m > [22mSMTP endpoint resolution[2m > [22mignores malformed and loopback override targets[32m 4[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/[orderId]/access/route.test.tsx[2m > [22morder detail access[2m > [22mallows a Manufacturer user to view its own organization order[32m 29[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/[orderId]/access/route.test.tsx[2m > [22morder detail access[2m > [22mreturns 403 when a Manufacturer requests another manufacturer order[32m 20[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/[orderId]/access/route.test.tsx[2m > [22morder detail access[2m > [22mreturns 403 when RLS does not expose the requested order[32m 9[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/[orderId]/access/route.test.tsx[2m > [22morder detail access[2m > [22mretains authorized order visibility for HQ Admin level 10[32m 3[2mms[22m[39m
+ [32m✓[39m src/app/api/orders/[orderId]/access/route.test.tsx[2m > [22morder detail access[2m > [22mreturns 401 for an unauthenticated direct API request[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows HQ role level 1 to create H2M[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows HQ role level 10 to create H2M[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows HQ role level 20 to create H2M[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows HQ role level 30 to create H2M[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows HQ role level 40 to create H2M[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows level 40 to open the internal order editor[32m 10[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects H2M creation for non-HQ org DIST[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects H2M creation for non-HQ org SHOP[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects H2M creation for non-HQ org WH[32m 8[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects H2M creation for non-HQ org MFG[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects H2M creation for non-HQ org undefined[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrejects role levels below the creation entitlement[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mallows a Manufacturer to enter order details without granting unrelated Supply Chain pages[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22mrestores an authorized order detail route on direct refresh[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/h2m-access.test.tsx[2m > [22mH2M access[2m > [22madds an H2M-only server-side RLS condition without changing D2H/S2D branches[32m 19[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mallows an HQ level-10 admin to open Product List[32m 3[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mallows an HQ level-10 admin to open the Product List action view-product[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mallows an HQ level-10 admin to open the Product List action edit-product[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mallows an HQ level-10 admin to open the Product List action add-product[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps product details aligned with Product List access for HQ users[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps product details aligned with Product List access for DIST users[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps product details aligned with Product List access for WH users[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps product details aligned with Product List access for MFG users[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps product details aligned with Product List access for SHOP users[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mdoes not grant unrelated restricted Supply Chain views[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps organization detail aligned with Organizations list access for view-organization[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps organization detail aligned with Organizations list access for edit-organization[32m 0[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain child-view access[2m > [22mkeeps organization detail aligned with Organizations list access for edit-organization-hq[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain organization deep links[2m > [22mbuilds URL-addressable paths that carry the organization id[32m 1[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain organization deep links[2m > [22mresolves organization slugs back to a view id and org id (refresh / back-forward)[32m 2[2mms[22m[39m
+ [32m✓[39m src/modules/supply-chain/supplyChainNav.test.tsx[2m > [22mSupply Chain organization deep links[2m > [22mstill resolves existing inventory paths[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFromCapturedLocation[2m > [22mnormalizes Pulau Pinang addresses[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFromCapturedLocation[2m > [22mextracts other supported Malaysian states[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFromCapturedLocation[2m > [22mreturns null for missing locations[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFromCapturedLocation[2m > [22mkeeps extractVisitRegionFromLocation as a compatibility alias[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFlagPath[2m > [22mmaps normalized states to local flag assets[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mgetStateFlagPath[2m > [22mreturns null when no local flag asset is available[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mresolveVisitRegion[2m > [22mprefers structured captured state when available[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mresolveVisitRegion[2m > [22mreturns Unknown when no captured location exists[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/visit-region.test.ts[2m > [22mvisit-region[2m > [22mbuildVisitRegionDataset[2m > [22maggregates visits by captured location region[32m 2[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22mnormalizes local and provider inputs to canonical E.164[32m 4[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22mconverts to provider format only at the adapter boundary[32m 2[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22mtreats equivalent phone inputs as the same user reference[32m 1[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22mformats and masks canonical phones consistently[32m 1[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22mrejects invalid phone values[32m 2[2mms[22m[39m
+ [32m✓[39m src/utils/phone.test.ts[2m > [22mphone normalization[2m > [22maccepts only Malaysia mobile numbers for shop contact verification[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/shop-requests/shop-name-formatting.test.ts[2m > [22mshop name formatting[2m > [22mtitle-cases normal shop names[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/shop-requests/shop-name-formatting.test.ts[2m > [22mshop name formatting[2m > [22mtrims and collapses spaces before submit[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/shop-requests/shop-name-formatting.test.ts[2m > [22mshop name formatting[2m > [22mpreserves or canonicalizes common brand and acronym tokens[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/shop-requests/shop-name-formatting.test.ts[2m > [22mshop name formatting[2m > [22mpreserves trailing space for smooth completed-word typing[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mnormalizes a valid mission payload[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mrejects malformed mission payloads[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mbuilds a milestone claim response without newly awarded RoadTour QR points[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mfilters invalid missions from product QR progress responses[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mprefers the awarded mission when multiple RoadTour missions are returned[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/milestone.test.ts[2m > [22mRoadTour milestone normalization[2m > [22mguards invalid RPC responses and extracts collect scan ids[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/marketing/adhocRecipients.test.ts[2m > [22mparseAdhocWhatsAppRecipients[2m > [22mparses space separated numbers into separate eligible recipients[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/marketing/adhocRecipients.test.ts[2m > [22mparseAdhocWhatsAppRecipients[2m > [22muses the phone header column when pasting an excel table[32m 9[2mms[22m[39m
+ [32m✓[39m src/lib/marketing/adhocRecipients.test.ts[2m > [22mparseAdhocWhatsAppRecipients[2m > [22mmarks repeated valid numbers as duplicates[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/marketing/adhocRecipients.test.ts[2m > [22mparseAdhocWhatsAppRecipients[2m > [22mexcludes invalid and non-whatsapp values[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/marketing/adhocRecipients.test.ts[2m > [22mparseAdhocWhatsAppRecipients[2m > [22mnormalizes stored recipients before reuse[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/experience-registry.test.tsx[2m > [22mRoadTour experience registry[2m > [22mmaps Vape to the active existing experience[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/experience-registry.test.tsx[2m > [22mRoadTour experience registry[2m > [22mmaps Electronic but keeps its experience inactive (Coming soon)[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/experience-registry.test.tsx[2m > [22mRoadTour experience registry[2m > [22mmaps Outdoor but keeps its experience inactive (Coming soon)[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/experience-registry.test.tsx[2m > [22mRoadTour experience registry[2m > [22mmaps Pet Food to its active experience and the pet_food template[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/experience-registry.test.tsx[2m > [22mRoadTour experience registry[2m > [22mfalls back to Vape/premium for null, inactive, and unmapped categories[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/events-compatibility.test.tsx[2m > [22mRoadTour legacy Event compatibility[2m > [22mkeeps an event queryable and its campaign link resolvable when product_category_id is absent[32m 8[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/duplicate-protection.test.ts[2m > [22mroadtour duplicate protection[2m > [22mnormalizes participant phone formats consistently[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/duplicate-protection.test.ts[2m > [22mroadtour duplicate protection[2m > [22mlabels participant-level event protection accurately[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/duplicate-protection.test.ts[2m > [22mroadtour duplicate protection[2m > [22mreturns participant-level duplicate copy[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/duplicate-protection.test.ts[2m > [22mroadtour duplicate protection[2m > [22mreturns shop-level duplicate copy for shop-scoped event protection[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mtoTitleCase[2m > [22mformats lowercase words into title case[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mtoTitleCase[2m > [22mnormalizes mixed casing while preserving numbers[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mtoTitleCase[2m > [22mhandles empty values safely[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mtoTitleCase[2m > [22mdoes not crash on leading spaces[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mcapitalizeFirstOnly[2m > [22mcapitalizes only the first non-space character[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mcapitalizeFirstOnly[2m > [22mkeeps already-capitalized text unchanged[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mcapitalizeFirstOnly[2m > [22mpreserves the rest of the description as-is[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/roadtour/campaign-text.test.ts[2m > [22mcampaign-text[2m > [22mcapitalizeFirstOnly[2m > [22mhandles empty values safely[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/personal-bank-details.test.ts[2m > [22mpersonal-bank-details[2m > [22mloads personal bank details from the user row even when the user is shop-linked[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/personal-bank-details.test.ts[2m > [22mpersonal-bank-details[2m > [22mbuilds personal bank updates for users without organization-only fields[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/personal-bank-details.test.ts[2m > [22mpersonal-bank-details[2m > [22maccepts Maybank account 557175482611 under the production bank rules[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/role-permissions.test.ts[2m > [22mrole-permissions[2m > [22mincludes reset-password access for admin defaults[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/role-permissions.test.ts[2m > [22mrole-permissions[2m > [22mkeeps default admin permissions when DB payload is partial[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/role-permissions.test.ts[2m > [22mrole-permissions[2m > [22mkeeps explicit DB denials over default admin permissions[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/role-permissions.test.ts[2m > [22mrole-permissions[2m > [22mresolves known admin role-code aliases when role level is missing[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/role-permissions.test.ts[2m > [22mrole-permissions[2m > [22mbuilds default permissions for standard users[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/whatsapp-provider-readiness.test.ts[2m > [22mgetWhatsAppProviderReadiness[2m > [22mallows a configured and verified Meta provider without Baileys fields[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/whatsapp-provider-readiness.test.ts[2m > [22mgetWhatsAppProviderReadiness[2m > [22mrejects an unconfigured Meta provider with a clear reason[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/whatsapp-provider-readiness.test.ts[2m > [22mgetWhatsAppProviderReadiness[2m > [22mrequires Meta connection verification[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/whatsapp-provider-readiness.test.ts[2m > [22mgetWhatsAppProviderReadiness[2m > [22mvalidates Baileys gateway configuration and connection independently[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/routing.test.tsx[2m > [22mresolveNotificationRoutingPreset[2m > [22mhonors the saved Email Only preset over legacy channel values[32m 3[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/routing.test.tsx[2m > [22mresolveNotificationRoutingPreset[2m > [22msupports legacy channel settings and preserves the WhatsApp default[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/notifications/routing.test.tsx[2m > [22mresolveNotificationRoutingPreset[2m > [22mcan resolve the global default independently of an event override[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/utils/qr-resolver.test.ts[2m > [22mqr-resolver mobile wallet classification[2m > [22mkeeps USER linked to SHOP on the individual consumer wallet for mobile rewards[32m 5[2mms[22m[39m
+ [32m✓[39m src/lib/utils/qr-resolver.test.ts[2m > [22mqr-resolver mobile wallet classification[2m > [22mdoes not attach a reporting shop for independent users[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/reporting/shop-user-points.test.ts[2m > [22mshop-user-points reporting[2m > [22mtracks shop reporting as the sum of attached user wallets[32m 4[2mms[22m[39m
+ [32m✓[39m src/lib/reporting/shop-ledger-ownership.test.ts[2m > [22mshop-ledger ownership[2m > [22mkeeps wallet_scope=consumer rows out of the shop wallet even if legacy shop fields exist[32m 19[2mms[22m[39m
+ [32m✓[39m src/lib/reporting/shop-ledger-ownership.test.ts[2m > [22mshop-ledger ownership[2m > [22muses explicit wallet_owner_org_id for wallet_scope=shop rows[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/reporting/shop-ledger-ownership.test.ts[2m > [22mshop-ledger ownership[2m > [22mpreserves company_id and phone/email fallback for legacy rows with wallet_scope null[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/consumer-reward-wallet.test.ts[2m > [22mconsumer-reward-wallet[2m > [22mplans a shop-linked USER redemption from the individual wallet only[32m 10[2mms[22m[39m
+ [32m✓[39m src/lib/engagement/consumer-reward-wallet.test.ts[2m > [22mconsumer-reward-wallet[2m > [22mrejects mobile redemption when the individual wallet is insufficient[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/storefront/products.test.tsx[2m > [22mselectStorefrontProductMedia[2m > [22muses the primary product image before variant media[32m 16[2mms[22m[39m
+ [32m✓[39m src/lib/storefront/products.test.tsx[2m > [22mselectStorefrontProductMedia[2m > [22mfalls back to the first valid active variant image[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/storefront/products.test.tsx[2m > [22mselectStorefrontProductMedia[2m > [22muses variant_media when legacy variant fields are empty[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/storefront/products.test.tsx[2m > [22mselectStorefrontProductMedia[2m > [22mignores inactive and blank image records[32m 9[2mms[22m[39m
+ [32m✓[39m src/components/ui/reference-picker.test.tsx[2m > [22mReferencePicker[2m > [22mreports blur for typed reference text without a selected reference[33m 999[2mms[22m[39m
+ [32m✓[39m src/components/ui/shop-picker.test.tsx[2m > [22mShopPicker[2m > [22mshows the create-new action when no shops match the search term[33m 2011[2mms[22m[39m
+ [32m✓[39m src/components/ui/reference-picker.test.tsx[2m > [22mReferencePicker[2m > [22mshows the inline invalid-reference error on blur and clears it after valid selection[33m 1874[2mms[22m[39m
+ [32m✓[39m src/components/users/UserPasswordResetSection.test.tsx[2m > [22mUserPasswordResetSection[2m > [22mshows reset password only to role level 10[33m 481[2mms[22m[39m
+ [32m✓[39m src/components/ui/shop-picker.test.tsx[2m > [22mShopPicker[2m > [22mclears the selected shop id when the chosen shop text is edited[33m 1470[2mms[22m[39m
+ [32m✓[39m src/components/shop-requests/CreateShopDialog.test.tsx[2m > [22mCreateShopDialog[2m > [22mshows a Malaysia mobile validation error for landline-style contact numbers[33m 3387[2mms[22m[39m
+ [32m✓[39m src/components/ui/reference-picker.test.tsx[2m > [22mReferencePicker[2m > [22mkeeps a selected reference state only after choosing a valid result[33m 1179[2mms[22m[39m
+ [32m✓[39m src/components/ui/shop-picker.test.tsx[2m > [22mShopPicker[2m > [22mreports blur for typed shop text without a selected shop[33m 1008[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mrenders System Status by default and switches back and forth between tabs[33m 2402[2mms[22m[39m
+ [32m✓[39m src/components/users/UserPasswordResetSection.test.tsx[2m > [22mUserPasswordResetSection[2m > [22mblocks password mismatch[33m 5129[2mms[22m[39m
+ [32m✓[39m src/components/ui/shop-picker.test.tsx[2m > [22mShopPicker[2m > [22mshows the inline invalid-shop error on blur and clears it after valid selection[33m 3568[2mms[22m[39m
+ [32m✓[39m src/components/shop-requests/CreateShopDialog.test.tsx[2m > [22mCreateShopDialog[2m > [22mformats the shop name on space and blur[33m 4262[2mms[22m[39m
+ [32m✓[39m src/components/users/UserPasswordResetSection.test.tsx[2m > [22mUserPasswordResetSection[2m > [22mrenders one higher-layer portal and cancel preserves the Edit User form[33m 1588[2mms[22m[39m
+ [31m×[39m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mpreserves claim alert form state while switching tabs[33m 5285[2mms[22m[39m
+[31m   → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32m✓[39m src/components/users/UserPasswordResetSection.test.tsx[2m > [22mUserPasswordResetSection[2m > [22mEscape closes only the reset modal[33m 457[2mms[22m[39m
+ [32m✓[39m src/components/users/UserPasswordResetSection.test.tsx[2m > [22mUserPasswordResetSection[2m > [22msubmits a valid reset without changing other user fields[33m 2089[2mms[22m[39m
+ [31m×[39m src/components/shop-requests/CreateShopDialog.test.tsx[2m > [22mCreateShopDialog[2m > [22mrequests OTP, verifies the code, and returns the created organization[33m 5175[2mms[22m[39m
+[31m   → Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+ [32m✓[39m src/modules/roadtour/components/CreateRoadtourEventDialog.test.tsx[2m > [22mCreateRoadtourEventDialog product category[2m > [22mloads master-data categories, defaults Vape, disables coming-soon choices, and saves the stable id[33m 4472[2mms[22m[39m
+ [31m×[39m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mkeeps test buttons available and saves the same settings payload shape[33m 4385[2mms[22m[39m
+[31m   → expected [ 'ate0191111111', '0192222222' ] to deeply equal [ '0191111111', '0192222222' ]
+
+Ignored nodes: comments, script, style
+[36m<html>[31m
+  [36m<head />[31m
+  [36m<body>[31m
+    [36m<div>[31m
+      [36m<div[31m
+        [33mclass[31m=[32m"space-y-6"[31m
+      [36m>[31m
+        [36m<div>[31m
+          [36m<h3[31m
+            [33mclass[31m=[32m"text-xl font-semibold flex items-center gap-2"[31m
+          [36m>[31m
+            [36m<svg[31m
+              [33mclass[31m=[32m"lucide lucide-settings h-5 w-5 text-primary"[31m
+              [33mfill[31m=[32m"none"[31m
+              [33mheight[31m=[32m"24"[31m
+              [33mstroke[31m=[32m"currentColor"[31m
+              [33mstroke-linecap[31m=[32m"round"[31m
+              [33mstroke-linejoin[31m=[32m"round"[31m
+              [33mstroke-width[31m=[32m"2"[31m
+              [33mviewBox[31m=[32m"0 0 24 24"[31m
+              [33mwidth[31m=[32m"24"[31m
+              [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+            [36m>[31m
+              [36m<path[31m
+                [33md[31m=[32m"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"[31m
+              [36m/>[31m
+              [36m<circle[31m
+                [33mcx[31m=[32m"12"[31m
+                [33mcy[31m=[32m"12"[31m
+                [33mr[31m=[32m"3"[31m
+              [36m/>[31m
+            [36m</svg>[31m
+            [0mRoadTour Settings[0m
+          [36m</h3>[31m
+          [36m<p[31m
+            [33mclass[31m=[32m"text-sm text-muted-foreground mt-1"[31m
+          [36m>[31m
+            [0mRoadTour operational rules are managed by system defaults to keep campaigns and reporting consistent.[0m
+          [36m</p>[31m
+        [36m</div>[31m
+        [36m<div[31m
+          [33mclass[31m=[32m"space-y-6"[31m
+          [33mdata-orientation[31m=[32m"horizontal"[31m
+          [33mdir[31m=[32m"ltr"[31m
+        [36m>[31m
+          [36m<div[31m
+            [33maria-orientation[31m=[32m"horizontal"[31m
+            [33mclass[31m=[32m"inline-flex items-center text-muted-foreground h-auto w-full justify-start gap-2 overflow-x-auto rounded-lg border bg-white p-1"[31m
+            [33mdata-orientation[31m=[32m"horizontal"[31m
+            [33mrole[31m=[32m"tablist"[31m
+            [33mstyle[31m=[32m"outline: none;"[31m
+            [33mtabindex[31m=[32m"0"[31m
+          [36m>[31m
+            [36m<button[31m
+              [33maria-controls[31m=[32m"radix-:rc:-content-system"[31m
+              [33maria-selected[31m=[32m"false"[31m
+              [33mclass[31m=[32m"inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm shrink-0 rounded-md px-4 py-2 text-sm"[31m
+              [33mdata-orientation[31m=[32m"horizontal"[31m
+              [33mdata-radix-collection-item[31m=[32m""[31m
+              [33mdata-state[31m=[32m"inactive"[31m
+              [33mid[31m=[32m"radix-:rc:-trigger-system"[31m
+              [33mrole[31m=[32m"tab"[31m
+              [33mtabindex[31m=[32m"-1"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<svg[31m
+                [33mclass[31m=[32m"lucide lucide-shield-check mr-2 h-4 w-4"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"24"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"24"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"[31m
+                [36m/>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"m9 12 2 2 4-4"[31m
+                [36m/>[31m
+              [36m</svg>[31m
+              [0mSystem Status[0m
+            [36m</button>[31m
+            [36m<button[31m
+              [33maria-controls[31m=[32m"radix-:rc:-content-claim-alerts"[31m
+              [33maria-selected[31m=[32m"true"[31m
+              [33mclass[31m=[32m"inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm shrink-0 rounded-md px-4 py-2 text-sm"[31m
+              [33mdata-orientation[31m=[32m"horizontal"[31m
+              [33mdata-radix-collection-item[31m=[32m""[31m
+              [33mdata-state[31m=[32m"active"[31m
+              [33mid[31m=[32m"radix-:rc:-trigger-claim-alerts"[31m
+              [33mrole[31m=[32m"tab"[31m
+              [33mtabindex[31m=[32m"0"[31m
+              [33mtype[31m=[32m"button"[31m
+            [36m>[31m
+              [36m<svg[31m
+                [33mclass[31m=[32m"lucide lucide-clipboard-list mr-2 h-4 w-4"[31m
+                [33mfill[31m=[32m"none"[31m
+                [33mheight[31m=[32m"24"[31m
+                [33mstroke[31m=[32m"currentColor"[31m
+                [33mstroke-linecap[31m=[32m"round"[31m
+                [33mstroke-linejoin[31m=[32m"round"[31m
+                [33mstroke-width[31m=[32m"2"[31m
+                [33mviewBox[31m=[32m"0 0 24 24"[31m
+                [33mwidth[31m=[32m"24"[31m
+                [33mxmlns[31m=[32m"http://www.w3.org/2000/svg"[31m
+              [36m>[31m
+                [36m<rect[31m
+                  [33mheight[31m=[32m"4"[31m
+                  [33mrx[31m=[32m"1"[31m
+                  [33mry[31m=[32m"1"[31m
+                  [33mwidth[31m=[32m"8"[31m
+                  [33mx[31m=[32m"8"[31m
+                  [33my[31m=[32m"2"[31m
+                [36m/>[31m
+                [36m<path[31m
+                  [33md[31m=[32m"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-...[39m
+ [32m✓[39m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mdoes not crash when the settings row is missing[32m 140[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mrenders the loading state without crashing[33m 1331[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mrenders the empty Existing Journeys state once loading finishes[33m 1089[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mshows the order selector after switching to the Create New tab[33m 1213[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mswitches to the journey designer once an order is selected, without throwing a hooks-order error[33m 1027[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mreturns to the Existing Journeys tab and reloads after a successful journey creation[33m 1523[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mhandles a failed journey creation gracefully by staying on the designer[33m 896[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mdoes not throw "Rendered fewer hooks than expected" when re-rendering after creation[33m 1055[2mms[22m[39m
+ [32m✓[39m src/components/journey/JourneyBuilderV2.test.tsx[2m > [22mJourneyBuilderV2[2m > [22mrenders the Announcement Banner tab without crashing[33m 579[2mms[22m[39m
+ [32m✓[39m src/components/profile/SignatureUpload.test.tsx[2m > [22mSignatureUpload[2m > [22mloads an existing signature and resolves it to a signed URL[32m 191[2mms[22m[39m
+ [32m✓[39m src/components/journey/petfood/EllbowLiveExperience.test.tsx[2m > [22mEllbowLiveHome[2m > [22mrenders live campaign, points, actions, and rewards data[33m 973[2mms[22m[39m
+ [32m✓[39m src/components/profile/SignatureUpload.test.tsx[2m > [22mSignatureUpload[2m > [22mshows a fallback error state when the signed URL cannot be resolved[32m 105[2mms[22m[39m
+ [32m✓[39m src/components/journey/petfood/EllbowLiveExperience.test.tsx[2m > [22mEllbowLiveHome[2m > [22muses the enhanced Ellbow mobile asset pack[32m 147[2mms[22m[39m
+ [32m✓[39m src/components/journey/petfood/EllbowLiveExperience.test.tsx[2m > [22mEllbowBottomNavigation[2m > [22muses Ellbow icons and preserves live navigation handlers[32m 199[2mms[22m[39m
+ [32m✓[39m src/components/products/ProductsView.navigation.test.tsx[2m > [22mProduct List detail navigation[2m > [22mopens view-product with the selected ID for every localhost product[33m 3963[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 No session marker - checking for existing valid session
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstderr[2m | src/components/profile/SignatureUpload.test.tsx[2m > [22m[2mSignatureUpload[2m > [22m[2muploading a new signature previews it immediately
+[22m[39mError: Not implemented: HTMLCanvasElement.prototype.getContext (without installing the canvas npm package)
+    at module.exports (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\jsdom\lib\jsdom\browser\not-implemented.js:9:17)
+    at HTMLCanvasElementImpl.getContext (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\jsdom\lib\jsdom\living\nodes\HTMLCanvasElement-impl.js:42:5)
+    at HTMLCanvasElement.getContext (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\jsdom\lib\jsdom\living\generated\HTMLCanvasElement.js:131:58)
+    at c:\Users\UsEr\Downloads\serapod2u_new\app\src\components\profile\SignatureUpload.tsx:102:26
+    at commitHookEffectListMount (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (c:\Users\UsEr\Downloads\serapod2u_new\app\node_modules\react-dom\cjs\react-dom.development.js:27078:3) [90mundefined[39m
+
+ [32m✓[39m src/components/profile/SignatureUpload.test.tsx[2m > [22mSignatureUpload[2m > [22mshows a fallback error state when the image fails to load[32m 221[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/ShopImpactDetailView.test.tsx[2m > [22mshop impact detail helpers[2m > [22mprefers structured shop fields and keeps branch on a muted second row[32m 43[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/ShopImpactDetailView.test.tsx[2m > [22mshop impact detail helpers[2m > [22mavoids splitting ambiguous shop names with parentheses when no location hint matches[32m 18[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/ShopImpactDetailView.test.tsx[2m > [22mshop impact detail helpers[2m > [22mformats participant cells for single, missing, and multiple participants[32m 10[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/roadtour/products for Pet Food/Ellbow
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/roadtour/products for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/roadtour/products for Pet Food/Ellbow
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/roadtour/products for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/roadtour/products for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mcalls /api/consumer/products for Vape/Cellera (non-Pet-Food)[33m 980[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/ShopImpactDetailView.test.tsx[2m > [22mShopImpactDetailView[2m > [22mshows the refined table columns, split shop formatting, participant data, and region flag fallback[33m 1095[2mms[22m[39m
+ [32m✓[39m src/components/settings/NotificationTypesTab.test.tsx[2m > [22mNotificationTypesTab[2m > [22mshows the four routing presets, provider state, summary, and required categories[33m 1204[2mms[22m[39m
+ [32m✓[39m src/components/profile/SignatureUpload.test.tsx[2m > [22mSignatureUpload[2m > [22muploading a new signature previews it immediately[33m 1198[2mms[22m[39m
+ [32m✓[39m src/components/profile/SignatureUpload.test.tsx[2m > [22mSignatureUpload[2m > [22mremoving the signature clears the preview[32m 158[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mcalls /api/roadtour/products for Pet Food/Ellbow[32m 284[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow
+[22m[39m🔐 Checking auth status...
+
+ [32m✓[39m src/modules/roadtour/components/analytics/ShopImpactDetailView.test.tsx[2m > [22mShopImpactDetailView[2m > [22mkeeps shop search filtering and row selection working with the refined cells[33m 1005[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mcalls /api/consumer/rewards for Vape/Cellera (non-Pet-Food)[33m 581[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mdoes not fall back to Cellera rewards when Ellbow returns empty
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mdoes not fall back to Cellera rewards when Ellbow returns empty
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mdoes not fall back to Cellera rewards when Ellbow returns empty
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mdoes not fall back to Cellera rewards when Ellbow returns empty
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mcalls /api/engagement/catalog/ellbow/public-rewards for Pet Food/Ellbow[33m 434[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 QR code changed, clearing login form state
+🔐 Starting initial auth check - blocking onAuthStateChange
+🔐 Checking auth status...
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+🔐 Checking auth status...
+
+ [32m✓[39m src/components/settings/NotificationTypesTab.test.tsx[2m > [22mNotificationTypesTab[2m > [22mupdates the routing guidance when Email Only is selected[33m 1329[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mdoes not fall back to Cellera rewards when Ellbow returns empty[32m 219[2mms[22m[39m
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 Checking auth status...
+
+[90mstdout[2m | src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22m[2mPremiumLoyaltyTemplate endpoint selection[2m > [22m[2mVape/Cellera still uses legacy consumer endpoints
+[22m[39m🔐 getUser result: [90mundefined[39m [90mundefined[39m Error: [90mundefined[39m
+🔐 No valid session found
+🔐 Initial auth check completed - onAuthStateChange now active
+
+ [32m✓[39m src/components/journey/templates/PremiumLoyaltyTemplate.test.tsx[2m > [22mPremiumLoyaltyTemplate endpoint selection[2m > [22mVape/Cellera still uses legacy consumer endpoints[33m 558[2mms[22m[39m
+[90mstderr[2m | src/components/animations/GenuineProductAnimation.test.tsx[2m > [22m[2mGenuineProductAnimation (Ellbow success popup)[2m > [22m[2mrenders the Ellbow themed success content
+[22m[39mWarning: Received `true` for a non-boolean attribute `priority`.
+
+If you want to write it to the DOM, pass a string instead: priority="true" or priority={value.toString()}.
+    at img
+    at default
+    at div
+    at div
+    at MotionDOMComponent (file:///c:/Users/UsEr/Downloads/serapod2u_new/app/node_modules/framer-motion/dist/es/motion/index.mjs:42:16)
+    at div
+    at MotionDOMComponent (file:///c:/Users/UsEr/Downloads/serapod2u_new/app/node_modules/framer-motion/dist/es/motion/index.mjs:42:16)
+    at PresenceChild (file:///c:/Users/UsEr/Downloads/serapod2u_new/app/node_modules/framer-motion/dist/es/components/AnimatePresence/PresenceChild.mjs:9:26)
+    at AnimatePresence (file:///c:/Users/UsEr/Downloads/serapod2u_new/app/node_modules/framer-motion/dist/es/components/AnimatePresence/index.mjs:44:28)
+    at GenuineProductAnimation (c:\Users\UsEr\Downloads\serapod2u_new\app\src\components\animations\GenuineProductAnimation.tsx:98:3)
+
+ [32m✓[39m src/components/animations/GenuineProductAnimation.test.tsx[2m > [22mGenuineProductAnimation (Ellbow success popup)[2m > [22mrenders the Ellbow themed success content[33m 413[2mms[22m[39m
+ [32m✓[39m src/components/animations/GenuineProductAnimation.test.tsx[2m > [22mGenuineProductAnimation (Ellbow success popup)[2m > [22mcloses when the overlay is tapped (behaviour preserved)[32m 48[2mms[22m[39m
+ [32m✓[39m src/components/animations/GenuineProductAnimation.test.tsx[2m > [22mGenuineProductAnimation (Ellbow success popup)[2m > [22mdoes not close when the card itself is tapped[32m 45[2mms[22m[39m
+ [32m✓[39m src/components/animations/GenuineProductAnimation.test.tsx[2m > [22mGenuineProductAnimation (Ellbow success popup)[2m > [22mkeeps the legacy green (non-ellbow) popup working[32m 36[2mms[22m[39m
+ [32m✓[39m src/components/organizations/OrgLogoUpload.test.tsx[2m > [22mOrgLogoUpload[2m > [22mmaps a persisted storage path on load and refreshes when the saved value changes[32m 224[2mms[22m[39m
+ [32m✓[39m src/components/organizations/OrgLogoUpload.test.tsx[2m > [22mOrgLogoUpload[2m > [22mmarks removal for the parent form without persisting immediately[33m 380[2mms[22m[39m
+ [32m✓[39m src/components/shared/SafeImage.test.tsx[2m > [22mSafeImage[2m > [22mrenders a clean placeholder (not a broken <img>) when no source is provided[32m 270[2mms[22m[39m
+ [32m✓[39m src/components/shared/SafeImage.test.tsx[2m > [22mSafeImage[2m > [22mfalls back to the placeholder when an empty string is provided[32m 27[2mms[22m[39m
+ [32m✓[39m src/components/shared/SafeImage.test.tsx[2m > [22mSafeImage[2m > [22mrenders an <img> for a valid non-storage URL and swaps to the placeholder on load error[32m 92[2mms[22m[39m
+ [32m✓[39m src/components/shared/SafeImage.test.tsx[2m > [22mSafeImage[2m > [22mattempts a newly provided source after the previous one failed[32m 64[2mms[22m[39m
+ [32m✓[39m src/components/shared/SafeImage.test.tsx[2m > [22mSafeImage[2m > [22mpasses blob: preview URLs through untouched (immediate local upload preview)[32m 14[2mms[22m[39m
+ [32m✓[39m src/components/products/BrandLogo.test.tsx[2m > [22mBrandLogo[2m > [22mshows a clean placeholder when no logo is saved[32m 246[2mms[22m[39m
+ [32m✓[39m src/components/products/BrandLogo.test.tsx[2m > [22mBrandLogo[2m > [22mreplaces a broken saved image with the placeholder[32m 91[2mms[22m[39m
+ [32m✓[39m src/components/products/BrandLogo.test.tsx[2m > [22mBrandLogo[2m > [22mattempts a newly saved logo after the previous source failed[32m 67[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/shared.test.tsx[2m > [22mKpiCard[2m > [22mrenders a non-interactive KPI card without throwing[32m 136[2mms[22m[39m
+ [32m✓[39m src/components/engagement/catalog/LoyaltyProgramSelector.test.tsx[2m > [22mLoyaltyProgramSelector[2m > [22mkeeps the legacy Cellera route as the default and links Ellbow by query parameter[33m 371[2mms[22m[39m
+ [32m✓[39m src/components/engagement/catalog/LoyaltyProgramSelector.test.tsx[2m > [22mLoyaltyProgramSelector[2m > [22mexposes the isolated Ellbow shop route without changing the Cellera default[32m 52[2mms[22m[39m
+ [32m✓[39m src/modules/roadtour/components/analytics/shared.test.tsx[2m > [22mKpiCard[2m > [22mrenders an interactive KPI card and calls onClick[33m 402[2mms[22m[39m
+ [32m✓[39m src/components/users/UserReferenceCheckbox.test.tsx[2m > [22mUser Management Reference checkbox[2m > [22mrenders the original Reference field as a standard checkbox with RoadTour guidance[32m 267[2mms[22m[39m
+ [32m✓[39m src/components/users/UserReferenceCheckbox.test.tsx[2m > [22mUser Management Reference checkbox[2m > [22mdisplays an existing checked value and reports changes[32m 163[2mms[22m[39m
+ [32m✓[39m src/components/journey/petfood/PreviewPetFoodExperience.test.tsx[2m > [22mPreviewPetFoodExperience[2m > [22mrenders the isolated Ellbow verification home preview[32m 192[2mms[22m[39m
+ [32m✓[39m src/components/users/UserDialogManufacturer.test.tsx[2m > [22mUser Management Manufacturer organization selection[2m > [22mincludes the Manufacturer card[32m 7[2mms[22m[39m
+ [32m✓[39m src/components/users/UserDialogManufacturer.test.tsx[2m > [22mUser Management Manufacturer organization selection[2m > [22mlists and searches only Manufacturer organizations[32m 3[2mms[22m[39m
+ [32m✓[39m src/components/users/UserDialogManufacturer.test.tsx[2m > [22mUser Management Manufacturer organization selection[2m > [22mclears an organization that is invalid after changing type[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/components/shop-requests/CreateShopDialog.test.tsx[2m > [22mCreateShopDialog[2m > [22mrequests OTP, verifies the code, and returns the created organization
+[31m[1mError[22m: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[36m [2m❯[22m src/components/shop-requests/CreateShopDialog.test.tsx:[2m121:5[22m[39m
+    [90m119| [39m    })
+    [90m120| [39m
+    [90m121| [39m    it('requests OTP, verifies the code, and returns the created organ…
+    [90m   | [39m    [31m^[39m
+    [90m122| [39m        [35mconst[39m user [33m=[39m userEvent[33m.[39m[34msetup[39m()
+    [90m123| [39m        [35mconst[39m onCreated [33m=[39m vi[33m.[39m[34mfn[39m()
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/lib/engagement/registration-link-resolution.test.ts[2m > [22mresolveRegistrationLinkSelection[2m > [22mreturns canonical shop and reference data when both selections are valid
+[31m[1mAssertionError[22m: expected { ok: true, …(7) } to deeply equal { ok: true, …(6) }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "ok": true,[22m
+[2m    "organizationId": "shop-1",[22m
+[2m    "organizationName": "Kedai Maju",[22m
+[31m+   "pendingShopRequest": null,[39m
+[2m    "referenceDisplayName": "Ref",[22m
+[2m    "referenceUserId": "ref-1",[22m
+[2m    "referralPhone": "+60123456789",[22m
+[2m    "shopDisplayName": "Kedai Maju (HQ)",[22m
+[2m  }[22m
+
+[36m [2m❯[22m src/lib/engagement/registration-link-resolution.test.ts:[2m117:20[22m[39m
+    [90m115| [39m    })
+    [90m116| [39m
+    [90m117| [39m    [34mexpect[39m(result)[33m.[39m[34mtoEqual[39m({
+    [90m   | [39m                   [31m^[39m
+    [90m118| [39m      ok[33m:[39m [35mtrue[39m[33m,[39m
+    [90m119| [39m      organizationId[33m:[39m [32m'shop-1'[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mpreserves claim alert form state while switching tabs
+[31m[1mError[22m: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[36m [2m❯[22m src/modules/roadtour/components/RoadtourSettingsView.test.tsx:[2m173:5[22m[39m
+    [90m171| [39m    })
+    [90m172| [39m
+    [90m173| [39m    it('preserves claim alert form state while switching tabs', async …
+    [90m   | [39m    [31m^[39m
+    [90m174| [39m        [35mconst[39m user [33m=[39m userEvent[33m.[39m[34msetup[39m()
+    [90m175| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/modules/roadtour/components/RoadtourSettingsView.test.tsx[2m > [22mRoadtourSettingsView[2m > [22mkeeps test buttons available and saves the same settings payload shape
+[31m[1mAssertionError[22m[39m: expected [ 'ate0191111111', '0192222222' ] to deeply equal [ '0191111111', '0192222222' ]
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"space-y-6"[39m
+      [36m>[39m
+        [36m<div>[39m
+          [36m<h3[39m
+            [33mclass[39m=[32m"text-xl font-semibold flex items-center gap-2"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33mclass[39m=[32m"lucide lucide-settings h-5 w-5 text-primary"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mheight[39m=[32m"24"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"2"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"24"[39m
+              [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"[39m
+              [36m/>[39m
+              [36m<circle[39m
+                [33mcx[39m=[32m"12"[39m
+                [33mcy[39m=[32m"12"[39m
+                [33mr[39m=[32m"3"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+            [0mRoadTour Settings[0m
+          [36m</h3>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"text-sm text-muted-foreground mt-1"[39m
+          [36m>[39m
+            [0mRoadTour operational rules are managed by system defaults to keep campaigns and reporting consistent.[0m
+          [36m</p>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"space-y-6"[39m
+          [33mdata-orientation[39m=[32m"horizontal"[39m
+          [33mdir[39m=[32m"ltr"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-orientation[39m=[32m"horizontal"[39m
+            [33mclass[39m=[32m"inline-flex items-center text-muted-foreground h-auto w-full justify-start gap-2 overflow-x-auto rounded-lg border bg-white p-1"[39m
+            [33mdata-orientation[39m=[32m"horizontal"[39m
+            [33mrole[39m=[32m"tablist"[39m
+            [33mstyle[39m=[32m"outline: none;"[39m
+            [33mtabindex[39m=[32m"0"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-controls[39m=[32m"radix-:rc:-content-system"[39m
+              [33maria-selected[39m=[32m"false"[39m
+              [33mclass[39m=[32m"inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm shrink-0 rounded-md px-4 py-2 text-sm"[39m
+              [33mdata-orientation[39m=[32m"horizontal"[39m
+              [33mdata-radix-collection-item[39m=[32m""[39m
+              [33mdata-state[39m=[32m"inactive"[39m
+              [33mid[39m=[32m"radix-:rc:-trigger-system"[39m
+              [33mrole[39m=[32m"tab"[39m
+              [33mtabindex[39m=[32m"-1"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-shield-check mr-2 h-4 w-4"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"m9 12 2 2 4-4"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0mSystem Status[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-controls[39m=[32m"radix-:rc:-content-claim-alerts"[39m
+              [33maria-selected[39m=[32m"true"[39m
+              [33mclass[39m=[32m"inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm shrink-0 rounded-md px-4 py-2 text-sm"[39m
+              [33mdata-orientation[39m=[32m"horizontal"[39m
+              [33mdata-radix-collection-item[39m=[32m""[39m
+              [33mdata-state[39m=[32m"active"[39m
+              [33mid[39m=[32m"radix-:rc:-trigger-claim-alerts"[39m
+              [33mrole[39m=[32m"tab"[39m
+              [33mtabindex[39m=[32m"0"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33mclass[39m=[32m"lucide lucide-clipboard-list mr-2 h-4 w-4"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mheight[39m=[32m"24"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"24"[39m
+                [33mxmlns[39m=[32m"http://www.w3.org/2000/svg"[39m
+              [36m>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"4"[39m
+                  [33mrx[39m=[32m"1"[39m
+                  [33mry[39m=[32m"1"[39m
+                  [33mwidth[39m=[32m"8"[39m
+                  [33mx[39m=[32m"8"[39m
+                  [33my[39m=[32m"2"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-...
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   "0191111111",[39m
+[31m+   "ate0191111111",[39m
+[2m    "0192222222",[22m
+[2m  ][22m
+
+[36m [2m❯[22m src/modules/roadtour/components/RoadtourSettingsView.test.tsx:[2m225:69[22m[39m
+    [90m223| [39m        [35mawait[39m [34mwaitFor[39m(() [33m=>[39m {
+    [90m224| [39m            [34mexpect[39m(lastUpdatePayload)[33m.[39m[34mtoBeTruthy[39m()
+    [90m225| [39m            expect(lastUpdatePayload.claim_whatsapp_manual_numbers).to…
+    [90m   | [39m                                                                    [31m^[39m
+    [90m226| [39m            [34mexpect[39m(lastUpdatePayload[33m.[39mclaim_whatsapp_enabled)[33m.[39m[34mtoBe[39m([35mtrue[39m)
+    [90m227| [39m        })
+[90m [2m❯[22m runWithExpensiveErrorDiagnosticsDisabled node_modules/@testing-library/dom/dist/config.js:[2m47:12[22m[39m
+[90m [2m❯[22m checkCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m124:77[22m[39m
+[90m [2m❯[22m Timeout.checkRealTimersCallback node_modules/@testing-library/dom/dist/wait-for.js:[2m118:16[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/app/api/user/update-profile/route.test.ts[2m > [22mPOST /api/user/update-profile[2m > [22mwrites personal bank fields to users and does not touch organizations for shop-linked users
+[31m[1mError[22m: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[36m [2m❯[22m src/app/api/user/update-profile/route.test.ts:[2m69:3[22m[39m
+    [90m 67| [39m  })
+    [90m 68| [39m
+    [90m 69| [39m  it('writes personal bank fields to users and does not touch organiza…
+    [90m   | [39m  [31m^[39m
+    [90m 70| [39m    authGetUser[33m.[39m[34mmockResolvedValue[39m({
+    [90m 71| [39m      data[33m:[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/app/api/auth/register/request-code/route.test.ts[2m > [22mPOST /api/auth/register/request-code[2m > [22mrejects OTP start when no authoritative shop selection is submitted
+[31m[1mError[22m: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".[39m
+[36m [2m❯[22m src/app/api/auth/register/request-code/route.test.ts:[2m59:3[22m[39m
+    [90m 57| [39m  })
+    [90m 58| [39m
+    [90m 59| [39m  it('rejects OTP start when no authoritative shop selection is submit…
+    [90m   | [39m  [31m^[39m
+    [90m 60| [39m    [35mconst[39m { [33mPOST[39m } [33m=[39m [35mawait[39m [35mimport[39m([32m'./route'[39m)
+    [90m 61| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m52 passed[39m[22m[90m (57)[39m
+[2m      Tests [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m300 passed[39m[22m[90m (306)[39m
+[2m   Start at [22m 20:46:32
+[2m   Duration [22m 101.11s[2m (transform 52.47s, setup 0ms, collect 195.53s, tests 98.24s, environment 254.89s, prepare 40.80s)[22m
+
