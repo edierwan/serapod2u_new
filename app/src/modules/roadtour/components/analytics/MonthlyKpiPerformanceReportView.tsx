@@ -47,6 +47,7 @@ import {
   TrendingUp,
   Users,
   Wallet,
+  BookOpen,
 } from "lucide-react";
 import { fetchRoadtourRuns, type RoadtourRun } from "@/lib/roadtour/events";
 import {
@@ -131,7 +132,9 @@ export function MonthlyKpiPerformanceReportView({
   const [report, setReport] = useState<KpiReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
+  const [exporting, setExporting] = useState<
+    "excel" | "pdf" | "accounting" | null
+  >(null);
 
   const period = useMemo(
     () => deriveKpiPeriodWindow(selectedMonth, periodType),
@@ -333,6 +336,61 @@ export function MonthlyKpiPerformanceReportView({
     statusFilter,
     teamFilter,
   ]);
+
+  // Check if any AM has incentive earnings to export
+  const hasIncentiveData = useMemo(() => {
+    return (report?.ams || []).some((a) => a.incentive_earned > 0);
+  }, [report]);
+
+  const handleExportAccounting = useCallback(async () => {
+    if (!companyId || !report || report.teams.length === 0) return;
+    // Check locally first — no incentive data means nothing to export
+    if (!hasIncentiveData) {
+      toast({
+        title: "No incentive data to export",
+        description:
+          "AMs need to record scans before incentive payouts can be exported to accounting.",
+      });
+      return;
+    }
+    try {
+      setExporting("accounting");
+      const cycleId = report.cycle.id;
+      if (!cycleId) throw new Error("No KPI cycle ID in the report data.");
+
+      const exportRes = await fetch("/api/roadtour/kpi/incentive-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          org_id: companyId,
+          kpi_cycle_id: cycleId,
+        }),
+      });
+      const exportJson = await exportRes.json();
+      if (!exportRes.ok || !exportJson.success)
+        throw new Error(exportJson.error || "Export failed.");
+
+      if (exportJson.data.journal_id) {
+        toast({
+          title: "Exported to Accounting",
+          description: `GL Journal created with RM ${exportJson.data.total_amount.toLocaleString()} in incentives.`,
+        });
+      } else {
+        toast({
+          title: "Incentive data ready",
+          description: `${exportJson.data.entries.length} entries, total RM ${exportJson.data.total_amount.toLocaleString()}. Accounting module not available — data returned for manual processing.`,
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Export failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(null);
+    }
+  }, [companyId, hasIncentiveData, report]);
 
   const handleExportPdf = useCallback(async () => {
     if (!report || report.teams.length === 0) return;
@@ -674,6 +732,20 @@ export function MonthlyKpiPerformanceReportView({
                 <FileText className="h-4 w-4 mr-1" />
               )}
               Export PDF
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-indigo-700 border-indigo-200"
+              onClick={handleExportAccounting}
+              disabled={exporting !== null || !hasReportData}
+            >
+              {exporting === "accounting" ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4 mr-1" />
+              )}
+              Export to Accounting
             </Button>
           </div>
         </div>

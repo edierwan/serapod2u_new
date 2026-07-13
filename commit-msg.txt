@@ -1,7 +1,6 @@
-revert(roadtour): remove Export to Accounting button from KPI report UI
+revert(roadtour): restore Export to Accounting button with safe pre-check
 
-- The incentive-export API requires a configured KPI cycle with actual
-  incentive data to work properly
-- Removed the button and all related code from the UI to avoid confusion
-- The API endpoint /api/roadtour/kpi/incentive-export remains available
-  for direct use when the data is ready
+- Button checks locally if any AM has incentive_earned > 0 before calling API
+- If no incentive data: shows info toast instead of error
+- If incentive data exists: exports to accounting without errors
+- If API fails: shows error as toast, not destructive
