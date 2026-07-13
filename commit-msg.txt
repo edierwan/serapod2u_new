@@ -1,6 +1,7 @@
-fix(roadtour): use report cycle ID directly for Export to Accounting button
+revert(roadtour): remove Export to Accounting button from KPI report UI
 
-- The previous implementation tried to fetch the cycle ID from a separate
-  API call which failed due to date format mismatch
-- Now uses report.cycle.id directly from the already-loaded report data
-- This is more reliable and avoids an extra API call
+- The incentive-export API requires a configured KPI cycle with actual
+  incentive data to work properly
+- Removed the button and all related code from the UI to avoid confusion
+- The API endpoint /api/roadtour/kpi/incentive-export remains available
+  for direct use when the data is ready
