@@ -342,17 +342,9 @@ export function MonthlyKpiPerformanceReportView({
       return;
     try {
       setExporting("accounting");
-      // Find the cycle ID from the report's cycle
-      const res = await fetch(
-        `/api/roadtour/kpi/cycles?org_id=${encodeURIComponent(companyId)}&roadtour_run_id=${encodeURIComponent(selectedRunId)}&kpi_month=${encodeURIComponent(selectedMonth)}`,
-      );
-      const json = await res.json();
-      if (!res.ok || !json.success)
-        throw new Error(json.error || "Failed to find KPI cycle.");
-      const cycles = json.data || [];
-      if (cycles.length === 0)
-        throw new Error("No KPI cycle found for this month.");
-      const cycleId = cycles[0].id;
+      // Use the cycle ID directly from the report data
+      const cycleId = report.cycle.id;
+      if (!cycleId) throw new Error("No KPI cycle ID in the report data.");
 
       const exportRes = await fetch("/api/roadtour/kpi/incentive-export", {
         method: "POST",

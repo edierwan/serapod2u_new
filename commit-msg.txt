@@ -1,7 +1,6 @@
-feat(roadtour): add Export to Accounting button in KPI Performance Report UI
+fix(roadtour): use report cycle ID directly for Export to Accounting button
 
-- Add "Export to Accounting" button in MonthlyKpiPerformanceReportView
-- Button calls /api/roadtour/kpi/incentive-export with the current cycle
-- Shows toast with GL journal ID on success or fallback message
-- All existing functionality confirmed working: Anchor Month, Period Type,
-  filters, charts, Excel/PDF exports
+- The previous implementation tried to fetch the cycle ID from a separate
+  API call which failed due to date format mismatch
+- Now uses report.cycle.id directly from the already-loaded report data
+- This is more reliable and avoids an extra API call
