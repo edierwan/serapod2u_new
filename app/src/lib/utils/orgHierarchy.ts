@@ -228,7 +228,9 @@ export function getHierarchyLevel(orgType: OrgType): number {
     MFG: 2,
     DIST: 3,
     WH: 4,
-    SHOP: 5
+    SHOP: 5,
+    END_USER: 6,
+    INDEP: 6,
   }
   return levels[orgType] || 99
 }

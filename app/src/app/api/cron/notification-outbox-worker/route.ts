@@ -564,7 +564,7 @@ export async function GET(request: NextRequest) {
                     await supabase.rpc('log_notification_attempt', emailResult.success ? {
                         p_outbox_id: id,
                         p_status: 'sent',
-                        p_provider_message_id: emailResult.messageId || null,
+                        p_provider_message_id: 'messageId' in emailResult ? emailResult.messageId || null : null,
                         p_provider_response: { provider: provider_name },
                     } : {
                         p_outbox_id: id,

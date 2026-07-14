@@ -72,7 +72,7 @@ export async function getReturnContext(): Promise<ReturnContext | NextResponse> 
  * TODO: Remove this helper after regenerating Supabase types.
  */
 function returnCasesTable(ctx: ReturnContext) {
-    return ctx.admin.from('return_cases')
+    return (ctx.admin as any).from('return_cases')
 }
 
 /**
@@ -81,7 +81,7 @@ function returnCasesTable(ctx: ReturnContext) {
  * TODO: Remove this helper after regenerating Supabase types.
  */
 function returnCaseItemsTable(ctx: ReturnContext) {
-    return ctx.admin.from('return_case_items')
+    return (ctx.admin as any).from('return_case_items')
 }
 
 /** Fetch a case and verify the caller may access it. Returns the case row or a NextResponse error. */

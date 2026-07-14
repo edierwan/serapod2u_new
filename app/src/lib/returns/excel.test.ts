@@ -98,7 +98,7 @@ describe('buildReturnWorkbook (export)', () => {
         expect(items.state).not.toBe('veryHidden')
         // Template identity is present.
         const metaMap = new Map<string, string>()
-        meta.eachRow((r) => metaMap.set(String(r.getCell(1).value || '').toLowerCase(), String(r.getCell(2).value || '')))
+        meta.eachRow((r: ExcelJS.Row) => metaMap.set(String(r.getCell(1).value || '').toLowerCase(), String(r.getCell(2).value || '')))
         expect(metaMap.get('template version')).toBe(RETURN_EXCEL_TEMPLATE_VERSION)
         expect(metaMap.get('shop id')).toBe('shop-1')
         // Header row exists with the 15 expected columns.
