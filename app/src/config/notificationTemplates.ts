@@ -942,6 +942,86 @@ export const notificationTemplates: Record<string, Template[]> = {
     ],
 
     // ══════════════════════════════════════════════════════════
+    // RETURN PRODUCT
+    // ══════════════════════════════════════════════════════════
+
+    'return_draft_created': [
+        {
+            id: 'rt_draft_wa_1', name: 'Return Draft Created', channel: 'whatsapp',
+            body: `📝 *Return Draft Created*\n\nReturn *{{return_no}}* has been created for {{return_source_name}} ({{return_source_code}}).\nWarehouse: {{return_warehouse_name}}\nItems: {{total_quantity}} pcs`
+        },
+        {
+            id: 'rt_draft_email_1', name: 'Return Draft Created', channel: 'email',
+            subject: 'Product Return {{return_no}} — Draft Created',
+            body: `Dear {{contact_name}},\n\nA product return {{return_no}} has been created for {{return_source_name}} ({{return_source_code}}).\n\nReturn Warehouse: {{return_warehouse_name}}\nReported Date: {{reported_date}}\nTotal Quantity: {{total_quantity}} pcs\n\nRegards,\nSerapod2U`
+        },
+    ],
+
+    'return_submitted': [
+        {
+            id: 'rt_sub_wa_1', name: 'Return Submitted', channel: 'whatsapp',
+            body: `📦 *Return Submitted*\n\nYour product return {{return_no}} has been submitted to {{return_warehouse_name}}.\nItems: {{total_quantity}} pcs`
+        },
+        {
+            id: 'rt_sub_sms_1', name: 'Return Submitted', channel: 'sms',
+            body: `[Serapod2U] Your product return {{return_no}} has been submitted to {{return_warehouse_name}}.`
+        },
+        {
+            id: 'rt_sub_email_1', name: 'Return Submitted', channel: 'email',
+            subject: 'Product Return {{return_no}} — Submitted',
+            body: `Dear {{contact_name}},\n\nYour product return {{return_no}} has been submitted to {{return_warehouse_name}}.\n\nTotal Quantity: {{total_quantity}} pcs\n\nRegards,\nSerapod2U`
+        },
+    ],
+
+    'return_received': [
+        {
+            id: 'rt_rec_wa_1', name: 'Return Received', channel: 'whatsapp',
+            body: `✅ *Return Received*\n\nYour product return {{return_no}} has been received by {{return_warehouse_name}}.`
+        },
+        {
+            id: 'rt_rec_sms_1', name: 'Return Received', channel: 'sms',
+            body: `[Serapod2U] Your product return {{return_no}} has been received by {{return_warehouse_name}}.`
+        },
+        {
+            id: 'rt_rec_email_1', name: 'Return Received', channel: 'email',
+            subject: 'Product Return {{return_no}} — Received',
+            body: `Dear {{contact_name}},\n\nYour product return {{return_no}} has been received by {{return_warehouse_name}}.\n\nRegards,\nSerapod2U`
+        },
+    ],
+
+    'return_processing': [
+        {
+            id: 'rt_proc_wa_1', name: 'Return Processing', channel: 'whatsapp',
+            body: `⚙️ *Return Processing*\n\nYour product return {{return_no}} is now being processed.`
+        },
+        {
+            id: 'rt_proc_sms_1', name: 'Return Processing', channel: 'sms',
+            body: `[Serapod2U] Your product return {{return_no}} is now being processed.`
+        },
+        {
+            id: 'rt_proc_email_1', name: 'Return Processing', channel: 'email',
+            subject: 'Product Return {{return_no}} — Processing',
+            body: `Dear {{contact_name}},\n\nYour product return {{return_no}} is now being processed.\n\nRegards,\nSerapod2U`
+        },
+    ],
+
+    'return_completed': [
+        {
+            id: 'rt_done_wa_1', name: 'Return Completed', channel: 'whatsapp',
+            body: `🎉 *Return Completed*\n\nYour product return {{return_no}} has been completed.`
+        },
+        {
+            id: 'rt_done_sms_1', name: 'Return Completed', channel: 'sms',
+            body: `[Serapod2U] Your product return {{return_no}} has been completed.`
+        },
+        {
+            id: 'rt_done_email_1', name: 'Return Completed', channel: 'email',
+            subject: 'Product Return {{return_no}} — Completed',
+            body: `Dear {{contact_name}},\n\nYour product return {{return_no}} has been completed.\n\nRegards,\nSerapod2U`
+        },
+    ],
+
+    // ══════════════════════════════════════════════════════════
     // FALLBACK / GENERIC
     // ══════════════════════════════════════════════════════════
 

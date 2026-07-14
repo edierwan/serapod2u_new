@@ -314,6 +314,16 @@ export async function GET(request: NextRequest) {
                         templateBody = `🏪 *User Created New Shop*\n\n*Shop:* {{shop_name}}\n*Branch:* {{shop_branch}}\n*State:* {{shop_state}}\n*Created by:* {{creator_name}}\n*Creator email:* {{creator_email}}\n*Contact phone:* {{contact_phone}}\n*Created at:* {{created_at}}`
                     } else if (event_code === 'roadtour_qr_delivery') {
                         templateBody = `Your RoadTour QR is ready.\n\nCampaign: {{campaign_name}}\nReference: {{reference_name}}\n\nOpen QR: {{qr_url}}\nQR image: {{qr_image_url}}`
+                    } else if (event_code === 'return_draft_created') {
+                        templateBody = `📝 Return {{return_no}} has been created for {{return_source_name}} ({{return_source_code}}).\nWarehouse: {{return_warehouse_name}}\nItems: {{total_quantity}} pcs`
+                    } else if (event_code === 'return_submitted') {
+                        templateBody = `📦 Your product return {{return_no}} has been submitted to {{return_warehouse_name}}.`
+                    } else if (event_code === 'return_received') {
+                        templateBody = `✅ Your product return {{return_no}} has been received by {{return_warehouse_name}}.`
+                    } else if (event_code === 'return_processing') {
+                        templateBody = `⚙️ Your product return {{return_no}} is now being processed.`
+                    } else if (event_code === 'return_completed') {
+                        templateBody = `🎉 Your product return {{return_no}} has been completed.`
                     } else {
                         templateBody = `Update: ${event_code} occurred.\nOrder: {{order_no}}\nStatus: {{status}}`
                     }
@@ -541,7 +551,9 @@ export async function GET(request: NextRequest) {
                 } else if (channel === 'email') {
                     const emailSubject = event_code === 'roadtour_qr_delivery'
                         ? `RoadTour QR — ${String(payload.campaign_name || 'Campaign')}`
-                        : `Serapod2U notification: ${String(event_code).replace(/_/g, ' ')}`
+                        : String(event_code).startsWith('return_')
+                            ? `Product Return ${String(payload.return_no || '')} — ${String(payload.return_status || 'Update')}`.trim()
+                            : `Serapod2U notification: ${String(event_code).replace(/_/g, ' ')}`
                     const emailResult = await sendEmailWithActiveProvider(
                         supabase,
                         org_id,

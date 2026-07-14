@@ -50,11 +50,11 @@ export function getValidParentOrgs(
   allOrgs: Organization[]
 ): Organization[] {
   const validTypes = getValidParentTypes(orgType)
-  
+
   if (validTypes.length === 0) {
     return [] // No parents allowed (e.g., HQ)
   }
-  
+
   return allOrgs.filter(org => validTypes.includes(org.org_type_code))
 }
 
@@ -117,39 +117,58 @@ export function getParentFieldLabel(orgType: OrgType): string {
 }
 
 /**
+ * Extended error shape from Supabase that carries a PostgreSQL error code.
+ */
+export type SupabaseError = Error & { code?: string; details?: string; hint?: string }
+
+/**
  * Parse database error to user-friendly message
  */
-export function parseHierarchyError(error: Error | string): string {
+export function parseHierarchyError(error: SupabaseError | string): string {
   const message = typeof error === 'string' ? error : error.message
-  
+  const code = typeof error === 'string' ? undefined : (error as SupabaseError).code
+  const details = typeof error === 'string' ? undefined : (error as SupabaseError).details
+
+  // ── PostgreSQL unique-violation (23505) ────────────────────────────────
+  if (code === '23505') {
+    if (message.includes('uq_shop_preferred_distributor')) {
+      return 'This shop already has a preferred distributor assigned. Please update the existing assignment.'
+    }
+    if (message.includes('uq_shop_distributor') || (details && details.includes('shop_id, distributor_id'))) {
+      return 'This shop is already linked to that distributor. Please update the existing relationship.'
+    }
+    // Catch-all unique violation
+    return 'This record already exists. Please check for duplicates.'
+  }
+
   if (message.includes('Headquarters') || message.includes('HQ cannot have parent')) {
     return 'HQ organizations cannot report to another organization'
   }
-  
+
   if (message.includes('Manufacturer must report to HQ')) {
     return 'Manufacturers can only report to HQ organizations'
   }
-  
+
   if (message.includes('Distributor must report to HQ') || message.includes('Distributor must have')) {
     return 'Distributors must report to an HQ organization'
   }
-  
+
   if (message.includes('Warehouse must report')) {
     return 'Warehouses must report to either HQ or a Distributor'
   }
-  
+
   if (message.includes('Shop must report to Distributor') || message.includes('Shop must have')) {
     return 'Shops must report to a Distributor'
   }
-  
+
   if (message.includes('Cannot change to Shop') || message.includes('has child organizations')) {
     return 'Cannot change to Shop type - this organization has child organizations that must be reassigned first'
   }
-  
+
   if (message.includes('incompatible child organizations')) {
     return 'Cannot change organization type - some child organizations are not compatible with the new type'
   }
-  
+
   return message
 }
 
@@ -166,20 +185,20 @@ export function validateOrgHierarchy(
   if (orgType === 'HQ' && parentOrgId) {
     return 'HQ organizations cannot have a parent organization'
   }
-  
+
   // Required parent check
   if (isParentRequired(orgType) && !parentOrgId) {
     const typeName = orgType === 'DIST' ? 'Distributors' : 'Shops'
     return `${typeName} must have a parent organization`
   }
-  
+
   // Valid parent type check
   if (parentOrgId && parentOrgType) {
     if (!isValidParentType(orgType, parentOrgType)) {
       return `Invalid parent type: ${orgType} cannot report to ${parentOrgType}`
     }
   }
-  
+
   return null
 }
 
@@ -226,12 +245,12 @@ export async function validateOrgTypeChange(
   if (currentType === newType) {
     return null // No change
   }
-  
+
   // Cannot change to SHOP if has children
   if (newType === 'SHOP' && hasChildren) {
     return 'Cannot change to Shop - organization has child organizations'
   }
-  
+
   // If changing to DIST, check children are compatible (WH or SHOP only)
   if (newType === 'DIST' && hasChildren) {
     const incompatible = childrenTypes.filter(t => t !== 'WH' && t !== 'SHOP')
@@ -239,7 +258,7 @@ export async function validateOrgTypeChange(
       return 'Cannot change to Distributor - has incompatible child organizations'
     }
   }
-  
+
   // If changing to HQ, check children are compatible (MFG, DIST, WH only)
   if (newType === 'HQ' && hasChildren) {
     const incompatible = childrenTypes.filter(t => t === 'SHOP')
@@ -247,6 +266,6 @@ export async function validateOrgTypeChange(
       return 'Cannot change to HQ - shops cannot report directly to HQ'
     }
   }
-  
+
   return null
 }

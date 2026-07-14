@@ -4,7 +4,7 @@ import { decorateCase } from '@/lib/returns/compute'
 import { RETURN_STATUSES } from '@/lib/returns/constants'
 import type { ReturnSettings } from '@/lib/returns/types'
 
-const ORG_SELECT = 'id, org_code, org_name'
+const ORG_SELECT = 'id, org_code, org_name, org_type_code, branch'
 
 async function loadSettings(admin: any): Promise<ReturnSettings> {
     const { data } = await admin.from('return_settings').select('*').eq('id', 1).maybeSingle()
@@ -28,7 +28,9 @@ export async function GET(request: NextRequest) {
 
     const sp = request.nextUrl.searchParams
     const status = sp.get('status')
-    const shopId = sp.get('shop')
+    // `source` is the current param; `shop` is accepted for backward compatibility.
+    const sourceId = sp.get('source') || sp.get('shop')
+    const sourceType = sp.get('source_type') // 'shop' | 'distributor' | null (all)
     const warehouseId = sp.get('warehouse')
     const reason = sp.get('reason')
     const search = sp.get('search')?.trim()
@@ -42,9 +44,10 @@ export async function GET(request: NextRequest) {
 
     if (!ctx.isManager) {
         query = query.eq('shop_org_id', ctx.orgId || '00000000-0000-0000-0000-000000000000')
-    } else if (shopId) {
-        query = query.eq('shop_org_id', shopId)
+    } else if (sourceId) {
+        query = query.eq('return_source_organization_id', sourceId)
     }
+    if (sourceType === 'shop' || sourceType === 'distributor') query = query.eq('return_source_type', sourceType)
     if (status) query = query.eq('status', status)
     if (warehouseId) query = query.eq('return_warehouse_id', warehouseId)
     if (from) query = query.gte('created_at', from)
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
     const settings = await loadSettings(ctx.admin)
 
     const orgIds = Array.from(new Set(
-        (data || []).flatMap((r: any) => [r.shop_org_id, r.return_warehouse_id]).filter(Boolean),
+        (data || []).flatMap((r: any) => [r.return_source_organization_id || r.shop_org_id, r.return_warehouse_id]).filter(Boolean),
     ))
     let orgMap: Record<string, any> = {}
     if (orgIds.length > 0) {
@@ -65,9 +68,10 @@ export async function GET(request: NextRequest) {
         orgMap = Object.fromEntries((orgs || []).map((o: any) => [o.id, o]))
     }
 
-    let rows = (data || []).map((r: any) =>
-        decorateCase({ ...r, shop: orgMap[r.shop_org_id] || null, warehouse: orgMap[r.return_warehouse_id] || null }, settings),
-    )
+    let rows = (data || []).map((r: any) => {
+        const source = orgMap[r.return_source_organization_id || r.shop_org_id] || null
+        return decorateCase({ ...r, source, shop: source, warehouse: orgMap[r.return_warehouse_id] || null }, settings)
+    })
 
     // Reason / SKU / product search is applied over the joined items.
     if (reason) {

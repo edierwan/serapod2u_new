@@ -485,7 +485,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'return-settings':
         return <ReturnSettingsView userProfile={userProfile} />
       case 'return-reporting':
-        return <ReturnReportingView userProfile={userProfile} />
+        return <ReturnReportingView userProfile={userProfile} onViewChange={handleViewChange} />
 
       case 'supply-chain':
         return <SupplyChainLandingView userName={userProfile.full_name} onViewChange={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} bannerImageUrl={moduleBannerUrls.supply} />
