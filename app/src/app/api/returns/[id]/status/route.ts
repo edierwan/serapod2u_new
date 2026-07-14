@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getReturnContext, loadAccessibleCase, statusTimestampColumn } from '@/lib/returns/server'
 import { RETURN_NEXT_STATUS, canAdvanceStatus, type ReturnStatus } from '@/lib/returns/constants'
+import { triggerReturnNotification } from '@/lib/returns/notifications'
 
 /**
  * POST /api/returns/[id]/status
@@ -57,5 +58,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         notes: body.notes || null,
     })
 
-    return NextResponse.json({ ok: true, status: next })
+    // Fire the matching Return Product notification for the new status. Idempotent
+    // and non-blocking — a failure here never rolls back the transition above.
+    const notify = await triggerReturnNotification(ctx.admin, request.nextUrl.origin, {
+        returnCaseId: id,
+        status: next,
+    })
+
+    return NextResponse.json({ ok: true, status: next, notificationWarnings: notify.warnings })
 }

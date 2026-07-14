@@ -32,12 +32,16 @@ interface ViewOrderDetailsViewProps {
 }
 
 type OrderActor = {
+  id?: string
   email?: string | null
   full_name?: string | null
   signature_url?: string | null
 }
 
-function mergeOrderActor(existing: OrderActor | null | undefined, fallback: OrderActor | undefined) {
+function mergeOrderActor(
+  existing: OrderActor | null | undefined,
+  fallback: OrderActor | undefined,
+): OrderActor | undefined {
   if (!existing) return fallback
   if (!fallback) return existing
 
@@ -118,7 +122,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       if (error) throw error
       if (!order) throw new Error('Order not found')
 
-      if (!order.created_by_user || (order.approved_by && !order.approved_by_user)) {
+      // Compute resolved actors (may be hydrated from API). We keep them
+      // separate from the Supabase-inferred row type to avoid type conflicts.
+      let resolvedCreatedByUser = order.created_by_user as OrderActor | null | undefined
+      let resolvedApprovedByUser = order.approved_by_user as OrderActor | null | undefined
+
+      if (!resolvedCreatedByUser || (order.approved_by && !resolvedApprovedByUser)) {
         try {
           const actorResponse = await fetch('/api/orders/actors', {
             method: 'POST',
@@ -127,12 +136,24 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           })
 
           if (actorResponse.ok) {
-            const actorPayload = await actorResponse.json()
-            const actorUsers = Array.isArray(actorPayload?.users) ? actorPayload.users : []
-            const actorMap = new Map(actorUsers.map(actor => [actor.id, actor]))
+            const actorPayload: unknown = await actorResponse.json()
+            const rawUsers: unknown[] = (typeof actorPayload === 'object' && actorPayload !== null && Array.isArray((actorPayload as Record<string, unknown>).users))
+              ? (actorPayload as Record<string, unknown[]>).users
+              : []
+            const actorUsers: OrderActor[] = rawUsers.filter(
+              (u): u is OrderActor => typeof u === 'object' && u !== null && typeof (u as OrderActor).id === 'string'
+            )
+            const actorMap = new Map(actorUsers.map((actor: OrderActor) => [actor.id, actor]))
 
-            order.created_by_user = mergeOrderActor(order.created_by_user, order.created_by ? actorMap.get(order.created_by) : undefined)
-            order.approved_by_user = mergeOrderActor(order.approved_by_user, order.approved_by ? actorMap.get(order.approved_by) : undefined)
+            const fallbackCreatedBy: OrderActor | undefined = order.created_by
+              ? (actorMap.get(order.created_by) ?? undefined)
+              : undefined
+            const fallbackApprovedBy: OrderActor | undefined = order.approved_by
+              ? (actorMap.get(order.approved_by) ?? undefined)
+              : undefined
+
+            resolvedCreatedByUser = mergeOrderActor(resolvedCreatedByUser, fallbackCreatedBy)
+            resolvedApprovedByUser = mergeOrderActor(resolvedApprovedByUser, fallbackApprovedBy)
           }
         } catch (actorError) {
           console.warn('Failed to hydrate order detail actors:', actorError)
@@ -204,9 +225,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         paymentStatus = order.status
       }
 
-      // Combine all data
+      // Combine all data, overriding actor fields with resolved/hydrated values.
       const completeOrderData = {
         ...order,
+        created_by_user: resolvedCreatedByUser ?? order.created_by_user,
+        approved_by_user: resolvedApprovedByUser ?? order.approved_by_user,
         order_items: itemsWithDetails,
         paid_amount: paidAmount,
         order_total: orderTotal,
@@ -377,7 +400,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   }
 
   const subtotal = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.line_total || 0), 0) || 0
-  
+
   // Logic to swap display for Sales Orders (SO) vs Purchase Orders (PO)
   // For PO: Header is Buyer (Issuer), Section is Supplier
   // For SO: Header is Seller (Issuer), Section is Customer

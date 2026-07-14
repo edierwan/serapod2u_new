@@ -1,100 +1,241 @@
 import { NextRequest, NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { getReturnContext } from '@/lib/returns/server'
-import { decorateCase } from '@/lib/returns/compute'
-import { RETURN_STATUS_LABELS, type ReturnStatus } from '@/lib/returns/constants'
-import type { ReturnSettings } from '@/lib/returns/types'
+import { loadReportData, parseReportRequest } from '@/lib/returns/reporting-server'
+import { RETURN_STATUS_LABELS, RETURN_SOURCE_LABELS } from '@/lib/returns/constants'
+import { reportFilename, deltaText, type ReturnReportSummary, type ReportCaseRow } from '@/lib/returns/reporting'
 
-const ORG_SELECT = 'id, org_code, org_name'
+export const dynamic = 'force-dynamic'
 
-async function loadSettings(admin: any): Promise<ReturnSettings> {
-    const { data } = await admin.from('return_settings').select('*').eq('id', 1).maybeSingle()
-    return data || {
-        default_return_warehouse_id: null,
-        sla_submitted_to_received_days: 3,
-        sla_received_to_processing_days: 2,
-        sla_processing_to_completed_days: 5,
-        pdf_instruction_text: null,
-        shop_self_service_enabled: true,
-    }
+const CURRENCY_FMT = '"RM" #,##0.00'
+const COUNT_FMT = '#,##0'
+const PCT_FMT = '0.0"%"'
+const HEADER_FILL = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFEFF3F8' } }
+
+function styleHeaderRow(row: ExcelJS.Row) {
+    row.font = { bold: true }
+    row.eachCell((cell) => {
+        cell.fill = HEADER_FILL
+        cell.border = {
+            top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        }
+    })
 }
 
-/** GET /api/returns/reporting/export — download the filtered report as an .xlsx. */
+function addTitleBlock(ws: ExcelJS.Worksheet, title: string, subtitle: string) {
+    const titleRow = ws.addRow([title])
+    titleRow.font = { bold: true, size: 14 }
+    const subtitleRow = ws.addRow([subtitle])
+    subtitleRow.font = { size: 10, color: { argb: 'FF64748B' } }
+    ws.addRow([])
+}
+
+/**
+ * GET /api/returns/reporting/export
+ *
+ * Management Excel workbook for the selected Monthly/Quarterly report period:
+ *   1. Management Summary (period, filters, KPIs vs comparison)
+ *   2. Returns by Warehouse
+ *   3. Returns by Reason
+ *   4. Returns by Product
+ *   5. Detailed Returns
+ *
+ * Accepts the same query params as /api/returns/reporting/summary so the
+ * workbook always matches the dashboard exactly.
+ */
 export async function GET(request: NextRequest) {
     const ctx = await getReturnContext()
     if (ctx instanceof NextResponse) return ctx
 
-    const sp = request.nextUrl.searchParams
-    let query = ctx.admin
-        .from('return_cases')
-        .select(`*, items:return_case_items (*)`)
-        .order('created_at', { ascending: false })
+    try {
+        const reportRequest = parseReportRequest(request.nextUrl.searchParams)
+        const { summary, cases, generatedBy } = await loadReportData(ctx, reportRequest)
 
-    if (!ctx.isManager) {
-        query = query.eq('shop_org_id', ctx.orgId || '00000000-0000-0000-0000-000000000000')
-    } else if (sp.get('shop')) {
-        query = query.eq('shop_org_id', sp.get('shop'))
+        const wb = new ExcelJS.Workbook()
+        wb.creator = 'Serapod2U'
+        wb.created = new Date()
+
+        buildSummarySheet(wb, summary, generatedBy)
+        buildWarehouseSheet(wb, summary)
+        buildReasonSheet(wb, summary)
+        buildProductSheet(wb, summary)
+        buildDetailSheet(wb, cases)
+
+        const buffer = await wb.xlsx.writeBuffer()
+        const filename = reportFilename(summary.period, 'xlsx')
+        return new NextResponse(buffer as any, {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition': `attachment; filename="${filename}"`,
+            },
+        })
+    } catch (error: any) {
+        console.error('[ReturnReporting] export failed:', error?.message || error)
+        return NextResponse.json({ error: 'Failed to export the return report.' }, { status: 500 })
     }
-    if (sp.get('status')) query = query.eq('status', sp.get('status'))
-    if (sp.get('warehouse')) query = query.eq('return_warehouse_id', sp.get('warehouse'))
-    if (sp.get('from')) query = query.gte('created_at', sp.get('from'))
-    if (sp.get('to')) query = query.lte('created_at', sp.get('to'))
+}
 
-    const { data, error } = await query
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+function buildSummarySheet(wb: ExcelJS.Workbook, summary: ReturnReportSummary, generatedBy: string | null) {
+    const ws = wb.addWorksheet('Management Summary')
+    ws.columns = [{ width: 28 }, { width: 24 }, { width: 24 }, { width: 28 }]
 
-    const settings = await loadSettings(ctx.admin)
-    const orgIds = Array.from(new Set(
-        (data || []).flatMap((r: any) => [r.shop_org_id, r.return_warehouse_id]).filter(Boolean),
-    ))
-    let orgMap: Record<string, any> = {}
-    if (orgIds.length > 0) {
-        const { data: orgs } = await ctx.admin.from('organizations').select(ORG_SELECT).in('id', orgIds)
-        orgMap = Object.fromEntries((orgs || []).map((o: any) => [o.id, o]))
+    addTitleBlock(ws, 'Return Product Management Report', `Period: ${summary.periodLabel}  ·  Compared with: ${summary.comparisonLabel}`)
+
+    const meta: Array<[string, string]> = [
+        ['Report Mode', summary.period.mode === 'monthly' ? 'Monthly' : 'Quarterly'],
+        ['Report Period', summary.periodLabel],
+        ['Comparison Period', summary.comparisonLabel],
+        ['Generated', new Date(summary.generatedAt).toLocaleString('en-MY')],
+        ['Generated By', generatedBy || '—'],
+        ['Source Type', summary.filters.sourceType ? RETURN_SOURCE_LABELS[summary.filters.sourceType] : 'All Types'],
+        ['Return From', summary.filters.sourceName || 'All Sources'],
+        ['Warehouse', summary.filters.warehouseName || 'All Warehouses'],
+        ['Return Reason', summary.filters.reasonLabel || 'All Reasons'],
+        ['Return Status', summary.filters.statusLabel || 'All Status'],
+    ]
+    for (const [k, v] of meta) {
+        const row = ws.addRow([k, v])
+        row.getCell(1).font = { bold: true }
+    }
+    ws.addRow([])
+
+    const kpiHeader = ws.addRow(['KPI', summary.periodLabel, summary.comparisonLabel, 'Change'])
+    styleHeaderRow(kpiHeader)
+
+    const k = summary.kpis
+    const c = summary.comparisonKpis
+    const d = summary.deltas
+    const kpiRows: Array<[string, number, number, string, string | null]> = [
+        ['Total Returns (cases)', k.totalReturns, c.totalReturns, deltaText(d.totalReturns, summary.comparisonLabel), COUNT_FMT],
+        ['Total Quantity (pcs)', k.totalQty, c.totalQty, deltaText(d.totalQty, summary.comparisonLabel), COUNT_FMT],
+        ['Total Return Value', k.totalValue, c.totalValue, deltaText(d.totalValue, summary.comparisonLabel), CURRENCY_FMT],
+        ['Average Return Value', k.avgValue, c.avgValue, deltaText(d.avgValue, summary.comparisonLabel), CURRENCY_FMT],
+        ['Overdue Returns', k.overdue, c.overdue, deltaText(d.overdue, summary.comparisonLabel), COUNT_FMT],
+        ['Completed Returns', k.completed, c.completed, '', COUNT_FMT],
+        ['Completion Rate', k.completionRate, c.completionRate, deltaText(d.completionRate, summary.comparisonLabel), PCT_FMT],
+    ]
+    for (const [label, cur, prev, change, fmt] of kpiRows) {
+        const row = ws.addRow([label, cur, prev, change])
+        row.getCell(1).font = { bold: true }
+        if (fmt) {
+            row.getCell(2).numFmt = fmt
+            row.getCell(3).numFmt = fmt
+        }
     }
 
-    const rows = (data || []).map((r: any) =>
-        decorateCase({ ...r, shop: orgMap[r.shop_org_id] || null, warehouse: orgMap[r.return_warehouse_id] || null }, settings),
-    )
+    ws.addRow([])
+    const insightsHeader = ws.addRow(['Key Insights'])
+    insightsHeader.font = { bold: true }
+    if (summary.insights.length === 0) {
+        ws.addRow([`No Return Product activity was recorded for ${summary.periodLabel}.`])
+    }
+    for (const insight of summary.insights) {
+        ws.addRow([`• ${insight}`])
+    }
+}
 
-    const wb = new ExcelJS.Workbook()
-    const ws = wb.addWorksheet('Return Report')
+function buildWarehouseSheet(wb: ExcelJS.Workbook, summary: ReturnReportSummary) {
+    const ws = wb.addWorksheet('Returns by Warehouse', { views: [{ state: 'frozen', ySplit: 1 }] })
     ws.columns = [
-        { header: 'Return No', key: 'return_no', width: 20 },
-        { header: 'Shop', key: 'shop', width: 26 },
-        { header: 'Warehouse', key: 'warehouse', width: 26 },
+        { header: 'Warehouse', key: 'name', width: 34 },
+        { header: 'Return Cases', key: 'cases', width: 14, style: { numFmt: COUNT_FMT } },
+        { header: 'Return Quantity (pcs)', key: 'qty', width: 20, style: { numFmt: COUNT_FMT } },
+        { header: 'Return Value', key: 'value', width: 18, style: { numFmt: CURRENCY_FMT } },
+        { header: '% of Total Value', key: 'pct', width: 16, style: { numFmt: PCT_FMT } },
+    ]
+    styleHeaderRow(ws.getRow(1))
+    for (const w of summary.byWarehouse) {
+        ws.addRow({ name: w.name, cases: w.cases, qty: w.qty, value: w.value, pct: w.pct })
+    }
+    if (summary.byWarehouse.length === 0) {
+        ws.addRow({ name: 'No data available for this period.' })
+    } else {
+        const total = ws.addRow({
+            name: 'Total',
+            cases: summary.kpis.totalReturns,
+            qty: summary.kpis.totalQty,
+            value: summary.kpis.totalValue,
+        })
+        total.font = { bold: true }
+    }
+}
+
+function buildReasonSheet(wb: ExcelJS.Workbook, summary: ReturnReportSummary) {
+    const ws = wb.addWorksheet('Returns by Reason', { views: [{ state: 'frozen', ySplit: 1 }] })
+    ws.columns = [
+        { header: 'Return Reason', key: 'label', width: 28 },
+        { header: 'Cases', key: 'cases', width: 12, style: { numFmt: COUNT_FMT } },
+        { header: 'Quantity (pcs)', key: 'qty', width: 16, style: { numFmt: COUNT_FMT } },
+        { header: 'Value', key: 'value', width: 18, style: { numFmt: CURRENCY_FMT } },
+        { header: '% of Total Value', key: 'pct', width: 16, style: { numFmt: PCT_FMT } },
+    ]
+    styleHeaderRow(ws.getRow(1))
+    for (const r of summary.byReason) {
+        ws.addRow({ label: r.label, cases: r.cases, qty: r.qty, value: r.value, pct: r.pct })
+    }
+    if (summary.byReason.length === 0) ws.addRow({ label: 'No data available for this period.' })
+}
+
+function buildProductSheet(wb: ExcelJS.Workbook, summary: ReturnReportSummary) {
+    const ws = wb.addWorksheet('Returns by Product', { views: [{ state: 'frozen', ySplit: 1 }] })
+    ws.columns = [
+        { header: 'Product / Variant', key: 'name', width: 44 },
+        { header: 'Return Quantity (pcs)', key: 'qty', width: 20, style: { numFmt: COUNT_FMT } },
+        { header: 'Return Value', key: 'value', width: 18, style: { numFmt: CURRENCY_FMT } },
+        { header: 'Main Return Reason', key: 'reason', width: 24 },
+    ]
+    styleHeaderRow(ws.getRow(1))
+    for (const p of summary.byProduct) {
+        ws.addRow({ name: p.name, qty: p.qty, value: p.value, reason: p.topReason || '—' })
+    }
+    if (summary.byProduct.length === 0) ws.addRow({ name: 'No data available for this period.' })
+}
+
+function buildDetailSheet(wb: ExcelJS.Workbook, cases: ReportCaseRow[]) {
+    const ws = wb.addWorksheet('Detailed Returns', { views: [{ state: 'frozen', ySplit: 1 }] })
+    ws.columns = [
+        { header: 'Return No', key: 'return_no', width: 18 },
+        { header: 'Source Type', key: 'source_type', width: 13 },
+        { header: 'Return From', key: 'source', width: 30 },
+        { header: 'Org Code', key: 'code', width: 12 },
+        { header: 'Warehouse', key: 'warehouse', width: 30 },
         { header: 'Status', key: 'status', width: 18 },
-        { header: 'Total Qty', key: 'qty', width: 12 },
-        { header: 'Total Value (RM)', key: 'value', width: 16 },
-        { header: 'Created Date', key: 'created', width: 20 },
-        { header: 'Last Updated', key: 'updated', width: 20 },
-        { header: 'Days Open', key: 'days', width: 12 },
+        { header: 'Total Qty (pcs)', key: 'qty', width: 14, style: { numFmt: COUNT_FMT } },
+        { header: 'Total Value', key: 'value', width: 16, style: { numFmt: CURRENCY_FMT } },
+        { header: 'Created', key: 'created', width: 18, style: { numFmt: 'dd/mm/yyyy hh:mm' } },
+        { header: 'Updated', key: 'updated', width: 18, style: { numFmt: 'dd/mm/yyyy hh:mm' } },
+        { header: 'Days Open', key: 'days', width: 11, style: { numFmt: COUNT_FMT } },
         { header: 'Overdue', key: 'overdue', width: 10 },
     ]
-    ws.getRow(1).font = { bold: true }
+    styleHeaderRow(ws.getRow(1))
 
-    for (const r of rows) {
+    for (const r of cases) {
         ws.addRow({
             return_no: r.return_no,
-            shop: r.shop?.org_name || '',
-            warehouse: r.warehouse?.org_name || '',
-            status: RETURN_STATUS_LABELS[r.status as ReturnStatus] || r.status,
-            qty: r.total_qty ?? 0,
-            value: Number(r.total_value ?? 0).toFixed(2),
-            created: r.created_at ? new Date(r.created_at).toLocaleString('en-MY') : '',
-            updated: r.updated_at ? new Date(r.updated_at).toLocaleString('en-MY') : '',
-            days: r.days_open ?? 0,
+            source_type: RETURN_SOURCE_LABELS[r.return_source_type],
+            source: r.source_name || '',
+            code: r.source_code || '',
+            warehouse: r.warehouse_name || '',
+            status: RETURN_STATUS_LABELS[r.status] || r.status,
+            qty: r.total_qty,
+            value: r.total_value,
+            created: r.created_at ? new Date(r.created_at) : null,
+            updated: r.updated_at ? new Date(r.updated_at) : null,
+            days: r.days_open,
             overdue: r.is_overdue ? 'Yes' : 'No',
         })
     }
-
-    const buffer = await wb.xlsx.writeBuffer()
-    const filename = `return-report-${new Date().toISOString().slice(0, 10)}.xlsx`
-    return new NextResponse(buffer as any, {
-        status: 200,
-        headers: {
-            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': `attachment; filename="${filename}"`,
-        },
-    })
+    if (cases.length === 0) {
+        ws.addRow({ return_no: 'No returns were recorded for this period.' })
+    } else {
+        const total = ws.addRow({
+            return_no: 'Total',
+            qty: cases.reduce((s, r) => s + r.total_qty, 0),
+            value: cases.reduce((s, r) => s + r.total_value, 0),
+        })
+        total.font = { bold: true }
+    }
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 12 } }
 }

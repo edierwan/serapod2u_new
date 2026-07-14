@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getReturnContext, loadAccessibleCase } from '@/lib/returns/server'
+import { getReturnContext, loadAccessibleCase, buildReturnItemRows, validateReturnSource, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
+import { normalizeReturnSourceType } from '@/lib/returns/constants'
 import type { ReturnSettings } from '@/lib/returns/types'
 
-const ORG_SELECT = 'id, org_code, org_name, contact_name, contact_phone, contact_email, address, city, postal_code'
+const ORG_SELECT = RETURN_ORG_SELECT
 
 async function loadSettings(admin: any): Promise<ReturnSettings> {
     const { data } = await admin.from('return_settings').select('*').eq('id', 1).maybeSingle()
@@ -32,7 +33,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         loadSettings(ctx.admin),
     ])
 
-    const orgIds = [rc.shop_org_id, rc.return_warehouse_id].filter(Boolean)
+    const sourceOrgId = rc.return_source_organization_id || rc.shop_org_id
+    const orgIds = [sourceOrgId, rc.return_warehouse_id].filter(Boolean)
     const { data: orgs } = await ctx.admin.from('organizations').select(ORG_SELECT).in('id', orgIds)
     const orgMap = Object.fromEntries((orgs || []).map((o: any) => [o.id, o]))
 
@@ -55,7 +57,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         ...(rc as any),
         items: itemsRes.data || [],
         status_history: (historyRes.data || []).map((h: any) => ({ ...h, changed_by_name: h.changed_by ? userMap[h.changed_by] || null : null })),
-        shop: orgMap[rc.shop_org_id] || null,
+        source: orgMap[sourceOrgId] || null,
+        shop: orgMap[sourceOrgId] || null,
         warehouse: rc.return_warehouse_id ? orgMap[rc.return_warehouse_id] || null : null,
         created_by_name: creatorName,
     }, settings)
@@ -82,10 +85,26 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Header fields — editable while not terminal.
     if ('contact_person' in body) patch.contact_person = body.contact_person || null
     if ('contact_phone' in body) patch.contact_phone = body.contact_phone || null
+    if ('contact_email' in body) patch.contact_email = body.contact_email || null
     if ('notes' in body) patch.notes = body.notes || null
     if ('return_warehouse_id' in body) patch.return_warehouse_id = body.return_warehouse_id || null
-    if (ctx.isManager && 'shop_org_id' in body && rc.status === 'return_draft' && body.shop_org_id) {
-        patch.shop_org_id = body.shop_org_id
+    // Worksheet context snapshots — editable while in draft.
+    if (rc.status === 'return_draft') {
+        if ('reported_date' in body) patch.reported_date = body.reported_date || null
+        if ('program_snapshot' in body) patch.program_snapshot = body.program_snapshot || null
+        if ('category_snapshot' in body) patch.category_snapshot = body.category_snapshot || null
+    }
+    // Source (Shop/Distributor) — managers may change it while still in draft.
+    if (ctx.isManager && rc.status === 'return_draft' && ('return_source_organization_id' in body || 'shop_org_id' in body || 'return_source_type' in body)) {
+        const newSourceType = normalizeReturnSourceType(body.return_source_type ?? rc.return_source_type)
+        const newSourceOrgId = body.return_source_organization_id || body.shop_org_id || null
+        if (newSourceOrgId) {
+            const sourceCheck = await validateReturnSource(ctx, newSourceType, newSourceOrgId)
+            if (!sourceCheck.ok) return NextResponse.json({ error: sourceCheck.error }, { status: 400 })
+            patch.return_source_type = newSourceType
+            patch.return_source_organization_id = newSourceOrgId
+            patch.shop_org_id = newSourceOrgId // legacy compat — trigger keeps in sync
+        }
     }
 
     // Warehouse processing fields — managers only, once received.
@@ -100,25 +119,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Items — full replace, only while in draft.
+    // Items — full replace, only while in draft. Persist the full worksheet
+    // breakdown via the shared builder (v2 quantity model), not just `quantity`.
     if (Array.isArray(body.items) && rc.status === 'return_draft') {
+        const { rows: itemRows, error: itemError } = buildReturnItemRows(id, body.items)
+        if (itemError) return NextResponse.json({ error: itemError }, { status: 400 })
+
         await ctx.admin.from('return_case_items').delete().eq('return_case_id', id)
-        const rows = body.items.map((it: any) => ({
-            return_case_id: id,
-            product_id: it.product_id || null,
-            variant_id: it.variant_id || null,
-            sku: it.sku || null,
-            product_name: it.product_name || null,
-            variant_name: it.variant_name || null,
-            quantity: Number(it.quantity) > 0 ? Number(it.quantity) : 1,
-            unit_cost: Number(it.unit_cost) >= 0 ? Number(it.unit_cost) : 0,
-            reason: it.reason || null,
-            condition: it.condition || null,
-            photo_url: it.photo_url || null,
-            notes: it.notes || null,
-        }))
-        if (rows.length > 0) {
-            const { error: itemsErr } = await ctx.admin.from('return_case_items').insert(rows)
+        if (itemRows && itemRows.length > 0) {
+            const insertRows = itemRows.map(({ id: _id, ...r }) => r)
+            const { error: itemsErr } = await ctx.admin.from('return_case_items').insert(insertRows)
             if (itemsErr) return NextResponse.json({ error: itemsErr.message }, { status: 500 })
         }
     }

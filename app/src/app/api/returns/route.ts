@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getReturnContext } from '@/lib/returns/server'
+import { getReturnContext, buildReturnItemRows, validateReturnSource, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
+import { normalizeReturnSourceType, sourceTypeForOrgTypeCode } from '@/lib/returns/constants'
+import { triggerReturnNotification } from '@/lib/returns/notifications'
 import type { ReturnSettings } from '@/lib/returns/types'
 
-const ORG_SELECT = 'id, org_code, org_name, contact_name, contact_phone, contact_email, address, city, postal_code'
+const ORG_SELECT = RETURN_ORG_SELECT
 
 async function loadSettings(admin: any): Promise<ReturnSettings> {
     const { data } = await admin.from('return_settings').select('*').eq('id', 1).maybeSingle()
@@ -55,9 +57,9 @@ export async function GET(request: NextRequest) {
 
     const settings = await loadSettings(ctx.admin)
 
-    // Resolve shop/warehouse names for the rows.
+    // Resolve source/warehouse names for the rows.
     const orgIds = Array.from(new Set(
-        (data || []).flatMap((r: any) => [r.shop_org_id, r.return_warehouse_id]).filter(Boolean),
+        (data || []).flatMap((r: any) => [r.return_source_organization_id || r.shop_org_id, r.return_warehouse_id]).filter(Boolean),
     ))
     let orgMap: Record<string, any> = {}
     if (orgIds.length > 0) {
@@ -65,9 +67,10 @@ export async function GET(request: NextRequest) {
         orgMap = Object.fromEntries((orgs || []).map((o: any) => [o.id, o]))
     }
 
-    const rows = (data || []).map((r: any) =>
-        decorateCase({ ...r, shop: orgMap[r.shop_org_id] || null, warehouse: orgMap[r.return_warehouse_id] || null }, settings),
-    )
+    const rows = (data || []).map((r: any) => {
+        const source = orgMap[r.return_source_organization_id || r.shop_org_id] || null
+        return decorateCase({ ...r, source, shop: source, warehouse: orgMap[r.return_warehouse_id] || null }, settings)
+    })
 
     return NextResponse.json({ cases: rows })
 }
@@ -82,22 +85,52 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}))
 
-    // Shop users always return from their own shop; managers must pick one.
-    const shopOrgId = ctx.isManager ? body.shop_org_id : ctx.orgId
-    if (!shopOrgId) {
-        return NextResponse.json({ error: 'Return From Shop is required' }, { status: 400 })
+    // Resolve the return source (Shop or Distributor). Managers choose; a shop
+    // self-service user is always a Shop return from their own shop.
+    let sourceType = normalizeReturnSourceType(body.return_source_type)
+    let sourceOrgId: string | null = ctx.isManager
+        ? (body.return_source_organization_id || body.shop_org_id || null)
+        : ctx.orgId
+    if (!ctx.isManager) {
+        // A self-service user's own org determines the source type.
+        sourceType = sourceTypeForOrgTypeCode(ctx.orgTypeCode) || 'shop'
+    }
+
+    if (!sourceOrgId) {
+        return NextResponse.json(
+            { error: sourceType === 'distributor' ? 'Please select a distributor.' : 'Please select a shop.' },
+            { status: 400 },
+        )
+    }
+
+    const sourceCheck = await validateReturnSource(ctx, sourceType, sourceOrgId)
+    if (!sourceCheck.ok) {
+        return NextResponse.json({ error: sourceCheck.error }, { status: 400 })
     }
 
     const settings = await loadSettings(ctx.admin)
     const warehouseId = body.return_warehouse_id || settings.default_return_warehouse_id || null
 
+    // Build worksheet item rows first so a bad payload fails before we create a
+    // header (v2 quantity model: Case / Loose / Units-per-Case / Total Pcs).
+    const { rows: itemRows, error: itemError } = buildReturnItemRows('', Array.isArray(body.items) ? body.items : [])
+    if (itemError) {
+        return NextResponse.json({ error: itemError }, { status: 400 })
+    }
+
     const { data: created, error } = await ctx.admin
         .from('return_cases')
         .insert({
-            shop_org_id: shopOrgId,
+            return_source_type: sourceType,
+            return_source_organization_id: sourceOrgId,
+            shop_org_id: sourceOrgId, // legacy compat — kept in sync by trigger
             return_warehouse_id: warehouseId,
             contact_person: body.contact_person || null,
             contact_phone: body.contact_phone || null,
+            contact_email: body.contact_email || null,
+            reported_date: body.reported_date || null,
+            program_snapshot: body.program_snapshot || null,
+            category_snapshot: body.category_snapshot || null,
             notes: body.notes || null,
             status: 'return_draft',
             created_by: ctx.userId,
@@ -109,24 +142,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error?.message || 'Failed to create return' }, { status: 500 })
     }
 
-    // Optional initial items.
-    const items = Array.isArray(body.items) ? body.items : []
-    if (items.length > 0) {
-        const rows = items.map((it: any) => ({
-            return_case_id: created.id,
-            product_id: it.product_id || null,
-            variant_id: it.variant_id || null,
-            sku: it.sku || null,
-            product_name: it.product_name || null,
-            variant_name: it.variant_name || null,
-            quantity: Number(it.quantity) > 0 ? Number(it.quantity) : 1,
-            unit_cost: Number(it.unit_cost) >= 0 ? Number(it.unit_cost) : 0,
-            reason: it.reason || null,
-            condition: it.condition || null,
-            photo_url: it.photo_url || null,
-            notes: it.notes || null,
-        }))
-        await ctx.admin.from('return_case_items').insert(rows)
+    // Persist the full worksheet breakdown (case_qty, loose_piece_qty,
+    // units_per_case_snapshot, total_units, …) — not just the legacy quantity.
+    if (itemRows && itemRows.length > 0) {
+        const insertRows = itemRows.map(({ id: _id, ...r }) => ({ ...r, return_case_id: created.id }))
+        const { error: insertErr } = await ctx.admin.from('return_case_items').insert(insertRows)
+        if (insertErr) {
+            return NextResponse.json({ error: insertErr.message }, { status: 500 })
+        }
     }
 
     await ctx.admin.from('return_case_status_history').insert({
@@ -137,5 +160,15 @@ export async function POST(request: NextRequest) {
         notes: 'Return draft created',
     })
 
-    return NextResponse.json({ id: created.id, return_no: created.return_no }, { status: 201 })
+    // Fire the "Return Draft Created" notification once, now that the record
+    // exists and has a Return No. Non-blocking: never affects this response.
+    const notify = await triggerReturnNotification(ctx.admin, request.nextUrl.origin, {
+        returnCaseId: created.id,
+        status: 'return_draft',
+    })
+
+    return NextResponse.json(
+        { id: created.id, return_no: created.return_no, notificationWarnings: notify.warnings },
+        { status: 201 },
+    )
 }

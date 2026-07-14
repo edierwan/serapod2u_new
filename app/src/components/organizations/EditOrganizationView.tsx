@@ -160,6 +160,19 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.state_id])
 
+  // Deep-link support: when the URL carries #contact-information (e.g. opened from
+  // the Return Product "Edit Shop Contact" shortcut), scroll to that section once
+  // the organization has finished loading.
+  useEffect(() => {
+    if (loading || organization === null) return
+    if (typeof window === 'undefined') return
+    if (window.location.hash !== '#contact-information') return
+    const t = setTimeout(() => {
+      document.getElementById('contact-information')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 150)
+    return () => clearTimeout(t)
+  }, [loading, organization])
+
   const loadParentOrganizations = async () => {
     try {
       const { data, error } = await supabase
@@ -541,7 +554,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (organization?.org_type_code === 'SHOP' && updatePayload.parent_org_id) {
         const parentOrg = parentOrgs.find(p => p.id === updatePayload.parent_org_id)
         if (parentOrg?.org_type_code === 'DIST') {
-          // Check if shop_distributors entry exists
+          // Check if shop_distributors entry exists for this shop-distributor pair
           const { data: existing, error: checkError } = await (supabase as any)
             .from('shop_distributors')
             .select('id')
@@ -550,7 +563,17 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             .maybeSingle()
 
           if (!checkError && !existing) {
-            // Entry doesn't exist, create it
+            // Check if another preferred distributor already exists for this shop
+            const { data: existingPreferred, error: prefCheckError } = await (supabase as any)
+              .from('shop_distributors')
+              .select('id, distributor_id')
+              .eq('shop_id', organization.id)
+              .eq('is_preferred', true)
+              .maybeSingle()
+
+            // Only set is_preferred if no other preferred entry exists
+            const shouldBePreferred = !prefCheckError && !existingPreferred
+
             console.log('🔧 Auto-repair: Creating missing shop_distributors entry...')
             const { error: linkError } = await (supabase as any)
               .from('shop_distributors')
@@ -559,7 +582,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 distributor_id: updatePayload.parent_org_id,
                 payment_terms: 'NET_30',
                 is_active: true,
-                is_preferred: shopDistributors.length === 0, // Make preferred if it's the first one
+                is_preferred: shouldBePreferred,
                 created_by: userProfile.id
               }])
 
@@ -600,7 +623,33 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       console.error('Error hint:', error?.hint)
       console.error('Error stack:', error?.stack)
 
-      const friendlyError = parseHierarchyError(error)
+      let friendlyError = parseHierarchyError(error)
+
+      // If a friendly email message was embedded by parseHierarchyError, enrich it
+      // by querying the conflicting org name/code when we have a contact_email
+      // and the error looks like an email conflict we generated.
+      if (
+        error?.code === '23505' &&
+        error?.message?.includes('uq_orgs_contact_email') &&
+        formData.contact_email
+      ) {
+        try {
+          const { data: conflictOrg } = await (supabase as any)
+            .from('organizations')
+            .select('org_name, org_code')
+            .eq('contact_email', formData.contact_email)
+            .neq('id', organization!.id)
+            .limit(1)
+            .maybeSingle()
+
+          if (conflictOrg) {
+            friendlyError = `This email is already used by ${conflictOrg.org_name} (${conflictOrg.org_code}). Please use another email.`
+          }
+        } catch (_) {
+          // Keep the already-resolved friendly message if the lookup fails
+        }
+      }
+
       toast({
         title: '✕ Save Failed',
         description: friendlyError,
@@ -1143,7 +1192,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       )}
 
       {/* Contact Information */}
-      <Card>
+      <Card id="contact-information" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Contact Information</CardTitle>
           <CardDescription>Primary contact details for this organization</CardDescription>
