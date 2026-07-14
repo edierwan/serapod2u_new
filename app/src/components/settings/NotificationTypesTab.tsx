@@ -22,6 +22,7 @@ import {
   MessageSquare,
   Package,
   QrCode,
+  RotateCcw,
   Save,
   Settings,
   ShoppingCart,
@@ -107,9 +108,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   document: 'Order Document',
   inventory: 'Inventory & Stock',
   qr: 'QR & Consumer',
+  return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['order', 'document', 'inventory', 'qr', 'user']
+const CATEGORY_ORDER = ['order', 'document', 'inventory', 'qr', 'return', 'user']
 
 function normalizeRecipientConfig(
   recipientConfig: NotificationSetting['recipient_config'] | null | undefined,
@@ -161,6 +163,7 @@ function CategoryIcon({ category }: { category: string }) {
   if (category === 'document') return <FileText className={`${classes} text-violet-600`} />
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
+  if (category === 'return') return <RotateCcw className={`${classes} text-rose-600`} />
   return <UserCheck className={`${classes} text-indigo-600`} />
 }
 

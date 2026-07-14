@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isReturnManagerOrgType, type ReturnStatus, RETURN_STATUS_TIMESTAMP_COLUMN } from './constants'
+import { isReturnManagerOrgType, computeReturnTotal, type ReturnStatus, RETURN_STATUS_TIMESTAMP_COLUMN, RETURN_SOURCE_ORG_TYPE_CODE, RETURN_SOURCE_LABELS, type ReturnSourceType } from './constants'
+import type { ReturnCaseRow, ReturnCaseItemRow } from './database-extension'
+
+/** Columns selected for any source/warehouse organization reference. */
+export const RETURN_ORG_SELECT =
+    'id, org_code, org_name, org_type_code, branch, contact_name, contact_phone, contact_email, address, city, postal_code'
 
 export interface ReturnContext {
     admin: ReturnType<typeof createAdminClient>
@@ -59,10 +64,29 @@ export async function getReturnContext(): Promise<ReturnContext | NextResponse> 
     }
 }
 
+/**
+ * Call admin.from('return_cases') — the table is not yet present in the
+ * generated Database type. A thin helper keeps the cast scoped to a single
+ * function while the admin client retains full typing for all other tables.
+ *
+ * TODO: Remove this helper after regenerating Supabase types.
+ */
+function returnCasesTable(ctx: ReturnContext) {
+    return (ctx.admin as any).from('return_cases')
+}
+
+/**
+ * Call admin.from('return_case_items') — same rationale as returnCasesTable.
+ *
+ * TODO: Remove this helper after regenerating Supabase types.
+ */
+function returnCaseItemsTable(ctx: ReturnContext) {
+    return (ctx.admin as any).from('return_case_items')
+}
+
 /** Fetch a case and verify the caller may access it. Returns the case row or a NextResponse error. */
 export async function loadAccessibleCase(ctx: ReturnContext, id: string) {
-    const { data, error } = await ctx.admin
-        .from('return_cases')
+    const { data, error } = await returnCasesTable(ctx)
         .select('*')
         .eq('id', id)
         .single()
@@ -70,13 +94,130 @@ export async function loadAccessibleCase(ctx: ReturnContext, id: string) {
     if (error || !data) {
         return NextResponse.json({ error: 'Return case not found' }, { status: 404 })
     }
-    if (!ctx.isManager && data.shop_org_id !== ctx.orgId) {
+
+    const row = data as unknown as ReturnCaseRow
+    if (!ctx.isManager && row.shop_org_id !== ctx.orgId) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    return data as Record<string, any>
+    return row
 }
 
 /** Column that stamps the moment a case entered `status`. */
 export function statusTimestampColumn(status: ReturnStatus): string | null {
     return RETURN_STATUS_TIMESTAMP_COLUMN[status] ?? null
+}
+
+/**
+ * Authoritative server-side check that a submitted `return_warehouse_id` is a
+ * usable return destination: it exists, is a Warehouse (org_type_code = 'WH')
+ * and is active.
+ */
+export async function validateReturnWarehouse(
+    ctx: ReturnContext,
+    warehouseId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const { data: org, error } = await ctx.admin
+        .from('organizations')
+        .select('id, org_type_code, is_active')
+        .eq('id', warehouseId)
+        .maybeSingle()
+
+    if (error) return { ok: false, error: 'Unable to validate the selected Return Warehouse.' }
+    if (!org) return { ok: false, error: 'The selected Return Warehouse does not exist.' }
+    if ((org as any).org_type_code !== 'WH') {
+        return { ok: false, error: 'The selected organization is not a Warehouse and cannot be used as a Return Warehouse.' }
+    }
+    if ((org as any).is_active === false) {
+        return { ok: false, error: 'The selected Return Warehouse is inactive.' }
+    }
+    return { ok: true }
+}
+
+/**
+ * Authoritative server-side check that a submitted return source organization is
+ * usable: it exists, is active, and its org type matches the declared source
+ * type (Shop -> SHOP, Distributor -> DIST). Returns the org row on success so
+ * callers can snapshot its contact details.
+ */
+export async function validateReturnSource(
+    ctx: ReturnContext,
+    sourceType: ReturnSourceType,
+    organizationId: string,
+): Promise<{ ok: true; org: any } | { ok: false; error: string }> {
+    const label = RETURN_SOURCE_LABELS[sourceType]
+    const { data: org, error } = await ctx.admin
+        .from('organizations')
+        .select(RETURN_ORG_SELECT + ', is_active')
+        .eq('id', organizationId)
+        .maybeSingle()
+
+    if (error) return { ok: false, error: `Unable to validate the selected ${label}.` }
+    if (!org) return { ok: false, error: `The selected ${label} does not exist.` }
+    if ((org as any).org_type_code !== RETURN_SOURCE_ORG_TYPE_CODE[sourceType]) {
+        return { ok: false, error: `The selected organization is not a ${label}.` }
+    }
+    if ((org as any).is_active === false) {
+        return { ok: false, error: `The selected ${label} is inactive.` }
+    }
+    return { ok: true, org }
+}
+
+/**
+ * Validate + normalize worksheet items into insertable return_case_items rows.
+ *
+ * Server-side authority for the quantity model: Total Pcs is recomputed from
+ * Case + Loose Pcs + Units-per-Case (never trusting the client's totals), rows
+ * with Total Pcs = 0 are dropped, quantities must be non-negative integers, and
+ * duplicate variants/SKUs are rejected. Returns `{ error }` on invalid input.
+ */
+export function buildReturnItemRows(
+    returnCaseId: string,
+    items: any[],
+): { rows?: ReturnCaseItemRow[]; error?: string } {
+    const seen = new Set<string>()
+    const rows: ReturnCaseItemRow[] = []
+
+    for (const it of Array.isArray(items) ? items : []) {
+        const caseQty = Number(it.case_qty ?? 0)
+        const looseQty = Number(it.loose_piece_qty ?? 0)
+
+        if (!Number.isInteger(caseQty) || !Number.isInteger(looseQty) || caseQty < 0 || looseQty < 0) {
+            return { error: 'Return quantities must be non-negative whole numbers.' }
+        }
+
+        // Server authority: recompute Total Pcs from the physical breakdown; never
+        // trust the client total. Case/Loose are preserved as submitted (no carry).
+        const norm = computeReturnTotal(caseQty, looseQty, it.units_per_case_snapshot)
+        if (norm.total_units <= 0) continue // never store empty rows
+
+        // Reject duplicate SKUs / variants within a single case.
+        const key = it.variant_id || it.sku || it.product_name || null
+        if (key) {
+            const k = String(key).toLowerCase()
+            if (seen.has(k)) return { error: 'Duplicate product / SKU rows are not allowed.' }
+            seen.add(k)
+        }
+
+        rows.push({
+            id: '', // placeholder — assigned by DB on insert
+            return_case_id: returnCaseId,
+            product_id: it.product_id || null,
+            variant_id: it.variant_id || null,
+            sku: it.sku || null,
+            product_name: it.product_name || null,
+            variant_name: it.variant_name || null,
+            case_qty: norm.case_qty,
+            loose_piece_qty: norm.loose_piece_qty,
+            units_per_case_snapshot: norm.units_per_case,
+            total_units: norm.total_units,
+            quantity: norm.total_units, // legacy mirror
+            unit_cost: Number(it.unit_cost) >= 0 ? Number(it.unit_cost) : 0,
+            reason: it.reason || null,
+            condition: it.condition || null,
+            photo_url: it.photo_url || null,
+            notes: it.notes || null,
+        })
+    }
+
+    return { rows }
 }

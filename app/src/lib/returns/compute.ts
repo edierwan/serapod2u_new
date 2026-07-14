@@ -2,11 +2,14 @@ import type { ReturnCase, ReturnCaseItem, ReturnSettings } from './types'
 import { isTerminalStatus, type ReturnStatus } from './constants'
 
 export function itemsTotalQty(items?: ReturnCaseItem[] | null): number {
-    return (items || []).reduce((sum, it) => sum + Number(it.quantity || 0), 0)
+    return (items || []).reduce((sum, it) => sum + Number(it.total_units || it.quantity || 0), 0)
 }
 
 export function itemsTotalValue(items?: ReturnCaseItem[] | null): number {
-    return (items || []).reduce((sum, it) => sum + Number(it.quantity || 0) * Number(it.unit_cost || 0), 0)
+    return (items || []).reduce((sum, it) => {
+        const qty = Number(it.total_units || it.quantity || 0)
+        return sum + qty * Number(it.unit_cost || 0)
+    }, 0)
 }
 
 /** Whole days between a start timestamp and now (or an end timestamp). */
