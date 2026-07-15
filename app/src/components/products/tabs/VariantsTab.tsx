@@ -10,6 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import VariantDialog, { type MediaItem } from '../dialogs/VariantDialog'
 import { getStorageUrl } from '@/lib/utils'
+import {
+  PRODUCT_CODE_DUPLICATE_MESSAGE,
+  isProductCodeDuplicateError,
+  normalizeProductCode,
+} from '@/lib/products/product-code'
 
 interface Product {
   id: string
@@ -23,6 +28,7 @@ interface Variant {
   variant_name: string
   attributes: Record<string, any>
   barcode: string | null
+  product_code: string | null
   manufacturer_sku: string | null
   manual_sku: string | null
   base_cost: number | null
@@ -238,6 +244,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         variant_name: variantName,
         attributes: dbDataClean.attributes || {},
         barcode: dbDataClean.barcode || null,
+        product_code: normalizeProductCode(dbDataClean.product_code),
         manufacturer_sku: dbDataClean.manufacturer_sku || null,
         manual_sku: dbDataClean.manual_sku || null,
         base_cost: dbDataClean.base_cost,
@@ -300,8 +307,12 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     } catch (error: any) {
       console.error('Error saving variant:', error)
       let errorMessage = 'Failed to save variant'
-      if (error?.message) errorMessage = error.message
-      if (error?.details) errorMessage += ': ' + error.details
+      if (isProductCodeDuplicateError(error)) {
+        errorMessage = PRODUCT_CODE_DUPLICATE_MESSAGE
+      } else {
+        if (error?.message) errorMessage = error.message
+        if (error?.details) errorMessage += ': ' + error.details
+      }
       toast({ title: 'Error', description: errorMessage, variant: 'destructive' })
     } finally {
       setIsSaving(false)
@@ -325,7 +336,9 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   }
 
   const filteredVariants = variants.filter(variant => {
-    const matchesSearch = variant.variant_name.toLowerCase().includes(searchQuery.toLowerCase())
+    const normalizedSearch = searchQuery.toLowerCase()
+    const matchesSearch = variant.variant_name.toLowerCase().includes(normalizedSearch)
+      || variant.product_code?.toLowerCase().includes(normalizedSearch)
     const matchesProduct = !selectedProduct || variant.product_id === selectedProduct
     return matchesSearch && matchesProduct && variant.is_active
   })
@@ -436,6 +449,9 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               <TableHead className="cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('product_name')}>
                 <div className="flex items-center justify-between gap-2">Product {renderSortIcon('product_name')}</div>
               </TableHead>
+              <TableHead className="cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('product_code')}>
+                <div className="flex items-center justify-between gap-2">Product Code {renderSortIcon('product_code')}</div>
+              </TableHead>
               <TableHead className="text-right cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('base_cost')}>
                 <div className="flex items-center justify-end gap-2">Base Cost {renderSortIcon('base_cost')}</div>
               </TableHead>
@@ -480,6 +496,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                     </TableCell>
                     <TableCell className="text-sm">{variant.variant_name}</TableCell>
                     <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
+                    <TableCell className="text-xs font-medium text-gray-700">{variant.product_code || '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.other_price ? `$${variant.other_price.toFixed(2)}` : '-'}</TableCell>
@@ -503,7 +520,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-gray-500">No variants found</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-gray-500">No variants found</TableCell>
               </TableRow>
             )}
           </TableBody>

@@ -10,6 +10,11 @@ import { getStorageUrl } from '@/lib/utils'
 import ImageUpload from '@/components/ui/image-upload'
 import { compressProductImage, formatFileSize } from '@/lib/utils/imageCompression'
 import VariantDialog from '@/components/products/dialogs/VariantDialog'
+import {
+  PRODUCT_CODE_DUPLICATE_MESSAGE,
+  isProductCodeDuplicateError,
+  normalizeProductCode,
+} from '@/lib/products/product-code'
 import { 
   ArrowLeft,
   Package,
@@ -90,25 +95,12 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             is_primary,
             sort_order
           ),
-          product_variants (
-            id,
-            variant_name,
-            variant_code,
-            manufacturer_sku,
-            manual_sku,
-            barcode,
-            suggested_retail_price,
-            base_cost,
-            is_active,
-            image_url,
-            animation_url
-          )
+          product_variants (*)
         `)
         .eq('id', productId)
         .single()
 
       if (error) {
-        console.error('❌ Error fetching product:', error)
         throw error
       }
       
@@ -130,8 +122,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       }
       
       setProduct(transformedProduct)
-    } catch (error) {
-      console.error('Error fetching product:', error)
+    } catch (error: any) {
+      console.warn('Unable to fetch product details', {
+        code: error?.code,
+        message: error?.message || String(error),
+        details: error?.details,
+        hint: error?.hint,
+      })
       toast({
         title: 'Error',
         description: 'Failed to load product details',
@@ -232,6 +229,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       const manualSku = typeof variantData.manual_sku === 'string'
         ? variantData.manual_sku.trim().toUpperCase().slice(0, 5)
         : editingVariant?.manual_sku ?? null
+      const productCode = normalizeProductCode(variantData.product_code)
       
       const variantPayload = {
         variant_name: variantData.variant_name,
@@ -239,6 +237,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         manufacturer_sku: variantData.manufacturer_sku,
         manual_sku: manualSku || null,
         barcode: variantData.barcode,
+        product_code: productCode,
         suggested_retail_price: variantData.suggested_retail_price || 0,
         base_cost: variantData.base_cost || 0,
         is_active: variantData.is_active,
@@ -283,7 +282,9 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       console.error('Error saving variant:', error)
       toast({
         title: 'Error',
-        description: error.message || 'Failed to save variant',
+        description: isProductCodeDuplicateError(error)
+          ? PRODUCT_CODE_DUPLICATE_MESSAGE
+          : error.message || 'Failed to save variant',
         variant: 'destructive'
       })
     } finally {
@@ -986,6 +987,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-gray-400">Barcode:</span>
                         <span className="text-gray-700 font-medium">{variant.barcode || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-gray-400">Product Code:</span>
+                        <span className="text-gray-700 font-medium">{variant.product_code || '-'}</span>
                       </div>
                     </div>
 

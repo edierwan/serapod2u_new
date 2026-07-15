@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,18 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/use-toast'
 import { getStorageUrl } from '@/lib/utils'
+import { normalizeBaseCost, stockCountImpact, sumStockCountImpacts } from '@/lib/inventory/stock-count-costing'
+import {
+  buildStockCountWorksheet,
+  parseStockCountWorksheet,
+} from '@/lib/inventory/stock-count-excel'
+import {
+  STOCK_COUNT_POST_PERMISSION,
+  isValidStockCountPostingNote,
+  normalizeStockCountPostingNote,
+  stockCountPermissionGate,
+  stockCountVerificationError,
+} from '@/lib/inventory/stock-count-verification-errors'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -27,6 +40,7 @@ import {
   Columns3,
   Download,
   FileSpreadsheet,
+  Loader2,
   MessageSquare,
   Package,
   RotateCcw,
@@ -62,7 +76,7 @@ interface CountRow {
   systemQuantity: number
   physicalCount: string
   note: string
-  unitCost: number
+  unitCost: number | null
   warehouseLocation: string | null
 }
 
@@ -82,6 +96,22 @@ interface ImportSummary {
   rows: Array<{ row: number; sku: string; status: 'Updated' | 'Unchanged' | 'Failed'; message: string }>
 }
 
+interface VerificationState {
+  requestId: string
+  sessionId: string
+  recipients: string[]
+  expiresAt: string
+  resendAvailableAt: string
+}
+
+interface PreflightState {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  code?: string
+  message?: string
+  guidance?: string
+  recipientCount?: number
+}
+
 interface StockAdjustmentViewProps {
   userProfile: any
   onViewChange?: (view: string) => void
@@ -89,6 +119,8 @@ interface StockAdjustmentViewProps {
 
 const ALL_GROUP_ID = 'all'
 const UNGROUPED_GROUP_ID = 'ungrouped'
+// Kept as one policy constant so this can move to organization settings later.
+const HIGH_IMPACT_VALUE_THRESHOLD = 10_000
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const countTypeOptions: Array<{ value: CountType; label: string }> = [
   { value: 'full_count', label: 'Full Count' },
@@ -105,13 +137,20 @@ const varianceForRow = (row: CountRow) => {
 }
 const adjustmentValueForRow = (row: CountRow) => {
   const variance = varianceForRow(row)
-  return variance === null ? null : variance * row.unitCost
+  return variance === null ? null : stockCountImpact(variance, row.unitCost)
 }
 
 export default function StockAdjustmentView({ userProfile, onViewChange }: StockAdjustmentViewProps) {
   const { isReady, supabase } = useSupabaseAuth()
+  const { hasPermission, loading: permissionLoading } = usePermissions(
+    userProfile?.roles?.role_level,
+    userProfile?.role_code,
+    userProfile?.department_id,
+  )
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const postingNoteRecheckTimerRef = useRef<number | null>(null)
+  const postingNoteRecheckPendingRef = useRef(false)
 
   const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
@@ -132,7 +171,20 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [loadingRows, setLoadingRows] = useState(false)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [confirmPostOpen, setConfirmPostOpen] = useState(false)
+  const [verification, setVerification] = useState<VerificationState | null>(null)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationError, setVerificationError] = useState<string | null>(null)
+  const [preflight, setPreflight] = useState<PreflightState>({ status: 'idle' })
+  const [verificationNow, setVerificationNow] = useState(Date.now())
   const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
+  const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
+  const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
+
+  useEffect(() => {
+    if (!verification) return
+    const timer = window.setInterval(() => setVerificationNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [verification])
 
   useEffect(() => {
     if (isReady) loadWarehouseLocations()
@@ -192,6 +244,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const loadCountRows = async (warehouseId: string) => {
     try {
       setLoadingRows(true)
+      // Wildcard variant fields keep Stock Count usable before the optional Product
+      // Code migration and expose product_code automatically after it is applied.
       const { data, error } = await supabase
         .from('product_inventory')
         .select(`
@@ -199,21 +253,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           variant_id,
           organization_id,
           quantity_on_hand,
-          average_cost,
           warehouse_location,
           product_variants!inner (
-            id,
-            product_id,
-            variant_code,
-            variant_name,
-            manufacturer_sku,
-            manual_sku,
-            image_url,
-            is_active,
-            base_cost,
+            *,
             products!inner (
               id,
-              product_code,
               product_name,
               is_active,
               group_id,
@@ -241,7 +285,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           inventoryId: item.id,
           variantId: item.variant_id,
           productName: product?.product_name || 'Unnamed product',
-          productCode: product?.product_code || '',
+          productCode: variant?.product_code || '',
           groupId,
           groupName,
           groupDescription: group?.group_description || null,
@@ -254,7 +298,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           systemQuantity: Number(item.quantity_on_hand || 0),
           physicalCount: '',
           note: '',
-          unitCost: Number(item.average_cost ?? variant?.base_cost ?? 0),
+          unitCost: normalizeBaseCost(variant?.base_cost),
           warehouseLocation: item.warehouse_location || null,
         }
       }).sort((a, b) => `${a.groupName} ${a.productName} ${a.variantName}`.localeCompare(`${b.groupName} ${b.productName} ${b.variantName}`))
@@ -298,7 +342,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       notCounted: rows.length - counted.length,
       varianceItems: variances.filter(value => value !== 0).length,
       netAdjustment: variances.reduce((sum, value) => sum + value, 0),
-      estimatedValue: rows.reduce((sum, row) => sum + (adjustmentValueForRow(row) || 0), 0),
+      estimatedValue: sumStockCountImpacts(rows.flatMap(row => {
+        const variance = varianceForRow(row)
+        return variance === null ? [] : [{ quantityChange: variance, baseCost: row.unitCost }]
+      })),
     }
   }, [rows])
 
@@ -329,7 +376,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (next) document.querySelector<HTMLInputElement>(`input[data-count-input="${next.variantId}"]`)?.focus()
   }
 
-  const saveDraft = async (): Promise<string | null> => {
+  const saveDraft = async (options: { noteOverride?: string; silent?: boolean } = {}): Promise<string | null> => {
     if (!canSave) return null
     if (countDate > todayIso()) {
       toast({ title: 'Invalid count date', description: 'Count date cannot be in the future.', variant: 'destructive' })
@@ -343,7 +390,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         count_date: countDate,
         count_type: countType,
         reference_name: referenceName.trim() || null,
-        notes: notes.trim() || null,
+        notes: normalizeStockCountPostingNote(options.noteOverride ?? notes) || null,
         status: 'draft',
         created_by: userProfile?.id || null,
         updated_by: userProfile?.id || null,
@@ -380,7 +427,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         if (itemError) throw itemError
       }
 
-      toast({ title: 'Draft saved', description: `${draftRows.length} counted or noted row(s) saved.` })
+      if (!options.silent) toast({ title: 'Draft saved', description: `${draftRows.length} counted or noted row(s) saved.` })
       loadDrafts(selectedWarehouse)
       return sessionId
     } catch (error: any) {
@@ -431,13 +478,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (rows.length === 0) return
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
-    const worksheet = workbook.addWorksheet('Stock Count')
-    worksheet.addRow(['Variant ID', 'Product Group/Brand', 'Product Name', 'Variant Name', 'SKU', 'System Quantity', 'Physical Count', 'Note'])
-    worksheet.getRow(1).font = { bold: true }
-    rows.forEach(row => worksheet.addRow([row.variantId, row.groupName, row.productName, row.variantName, skuForRow(row), row.systemQuantity, parseCount(row.physicalCount) ?? '', row.note]))
-    worksheet.columns = [{ width: 38 }, { width: 24 }, { width: 30 }, { width: 28 }, { width: 22 }, { width: 16 }, { width: 16 }, { width: 34 }]
-    worksheet.getColumn(6).numFmt = '#,##0'
-    worksheet.getColumn(7).numFmt = '#,##0'
+    buildStockCountWorksheet(workbook, rows.map(row => ({
+      variantId: row.variantId,
+      sku: skuForRow(row),
+      groupName: row.groupName,
+      variantName: row.variantName,
+      productName: row.productName,
+      productCode: row.productCode,
+      systemQuantity: row.systemQuantity,
+      physicalCount: row.physicalCount,
+      note: row.note,
+    })))
     const buffer = await workbook.xlsx.writeBuffer()
     const blob = new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
@@ -451,156 +502,199 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const importExcel = async (file: File) => {
-    const ExcelJS = (await import('exceljs')).default
-    const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(await file.arrayBuffer())
-    const sheet = workbook.worksheets[0]
-    const headers = (sheet.getRow(1).values as any[]).map(value => String(value || '').trim())
-    const headerIndex = (name: string) => headers.findIndex(value => value.toLowerCase() === name.toLowerCase())
-    const variantIdIndex = headerIndex('Variant ID')
-    const skuIndex = headerIndex('SKU')
-    const physicalIndex = headerIndex('Physical Count')
-    const noteIndex = headerIndex('Note')
-    const byVariant = new Map(rows.map(row => [row.variantId, row]))
-    const skuCounts = rows.reduce((map, row) => {
-      const sku = skuForRow(row)
-      map.set(sku, (map.get(sku) || 0) + 1)
-      return map
-    }, new Map<string, number>())
-    const duplicateSkus = new Set(Array.from(skuCounts.entries()).filter(([, count]) => count > 1).map(([sku]) => sku))
-    const bySku = new Map(rows.filter(row => !duplicateSkus.has(skuForRow(row))).map(row => [skuForRow(row), row]))
-    const seenKeys = new Set<string>()
-    const patches = new Map<string, { physicalCount: string; note: string }>()
-    let updated = 0
-    let unchanged = 0
-    const results: ImportSummary['rows'] = []
+    try {
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(await file.arrayBuffer())
+      const sheet = workbook.worksheets[0]
+      if (!sheet) throw new Error('The Excel file does not contain a worksheet.')
 
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return
-      const values = row.values as any[]
-      const variantId = variantIdIndex >= 0 ? String(values[variantIdIndex] || '').trim() : ''
-      const sku = skuIndex >= 0 ? String(values[skuIndex] || '').trim() : ''
-      const key = variantId || sku
-      const matched = (variantId && byVariant.get(variantId)) || (sku && bySku.get(sku))
-      const physicalRaw = physicalIndex >= 0 ? values[physicalIndex] : ''
-      const note = noteIndex >= 0 ? String(values[noteIndex] || '').trim() : ''
-
-      if (!key || !matched) {
-        results.push({ row: rowNumber, sku: sku || variantId || '-', status: 'Failed', message: duplicateSkus.has(sku) ? 'SKU matches more than one active variant. Use Variant ID.' : 'Unknown SKU or variant ID.' })
-        return
-      }
-      if (seenKeys.has(key)) {
-        results.push({ row: rowNumber, sku: sku || variantId, status: 'Failed', message: 'Duplicate SKU or variant ID in import file.' })
-        return
-      }
-      seenKeys.add(key)
-
-      const physicalString = physicalRaw === null || physicalRaw === undefined ? '' : String(physicalRaw).trim()
-      if (physicalString === '') {
-        patches.set(matched.variantId, { physicalCount: '', note })
-        unchanged += 1
-        results.push({ row: rowNumber, sku: sku || variantId, status: 'Unchanged', message: 'Blank physical count kept as not counted.' })
-        return
-      }
-      if (!/^\d+$/.test(physicalString)) {
-        results.push({ row: rowNumber, sku: sku || variantId, status: 'Failed', message: 'Physical Count must be zero or a positive integer.' })
-        return
-      }
-      const changed = matched.physicalCount !== physicalString || matched.note !== note
-      patches.set(matched.variantId, { physicalCount: physicalString, note })
-      if (changed) updated += 1
-      else unchanged += 1
-      results.push({ row: rowNumber, sku: sku || variantId, status: changed ? 'Updated' : 'Unchanged', message: changed ? 'Loaded into draft.' : 'No change from current draft.' })
-    })
-
-    setRows(prev => prev.map(row => patches.has(row.variantId) ? { ...row, ...patches.get(row.variantId)! } : row))
-    const failed = results.filter(row => row.status === 'Failed').length
-    setImportSummary({ updated, unchanged, failed, rows: results })
-    toast({ title: 'Import complete', description: `${updated} updated, ${unchanged} unchanged, ${failed} failed.` })
+      const result = parseStockCountWorksheet(sheet, rows.map(row => ({
+        variantId: row.variantId,
+        sku: skuForRow(row),
+        physicalCount: row.physicalCount,
+        note: row.note,
+      })))
+      setRows(prev => prev.map(row => result.patches.has(row.variantId) ? { ...row, ...result.patches.get(row.variantId)! } : row))
+      setImportSummary({
+        updated: result.updated,
+        unchanged: result.unchanged,
+        failed: result.failed,
+        rows: result.rows,
+      })
+      toast({ title: 'Import complete', description: `${result.updated} updated, ${result.unchanged} unchanged, ${result.failed} failed.` })
+    } catch (error: any) {
+      toast({
+        title: 'Excel import failed',
+        description: error?.message || 'The Stock Count Excel file could not be read.',
+        variant: 'destructive',
+      })
+    }
   }
 
-  const postCount = async () => {
+  const requestVerificationCode = async () => {
     if (!canPost || currentStatus === 'posted') return
+    if (pageSummary.varianceItems > 0 && !isValidStockCountPostingNote(notes)) {
+      setVerificationError('A Posting Note is required when the Stock Count contains variance.')
+      return
+    }
     setPosting(true)
+    setVerificationError(null)
     try {
       const sessionId = currentSessionId || await saveDraft()
       if (!sessionId) throw new Error('Save the draft before posting.')
-      const postedRows = rows.filter(row => {
-        const variance = varianceForRow(row)
-        return variance !== null && variance !== 0
+      if (currentSessionId) {
+        const savedSessionId = await saveDraft()
+        if (!savedSessionId) throw new Error('The latest Stock Count changes could not be saved.')
+      }
+      setPreflight({ status: 'loading' })
+      const response = await fetch('/api/inventory/stock-count/verification/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
       })
-      const { data: sessionData, error: sessionError } = await supabase.from('stock_count_sessions' as any).select('id, status').eq('id', sessionId).single()
-      if (sessionError) throw sessionError
-      if ((sessionData as any).status === 'posted') throw new Error('This count session has already been posted.')
-
-      for (const row of postedRows) {
-        const variance = varianceForRow(row)!
-        const { error } = await supabase.rpc('record_stock_movement', {
-          p_movement_type: 'adjustment',
-          p_variant_id: row.variantId,
-          p_organization_id: selectedWarehouse,
-          p_quantity_change: variance,
-          p_unit_cost: row.unitCost,
-          p_manufacturer_id: null,
-          p_warehouse_location: row.warehouseLocation,
-          p_reason: `Stock count ${countTypeOptions.find(option => option.value === countType)?.label || ''}`,
-          p_notes: row.note || `Stock count ${referenceName || countDate}: system ${row.systemQuantity}, physical ${row.physicalCount}`,
-          p_reference_type: 'adjustment',
-          p_reference_id: sessionId,
-          p_reference_no: referenceName || `Stock Count ${countDate}`,
-          p_company_id: userProfile?.organizations?.id || userProfile?.organization_id || null,
-          p_created_by: userProfile?.id || null,
-          p_evidence_urls: null,
-        } as any)
-        if (error) throw error
+      const result = await response.json()
+      if (!response.ok) {
+        setPreflight({ status: 'error', code: result.code, message: result.error, guidance: result.guidance })
+        return
       }
-
-      await supabase.from('stock_count_sessions' as any).update({
-        status: 'posted',
-        posted_by: userProfile?.id || null,
-        posted_at: new Date().toISOString(),
-        total_variants_counted: pageSummary.counted,
-        variance_items: pageSummary.varianceItems,
-        net_quantity_adjustment: pageSummary.netAdjustment,
-        estimated_adjustment_value: pageSummary.estimatedValue,
-        updated_by: userProfile?.id || null,
-        updated_at: new Date().toISOString(),
-      }).eq('id', sessionId).eq('status', 'draft')
-
-      const reasonResult = await supabase.from('stock_adjustment_reasons').select('id').eq('is_active', true).ilike('reason_name', '%count%').limit(1).maybeSingle()
-      const { data: adjustment } = await supabase.from('stock_adjustments').insert({
-        organization_id: selectedWarehouse,
-        reason_id: reasonResult.data?.id || null,
-        notes: notes || `Posted stock count session ${sessionId}`,
-        status: 'completed',
-        created_by: userProfile?.id || null,
-        manufacturer_status: 'draft',
-      }).select('id').single()
-
-      if (adjustment && postedRows.length > 0) {
-        await supabase.from('stock_adjustment_items').insert(postedRows.map(row => {
-          const physical = parseCount(row.physicalCount)!
-          return {
-            adjustment_id: adjustment.id,
-            variant_id: row.variantId,
-            system_quantity: row.systemQuantity,
-            physical_quantity: physical,
-            adjustment_quantity: physical - row.systemQuantity,
-            unit_cost: row.unitCost,
-          }
-        }))
-      }
-
-      setCurrentStatus('posted')
-      setConfirmPostOpen(false)
-      toast({ title: 'Stock count posted', description: `${postedRows.length} variance movement(s) recorded.` })
-      await loadCountRows(selectedWarehouse)
-      await loadDrafts(selectedWarehouse)
+      setPreflight({ status: 'ready', recipientCount: result.recipients.length })
+      setVerification({ ...result, sessionId })
+      setVerificationCode('')
+      setVerificationNow(Date.now())
+      toast({ title: 'Verification code sent', description: `Sent to ${result.recipients.length} authorized recipient(s).` })
     } catch (error: any) {
-      toast({ title: 'Post failed', description: error.message, variant: 'destructive' })
+      setVerificationError(error.message)
     } finally {
       setPosting(false)
     }
+  }
+
+  const runVerificationPreflight = async (sessionId: string) => {
+    setPreflight({ status: 'loading' })
+    setVerificationError(null)
+    if (permissionGate === 'checking') return
+    if (permissionGate === 'denied') {
+      const friendly = stockCountVerificationError('permission_denied')
+      setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
+      return
+    }
+    try {
+      const response = await fetch(`/api/inventory/stock-count/verification/preflight?sessionId=${encodeURIComponent(sessionId)}`)
+      const result = await response.json()
+      if (!response.ok || !result.ok) {
+        setPreflight({ status: 'error', code: result.code, message: result.error, guidance: result.guidance })
+        return
+      }
+      if (result.authoritativeBaseCosts && typeof result.authoritativeBaseCosts === 'object') {
+        setRows(current => current.map(row => Object.prototype.hasOwnProperty.call(result.authoritativeBaseCosts, row.variantId)
+          ? { ...row, unitCost: normalizeBaseCost(result.authoritativeBaseCosts[row.variantId]) }
+          : row))
+      }
+      setPreflight({ status: 'ready', recipientCount: result.recipientCount, guidance: result.guidance })
+    } catch {
+      const friendly = stockCountVerificationError('unexpected_error')
+      setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
+    }
+  }
+
+  const openPostReview = async () => {
+    setConfirmPostOpen(true)
+    setPreflight({ status: 'loading' })
+    setVerificationError(null)
+    const sessionId = await saveDraft()
+    if (!sessionId) {
+      setPreflight({ status: 'error', message: 'Save the Stock Count draft before requesting verification.' })
+      return
+    }
+    await runVerificationPreflight(sessionId)
+  }
+
+  const retryVerificationPreflight = async () => {
+    setPreflight({ status: 'loading' })
+    const sessionId = await saveDraft({ silent: true })
+    if (!sessionId) {
+      setPreflight({ status: 'error', message: 'The latest Stock Count changes could not be saved. Please try again.' })
+      return
+    }
+    await runVerificationPreflight(sessionId)
+  }
+
+  const handlePostingNoteChange = (value: string) => {
+    setNotes(value)
+    if (pageSummary.varianceItems === 0) return
+
+    if (!isValidStockCountPostingNote(value)) {
+      if (postingNoteRecheckTimerRef.current !== null) window.clearTimeout(postingNoteRecheckTimerRef.current)
+      postingNoteRecheckTimerRef.current = null
+      postingNoteRecheckPendingRef.current = false
+      const friendly = stockCountVerificationError('posting_note_required')
+      setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
+      return
+    }
+
+    if (preflight.code !== 'posting_note_required' && !postingNoteRecheckPendingRef.current) return
+
+    // Clear the local validation error immediately, then persist the final
+    // debounced value before asking the authoritative server to check again.
+    setPreflight({ status: 'loading' })
+    postingNoteRecheckPendingRef.current = true
+    if (postingNoteRecheckTimerRef.current !== null) window.clearTimeout(postingNoteRecheckTimerRef.current)
+    postingNoteRecheckTimerRef.current = window.setTimeout(async () => {
+      postingNoteRecheckTimerRef.current = null
+      postingNoteRecheckPendingRef.current = false
+      const normalizedNote = normalizeStockCountPostingNote(value)
+      setNotes(normalizedNote)
+      const sessionId = await saveDraft({ noteOverride: normalizedNote, silent: true })
+      if (!sessionId) {
+        setPreflight({ status: 'error', message: 'The Posting Note could not be saved. Please try again.' })
+        return
+      }
+      await runVerificationPreflight(sessionId)
+    }, 350)
+  }
+
+  useEffect(() => {
+    if (confirmPostOpen && !verification && !permissionLoading && preflight.status === 'loading' && currentSessionId) {
+      void runVerificationPreflight(currentSessionId)
+    }
+    // Re-run only when the permission lookup finishes for an open review.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionLoading])
+
+  const verifyAndPostCount = async () => {
+    if (!verification || verificationCode.length !== 8) return
+    setPosting(true)
+    setVerificationError(null)
+    setPreflight({ status: 'idle' })
+    try {
+      const response = await fetch('/api/inventory/stock-count/verification/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: verification.requestId, sessionId: verification.sessionId, code: verificationCode }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to verify and post the Stock Count.')
+      setCurrentStatus('posted')
+      setVerification(null)
+      setVerificationCode('')
+      setConfirmPostOpen(false)
+      toast({ title: 'Stock count posted', description: `${result.movement_count || 0} variance movement(s) recorded.` })
+      await loadCountRows(selectedWarehouse)
+      await loadDrafts(selectedWarehouse)
+    } catch (error: any) {
+      setVerificationError(error.message)
+      setVerificationCode('')
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  const closePostDialog = () => {
+    if (postingNoteRecheckTimerRef.current !== null) window.clearTimeout(postingNoteRecheckTimerRef.current)
+    postingNoteRecheckTimerRef.current = null
+    postingNoteRecheckPendingRef.current = false
+    setConfirmPostOpen(false)
+    setVerification(null)
+    setVerificationCode('')
+    setVerificationError(null)
   }
 
   const summaryCards = [
@@ -611,6 +705,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     { label: 'Net Adjustment', value: `${pageSummary.netAdjustment > 0 ? '+' : ''}${formatNumber(pageSummary.netAdjustment)}`, sub: 'Total units', icon: RotateCcw, color: 'text-blue-600 bg-blue-50' },
     { label: 'Estimated Value', value: formatMoney(pageSummary.estimatedValue), sub: 'Based on variance', icon: FileSpreadsheet, color: 'text-purple-600 bg-purple-50' },
   ]
+  const warehouseName = warehouseLocations.find(location => location.id === selectedWarehouse)?.org_name || '—'
+  const expirySeconds = verification ? Math.max(0, Math.ceil((new Date(verification.expiresAt).getTime() - verificationNow) / 1000)) : 0
+  const resendSeconds = verification ? Math.max(0, Math.ceil((new Date(verification.resendAvailableAt).getTime() - verificationNow) / 1000)) : 0
+  const highImpact = Math.abs(pageSummary.estimatedValue) >= HIGH_IMPACT_VALUE_THRESHOLD || Math.abs(pageSummary.netAdjustment) >= 1000
 
   return (
     <div className="space-y-5">
@@ -631,8 +729,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             if (file) importExcel(file)
             event.target.value = ''
           }} />
-          <Button variant="outline" onClick={saveDraft} disabled={!canSave || saving}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}</Button>
-          <Button onClick={() => setConfirmPostOpen(true)} disabled={!canPost || currentStatus === 'posted'} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
+          <Button variant="outline" onClick={() => void saveDraft()} disabled={!canSave || saving}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}</Button>
+          <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted'} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
         </div>
       </div>
 
@@ -735,7 +833,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                           <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
                           <TableCell><Input data-count-input={row.variantId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted'} onChange={event => handlePhysicalCountChange(row.variantId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.variantId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                           <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
-                          {visibleColumns.unitCost && <TableCell className="text-right tabular-nums">{formatMoney(row.unitCost)}</TableCell>}
+                          {visibleColumns.unitCost && <TableCell className="text-right tabular-nums">{row.unitCost === null ? '—' : formatMoney(row.unitCost)}</TableCell>}
                           {visibleColumns.adjustmentValue && <TableCell className={`text-right font-semibold tabular-nums ${!adjustmentValue ? 'text-slate-600' : adjustmentValue > 0 ? 'text-green-600' : 'text-red-600'}`}>{adjustmentValue === null ? '-' : formatMoney(adjustmentValue)}</TableCell>}
                           {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted'} onChange={event => updateRow(row.variantId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
                         </TableRow>
@@ -751,12 +849,47 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
       {importSummary && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
 
-      <Dialog open={confirmPostOpen} onOpenChange={setConfirmPostOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Review & Post Count</DialogTitle><DialogDescription>Posting creates inventory movement records and updates stock balances. This cannot be posted twice.</DialogDescription></DialogHeader>
-          <div className="grid gap-3 py-2 text-sm"><div className="flex justify-between"><span>Total variants counted</span><strong>{formatNumber(pageSummary.counted)}</strong></div><div className="flex justify-between"><span>Variance items</span><strong>{formatNumber(pageSummary.varianceItems)}</strong></div><div className="flex justify-between"><span>Net quantity adjustment</span><strong>{pageSummary.netAdjustment > 0 ? '+' : ''}{formatNumber(pageSummary.netAdjustment)}</strong></div><div className="flex justify-between"><span>Estimated adjustment value</span><strong>{formatMoney(pageSummary.estimatedValue)}</strong></div></div>
-          <Textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Posting note..." />
-          <DialogFooter><Button variant="outline" onClick={() => setConfirmPostOpen(false)}>Cancel</Button><Button onClick={postCount} disabled={posting || !canPost} className="bg-orange-600 hover:bg-orange-700">{posting ? 'Posting...' : 'Confirm Post Count'}</Button></DialogFooter>
+      <Dialog open={confirmPostOpen} onOpenChange={(open) => open ? setConfirmPostOpen(true) : closePostDialog()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{verification ? 'Verify Stock Count Posting' : 'Review & Post Count'}</DialogTitle>
+            <DialogDescription>{verification ? 'Inventory remains unchanged until the code is verified.' : 'Review the complete posting context before requesting approval.'}</DialogDescription>
+          </DialogHeader>
+          {!verification ? <>
+            <div className="grid gap-x-8 gap-y-3 rounded-lg border bg-slate-50 p-4 text-sm sm:grid-cols-2">
+              <div><span className="text-slate-500">Warehouse</span><strong className="block text-slate-900">{warehouseName}</strong></div>
+              <div><span className="text-slate-500">Count date</span><strong className="block text-slate-900">{countDate}</strong></div>
+              <div><span className="text-slate-500">Count type</span><strong className="block text-slate-900">{countTypeOptions.find(option => option.value === countType)?.label}</strong></div>
+              <div><span className="text-slate-500">Reference / batch</span><strong className="block text-slate-900">{referenceName || '—'}</strong></div>
+              <div className="flex justify-between sm:col-span-2"><span>Total variants counted</span><strong>{formatNumber(pageSummary.counted)}</strong></div>
+              <div className="flex justify-between sm:col-span-2"><span>Variance items</span><strong>{formatNumber(pageSummary.varianceItems)}</strong></div>
+              <div className={`flex justify-between rounded-md px-2 py-1 sm:col-span-2 ${highImpact ? 'bg-amber-100 text-amber-950' : ''}`}><span>Net quantity adjustment</span><strong className={pageSummary.netAdjustment < 0 ? 'text-red-700' : pageSummary.netAdjustment > 0 ? 'text-emerald-700' : ''}>{pageSummary.netAdjustment > 0 ? '+' : ''}{formatNumber(pageSummary.netAdjustment)}</strong></div>
+              <div className={`flex justify-between rounded-md px-2 py-1 sm:col-span-2 ${highImpact ? 'bg-amber-100 text-amber-950' : ''}`}><span>Estimated adjustment value</span><strong className={pageSummary.estimatedValue < 0 ? 'text-red-700' : pageSummary.estimatedValue > 0 ? 'text-emerald-700' : ''}>{formatMoney(pageSummary.estimatedValue)}</strong></div>
+            </div>
+            {highImpact && <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle className="h-5 w-5 shrink-0" /><span><strong>High-impact adjustment.</strong> Review quantities and value carefully before requesting verification.</span></div>}
+            <div><label className="mb-1.5 block text-sm font-medium">Posting Note {pageSummary.varianceItems > 0 && <span className="text-red-600">*</span>}</label><Textarea value={notes} onChange={event => handlePostingNoteChange(event.target.value)} placeholder="Explain the reason for this posting..." /></div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">A verification code will be sent to authorized recipients. Inventory will only be updated after the code is verified.</div>
+            {preflight.status === 'loading' && <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"><Loader2 className="h-4 w-4 animate-spin" />Checking permission, notification recipients, and email provider…</div>}
+            {preflight.status === 'ready' && <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>Verification is ready. The code will be emailed to {preflight.recipientCount} authorized recipient{preflight.recipientCount === 1 ? '' : 's'}.</span></div>}
+            {preflight.status === 'error' && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><div>{preflight.message}</div>{preflight.guidance && <div className="mt-1 text-xs text-red-600">{preflight.guidance}</div>}<Button type="button" variant="outline" size="sm" className="mt-3" onClick={retryVerificationPreflight} disabled={saving || permissionLoading}>{saving ? 'Saving Changes…' : 'Retry Check'}</Button></div>}
+            {verificationError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{verificationError}</div>}
+            <DialogFooter><Button variant="outline" onClick={closePostDialog}>Cancel</Button><Button onClick={requestVerificationCode} disabled={posting || preflight.status !== 'ready' || !hasPostStockCountPermission || !canPost || (pageSummary.varianceItems > 0 && !isValidStockCountPostingNote(notes))} className="bg-orange-600 hover:bg-orange-700">{posting ? 'Sending Code...' : preflight.status === 'loading' ? 'Checking Configuration...' : 'Request Verification Code'}</Button></DialogFooter>
+          </> : <>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+              <div className="font-semibold">Code sent to authorized recipients</div>
+              <div className="mt-2 flex flex-wrap gap-2">{verification.recipients.map(recipient => <Badge key={recipient} variant="secondary">{recipient}</Badge>)}</div>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">8-digit verification code</label>
+              <Input autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={verificationCode} onChange={event => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 8))} onKeyDown={event => { if (event.key === 'Enter' && verificationCode.length === 8) void verifyAndPostCount() }} className="h-14 text-center font-mono text-2xl tracking-[0.4em]" placeholder="00000000" />
+              <div className="flex justify-between text-xs text-slate-500"><span>{expirySeconds > 0 ? `Expires in ${Math.floor(expirySeconds / 60)}:${String(expirySeconds % 60).padStart(2, '0')}` : 'Code expired'}</span><span>Maximum 5 attempts</span></div>
+            </div>
+            {verificationError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{verificationError}</div>}
+            <DialogFooter className="gap-2 sm:justify-between">
+              <div className="flex gap-2"><Button variant="outline" onClick={closePostDialog}>Cancel</Button><Button variant="ghost" onClick={requestVerificationCode} disabled={posting || resendSeconds > 0}>{resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Resend Code'}</Button></div>
+              <Button onClick={verifyAndPostCount} disabled={posting || verificationCode.length !== 8 || expirySeconds <= 0} className="bg-orange-600 hover:bg-orange-700">{posting ? 'Posting...' : 'Verify & Post Count'}</Button>
+            </DialogFooter>
+          </>}
         </DialogContent>
       </Dialog>
 

@@ -1,0 +1,75 @@
+-- REVIEW ONLY: historical Stock Count movement cost correction.
+--
+-- This file is intentionally outside supabase/migrations and rolls back by
+-- default. Historical Variant Base Cost is not versioned, so current master
+-- data alone is not sufficient evidence of the cost at posting time. Populate
+-- approved_base_cost only after reviewing source documents/audit evidence.
+
+BEGIN;
+
+CREATE TEMP TABLE approved_stock_count_cost_repairs (
+  movement_id uuid PRIMARY KEY,
+  approved_base_cost numeric(12,2) NOT NULL CHECK (approved_base_cost >= 0),
+  approval_reference text NOT NULL
+) ON COMMIT DROP;
+
+-- Add explicitly approved rows here. Example only; do not uncomment without
+-- replacing the movement UUID and recording the approval evidence.
+-- INSERT INTO approved_stock_count_cost_repairs
+--   (movement_id, approved_base_cost, approval_reference)
+-- VALUES
+--   ('00000000-0000-0000-0000-000000000000', 14.00, 'Approved audit ticket / source document');
+
+-- Candidate review. This does not assume that today's Base Cost was the Base
+-- Cost on the historical posting date.
+SELECT
+  sm.id AS movement_id,
+  sm.created_at,
+  sm.reference_id AS stock_count_session_id,
+  sm.reference_no,
+  sm.variant_id,
+  pv.variant_name,
+  sm.quantity_change,
+  sm.unit_cost AS stored_unit_cost,
+  sm.total_cost AS stored_absolute_total,
+  pv.base_cost AS current_variant_base_cost,
+  abs(sm.quantity_change)::numeric * pv.base_cost AS total_if_current_base_cost_used
+FROM public.stock_movements sm
+JOIN public.product_variants pv ON pv.id = sm.variant_id
+WHERE sm.movement_type = 'adjustment'
+  AND sm.reference_type = 'adjustment'
+  AND EXISTS (SELECT 1 FROM public.stock_count_sessions s WHERE s.id = sm.reference_id)
+  AND sm.unit_cost IS DISTINCT FROM pv.base_cost
+ORDER BY sm.created_at DESC, sm.id;
+
+-- Exact before/after preview for manually approved rows.
+SELECT
+  sm.id,
+  sm.reference_no,
+  sm.quantity_change,
+  sm.unit_cost AS stored_unit_cost,
+  r.approved_base_cost,
+  sm.total_cost AS stored_absolute_total,
+  abs(sm.quantity_change)::numeric * r.approved_base_cost AS approved_absolute_total,
+  r.approval_reference
+FROM approved_stock_count_cost_repairs r
+JOIN public.stock_movements sm ON sm.id = r.movement_id
+ORDER BY sm.created_at, sm.id;
+
+-- Updating unit_cost also recalculates generated stock_movements.total_cost.
+-- No inventory quantities, current inventory valuation, or unrelated movement
+-- rows are changed.
+UPDATE public.stock_movements sm
+SET unit_cost = r.approved_base_cost
+FROM approved_stock_count_cost_repairs r
+WHERE sm.id = r.movement_id
+  AND sm.movement_type = 'adjustment'
+  AND sm.reference_type = 'adjustment'
+  AND EXISTS (SELECT 1 FROM public.stock_count_sessions s WHERE s.id = sm.reference_id);
+
+SELECT sm.id, sm.quantity_change, sm.unit_cost, sm.total_cost
+FROM public.stock_movements sm
+JOIN approved_stock_count_cost_repairs r ON r.movement_id = sm.id
+ORDER BY sm.created_at, sm.id;
+
+ROLLBACK;

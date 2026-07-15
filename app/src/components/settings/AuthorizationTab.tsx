@@ -174,6 +174,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
             { id: 'view_inventory_value', name: 'View Total Value', description: 'See total value column in inventory', category: 'inventory', defaultLevels: [1, 10, 20, 30], sensitivity: 'high' },
             { id: 'view_inventory_cost', name: 'View Cost Price', description: 'See cost price of items', category: 'inventory', defaultLevels: [1, 10, 20], sensitivity: 'critical' },
             { id: 'adjust_stock', name: 'Adjust Stock', description: 'Make stock adjustments', category: 'inventory', defaultLevels: [1, 10, 20, 30], sensitivity: 'high' },
+            { id: 'post_stock_count', name: 'Post Stock Count', description: 'Request verification and post a completed Stock Count', category: 'inventory', defaultLevels: [1, 10, 20, 30], sensitivity: 'critical' },
             { id: 'manage_inventory_settings', name: 'Manage Settings', description: 'Configure inventory settings', category: 'inventory', defaultLevels: [1, 10, 20], sensitivity: 'medium' },
         ]
     },
@@ -639,7 +640,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             description: 'QR scanning, products, orders, quality',
             permissions: {
                 view_dashboard: true, view_reports: false, export_reports: false,
-                view_inventory: false, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_inventory: false, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, post_stock_count: false, manage_inventory_settings: false,
                 view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
                 view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
                 view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: true,
@@ -656,7 +657,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             description: 'Receive/ship, inventory, orders, QR',
             permissions: {
                 view_dashboard: true, view_reports: true, export_reports: false,
-                view_inventory: true, view_inventory_value: true, view_inventory_cost: false, adjust_stock: true, manage_inventory_settings: false,
+                view_inventory: true, view_inventory_value: true, view_inventory_cost: false, adjust_stock: true, post_stock_count: true, manage_inventory_settings: false,
                 view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: true,
                 view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
                 view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: true,
@@ -673,7 +674,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             description: 'Orders, products, basic dashboard',
             permissions: {
                 view_dashboard: true, view_reports: false, export_reports: false,
-                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, post_stock_count: false, manage_inventory_settings: false,
                 view_orders: true, create_orders: true, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
                 view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
                 view_qr_tracking: true, scan_qr: true, manage_journeys: false, view_scan_history: false,
@@ -690,7 +691,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             description: 'Read-only access to basic features',
             permissions: {
                 view_dashboard: true, view_reports: false, export_reports: false,
-                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, manage_inventory_settings: false,
+                view_inventory: true, view_inventory_value: false, view_inventory_cost: false, adjust_stock: false, post_stock_count: false, manage_inventory_settings: false,
                 view_orders: true, create_orders: false, approve_orders: false, cancel_orders: false, delete_orders: false, view_order_value: false,
                 view_products: true, create_products: false, edit_products: false, delete_products: false, view_product_cost: false,
                 view_qr_tracking: true, scan_qr: false, manage_journeys: false, view_scan_history: false,

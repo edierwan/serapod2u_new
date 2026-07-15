@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
+import { formatSignedMovementImpact, resolveStockMovementHistoryValues } from '@/lib/inventory/stock-movement-history'
 import {
   BarChart3,
   Search,
@@ -71,12 +72,14 @@ interface StockMovement {
 interface StockMovementReportViewProps {
   userProfile: any
   onViewChange?: (view: string) => void
+  /** Seeds the search box (deep link: /dashboard?view=stock-movements&id=<reference no>). */
+  initialSearch?: string
 }
 
-export default function StockMovementReportView({ userProfile, onViewChange }: StockMovementReportViewProps) {
+export default function StockMovementReportView({ userProfile, onViewChange, initialSearch }: StockMovementReportViewProps) {
   const [movements, setMovements] = useState<StockMovement[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialSearch || '')
   const [movementTypeFilter, setMovementTypeFilter] = useState('all')
   const [referenceTypeFilter, setReferenceTypeFilter] = useState('all')
   const [productFilter, setProductFilter] = useState('all')
@@ -314,7 +317,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
       }
 
       if (locationFilter !== 'all') {
-        query = query.eq('to_organization_id', locationFilter)
+        query = query.or(`from_organization_id.eq.${locationFilter},to_organization_id.eq.${locationFilter}`)
       }
 
       // Note: Product and variant filters are applied client-side after transformation
@@ -352,6 +355,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             warehouse_location,
             created_at,
             variant_id,
+            from_organization_id,
             to_organization_id,
             manufacturer_id,
             created_by
@@ -380,7 +384,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           query = query.eq('movement_type', movementTypeFilter)
         }
         if (locationFilter !== 'all') {
-          query = query.eq('to_organization_id', locationFilter)
+          query = query.or(`from_organization_id.eq.${locationFilter},to_organization_id.eq.${locationFilter}`)
         }
         if (referenceTypeFilter !== 'all') {
           query = query.eq('reference_type', referenceTypeFilter)
@@ -617,17 +621,13 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             return 0
           }
 
-          if (variantBaseCost !== null) return variantBaseCost
           const directCost = typeof item.unit_cost === 'number' && !Number.isNaN(item.unit_cost)
             ? Number(item.unit_cost)
             : null
-          if (directCost !== null && directCost !== 0) {
+          if (directCost !== null) {
             return directCost
           }
-          const averageCost = typeof item.average_cost === 'number' && !Number.isNaN(item.average_cost)
-            ? Number(item.average_cost)
-            : null
-          return averageCost
+          return null
         })()
 
         const resolvedTotalCost = (() => {
@@ -635,22 +635,10 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
             ? Number(item.total_cost)
             : null
 
-          if (directTotal !== null && directTotal !== 0) {
-            return directTotal
-          }
-
-          if (resolvedUnitCost !== null && Number.isFinite(quantityChange) && quantityChange !== 0) {
-            return Number((Math.abs(quantityChange) * resolvedUnitCost).toFixed(2))
-          }
-
-          if (resolvedUnitCost !== null && quantityChange === 0) {
-            return 0
-          }
-
-          return null
+          return directTotal
         })()
 
-        return {
+        return resolveStockMovementHistoryValues({
           ...item,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
@@ -660,7 +648,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
           organizations,
           manufacturers,
           users
-        }
+        })
       })
 
       // Apply client-side filtering for product and variant (needed when using stock_movements fallback table)
@@ -1326,7 +1314,7 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                       <TableCell className="text-xs text-right">
                         {(() => {
                           const formattedUnitCost = formatCurrency(movement.unit_cost)
-                          const formattedTotalCost = formatCurrency(movement.total_cost)
+                          const formattedTotalCost = formatSignedMovementImpact(movement.total_cost)
 
                           if (!formattedUnitCost) {
                             return '-'
@@ -1336,8 +1324,8 @@ export default function StockMovementReportView({ userProfile, onViewChange }: S
                             <div>
                               <p className="text-xs">{formattedUnitCost}</p>
                               {formattedTotalCost && (
-                                <p className="text-xs text-gray-500">
-                                  Total: {formattedTotalCost}
+                                <p className={`text-xs ${movement.total_cost && movement.total_cost < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                  Total impact: {formattedTotalCost}
                                 </p>
                               )}
                             </div>

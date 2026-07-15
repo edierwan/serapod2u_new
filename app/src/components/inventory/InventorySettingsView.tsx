@@ -27,6 +27,13 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
+import {
+  buildIncomingMap,
+  getIncomingBreakdown,
+  getReplenishmentDecision,
+  incomingKey,
+  type IncomingStockRow
+} from '@/lib/inventory/incoming-stock'
 
 interface InventoryItem {
   id: string
@@ -78,6 +85,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
     lead_time_days: ''
   })
   const [individualSettings, setIndividualSettings] = useState<Map<string, StockSettings>>(new Map())
+  const [incomingMap, setIncomingMap] = useState<Map<string, IncomingStockRow>>(new Map())
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -94,6 +102,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
   useEffect(() => {
     if (isReady && !permissionsLoading && canManageSettings) {
       fetchInventory()
+      fetchIncoming()
       fetchProducts()
       fetchLocations()
     }
@@ -102,6 +111,28 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
   useEffect(() => {
     filterInventory()
   }, [inventory, searchQuery, productFilter, locationFilter])
+
+  // Incoming / On Order stock (v_incoming_stock). Non-fatal when the view is
+  // not migrated yet — the columns fall back to zero.
+  const fetchIncoming = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('v_incoming_stock' as any)
+        .select('*')
+      if (error) throw error
+      setIncomingMap(buildIncomingMap((data || []) as unknown as IncomingStockRow[]))
+    } catch (error) {
+      console.warn('v_incoming_stock unavailable, incoming quantities hidden', error)
+      setIncomingMap(new Map())
+    }
+  }
+
+  const getIncomingRow = (item: InventoryItem): IncomingStockRow | undefined =>
+    incomingMap.get(incomingKey(item.organization_id, item.variant_id))
+
+  /** Total Incoming = Manufacturer + Transfer. */
+  const getIncomingQty = (item: InventoryItem): number =>
+    getIncomingRow(item)?.incoming_qty ?? 0
 
   const fetchInventory = async () => {
     try {
@@ -670,6 +701,8 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                   <TableHead>Product / Variant</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead className="text-right">Available</TableHead>
+                  <TableHead className="text-right">Incoming</TableHead>
+                  <TableHead className="text-right">Position</TableHead>
                   <TableHead>Reorder Point</TableHead>
                   <TableHead>Reorder Qty</TableHead>
                   <TableHead>Max Stock</TableHead>
@@ -680,13 +713,13 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       Loading inventory...
                     </TableCell>
                   </TableRow>
                 ) : filteredInventory.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       No inventory items found
                     </TableCell>
                   </TableRow>
@@ -742,6 +775,44 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="text-sm font-medium">{formatNumber(item.quantity_available)}</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className={`text-sm ${getIncomingQty(item) > 0 ? 'font-medium text-blue-600' : 'text-gray-400'}`}>
+                            {formatNumber(getIncomingQty(item))}
+                          </span>
+                          {(() => {
+                            const breakdown = getIncomingBreakdown(getIncomingRow(item))
+                            if (breakdown.transfer <= 0) return null
+                            return (
+                              <p className="text-xs text-gray-500">
+                                PO {formatNumber(breakdown.manufacturer)} · TRF {formatNumber(breakdown.transfer)}
+                              </p>
+                            )
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div>
+                            <span className="text-sm font-medium">
+                              {formatNumber(item.quantity_available + getIncomingQty(item))}
+                            </span>
+                            {(() => {
+                              const decision = getReplenishmentDecision(
+                                item.quantity_available,
+                                getIncomingQty(item),
+                                item.reorder_point
+                              )
+                              if (decision.code === 'normal') return null
+                              return (
+                                <p
+                                  className={`text-xs ${
+                                    decision.code === 'replenishment_incoming' ? 'text-blue-600' : 'text-red-600'
+                                  }`}
+                                >
+                                  {decision.label}
+                                </p>
+                              )
+                            })()}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Input

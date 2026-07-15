@@ -4,7 +4,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
     1: ['*'],
     10: [
         'view_dashboard', 'view_reports', 'export_reports',
-        'view_inventory', 'view_inventory_value', 'view_inventory_cost', 'adjust_stock', 'manage_inventory_settings',
+        'view_inventory', 'view_inventory_value', 'view_inventory_cost', 'adjust_stock', 'post_stock_count', 'manage_inventory_settings',
         'view_orders', 'create_orders', 'approve_orders', 'cancel_orders', 'view_order_value',
         'view_products', 'create_products', 'edit_products', 'delete_products', 'view_product_cost',
         'view_qr_tracking', 'scan_qr', 'manage_journeys', 'view_scan_history',
@@ -16,7 +16,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
     ],
     20: [
         'view_dashboard', 'view_reports', 'export_reports',
-        'view_inventory', 'view_inventory_value', 'view_inventory_cost', 'adjust_stock', 'manage_inventory_settings',
+        'view_inventory', 'view_inventory_value', 'view_inventory_cost', 'adjust_stock', 'post_stock_count', 'manage_inventory_settings',
         'view_orders', 'create_orders', 'approve_orders', 'cancel_orders', 'view_order_value',
         'view_products', 'create_products', 'edit_products', 'view_product_cost',
         'view_qr_tracking', 'scan_qr', 'manage_journeys', 'view_scan_history',
@@ -28,7 +28,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<number, string[]> = {
     ],
     30: [
         'view_dashboard', 'view_reports',
-        'view_inventory', 'view_inventory_value', 'adjust_stock',
+        'view_inventory', 'view_inventory_value', 'adjust_stock', 'post_stock_count',
         'view_orders', 'create_orders', 'approve_orders', 'cancel_orders', 'view_order_value',
         'view_products',
         'view_qr_tracking', 'scan_qr', 'manage_journeys', 'view_scan_history',
