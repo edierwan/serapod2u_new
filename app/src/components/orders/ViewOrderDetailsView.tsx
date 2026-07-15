@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { resolveOrganizationLogoUrl } from '@/lib/organizations/logo'
+import { resolveUserSignatureUrl } from '@/lib/users/signature'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -61,6 +63,13 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [loading, setLoading] = useState(true)
   const [documentsDialogOpen, setDocumentsDialogOpen] = useState(false)
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
+  const [companySignatureFailed, setCompanySignatureFailed] = useState(false)
+  const [creatorSignatureUrl, setCreatorSignatureUrl] = useState<string | null>(null)
+  const [creatorSignatureFailed, setCreatorSignatureFailed] = useState(false)
+  const [approverSignatureUrl, setApproverSignatureUrl] = useState<string | null>(null)
+  const [approverSignatureFailed, setApproverSignatureFailed] = useState(false)
+  const printAreaRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
 
@@ -78,6 +87,41 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Stored signature values are raw public-object URLs for the `documents`
+  // bucket, which the storage gateway rejects without credentials; they must
+  // be re-signed before an <img> can load them.
+  const storedCreatorSignature = orderData?.created_by_user?.signature_url ?? null
+  const storedApproverSignature = orderData?.approved_by_user?.signature_url ?? null
+
+  useEffect(() => {
+    let cancelled = false
+
+    const resolve = async () => {
+      const [created, approved] = await Promise.all([
+        resolveUserSignatureUrl(supabase, storedCreatorSignature),
+        resolveUserSignatureUrl(supabase, storedApproverSignature),
+      ])
+
+      if (cancelled) return
+      setCreatorSignatureUrl(created)
+      setCreatorSignatureFailed(false)
+      setApproverSignatureUrl(approved)
+      setApproverSignatureFailed(false)
+    }
+
+    resolve()
+
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedCreatorSignature, storedApproverSignature])
+
+  useEffect(() => {
+    setLogoFailed(false)
+    setCompanySignatureFailed(false)
+  }, [orderData?.id])
 
   async function loadAuthorizedOrderData(orderId: string) {
     try {
@@ -414,6 +458,41 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const totalQuantity = orderData.order_items?.reduce((sum: number, item: any) => sum + (item.qty || 0), 0) || 0
 
+  // Persisted org media may be a relative storage path or a legacy-host URL;
+  // the canonical resolver rebuilds it against the configured storage host.
+  const headerOrgLogoUrl = resolveOrganizationLogoUrl(headerOrg?.logo_url)
+  const companySignatureUrl = resolveOrganizationLogoUrl(headerOrg?.signature_url)
+  const headerOrgInitials = String(headerOrg?.org_name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((word: string) => word[0])
+    .join('')
+    .toUpperCase()
+
+  const waitForDocumentImages = async (timeoutMs = 2500) => {
+    const container = printAreaRef.current
+    if (!container) return
+
+    const pending = Array.from(container.querySelectorAll('img')).filter(
+      (img) => !(img.complete && img.naturalWidth > 0)
+    )
+    if (pending.length === 0) return
+
+    await Promise.race([
+      Promise.all(
+        pending.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              img.addEventListener('load', () => resolve(), { once: true })
+              img.addEventListener('error', () => resolve(), { once: true })
+            })
+        )
+      ),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ])
+  }
+
   // Helper to get status color based on payment status
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -482,8 +561,9 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   title: 'Print Dialog Opening',
                   description: 'In the print dialog, select "Save as PDF" as your printer destination to download the PDF file.',
                 })
-                // Trigger browser print dialog
-                setTimeout(() => {
+                // Trigger browser print dialog once document images are ready
+                setTimeout(async () => {
+                  await waitForDocumentImages()
                   window.print()
                   // Restore title after a delay to ensure print dialog picked it up
                   setTimeout(() => {
@@ -504,20 +584,25 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
       {/* Static Order View */}
       {/* Document Container - Only show for SO or PO main tabs */}
-      <div className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
+      <div ref={printAreaRef} className="bg-white shadow-lg p-8 md:p-12 print:shadow-none print:p-8 print:w-full">
 
         {/* Header Section - 3 Columns in 1 Row */}
         <div className="flex justify-between items-start mb-12 print:mb-6 gap-8">
           {/* Left: Company Logo */}
-          <div className="flex-shrink-0">
-            {headerOrg?.logo_url ? (
+          <div className="flex-shrink-0 w-40">
+            {headerOrgLogoUrl && !logoFailed ? (
               <img
-                src={headerOrg.logo_url}
-                alt={headerOrg.org_name}
-                className="h-60 object-contain"
+                src={headerOrgLogoUrl}
+                alt={headerOrg?.org_name || 'Company logo'}
+                className="h-24 max-w-full object-contain object-left-top"
+                onError={() => setLogoFailed(true)}
               />
             ) : (
-              <h1 className="text-2xl font-bold tracking-tight">serapod<span className="text-blue-600">2u</span></h1>
+              <div className="h-24 flex items-center">
+                <div className="w-20 h-20 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center print:bg-white">
+                  <span className="text-xl font-bold text-gray-500 tracking-wide">{headerOrgInitials || '?'}</span>
+                </div>
+              </div>
             )}
           </div>
 
@@ -646,15 +731,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           <div className="flex justify-between items-start">
             {/* Left: Issued By with Company Signature */}
             <div>
-              {headerOrg?.signature_type === 'electronic' && headerOrg?.signature_url && (
+              {headerOrg?.signature_type === 'electronic' && companySignatureUrl && !companySignatureFailed && (
                 <div className="mb-6">
                   <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
                   <div className="flex items-start gap-4">
                     <div className="w-32 h-24 flex items-center">
                       <img
-                        src={headerOrg.signature_url}
+                        src={companySignatureUrl}
                         alt="Company Signature"
                         className="max-w-full max-h-full object-contain"
+                        onError={() => setCompanySignatureFailed(true)}
                       />
                     </div>
                   </div>
@@ -666,13 +752,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             {/* Center: Created By */}
             <div className="text-center">
               <p className="text-xs text-gray-600 mb-2">Created by: {orderData.created_by_user?.full_name || 'Unknown'}</p>
-              {orderData.created_by_user?.signature_url && (
+              {creatorSignatureUrl && !creatorSignatureFailed ? (
                 <div className="flex justify-center mb-2">
                   <img
-                    src={orderData.created_by_user.signature_url}
+                    src={creatorSignatureUrl}
                     alt="Created by signature"
-                    className="h-16 print:h-12 object-contain"
+                    className="h-16 print:h-12 max-w-[12rem] object-contain"
+                    onError={() => setCreatorSignatureFailed(true)}
                   />
+                </div>
+              ) : (
+                <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
+                  <span className="text-[10px] italic text-gray-400">Signature not available</span>
                 </div>
               )}
               <div className="border-t border-gray-300 w-48 mx-auto pt-1">
@@ -684,13 +775,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             {orderData.approved_by && orderData.approved_by_user && (
               <div className="text-center">
                 <p className="text-xs text-gray-600 mb-2">Approved by: {orderData.approved_by_user.full_name || 'Unknown'}</p>
-                {orderData.approved_by_user.signature_url && (
+                {approverSignatureUrl && !approverSignatureFailed ? (
                   <div className="flex justify-center mb-2">
                     <img
-                      src={orderData.approved_by_user.signature_url}
+                      src={approverSignatureUrl}
                       alt="Approved by signature"
-                      className="h-16 print:h-12 object-contain"
+                      className="h-16 print:h-12 max-w-[12rem] object-contain"
+                      onError={() => setApproverSignatureFailed(true)}
                     />
+                  </div>
+                ) : (
+                  <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
+                    <span className="text-[10px] italic text-gray-400">Signature not available</span>
                   </div>
                 )}
                 <div className="border-t border-gray-300 w-48 mx-auto pt-1">

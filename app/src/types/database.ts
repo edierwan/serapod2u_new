@@ -22496,6 +22496,8 @@ export type Database = {
           manual_sku: string | null
           manufacturer_sku: string | null
           other_price: number | null
+          product_code: string | null
+          product_code_brand_id: string | null
           product_id: string
           retailer_price: number | null
           sort_order: number | null
@@ -22520,6 +22522,8 @@ export type Database = {
           manual_sku?: string | null
           manufacturer_sku?: string | null
           other_price?: number | null
+          product_code?: string | null
+          product_code_brand_id?: string | null
           product_id: string
           retailer_price?: number | null
           sort_order?: number | null
@@ -22544,6 +22548,8 @@ export type Database = {
           manual_sku?: string | null
           manufacturer_sku?: string | null
           other_price?: number | null
+          product_code?: string | null
+          product_code_brand_id?: string | null
           product_id?: string
           retailer_price?: number | null
           sort_order?: number | null
@@ -22554,6 +22560,13 @@ export type Database = {
           variant_name_search?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "product_variants_product_code_brand_id_fkey"
+            columns: ["product_code_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_variants_product_id_fkey"
             columns: ["product_id"]

@@ -11,6 +11,7 @@ export type NotificationKey =
     | 'low_stock_alert'
     | 'out_of_stock'
     | 'stock_received'
+    | 'stock_count_posting_verification'
     | 'qr_activated'
     | 'points_awarded'
     | 'lucky_draw_entry'
@@ -1019,6 +1020,17 @@ export const notificationTemplates: Record<string, Template[]> = {
             subject: 'Product Return {{return_no}} — Completed',
             body: `Dear {{contact_name}},\n\nYour product return {{return_no}} has been completed.\n\nRegards,\nSerapod2U`
         },
+    ],
+
+    'stock_count_posting_verification': [
+        {
+            id: 'stock_count_verify_email_1',
+            name: 'Stock Count Security Code',
+            description: 'Serapod2U approval code with adjustment and request details',
+            channel: 'email',
+            subject: 'Serapod2U Stock Count Posting Verification Code',
+            body: `STOCK COUNT VERIFICATION\n\nVerify Stock Count Posting\n\nA request was made to post a Stock Count that will update inventory balances. Review the adjustment details before providing the verification code.\n\nYour verification code: {{verification_code}}\nValid for 15 minutes and single use only.\n\nIMPACT SUMMARY\nTotal variants counted: {{total_variants_counted}}\nVariance items: {{variance_items}}\nNet quantity adjustment: {{net_quantity_adjustment}}\nEstimated adjustment value: {{estimated_adjustment_value}}\n\nSTOCK COUNT DETAILS\nWarehouse: {{warehouse_name}}\nOrganization: {{organization_name}}\nCount date: {{count_date}}\nCount type: {{count_type}}\nReference / batch: {{reference_name}}\nRequested by: {{requested_by}}\nRequest date and time: {{stock_count_requested_at}}\n\nPOSTING NOTE\n{{posting_note}}\n\nOnly provide this code after you have reviewed and approved the Stock Count details above. Do not share it if you do not recognize this request.\n\nSerapod2U\nAutomated Inventory Security Notification`
+        }
     ],
 
     // ══════════════════════════════════════════════════════════

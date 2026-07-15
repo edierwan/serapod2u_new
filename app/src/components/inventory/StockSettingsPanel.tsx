@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { getReplenishmentDecision, type IncomingBreakdown } from '@/lib/inventory/incoming-stock'
 
 interface StockSettingsPanelProps {
   inventoryItem: {
@@ -29,11 +30,15 @@ interface StockSettingsPanelProps {
     total_value: number | null
     warehouse_location: string | null
   }
+  /** Total Incoming (manufacturer orders + in-transit transfers, v_incoming_stock). */
+  incomingQty?: number
+  /** Manufacturer/transfer split of incomingQty for source attribution. */
+  incomingBreakdown?: IncomingBreakdown
   onClose: () => void
   onSave: () => void
 }
 
-export default function StockSettingsPanel({ inventoryItem, onClose, onSave }: StockSettingsPanelProps) {
+export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, incomingBreakdown, onClose, onSave }: StockSettingsPanelProps) {
   const [reorderPoint, setReorderPoint] = useState(inventoryItem.reorder_point.toString())
   const [reorderQuantity, setReorderQuantity] = useState(inventoryItem.reorder_quantity.toString())
   const [maxStockLevel, setMaxStockLevel] = useState(inventoryItem.max_stock_level?.toString() || '')
@@ -169,6 +174,11 @@ export default function StockSettingsPanel({ inventoryItem, onClose, onSave }: S
   }
 
   const stockStatus = getStockStatus()
+  const replenishmentDecision = getReplenishmentDecision(
+    inventoryItem.quantity_available,
+    incomingQty,
+    inventoryItem.reorder_point
+  )
 
   const getStockPercentage = () => {
     const available = inventoryItem.quantity_available
@@ -241,7 +251,43 @@ export default function StockSettingsPanel({ inventoryItem, onClose, onSave }: S
                     <p className="text-xs text-gray-600 mb-1">Available</p>
                     <p className="text-2xl font-bold text-green-600">{formatNumber(inventoryItem.quantity_available)}</p>
                   </div>
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <p className="text-xs text-gray-600 mb-1">Incoming (Total)</p>
+                    <p className="text-2xl font-bold text-blue-600">{formatNumber(incomingQty)}</p>
+                    {incomingBreakdown && incomingQty > 0 && (
+                      <p className="mt-1 text-xs text-gray-600">
+                        {incomingBreakdown.manufacturer > 0 && incomingBreakdown.transfer > 0
+                          ? `Manufacturer ${formatNumber(incomingBreakdown.manufacturer)} · Transfers ${formatNumber(incomingBreakdown.transfer)}`
+                          : incomingBreakdown.transfer > 0
+                            ? `From warehouse transfers`
+                            : `From manufacturer orders`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-4 col-span-2">
+                    <p className="text-xs text-gray-600 mb-1">Inventory Position (Available + Incoming)</p>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {formatNumber(inventoryItem.quantity_available + incomingQty)}
+                    </p>
+                  </div>
                 </div>
+                {replenishmentDecision.code !== 'normal' && (
+                  <div
+                    className={`mt-3 rounded-lg p-3 text-sm ${
+                      replenishmentDecision.code === 'replenishment_incoming'
+                        ? 'bg-blue-50 text-blue-900'
+                        : 'bg-red-50 text-red-900'
+                    }`}
+                  >
+                    <span className="font-semibold">{replenishmentDecision.label}</span>
+                    {replenishmentDecision.code === 'replenishment_incoming' && (
+                      <span> — available stock is low, but on-order quantity covers the reorder point. A duplicate order is not required.</span>
+                    )}
+                    {replenishmentDecision.code === 'additional_reorder_required' && (
+                      <span> — even with incoming stock, the inventory position stays at or below the reorder point.</span>
+                    )}
+                  </div>
+                )}
                 {inventoryItem.total_value !== null && (
                   <div className="mt-3 bg-blue-50 rounded-lg p-3 flex items-center justify-between">
                     <span className="text-sm text-blue-900">Total Inventory Value</span>

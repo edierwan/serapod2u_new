@@ -561,7 +561,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'stock-transfer':
         return <StockTransferView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-movements':
-        return <StockMovementReportView userProfile={userProfile} onViewChange={handleViewChange} />
+        return <StockMovementReportView userProfile={userProfile} onViewChange={handleViewChange} initialSearch={initialTargetId} />
       case 'migration':
         return <MigrationView userProfile={userProfile} />
       case 'organizations':

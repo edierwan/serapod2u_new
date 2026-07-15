@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { historicalQuantityAfter } from '@/lib/inventory/stock-movement-history'
 
 const parseUUID = (value: string | null) => {
   if (!value) return null
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       .from('v_stock_movements_display')
       .select(
         `
+          id,
           created_at,
           movement_type,
           variant_id,
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest) {
         `
       )
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(500)
 
     if (orderId) {
@@ -62,7 +65,7 @@ export async function GET(request: NextRequest) {
       to_organization_id: row.to_organization_id,
       before: row.quantity_before,
       change: row.quantity_change,
-      after: row.quantity_after,
+      after: historicalQuantityAfter(row.quantity_before, row.quantity_change),
       reference_type: row.reference_type,
       reference_id: row.reference_id
     }))

@@ -1,14 +1,15 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import NotificationTypesTab from './NotificationTypesTab'
 
 const types = [
   ['order', 'order_submitted', 'Order Submitted'],
   ['document', 'document_created', 'Document Created'],
   ['inventory', 'low_stock', 'Low Stock'],
+  ['inventory', 'stock_count_posting_verification', 'Stock Count Posting Verification'],
   ['qr', 'qr_scanned', 'QR Scanned'],
   ['user', 'user_created', 'User Created'],
 ].map(([category, event_code, event_name]) => ({
@@ -18,7 +19,7 @@ const types = [
   event_name,
   event_description: `${event_name} description`,
   default_enabled: true,
-  available_channels: ['whatsapp', 'email', 'sms'],
+  available_channels: event_code === 'stock_count_posting_verification' ? ['email'] : ['whatsapp', 'email', 'sms'],
   is_system: false,
 }))
 
@@ -47,6 +48,8 @@ vi.mock('@/lib/hooks/useSupabaseAuth', () => ({
 }))
 
 vi.mock('./NotificationFlowDrawer', () => ({ default: () => null }))
+
+afterEach(cleanup)
 
 describe('NotificationTypesTab', () => {
   it('shows the four routing presets, provider state, summary, and required categories', async () => {
@@ -80,5 +83,18 @@ describe('NotificationTypesTab', () => {
     await screen.findByRole('heading', { name: 'Notification Types' })
     await userEvent.click(screen.getAllByRole('button', { name: /Email Only/ })[0])
     expect(screen.getAllByText('Send all notifications via Email.').length).toBeGreaterThan(1)
+  })
+
+  it('shows Stock Count verification under Inventory & Stock as email-only', async () => {
+    render(<NotificationTypesTab userProfile={{
+      id: 'user-1', organization_id: 'org-1',
+      organizations: { id: 'org-1', org_type_code: 'HQ' }, roles: { role_level: 1 },
+    }} />)
+    await screen.findByRole('heading', { name: 'Notification Types' })
+    await userEvent.click(screen.getByText('Inventory & Stock'))
+    expect(screen.getByText('Stock Count Posting Verification')).toBeTruthy()
+    const routing = screen.getByLabelText('Stock Count Posting Verification routing') as HTMLSelectElement
+    expect(routing.value).toBe('email_only')
+    expect(routing.disabled).toBe(true)
   })
 })

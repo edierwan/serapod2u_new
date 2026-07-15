@@ -404,6 +404,10 @@ export async function GET(request: NextRequest) {
 
                         if (channel === 'email') {
                             addRecipients(splitConfiguredRecipients(recipientConfig.custom_emails))
+                            if (Array.isArray(recipientConfig.manual_email_addresses)) {
+                                const { normalizeAndDedupeManualEmails } = await import('@/lib/notifications/manualEmailAddresses')
+                                addRecipients(normalizeAndDedupeManualEmails(recipientConfig.manual_email_addresses))
+                            }
                         } else {
                             addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
                         }

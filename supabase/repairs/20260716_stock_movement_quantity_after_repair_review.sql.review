@@ -1,0 +1,63 @@
+-- REVIEW ONLY: legacy stock_movements.quantity_after repair.
+--
+-- This file is intentionally outside supabase/migrations so automated migration
+-- runners cannot apply it. It changes only quantity_after, runs transactionally,
+-- and rolls back by default. Replace the final ROLLBACK with COMMIT only after
+-- reviewing the previews, propagated stock_adjustment audit metadata, backups,
+-- and an approved maintenance window.
+
+BEGIN;
+
+-- Affected row count.
+SELECT count(*) AS affected_rows
+FROM public.stock_movements
+WHERE quantity_after IS DISTINCT FROM quantity_before + quantity_change;
+
+-- Sample before/corrected values and exact movement scope.
+SELECT
+  id,
+  company_id,
+  variant_id,
+  from_organization_id,
+  to_organization_id,
+  movement_type,
+  reference_type,
+  reference_id,
+  created_at,
+  quantity_before,
+  quantity_change,
+  quantity_after AS stored_quantity_after,
+  quantity_before + quantity_change AS corrected_quantity_after
+FROM public.stock_movements
+WHERE quantity_after IS DISTINCT FROM quantity_before + quantity_change
+ORDER BY created_at DESC, id DESC
+LIMIT 100;
+
+-- Separately review adjustment-item metadata that may have copied a corrupted
+-- closing balance. This script intentionally does not update that table.
+SELECT
+  sm.id AS movement_id,
+  sm.reference_id,
+  sm.variant_id,
+  sm.quantity_before,
+  sm.quantity_change,
+  sm.quantity_after AS stored_quantity_after,
+  sm.quantity_before + sm.quantity_change AS corrected_quantity_after
+FROM public.stock_movements sm
+WHERE sm.movement_type = 'adjustment'
+  AND sm.quantity_after IS DISTINCT FROM sm.quantity_before + sm.quantity_change
+ORDER BY sm.created_at DESC, sm.id DESC
+LIMIT 100;
+
+-- The only repair operation. It does not touch quantity_before,
+-- quantity_change, product_inventory, allocated stock, or available stock.
+UPDATE public.stock_movements
+SET quantity_after = quantity_before + quantity_change
+WHERE quantity_after IS DISTINCT FROM quantity_before + quantity_change;
+
+-- Must be zero before an approved COMMIT.
+SELECT count(*) AS remaining_invalid_rows
+FROM public.stock_movements
+WHERE quantity_after IS DISTINCT FROM quantity_before + quantity_change;
+
+ROLLBACK;

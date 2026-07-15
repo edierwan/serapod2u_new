@@ -22,13 +22,15 @@ import { Badge } from "../ui/badge"
 import {
     GitBranch, Users, MessageSquare, TestTube, History,
     ArrowRight, CheckCircle2, AlertCircle, Loader2, Play,
-    User as UserIcon, Building2, MessageCircle, Copy, RefreshCw, Trash2, Info
+    User as UserIcon, Building2, MessageCircle, Mail, Copy, RefreshCw, Trash2, Info
 } from 'lucide-react'
 import { ScrollArea } from "../ui/scroll-area"
 import { UserMultiSelect } from "./recipients/UserMultiSelect"
 import { RecipientsPreviewPopover } from "./recipients/RecipientsPreviewPopover"
 import { getTemplatesForEvent, Template } from "../../config/notificationTemplates"
 import { parseManualPhoneInput, normalizeAndDedupeManualPhones, type ManualPhoneCountry } from "@/lib/notifications/manualPhoneNumbers"
+import { normalizeAndDedupeManualEmails, parseManualEmailInput } from '@/lib/notifications/manualEmailAddresses'
+import { sanitizeStockCountNotificationConfig } from '@/lib/notifications/stockCountNotificationConfig'
 
 interface NotificationFlowDrawerProps {
     open: boolean
@@ -69,7 +71,8 @@ export default function NotificationFlowDrawer({
 
     // Manual WhatsApp Numbers (raw textarea input + active recipient source focus)
     const [manualRawInput, setManualRawInput] = useState<string>('')
-    const [activeSource, setActiveSource] = useState<'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'roles'>('consumer')
+    const [manualEmailRawInput, setManualEmailRawInput] = useState<string>('')
+    const [activeSource, setActiveSource] = useState<'consumer' | 'dynamic_org' | 'users' | 'manual_whatsapp' | 'manual_email' | 'roles'>('consumer')
     const [saveError, setSaveError] = useState<string | null>(null)
     const [savingChanges, setSavingChanges] = useState(false)
 
@@ -96,6 +99,10 @@ export default function NotificationFlowDrawer({
             Object.assign(targets, existingConfig.recipient_targets)
         }
 
+        const storedTemplates = setting?.templates || {}
+        const verificationPreset = type.event_code === 'stock_count_posting_verification'
+            ? getTemplatesForEvent(type.event_code, 'email')[0]
+            : null
         const safeSetting = {
             ...setting,
             enabled: setting?.enabled ?? false,
@@ -107,7 +114,9 @@ export default function NotificationFlowDrawer({
                 ...existingConfig
             },
             channels_enabled: setting?.channels_enabled || [],
-            templates: setting?.templates || {}
+            templates: verificationPreset && !storedTemplates.email
+                ? { ...storedTemplates, email: verificationPreset.body }
+                : storedTemplates
         }
         setLocalSetting(safeSetting)
         setResolvedRecipients([])
@@ -119,10 +128,14 @@ export default function NotificationFlowDrawer({
             ? existingConfig.manual_whatsapp_numbers
             : []
         setManualRawInput(existingManual.join('\n'))
+        const existingEmails: string[] = Array.isArray(existingConfig.manual_email_addresses) ? existingConfig.manual_email_addresses : []
+        setManualEmailRawInput(existingEmails.join('\n'))
         setSaveError(null)
 
         // Pick first enabled source as active for the right-side panel
-        if (targets.consumer) setActiveSource('consumer')
+        if (type.event_code === 'stock_count_posting_verification' && targets.users) setActiveSource('users')
+        else if (type.event_code === 'stock_count_posting_verification') setActiveSource('manual_email')
+        else if (targets.consumer) setActiveSource('consumer')
         else if (targets.dynamic_org) setActiveSource('dynamic_org')
         else if (targets.users) setActiveSource('users')
         else if (existingManual.length > 0) setActiveSource('manual_whatsapp')
@@ -131,6 +144,7 @@ export default function NotificationFlowDrawer({
 
     // Live parse manual whatsapp numbers for the right-side panel
     const manualParse = useMemo(() => parseManualPhoneInput(manualRawInput), [manualRawInput])
+    const manualEmailParse = useMemo(() => parseManualEmailInput(manualEmailRawInput), [manualEmailRawInput])
     const manualEnabled = manualParse.valid.length > 0 || manualRawInput.trim().length > 0
 
     // Sync valid normalized numbers into recipient_config whenever they change
@@ -144,6 +158,14 @@ export default function NotificationFlowDrawer({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [manualParse])
+
+    useEffect(() => {
+        const normalized = manualEmailParse.valid.map((value) => value.normalized)
+        const current: string[] = localSetting?.recipient_config?.manual_email_addresses || []
+        const same = current.length === normalized.length && current.every((value, index) => value === normalized[index])
+        if (!same) updateRecipientConfig({ manual_email_addresses: normalized })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [manualEmailParse])
 
     useEffect(() => {
         if (activeTab === 'logs' && open) {
@@ -270,7 +292,6 @@ export default function NotificationFlowDrawer({
                 product_name: 'Cellera Hero',
                 variant_name: 'Deluxe Cartridge [Keladi Cheese]',
                 sku: 'CLR-DLX-KC-001',
-                warehouse_name: 'Main Warehouse KL',
                 available_qty: '15',
                 reorder_point: '20',
                 reorder_qty: '100',
@@ -345,15 +366,28 @@ export default function NotificationFlowDrawer({
             setActiveSource('manual_whatsapp')
             return
         }
+        if (manualEmailParse.invalid.length > 0) {
+            setSaveError(`There are ${manualEmailParse.invalid.length} invalid email address(es). Fix or remove them before saving.`)
+            setActiveTab('recipients')
+            setActiveSource('manual_email')
+            return
+        }
         setSaveError(null)
         // Persist normalized & deduped manual numbers
         const cleanManual = normalizeAndDedupeManualPhones(manualParse.valid.map((v) => v.normalized))
+        const cleanEmails = normalizeAndDedupeManualEmails(manualEmailParse.valid.map((value) => value.normalized))
+        const verificationOnly = type.event_code === 'stock_count_posting_verification'
+        const baseRecipientConfig = {
+            ...localSetting.recipient_config,
+            manual_whatsapp_numbers: cleanManual,
+            manual_email_addresses: cleanEmails,
+        }
         const finalSetting = {
             ...localSetting,
-            recipient_config: {
-                ...localSetting.recipient_config,
-                manual_whatsapp_numbers: cleanManual,
-            },
+            channels_enabled: verificationOnly ? ['email'] : localSetting.channels_enabled,
+            recipient_config: verificationOnly
+                ? sanitizeStockCountNotificationConfig(baseRecipientConfig, cleanEmails)
+                : baseRecipientConfig,
         }
 
         try {
@@ -496,7 +530,7 @@ export default function NotificationFlowDrawer({
                                         <p className="text-xs text-blue-700/80 mt-0.5">
                                             {(() => {
                                                 const t = localSetting.recipient_config?.recipient_targets || {}
-                                                const enabledSources = [t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp'].filter(Boolean) as string[]
+                                                const enabledSources = [t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp', (manualEmailParse.valid.length > 0) && 'Manual Email'].filter(Boolean) as string[]
                                                 if (enabledSources.length === 0) return 'No recipients selected'
                                                 return enabledSources.join(' • ')
                                             })()}
@@ -506,14 +540,16 @@ export default function NotificationFlowDrawer({
                                         localSetting.recipient_config?.recipient_targets?.roles ||
                                         localSetting.recipient_config?.recipient_targets?.dynamic_org ||
                                         localSetting.recipient_config?.recipient_targets?.users ||
-                                        manualParse.valid.length > 0) && (
+                                        manualParse.valid.length > 0 || manualEmailParse.valid.length > 0) && (
                                             <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-800" onClick={() => {
                                                 updateRecipientConfig({
                                                     recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
                                                     include_consumer: false,
                                                     manual_whatsapp_numbers: [],
+                                                    manual_email_addresses: [],
                                                 })
                                                 setManualRawInput('')
+                                                setManualEmailRawInput('')
                                             }}>
                                                 Clear All
                                             </Button>
@@ -581,7 +617,24 @@ export default function NotificationFlowDrawer({
                                                     }
                                                 },
                                             },
-                                        ] as const).map((src) => {
+                                            {
+                                                key: 'manual_email',
+                                                icon: <Mail className="w-4 h-4 text-violet-600" />,
+                                                title: 'Manual Email Addresses',
+                                                subtitle: 'Add authorized email recipients manually',
+                                                enabled: manualEmailParse.valid.length > 0 || manualEmailRawInput.trim().length > 0,
+                                                onToggle: (c: boolean) => {
+                                                    if (!c) {
+                                                        setManualEmailRawInput('')
+                                                        updateRecipientConfig({ manual_email_addresses: [] })
+                                                    } else setActiveSource('manual_email')
+                                                },
+                                            },
+                                        ] as const).filter((src) => {
+                                            if (type.event_code === 'stock_count_posting_verification') return src.key === 'users' || src.key === 'manual_email'
+                                            if (src.key === 'manual_email') return type.available_channels?.includes('email')
+                                            return true
+                                        }).map((src) => {
                                             const isActive = activeSource === src.key
                                             return (
                                                 <button
@@ -899,6 +952,17 @@ export default function NotificationFlowDrawer({
                                                 )}
                                             </div>
                                         )}
+
+                                        {activeSource === 'manual_email' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-violet-600" /><h4 className="text-sm font-semibold text-gray-900">Manual Email Addresses</h4></div>
+                                                <p className="text-xs text-gray-500">Enter email addresses separated by commas, semicolons, spaces, or new lines. Addresses are normalized and deduplicated case-insensitively.</p>
+                                                <Textarea placeholder="approver@example.com\nmanager@example.com" className="min-h-[110px] font-mono text-xs" value={manualEmailRawInput} onChange={(event) => setManualEmailRawInput(event.target.value)} />
+                                                <div className="flex justify-between text-[11px] text-gray-500"><span>{manualEmailParse.valid.length} valid · {manualEmailParse.invalid.length} invalid · {manualEmailParse.duplicatesRemoved} duplicate removed</span><Button type="button" variant="ghost" size="sm" onClick={() => setManualEmailRawInput('')}><Trash2 className="mr-1 h-3 w-3" />Clear All</Button></div>
+                                                {manualEmailParse.valid.length > 0 && <div className="overflow-hidden rounded-md border border-emerald-200"><div className="bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">Valid Emails ({manualEmailParse.valid.length})</div><div className="max-h-36 divide-y overflow-y-auto">{manualEmailParse.valid.map((entry) => <div key={entry.normalized} className="px-3 py-2 font-mono text-xs">{entry.normalized}</div>)}</div></div>}
+                                                {manualEmailParse.invalid.length > 0 && <div className="overflow-hidden rounded-md border border-red-200"><div className="bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">Invalid Entries ({manualEmailParse.invalid.length})</div><div className="max-h-32 divide-y overflow-y-auto">{manualEmailParse.invalid.map((entry, index) => <div key={`${entry.original}-${index}`} className="flex justify-between px-3 py-2 text-xs"><span className="font-mono text-red-700">{entry.original}</span><span className="text-red-500">{entry.reason}</span></div>)}</div></div>}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -907,19 +971,21 @@ export default function NotificationFlowDrawer({
                                     const t = localSetting.recipient_config?.recipient_targets || {}
                                     const usersCount = t.users ? (localSetting.recipient_config?.recipient_users?.length || 0) : 0
                                     const manualCount = manualParse.valid.length
+                                    const manualEmailCount = manualEmailParse.valid.length
                                     const consumersCount = t.consumer ? 1 : 0 // estimated (resolved at runtime)
                                     const orgsCount = t.dynamic_org ? 1 : 0 // estimated
-                                    const totalUnique = usersCount + manualCount + consumersCount + orgsCount
+                                    const totalUnique = usersCount + manualCount + manualEmailCount + consumersCount + orgsCount
                                     return (
                                         <div className="border-t pt-4">
                                             <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Final Recipient Preview</div>
                                             <p className="text-[11px] text-gray-400 mb-3">Estimated unique recipients (real counts resolved per-event at send time)</p>
-                                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                 {[
                                                     { label: 'Consumers', value: consumersCount, icon: <UserIcon className="w-3 h-3" />, accent: 'text-blue-600' },
                                                     { label: 'Organizations', value: orgsCount, icon: <Building2 className="w-3 h-3" />, accent: 'text-purple-600' },
                                                     { label: 'Users', value: usersCount, icon: <Users className="w-3 h-3" />, accent: 'text-emerald-600' },
                                                     { label: 'Manual WhatsApp', value: manualCount, icon: <MessageCircle className="w-3 h-3" />, accent: 'text-green-600' },
+                                                    { label: 'Manual Email', value: manualEmailCount, icon: <Mail className="w-3 h-3" />, accent: 'text-violet-600' },
                                                     { label: 'Total Unique Recipients', value: totalUnique, icon: <CheckCircle2 className="w-3 h-3" />, accent: 'text-indigo-700', highlight: true },
                                                 ].map((c) => (
                                                     <div key={c.label} className={`rounded-md border p-2.5 ${c.highlight ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-gray-200'}`}>
@@ -1065,13 +1131,25 @@ export default function NotificationFlowDrawer({
                                                 product_name: 'Cellera Hero',
                                                 variant_name: 'Deluxe Cartridge [Keladi Cheese]',
                                                 sku: 'CLR-DLX-KC-001',
-                                                warehouse_name: 'Main Warehouse KL',
                                                 available_qty: '15',
                                                 reorder_point: '20',
                                                 reorder_qty: '100',
                                                 quantity_received: '500',
                                                 total_on_hand: '515',
                                                 inventory_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/inventory`,
+                                                // Stock Count verification variables (safe fixture only)
+                                                verification_code: '12345678',
+                                                total_variants_counted: '4',
+                                                variance_items: '4',
+                                                net_quantity_adjustment: '-5,595',
+                                                estimated_adjustment_value: 'RM -77,361.21',
+                                                organization_name: 'Serapod2U',
+                                                count_date: '14 Jul 2026',
+                                                count_type: 'Full Count',
+                                                reference_name: '—',
+                                                requested_by: 'Admin User',
+                                                stock_count_requested_at: '15 Jul 2026, 10:30 AM (Asia/Kuala_Lumpur)',
+                                                posting_note: 'Scheduled warehouse reconciliation',
                                                 // QR / Consumer variables
                                                 qr_code: 'QR-ABC-12345',
                                                 scan_location: 'Kuala Lumpur, MY',
@@ -1119,7 +1197,7 @@ export default function NotificationFlowDrawer({
                                                 {/* Template Library */}
                                                 <div className="space-y-2">
                                                     <Label>Template Library</Label>
-                                                    <Select onValueChange={(val) => {
+                                                    <Select value={templatesForChannel.find(template => template.body === currentTemplate)?.id || ''} onValueChange={(val) => {
                                                         const selected = templatesForChannel.find(t => t.id === val);
                                                         if (selected) updateTemplate(channel, selected.body);
                                                     }}>
@@ -1167,6 +1245,8 @@ export default function NotificationFlowDrawer({
                                                                 return '{{order_no}}, {{status}}, {{customer_name}}, {{deleted_by}}, {{deleted_at}}, {{order_url}}';
                                                             if (code === 'manufacturer_scan_complete')
                                                                 return '{{order_no}}, {{batch_id}}, {{total_master_codes}}, {{total_unique_codes}}, {{production_completed_at}}, {{completed_by}}, {{customer_name}}, {{balance_document_no}}, {{order_url}}';
+                                                            if (code === 'stock_count_posting_verification')
+                                                                return '{{verification_code}}, {{warehouse_name}}, {{organization_name}}, {{count_date}}, {{count_type}}, {{reference_name}}, {{requested_by}}, {{stock_count_requested_at}}, {{total_variants_counted}}, {{variance_items}}, {{net_quantity_adjustment}}, {{estimated_adjustment_value}}, {{posting_note}}';
                                                             if (cat === 'document')
                                                                 return '{{doc_no}}, {{order_no}}, {{doc_date}}, {{amount}}, {{deposit_amount}}, {{balance_amount}}, {{buyer_name}}, {{seller_name}}, {{invoice_no}}, {{payment_no}}, {{receipt_no}}, {{acknowledged_by}}, {{acknowledged_at}}, {{document_url}}';
                                                             if (cat === 'inventory')
@@ -1186,7 +1266,7 @@ export default function NotificationFlowDrawer({
                                                         <Label className="text-xs text-gray-500 uppercase mb-2 block">Example Output</Label>
                                                         {channel === 'email' ? (
                                                             <div className="space-y-2 text-sm bg-white p-3 border rounded">
-                                                                <div className="border-b pb-2 mb-2 font-medium">Subject: Notification Subject</div>
+                                                                <div className="border-b pb-2 mb-2 font-medium">Subject: {resolvePreview(templatesForChannel.find(template => template.body === currentTemplate)?.subject || 'Notification Subject')}</div>
                                                                 <pre className="whitespace-pre-wrap font-sans text-gray-700">
                                                                     {resolvePreview(currentTemplate)}
                                                                 </pre>

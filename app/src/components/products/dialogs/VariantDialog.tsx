@@ -14,6 +14,11 @@ import {
   ImageIcon,
 } from 'lucide-react'
 import { getStorageUrl } from '@/lib/utils'
+import {
+  PRODUCT_CODE_MAX_LENGTH,
+  normalizeProductCode,
+  validateProductCode,
+} from '@/lib/products/product-code'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -43,6 +48,7 @@ export interface Variant {
   variant_name: string
   attributes: Record<string, any>
   barcode: string | null
+  product_code: string | null
   manufacturer_sku: string | null
   manual_sku: string | null
   base_cost: number | null
@@ -147,6 +153,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
             variant_name: variant.variant_name || '',
             attributes: variant.attributes || {},
             barcode: variant.barcode || '',
+            product_code: variant.product_code || '',
             manufacturer_sku: variant.manufacturer_sku || '',
             manual_sku: variant.manual_sku || '',
             base_cost: variant.base_cost,
@@ -162,6 +169,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
             variant_name: '',
             attributes: {},
             barcode: '',
+            product_code: '',
             manufacturer_sku: '',
             manual_sku: '',
             base_cost: null,
@@ -177,6 +185,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
 
   const [formData, setFormData] = useState<Partial<Variant>>(mkInitial)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isValidatingProductCode, setIsValidatingProductCode] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -231,6 +240,8 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
     const e: Record<string, string> = {}
     if (!(formData.product_id || variant?.product_id)) e.product_id = 'Product is required'
     if (!formData.variant_name) e.variant_name = 'Name is required'
+    const productCodeError = validateProductCode(formData.product_code)
+    if (productCodeError) e.product_code = productCodeError
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -294,12 +305,44 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
     })
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return
     const finalProductId = formData.product_id || variant?.product_id || ''
+    const productCode = normalizeProductCode(formData.product_code)
+
+    setIsValidatingProductCode(true)
+    try {
+      const response = await fetch('/api/product-variants/validate-product-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: finalProductId,
+          productCode,
+          variantId: variant?.id,
+        }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setErrors((previous) => ({
+          ...previous,
+          product_code: result.error || 'Failed to validate Product Code.',
+        }))
+        return
+      }
+    } catch {
+      setErrors((previous) => ({
+        ...previous,
+        product_code: 'Failed to validate Product Code.',
+      }))
+      return
+    } finally {
+      setIsValidatingProductCode(false)
+    }
+
     onSave({
       ...formData,
       product_id: finalProductId,
+      product_code: productCode,
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
@@ -375,6 +418,25 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="product_code">Product Code <span className="text-xs text-gray-500">(Optional, 5 chars max)</span></Label>
+            <Input
+              id="product_code"
+              value={formData.product_code || ''}
+              onChange={(event) => {
+                setFormData((previous) => ({ ...previous, product_code: event.target.value.toUpperCase() }))
+                if (errors.product_code) setErrors((previous) => ({ ...previous, product_code: '' }))
+              }}
+              onBlur={() => setFormData((previous) => ({ ...previous, product_code: normalizeProductCode(previous.product_code) || '' }))}
+              maxLength={PRODUCT_CODE_MAX_LENGTH}
+              placeholder="Enter product code"
+              className={`uppercase ${errors.product_code ? 'border-red-500' : ''}`}
+              aria-invalid={Boolean(errors.product_code)}
+              aria-describedby={errors.product_code ? 'product_code_error' : undefined}
+            />
+            {errors.product_code && <p id="product_code_error" className="text-xs text-red-500">{errors.product_code}</p>}
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="sku">Manufacturer SKU <span className="text-xs text-gray-500">(Auto-generated)</span></Label>
             <Input id="sku" value={formData.manufacturer_sku || ''} readOnly className="bg-gray-100 cursor-not-allowed text-gray-700" />
           </div>
@@ -420,9 +482,9 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         </div>
 
         <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700">
-            {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : 'Save'}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={isSaving || isValidatingProductCode} className="bg-blue-600 hover:bg-blue-700">
+            {isSaving || isValidatingProductCode ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{isSaving ? 'Saving...' : 'Validating...'}</> : 'Save'}
           </Button>
         </div>
       </div>

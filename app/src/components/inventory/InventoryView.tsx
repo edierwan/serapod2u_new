@@ -25,6 +25,15 @@ import {
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
 import StockSettingsPanel from './StockSettingsPanel'
+import IncomingStockDialog from './IncomingStockDialog'
+import {
+  buildIncomingMap,
+  getIncomingBreakdown,
+  getReplenishmentDecision,
+  incomingKey,
+  type IncomingBreakdown,
+  type IncomingStockRow
+} from '@/lib/inventory/incoming-stock'
 
 interface InventoryItem {
   id: string
@@ -74,6 +83,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
+  const [incomingMap, setIncomingMap] = useState<Map<string, IncomingStockRow>>(new Map())
+  const [incomingDetailItem, setIncomingDetailItem] = useState<InventoryItem | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -96,6 +107,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   useEffect(() => {
     if (isReady) {
       fetchInventory()
+      fetchIncoming()
       fetchLocations()
       fetchProducts()
       fetchVariants()
@@ -202,6 +214,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           aValue = a.quantity_available
           bValue = b.quantity_available
           break
+        case 'incoming':
+          aValue = getIncomingQty(a)
+          bValue = getIncomingQty(b)
+          break
+        case 'position':
+          aValue = a.quantity_available + getIncomingQty(a)
+          bValue = b.quantity_available + getIncomingQty(b)
+          break
         case 'total_value':
           aValue = a.total_value ?? 0
           bValue = b.total_value ?? 0
@@ -228,7 +248,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     })
 
     return sorted
-  }, [filteredInventory, sortColumn, sortDirection])
+  }, [filteredInventory, sortColumn, sortDirection, incomingMap])
 
   const paginatedInventory = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage
@@ -290,21 +310,22 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       })
       const headers = [
         'No.', 'Product Name', 'Product Code / SKU', 'Variant', 'Variant Code',
-        'Location / Warehouse', 'On Hand', 'Allocated', 'Available', 'Stock Status',
+        'Location / Warehouse', 'On Hand', 'Allocated', 'Available', 'Incoming',
+        'Inventory Position', 'Stock Status', 'Replenishment',
         'Reorder Level', 'Unit Cost (RM)', 'Total Value (RM)', 'Last Updated'
       ]
 
-      worksheet.mergeCells('A1:N1')
+      worksheet.mergeCells('A1:Q1')
       worksheet.getCell('A1').value = 'Current Inventory Report'
       worksheet.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF1F2937' } }
       worksheet.getCell('A1').alignment = { vertical: 'middle' }
       worksheet.getRow(1).height = 26
 
-      worksheet.mergeCells('A2:N2')
+      worksheet.mergeCells('A2:Q2')
       worksheet.getCell('A2').value = `Generated: ${new Date().toLocaleString('en-MY')}`
       worksheet.getCell('A2').font = { italic: true, color: { argb: 'FF4B5563' } }
 
-      worksheet.mergeCells('A3:N3')
+      worksheet.mergeCells('A3:Q3')
       worksheet.getCell('A3').value = `Organization: ${userProfile?.organizations?.org_name || '-'}`
       worksheet.getCell('A3').font = { color: { argb: 'FF4B5563' } }
 
@@ -321,6 +342,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           .join(' — ') || '-'
         const updatedAt = item.updated_at ? new Date(item.updated_at) : null
         const validUpdatedAt = updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : '-'
+        const incomingQty = getIncomingQty(item)
+        const decision = getReplenishmentDecision(item.quantity_available, incomingQty, item.reorder_point)
 
         worksheet.addRow([
           index + 1,
@@ -332,7 +355,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           item.quantity_on_hand,
           item.quantity_allocated,
           item.quantity_available,
+          incomingQty,
+          decision.inventoryPosition,
           getStockStatus(item.quantity_available, item.reorder_point),
+          decision.label,
           item.reorder_point,
           canViewCost ? (item.unit_cost ?? '-') : '-',
           canViewValue ? (item.total_value ?? '-') : '-',
@@ -340,20 +366,21 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         ])
       })
 
-      worksheet.autoFilter = { from: 'A5', to: 'N5' }
+      worksheet.autoFilter = { from: 'A5', to: 'Q5' }
       worksheet.columns = [
         { width: 8 }, { width: 30 }, { width: 22 }, { width: 26 }, { width: 20 },
-        { width: 32 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 16 },
+        { width: 32 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 },
+        { width: 16 }, { width: 16 }, { width: 30 },
         { width: 15 }, { width: 16 }, { width: 18 }, { width: 22 }
       ]
       worksheet.getColumn(1).alignment = { horizontal: 'center' }
-      ;[7, 8, 9, 11].forEach(column => {
+      ;[7, 8, 9, 10, 11, 14].forEach(column => {
         worksheet.getColumn(column).numFmt = '#,##0.00'
       })
-      ;[12, 13].forEach(column => {
+      ;[15, 16].forEach(column => {
         worksheet.getColumn(column).numFmt = '"RM" #,##0.00;[Red]-"RM" #,##0.00'
       })
-      worksheet.getColumn(14).numFmt = 'dd mmm yyyy hh:mm'
+      worksheet.getColumn(17).numFmt = 'dd mmm yyyy hh:mm'
 
       for (let rowNumber = 6; rowNumber <= worksheet.rowCount; rowNumber += 1) {
         const row = worksheet.getRow(rowNumber)
@@ -399,6 +426,36 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     } finally {
       setExporting(false)
     }
+  }
+
+  // Incoming / On Order stock from confirmed H2M orders (v_incoming_stock).
+  // Degrades gracefully to "no incoming" when the view has not been migrated yet.
+  const fetchIncoming = async () => {
+    if (!isReady) return
+    try {
+      const { data, error } = await supabase
+        .from('v_incoming_stock' as any)
+        .select('*')
+      if (error) throw error
+      setIncomingMap(buildIncomingMap((data || []) as unknown as IncomingStockRow[]))
+    } catch (error) {
+      console.warn('v_incoming_stock unavailable, incoming quantities hidden', error)
+      setIncomingMap(new Map())
+    }
+  }
+
+  // Function declarations (hoisted) — also called from the sort memo above.
+  function getIncomingRow(item: InventoryItem): IncomingStockRow | undefined {
+    return incomingMap.get(incomingKey(item.organization_id, item.variant_id))
+  }
+
+  /** Total Incoming = Manufacturer + Transfer. */
+  function getIncomingQty(item: InventoryItem): number {
+    return getIncomingRow(item)?.incoming_qty ?? 0
+  }
+
+  function getItemIncomingBreakdown(item: InventoryItem): IncomingBreakdown {
+    return getIncomingBreakdown(getIncomingRow(item))
   }
 
   const fetchInventory = async () => {
@@ -1006,6 +1063,22 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     return Math.min((available / reorderPoint) * 100, 100)
   }
 
+  // Replenishment decision (Available + Incoming). Shown ALONGSIDE the stock
+  // level badge — the physical Low Stock condition is never hidden.
+  const getReplenishmentBadge = (available: number, incoming: number, reorderPoint: number) => {
+    const decision = getReplenishmentDecision(available, incoming, reorderPoint)
+    switch (decision.code) {
+      case 'normal':
+        return null
+      case 'reorder_required':
+        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Reorder Required</Badge>
+      case 'replenishment_incoming':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Replenishment Incoming</Badge>
+      case 'additional_reorder_required':
+        return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Additional Reorder Required</Badge>
+    }
+  }
+
   const canEditSettings = () => {
     const roleLevel = userProfile?.roles?.role_level
     const orgType = userProfile?.organizations?.org_type_code
@@ -1036,6 +1109,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const totalValue = filteredInventory.reduce((sum, item) => sum + (item.total_value ?? 0), 0)
   const inStockItems = filteredInventory.filter(item => item.quantity_available > 0).length
   const lowStockItems = filteredInventory.filter(item => item.quantity_available <= item.reorder_point && item.quantity_available > 0).length
+  const lowStockWithIncoming = filteredInventory.filter(item =>
+    item.quantity_available <= item.reorder_point && getIncomingQty(item) > 0
+  ).length
   const outOfStockItems = filteredInventory.filter(item => item.quantity_available <= 0).length
   const inStockPercentage = filteredInventory.length > 0 ? Math.round((inStockItems / filteredInventory.length) * 100) : 0
 
@@ -1125,6 +1201,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             </div>
             <p className="text-gray-600 text-xs sm:text-sm mb-1">Low Stock</p>
             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{lowStockItems}</p>
+            {lowStockWithIncoming > 0 && (
+              <p className="text-xs text-blue-600 hidden sm:block">{lowStockWithIncoming} with incoming replenishment</p>
+            )}
           </CardContent>
         </Card>
 
@@ -1335,6 +1414,24 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {renderSortIcon('available')}
                   </div>
                 </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('incoming')}
+                >
+                  <div className="flex items-center">
+                    Incoming
+                    {renderSortIcon('incoming')}
+                  </div>
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('position')}
+                >
+                  <div className="flex items-center">
+                    Position
+                    {renderSortIcon('position')}
+                  </div>
+                </TableHead>
                 <TableHead>Stock Level</TableHead>
                 {canViewTotalValue() && (
                   <TableHead
@@ -1353,13 +1450,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={canEditSettings() ? 8 : 7} className="text-center py-8">
+                  <TableCell colSpan={canEditSettings() ? 10 : 9} className="text-center py-8">
                     Loading inventory...
                   </TableCell>
                 </TableRow>
               ) : inventory.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canEditSettings() ? 8 : 7} className="text-center py-8">
+                  <TableCell colSpan={canEditSettings() ? 10 : 9} className="text-center py-8">
                     No inventory items found
                   </TableCell>
                 </TableRow>
@@ -1401,8 +1498,41 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                       <span className="text-xs font-medium">{formatNumber(item.quantity_available)}</span>
                     </TableCell>
                     <TableCell>
+                      {getIncomingQty(item) > 0 ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => setIncomingDetailItem(item)}
+                            className="text-xs font-medium text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded-sm"
+                            title="View incoming orders and transfers"
+                          >
+                            {formatNumber(getIncomingQty(item))}
+                          </button>
+                          {(() => {
+                            const breakdown = getItemIncomingBreakdown(item)
+                            if (breakdown.transfer <= 0) return null
+                            return (
+                              <p className="text-xs text-gray-500">
+                                PO {formatNumber(breakdown.manufacturer)} · TRF {formatNumber(breakdown.transfer)}
+                              </p>
+                            )
+                          })()}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">0</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-medium">
+                        {formatNumber(item.quantity_available + getIncomingQty(item))}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       <div className="space-y-2">
-                        {getStockLevelBadge(item.quantity_available, item.reorder_point)}
+                        <div className="flex flex-wrap gap-1">
+                          {getStockLevelBadge(item.quantity_available, item.reorder_point)}
+                          {getReplenishmentBadge(item.quantity_available, getIncomingQty(item), item.reorder_point)}
+                        </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
                             className={`h-2 rounded-full ${item.quantity_available === 0 ? 'bg-red-500' :
@@ -1506,8 +1636,22 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             total_value: selectedItem.total_value,
             warehouse_location: selectedItem.warehouse_location
           }}
+          incomingQty={getIncomingQty(selectedItem)}
+          incomingBreakdown={getItemIncomingBreakdown(selectedItem)}
           onClose={handleCloseSettings}
           onSave={handleSaveSettings}
+        />
+      )}
+
+      {/* Incoming Stock Detail Dialog */}
+      {incomingDetailItem && (
+        <IncomingStockDialog
+          open={!!incomingDetailItem}
+          onClose={() => setIncomingDetailItem(null)}
+          variantId={incomingDetailItem.variant_id || ''}
+          warehouseOrgId={incomingDetailItem.organization_id || ''}
+          productName={incomingDetailItem.product_name || 'Product'}
+          variantName={incomingDetailItem.variant_name || ''}
         />
       )}
     </div>
