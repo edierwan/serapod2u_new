@@ -1,6 +1,1 @@
-revert(roadtour): restore Export to Accounting button with safe pre-check
-
-- Button checks locally if any AM has incentive_earned > 0 before calling API
-- If no incentive data: shows info toast instead of error
-- If incentive data exists: exports to accounting without errors
-- If API fails: shows error as toast, not destructive
+chore: cleanup commit-msg.txt
