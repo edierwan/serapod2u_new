@@ -22483,6 +22483,7 @@ export type Database = {
       product_variants: {
         Row: {
           additional_images: Json | null
+          alternative_name: string | null
           animation_url: string | null
           attributes: Json | null
           barcode: string | null
@@ -22509,6 +22510,7 @@ export type Database = {
         }
         Insert: {
           additional_images?: Json | null
+          alternative_name?: string | null
           animation_url?: string | null
           attributes?: Json | null
           barcode?: string | null
@@ -22535,6 +22537,7 @@ export type Database = {
         }
         Update: {
           additional_images?: Json | null
+          alternative_name?: string | null
           animation_url?: string | null
           attributes?: Json | null
           barcode?: string | null

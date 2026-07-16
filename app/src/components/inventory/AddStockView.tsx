@@ -10,6 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/use-toast'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getStorageUrl } from '@/lib/utils'
+import {
+  buildAddStockMovementParams,
+  fetchExistingStockForWarehouse,
+  type ExistingStockBalance,
+} from '@/lib/inventory/add-stock-inventory'
 import { 
   Package, 
   Plus,
@@ -92,12 +97,10 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   const [stockItems, setStockItems] = useState<StockItem[]>([])
   
   // Existing stock info
-  const [existingStock, setExistingStock] = useState<{
-    quantity_available: number
-    warehouse_name: string
-    warehouse_location: string | null
-    average_cost: number | null
-  } | null>(null)
+  const [existingStock, setExistingStock] = useState<ExistingStockBalance | null>(null)
+  const [existingStockLoading, setExistingStockLoading] = useState(false)
+  const [existingStockLoaded, setExistingStockLoaded] = useState(false)
+  const [existingStockError, setExistingStockError] = useState<string | null>(null)
   
   const [loading, setLoading] = useState(false)
   const [productsLoading, setProductsLoading] = useState(true)
@@ -115,8 +118,10 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   }, [isReady])
 
   useEffect(() => {
+    let cancelled = false
+
     if (selectedProduct) {
-      loadVariants(selectedProduct)
+      loadVariants(selectedProduct, () => cancelled)
       
       // Auto-select manufacturer based on product
       const product = products.find(p => p.id === selectedProduct)
@@ -131,56 +136,54 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       setSelectedManufacturer('')
       setExistingStock(null)
     }
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
-  // Fetch existing stock when variant changes
+  // Existing stock is scoped to the exact warehouse + variant combination.
   useEffect(() => {
+    let cancelled = false
+
     const fetchExistingStock = async () => {
-      if (!selectedVariant) {
-        setExistingStock(null)
+      setExistingStock(null)
+      setExistingStockLoaded(false)
+      setExistingStockError(null)
+
+      if (!selectedVariant || !selectedWarehouse) {
+        setExistingStockLoading(false)
         return
       }
 
+      setExistingStockLoading(true)
+
       try {
-        // Get existing inventory for this variant across all warehouses
-        const { data, error } = await supabase
-          .from('product_inventory')
-          .select(`
-            quantity_on_hand,
-            quantity_allocated,
-            warehouse_location,
-            average_cost,
-            organization:organizations(org_name)
-          `)
-          .eq('variant_id', selectedVariant)
-          .eq('is_active', true)
-          .gt('quantity_on_hand', 0)
-          .order('quantity_on_hand', { ascending: false })
-          .limit(1)
-          .maybeSingle()
+        const balance = await fetchExistingStockForWarehouse(
+          supabase,
+          selectedWarehouse,
+          selectedVariant
+        )
 
-        if (error) throw error
-
-        if (data) {
-          const orgData = data.organization as any
-          setExistingStock({
-            quantity_available: (data.quantity_on_hand || 0) - (data.quantity_allocated || 0),
-            warehouse_name: orgData?.org_name || 'Unknown',
-            warehouse_location: data.warehouse_location,
-            average_cost: data.average_cost
-          })
-        } else {
-          setExistingStock(null)
-        }
+        if (cancelled) return
+        setExistingStock(balance)
+        setExistingStockLoaded(true)
       } catch (error) {
+        if (cancelled) return
         console.error('Failed to fetch existing stock:', error)
         setExistingStock(null)
+        setExistingStockError('Unable to load existing stock for this warehouse.')
+      } finally {
+        if (!cancelled) setExistingStockLoading(false)
       }
     }
 
     fetchExistingStock()
-  }, [selectedVariant, supabase])
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedVariant, selectedWarehouse, supabase])
 
   const addItem = () => {
     if (!selectedProduct || !selectedVariant || !quantity) {
@@ -304,7 +307,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     }
   }
 
-  const loadVariants = async (productId: string) => {
+  const loadVariants = async (productId: string, isCancelled: () => boolean = () => false) => {
     try {
       const { data, error } = await supabase
         .from('product_variants')
@@ -314,6 +317,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         .order('variant_name')
 
       if (error) throw error
+      if (isCancelled()) return
       const variantsList: Variant[] = data || []
       setVariants(variantsList)
       
@@ -327,6 +331,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         }
       }
     } catch (error: any) {
+      if (isCancelled()) return
       toast({
         title: 'Error',
         description: `Failed to load variants: ${error.message}`,
@@ -364,15 +369,6 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       const locationsList: WarehouseLocation[] = data || []
       setWarehouseLocations(locationsList)
       
-      // Auto-select HQ if available
-      const hqLocation = locationsList.find((loc: WarehouseLocation) => 
-        loc.org_code === 'HQ' || loc.org_name.includes('Headquarter')
-      )
-      if (hqLocation) {
-        setSelectedWarehouse(hqLocation.id)
-      } else if (locationsList.length === 1) {
-        setSelectedWarehouse(locationsList[0].id)
-      }
     } catch (error: any) {
       console.error('Failed to load warehouse locations:', error)
     }
@@ -404,22 +400,17 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
       // Process all items sequentially
       for (const item of stockItems) {
-        const { error } = await supabase.rpc('record_stock_movement', {
-          p_movement_type: 'manual_in',
-          p_variant_id: item.variant_id,
-          p_organization_id: selectedWarehouse,
-          p_quantity_change: item.quantity,
-          p_unit_cost: item.unit_cost,
-          p_manufacturer_id: selectedManufacturer || null,
-          p_warehouse_location: warehouseLocationText || null,
-          p_reason: 'Manual stock addition',
-          p_notes: notes || null,
-          p_reference_type: 'manual',
-          p_reference_id: null,
-          p_reference_no: null,
-          p_company_id: userProfile.organizations.id,
-          p_created_by: userProfile.id
-        } as any)
+        const { error } = await supabase.rpc('record_stock_movement', buildAddStockMovementParams({
+          variantId: item.variant_id,
+          warehouseId: selectedWarehouse,
+          quantity: item.quantity,
+          unitCost: item.unit_cost,
+          manufacturerId: selectedManufacturer || null,
+          warehouseLocation: warehouseLocationText || null,
+          notes: notes || null,
+          companyId: userProfile.organizations.id,
+          createdBy: userProfile.id,
+        }) as any)
 
         if (error) throw error
       }
@@ -457,6 +448,9 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
   const selectedVariantData = variants.find(v => v.id === selectedVariant)
   const selectedProductData = products.find(p => p.id === selectedProduct)
+  const existingStockPending = Boolean(
+    selectedWarehouse && selectedVariant && !existingStockLoaded && !existingStockError
+  )
 
   return (
     <div className="space-y-6">
@@ -510,8 +504,15 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     Product <span className="text-red-500">*</span>
                   </label>
                   <Select 
-                    value={selectedProduct} 
-                    onValueChange={setSelectedProduct}
+                    value={selectedProduct}
+                    onValueChange={(value) => {
+                      setSelectedVariant('')
+                      setVariants([])
+                      setExistingStock(null)
+                      setExistingStockLoaded(false)
+                      setExistingStockError(null)
+                      setSelectedProduct(value)
+                    }}
                     disabled={productsLoading}
                   >
                     <SelectTrigger>
@@ -543,6 +544,9 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   <Select 
                     value={selectedVariant} 
                     onValueChange={(value) => {
+                      setExistingStock(null)
+                      setExistingStockLoaded(false)
+                      setExistingStockError(null)
                       setSelectedVariant(value)
                       const variant = variants.find(v => v.id === value)
                       if (variant?.base_cost) {
@@ -634,19 +638,28 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     </div>
 
                     {/* Existing Stock Info */}
-                    {existingStock && (
-                      <div className="mt-3 pt-3 border-t border-green-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Warehouse className="w-3.5 h-3.5 text-blue-600" />
-                          <span className="text-xs font-medium text-blue-700">Existing Stock</span>
-                        </div>
+                    <div className="mt-3 pt-3 border-t border-green-200">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Warehouse className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="text-xs font-medium text-blue-700">Existing Stock</span>
+                      </div>
+                      {!selectedWarehouse ? (
+                        <p className="text-xs text-gray-600">Select a warehouse to view existing stock.</p>
+                      ) : existingStockLoading || existingStockPending ? (
+                        <p className="text-xs text-blue-700" role="status">Loading existing stock...</p>
+                      ) : existingStockError ? (
+                        <p className="text-xs text-red-600" role="alert">{existingStockError}</p>
+                      ) : existingStockLoaded && !existingStock ? (
+                        <p className="text-xs text-gray-600">No existing stock at this warehouse.</p>
+                      ) : existingStock ? (
+                      <div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <span className="text-gray-500">Available:</span>
                             <p className="font-semibold text-blue-600">{existingStock.quantity_available.toLocaleString()} units</p>
                           </div>
                           <div>
-                            <span className="text-gray-500">Warehouse:</span>
+                            <span className="text-gray-500">Selected Warehouse:</span>
                             <p className="font-medium text-gray-900">{existingStock.warehouse_name}</p>
                           </div>
                           {existingStock.warehouse_location && (
@@ -663,7 +676,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           )}
                         </div>
                       </div>
-                    )}
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -877,7 +891,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Organization <span className="text-red-500">*</span>
                   </label>
-                  <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                  <Select value={selectedWarehouse} onValueChange={(value) => {
+                    setExistingStock(null)
+                    setExistingStockLoaded(false)
+                    setExistingStockError(null)
+                    setSelectedWarehouse(value)
+                  }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select warehouse" />
                     </SelectTrigger>
