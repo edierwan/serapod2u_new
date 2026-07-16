@@ -5,6 +5,7 @@ export interface QuickOrderCatalogVariant {
   product_code: string
   group_name: string
   variant_name: string
+  alternative_name: string | null
   attributes: Record<string, unknown>
   barcode: string | null
   manufacturer_sku: string | null
@@ -44,6 +45,7 @@ interface QuickOrderCatalogRow {
   id: string
   product_id: string
   variant_name: string
+  alternative_name?: string | null
   attributes?: Record<string, unknown> | null
   barcode?: string | null
   manufacturer_sku?: string | null
@@ -87,6 +89,7 @@ export function filterQuickOrderCatalogRows(
       product_code: product.product_code || '',
       group_name: group?.group_name || 'Other',
       variant_name: row.variant_name,
+      alternative_name: row.alternative_name || null,
       attributes: row.attributes || {},
       barcode: row.barcode || null,
       manufacturer_sku: row.manufacturer_sku || null,
@@ -145,6 +148,7 @@ export async function resolveQuickOrderCatalog(
       id,
       product_id,
       variant_name,
+      alternative_name,
       attributes,
       barcode,
       manufacturer_sku,

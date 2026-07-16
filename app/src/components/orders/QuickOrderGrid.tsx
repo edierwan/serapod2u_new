@@ -14,6 +14,7 @@ interface QuickVariant {
   product_code: string
   group_name?: string
   variant_name: string
+  alternative_name?: string | null
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
@@ -34,6 +35,7 @@ interface QuickOrderGridProps {
 
 const statusStyle = (status: PasteMatchResult['status']) => ({
   matched: 'bg-green-100 text-green-700',
+  alternative_match: 'bg-cyan-100 text-cyan-800',
   smart_match: 'bg-emerald-100 text-emerald-800',
   suggestion: 'bg-purple-100 text-purple-800',
   ambiguous: 'bg-amber-100 text-amber-800',
@@ -65,7 +67,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
     const needle = search.trim().toLowerCase()
     return variants.filter(variant => {
       const group = variant.group_name || 'Other'
-      const haystack = [variant.variant_name, variant.product_name, variant.product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
+      const haystack = [variant.variant_name, variant.alternative_name, variant.product_name, variant.product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
       return (activeGroup === 'All' || group === activeGroup)
         && (!needle || haystack.includes(needle))
         && (!selectedOnly || (quantities.get(variant.id) || 0) > 0)
@@ -173,7 +175,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
 
       <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
-          <DialogHeader><DialogTitle>Paste Order List</DialogTitle><DialogDescription>Paste one flavour, Product Code, or SKU and quantity per line. Supported separators: dash, colon, tab, or multiple spaces.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Paste Order List</DialogTitle><DialogDescription>Paste flavours, Product Codes, or SKUs with quantities. Works with one per line or several on one line (for example a WhatsApp list). Supported separators: dash, colon, tab, or spaces. Status marks like ✅/❌ are treated as separators only.</DialogDescription></DialogHeader>
           {pasteResults.length === 0 ? (
             <textarea autoFocus value={pasteText} onChange={event => setPasteText(event.target.value)} rows={10} className="w-full rounded-md border p-3 font-mono text-sm" placeholder={'LYCHEE BLACKCURRANT - 200\nGUAVA - 300'} />
           ) : (

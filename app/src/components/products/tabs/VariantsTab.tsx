@@ -15,6 +15,11 @@ import {
   isProductCodeDuplicateError,
   normalizeProductCode,
 } from '@/lib/products/product-code'
+import {
+  ALTERNATIVE_NAME_DUPLICATE_MESSAGE,
+  cleanAlternativeName,
+  isAlternativeNameDuplicateError,
+} from '@/lib/products/alternative-name'
 
 interface Product {
   id: string
@@ -26,6 +31,7 @@ interface Variant {
   product_id: string
   variant_code?: string
   variant_name: string
+  alternative_name: string | null
   attributes: Record<string, any>
   barcode: string | null
   product_code: string | null
@@ -242,6 +248,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       const dataToSave: Record<string, any> = {
         variant_name: variantName,
+        alternative_name: cleanAlternativeName(dbDataClean.alternative_name),
         attributes: dbDataClean.attributes || {},
         barcode: dbDataClean.barcode || null,
         product_code: normalizeProductCode(dbDataClean.product_code),
@@ -309,6 +316,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       let errorMessage = 'Failed to save variant'
       if (isProductCodeDuplicateError(error)) {
         errorMessage = PRODUCT_CODE_DUPLICATE_MESSAGE
+      } else if (isAlternativeNameDuplicateError(error)) {
+        errorMessage = ALTERNATIVE_NAME_DUPLICATE_MESSAGE
       } else {
         if (error?.message) errorMessage = error.message
         if (error?.details) errorMessage += ': ' + error.details

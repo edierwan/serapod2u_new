@@ -15,6 +15,11 @@ import {
   isProductCodeDuplicateError,
   normalizeProductCode,
 } from '@/lib/products/product-code'
+import {
+  ALTERNATIVE_NAME_DUPLICATE_MESSAGE,
+  cleanAlternativeName,
+  isAlternativeNameDuplicateError,
+} from '@/lib/products/alternative-name'
 import { 
   ArrowLeft,
   Package,
@@ -233,6 +238,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       
       const variantPayload = {
         variant_name: variantData.variant_name,
+        alternative_name: cleanAlternativeName(variantData.alternative_name),
         variant_code: variantData.variant_code,
         manufacturer_sku: variantData.manufacturer_sku,
         manual_sku: manualSku || null,
@@ -284,6 +290,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         title: 'Error',
         description: isProductCodeDuplicateError(error)
           ? PRODUCT_CODE_DUPLICATE_MESSAGE
+          : isAlternativeNameDuplicateError(error)
+            ? ALTERNATIVE_NAME_DUPLICATE_MESSAGE
           : error.message || 'Failed to save variant',
         variant: 'destructive'
       })

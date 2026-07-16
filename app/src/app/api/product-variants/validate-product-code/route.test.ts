@@ -3,6 +3,7 @@ import {
   PRODUCT_CODE_DUPLICATE_MESSAGE,
   PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
 } from '@/lib/products/product-code'
+import { ALTERNATIVE_NAME_DUPLICATE_MESSAGE } from '@/lib/products/alternative-name'
 
 const createClientMock = vi.fn()
 const authGetUser = vi.fn()
@@ -10,6 +11,8 @@ const productSingle = vi.fn()
 const duplicateMaybeSingle = vi.fn()
 const variantEq = vi.fn()
 const variantNeq = vi.fn()
+const variantNot = vi.fn()
+let alternativeRows: Array<{ id: string; alternative_name: string | null }> = []
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: createClientMock,
@@ -23,14 +26,18 @@ describe('POST /api/product-variants/validate-product-code', () => {
     authGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
     productSingle.mockResolvedValue({ data: { brand_id: 'brand-cellera' }, error: null })
     duplicateMaybeSingle.mockResolvedValue({ data: null, error: null })
+    alternativeRows = []
 
     const variantQuery: any = {
       eq: variantEq,
       neq: variantNeq,
+      not: variantNot,
       limit: vi.fn(() => ({ maybeSingle: duplicateMaybeSingle })),
+      then: (resolve: (value: unknown) => unknown) => resolve({ data: alternativeRows, error: null }),
     }
     variantEq.mockReturnValue(variantQuery)
     variantNeq.mockReturnValue(variantQuery)
+    variantNot.mockReturnValue(variantQuery)
 
     createClientMock.mockResolvedValue({
       auth: { getUser: authGetUser },
@@ -97,6 +104,37 @@ describe('POST /api/product-variants/validate-product-code', () => {
     })
 
     expect(response.status).toBe(200)
+    expect(variantNeq).toHaveBeenCalledWith('id', 'variant-1')
+  })
+
+  it('rejects a normalized duplicate Alternative Name within the same active Product scope', async () => {
+    alternativeRows = [{ id: 'variant-2', alternative_name: 'Banana-Vanilla' }]
+
+    const response = await post({
+      productId: 'product-1',
+      productCode: null,
+      alternativeName: '  BANANA   VANILLA ',
+    })
+    const payload = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(payload).toEqual({ error: ALTERNATIVE_NAME_DUPLICATE_MESSAGE, field: 'alternative_name' })
+    expect(variantEq).toHaveBeenCalledWith('product_id', 'product-1')
+    expect(variantEq).toHaveBeenCalledWith('is_active', true)
+  })
+
+  it('allows a blank Alternative Name and excludes the current variant during edit validation', async () => {
+    const blankResponse = await post({ productId: 'product-1', productCode: null, alternativeName: '   ' })
+    expect(blankResponse.status).toBe(200)
+    expect(await blankResponse.json()).toEqual({ valid: true, productCode: null })
+
+    const editResponse = await post({
+      productId: 'product-1',
+      productCode: null,
+      alternativeName: 'Banana Vanilla',
+      variantId: 'variant-1',
+    })
+    expect(editResponse.status).toBe(200)
     expect(variantNeq).toHaveBeenCalledWith('id', 'variant-1')
   })
 

@@ -20,6 +20,7 @@ import {
   normalizeProductCode,
   validateProductCode,
 } from '@/lib/products/product-code'
+import { cleanAlternativeName } from '@/lib/products/alternative-name'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ export interface Variant {
   product_id: string
   variant_code?: string
   variant_name: string
+  alternative_name: string | null
   attributes: Record<string, any>
   barcode: string | null
   product_code: string | null
@@ -152,6 +154,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         ? {
             product_id: variant.product_id || (products.length === 1 ? products[0].id : ''),
             variant_name: variant.variant_name || '',
+            alternative_name: variant.alternative_name || '',
             attributes: variant.attributes || {},
             barcode: variant.barcode || '',
             product_code: variant.product_code || '',
@@ -168,6 +171,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         : {
             product_id: products.length > 0 ? products[0].id : '',
             variant_name: '',
+            alternative_name: '',
             attributes: {},
             barcode: '',
             product_code: '',
@@ -310,6 +314,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
     if (!validate()) return
     const finalProductId = formData.product_id || variant?.product_id || ''
     const productCode = normalizeProductCode(formData.product_code)
+    const alternativeName = cleanAlternativeName(formData.alternative_name)
 
     setIsValidatingProductCode(true)
     try {
@@ -319,6 +324,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         body: JSON.stringify({
           productId: finalProductId,
           productCode,
+          alternativeName,
           variantId: variant?.id,
         }),
       })
@@ -326,7 +332,8 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
       if (!response.ok) {
         setErrors((previous) => ({
           ...previous,
-          product_code: result.error || PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
+          [result.field === 'alternative_name' ? 'alternative_name' : 'product_code']:
+            result.error || PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
         }))
         return
       }
@@ -344,6 +351,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
       ...formData,
       product_id: finalProductId,
       product_code: productCode,
+      alternative_name: alternativeName,
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
@@ -410,6 +418,22 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
             <Label htmlFor="name">Variant Name *</Label>
             <Input id="name" placeholder="e.g., Strawberry - 6mg" value={formData.variant_name || ''} onChange={(e) => { setFormData((p) => ({ ...p, variant_name: e.target.value })); if (errors.variant_name) setErrors((p) => ({ ...p, variant_name: '' })) }} className={errors.variant_name ? 'border-red-500' : ''} />
             {errors.variant_name && <p className="text-xs text-red-500">{errors.variant_name}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="alternative_name">Alternative Name <span className="text-xs text-gray-500">(Optional)</span></Label>
+            <Input
+              id="alternative_name"
+              placeholder="e.g. Banana Vanilla"
+              value={formData.alternative_name || ''}
+              onChange={(event) => {
+                setFormData((previous) => ({ ...previous, alternative_name: event.target.value }))
+                if (errors.alternative_name) setErrors((previous) => ({ ...previous, alternative_name: '' }))
+              }}
+              className={errors.alternative_name ? 'border-red-500' : ''}
+            />
+            <p className="text-xs text-gray-500">Alternative name commonly used by distributors.</p>
+            {errors.alternative_name && <p className="text-xs text-red-500">{errors.alternative_name}</p>}
           </div>
 
           <div className="space-y-2">

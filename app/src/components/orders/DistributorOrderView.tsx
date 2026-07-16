@@ -49,6 +49,7 @@ interface ProductVariant {
   product_code: string
   group_name?: string
   variant_name: string
+  alternative_name?: string | null
   attributes?: Record<string, any>
   barcode?: string | null
   manufacturer_sku?: string | null
@@ -338,6 +339,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           id,
           product_id,
           variant_name,
+          alternative_name,
           attributes,
           barcode,
           manufacturer_sku,
@@ -380,6 +382,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             product_code: product?.product_code || '',
             group_name: productGroup?.group_name || 'Other',
             variant_name: v.variant_name,
+            alternative_name: v.alternative_name || null,
             attributes: v.attributes || {},
             barcode: v.barcode,
             manufacturer_sku: v.manufacturer_sku,
