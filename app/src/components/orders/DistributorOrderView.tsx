@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, User, Package, Loader2, Trash2, ShoppingCart, Building2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import QuickOrderGrid from './QuickOrderGrid'
 
 interface UserProfile {
   id: string
@@ -46,6 +47,7 @@ interface ProductVariant {
   product_id: string
   product_name: string
   product_code: string
+  group_name?: string
   variant_name: string
   attributes?: Record<string, any>
   barcode?: string | null
@@ -100,8 +102,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
   // Products and Variants
   const [availableVariants, setAvailableVariants] = useState<ProductVariant[]>([])
+  const [quickOrderVariants, setQuickOrderVariants] = useState<ProductVariant[]>([])
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [orderMode, setOrderMode] = useState<'quick' | 'standard'>('quick')
 
   // Product filtering
   const [productSearchQuery, setProductSearchQuery] = useState('')
@@ -292,7 +296,29 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       if (wh) inventoryOrgId = wh.id
     }
 
-    await loadAvailableProducts(distributorId, inventoryOrgId)
+    await Promise.all([
+      loadAvailableProducts(distributorId, inventoryOrgId),
+      loadQuickOrderCatalog(distributorId),
+    ])
+  }
+
+  const loadQuickOrderCatalog = async (distributorId: string) => {
+    const response = await fetch('/api/orders/d2h/quick-order-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ distributorId }),
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) {
+      setQuickOrderVariants([])
+      toast({
+        title: 'Quick Order Catalog Unavailable',
+        description: result?.error || 'Unable to load the distributor Quick Order catalog.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setQuickOrderVariants(result.variants || [])
   }
 
   const loadAvailableProducts = async (distributorId: string, inventoryOrgId: string) => {
@@ -321,7 +347,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             id,
             product_code,
             product_name,
-            is_active
+            is_active,
+            product_groups (group_name)
           )
         `)
         .eq('is_active', true)
@@ -334,6 +361,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       const variantsWithInventory = await Promise.all(
         (data || []).map(async (v: any) => {
           const product = Array.isArray(v.products) ? v.products[0] : v.products
+          const productGroup = Array.isArray(product?.product_groups) ? product.product_groups[0] : product?.product_groups
 
           // Get available quantity from product_inventory using inventoryOrgId (Warehouse)
           const { data: inventoryData } = await supabase
@@ -350,6 +378,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             product_id: v.product_id,
             product_name: product?.product_name || '',
             product_code: product?.product_code || '',
+            group_name: productGroup?.group_name || 'Other',
             variant_name: v.variant_name,
             attributes: v.attributes || {},
             barcode: v.barcode,
@@ -360,12 +389,9 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         })
       )
 
-      // Filter to only show variants with available inventory
-      const variantsWithStock = variantsWithInventory.filter(v => v.available_qty > 0)
+      setAvailableVariants(variantsWithInventory)
 
-      setAvailableVariants(variantsWithStock)
-
-      if (variantsWithStock.length === 0) {
+      if (variantsWithInventory.length === 0) {
         toast({
           title: 'No Products Available',
           description: 'No products with available inventory found in Warehouse. Please ensure products are in stock.',
@@ -479,6 +505,69 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     ))
   }
 
+  const handleQuickQuantityChange = (variantId: string, requestedQty: number) => {
+    const variant = quickOrderVariants.find(candidate => candidate.id === variantId)
+    if (!variant) return
+
+    const newQty = Math.max(0, Math.trunc(requestedQty))
+    if (newQty > variant.available_qty) {
+      toast({
+        title: 'Insufficient Stock',
+        description: `Only ${variant.available_qty} units of ${variant.variant_name} are available`,
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setOrderItems(currentItems => {
+      const existing = currentItems.find(item => item.variant_id === variantId)
+      if (newQty === 0) return currentItems.filter(item => item.variant_id !== variantId)
+      if (existing) {
+        return currentItems.map(item => item.variant_id === variantId
+          ? { ...item, qty: newQty, unit_price: variant.distributor_price, line_total: newQty * variant.distributor_price }
+          : item)
+      }
+      return [...currentItems, {
+        id: `temp-${variantId}`,
+        order_id: '',
+        product_id: variant.product_id,
+        variant_id: variant.id,
+        product_name: variant.product_name,
+        variant_name: variant.variant_name,
+        attributes: variant.attributes,
+        manufacturer_sku: variant.manufacturer_sku,
+        qty: newQty,
+        unit_price: variant.distributor_price,
+        line_total: newQty * variant.distributor_price
+      }]
+    })
+  }
+
+  const handleOrderModeSwitch = () => {
+    if (orderMode === 'quick') {
+      setOrderMode('standard')
+      return
+    }
+
+    const quickVariantsById = new Map(quickOrderVariants.map(variant => [variant.id, variant]))
+    const itemsOutsideQuickCatalog = orderItems.filter(item => {
+      const variant = quickVariantsById.get(item.variant_id)
+      return !variant || item.qty > variant.available_qty
+    })
+    if (itemsOutsideQuickCatalog.length > 0) {
+      const shouldClear = window.confirm(
+        `${itemsOutsideQuickCatalog.length} selected item(s) are not available in the distributor Quick Order catalog and must be cleared before switching. Continue?`
+      )
+      if (!shouldClear) return
+    }
+    setOrderItems(items => items.flatMap(item => {
+      const variant = quickVariantsById.get(item.variant_id)
+      if (!variant || item.qty > variant.available_qty) return []
+      return [{ ...item, unit_price: variant.distributor_price, line_total: item.qty * variant.distributor_price }]
+    }))
+    setOrderMode('quick')
+  }
+
   const handleUpdatePrice = (variantId: string, newPrice: number) => {
     setOrderItems(orderItems.map(item =>
       item.variant_id === variantId
@@ -523,7 +612,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         return
       }
 
-      if (orderItems.length === 0) {
+      const positiveOrderItems = orderItems.filter(item => item.qty > 0)
+      if (positiveOrderItems.length === 0) {
         toast({
           title: 'Validation Error',
           description: 'Please add at least one product to the order',
@@ -531,6 +621,25 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         })
         return
       }
+
+      // Re-read authoritative active variants, distributor prices, and warehouse
+      // availability on the server immediately before using the existing D2H flow.
+      const preflightResponse = await fetch('/api/orders/d2h/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: orderMode,
+          distributorId: selectedDistributorId,
+          items: positiveOrderItems.map(item => ({ variantId: item.variant_id, quantity: item.qty }))
+        })
+      })
+      const preflight = await preflightResponse.json().catch(() => null)
+      if (!preflightResponse.ok) {
+        throw new Error(preflight?.error || 'Stock and price validation failed. Please review the order and try again.')
+      }
+      const authoritativeItems = new Map<string, { distributorPrice: number }>(
+        preflight.items.map((item: { variantId: string; distributorPrice: number }) => [item.variantId, item])
+      )
 
       // Get company_id
       const { data: companyData } = await supabase
@@ -570,12 +679,12 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       }
 
       // Insert order items
-      const itemsToInsert = orderItems.map(item => ({
+      const itemsToInsert = positiveOrderItems.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
         variant_id: item.variant_id,
         qty: item.qty,
-        unit_price: item.unit_price,
+        unit_price: authoritativeItems.get(item.variant_id)!.distributorPrice,
         company_id: companyId
       }))
 
@@ -671,8 +780,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     // Exclude already selected variants
     const isAlreadySelected = orderItems.some(item => item.variant_id === variant.id)
 
-    return matchesSearch && matchesProductFilter && !isAlreadySelected
+    return matchesSearch && matchesProductFilter && !isAlreadySelected && variant.available_qty > 0
   })
+
+  const standardAvailableVariants = availableVariants.filter(variant => variant.available_qty > 0)
 
   if (loading) {
     return (
@@ -844,6 +955,28 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 </div>
               ) : (
                 <>
+                  <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
+                      <p className="text-xs text-gray-500">{orderMode === 'quick' ? 'Enter quantities for multiple flavours at once.' : 'Add and edit products using the original order form.'}</p>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Using {orderMode === 'quick' ? 'Quick Order' : 'Standard Order'} <span aria-hidden="true">·</span>{' '}
+                      <button type="button" className="font-medium text-blue-600 underline underline-offset-2" onClick={handleOrderModeSwitch}>
+                        {orderMode === 'quick' ? 'Switch to Standard' : 'Try Quick Order'}
+                      </button>
+                    </div>
+                  </div>
+                  {orderMode === 'quick' ? (
+                    <QuickOrderGrid
+                      variants={quickOrderVariants}
+                      items={orderItems}
+                      formatCurrency={formatCurrency}
+                      onQuantityChange={handleQuickQuantityChange}
+                      onClear={() => setOrderItems([])}
+                    />
+                  ) : (
+                    <>
                   {/* Search and Filter */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
@@ -866,10 +999,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                         onChange={(e) => setSelectedProductFilter(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       >
-                        <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
-                        {Array.from(new Set(availableVariants.map(v => v.product_name))).sort().map(productName => (
+                        <option value="">All Products ({Array.from(new Set(standardAvailableVariants.map(v => v.product_name))).length})</option>
+                        {Array.from(new Set(standardAvailableVariants.map(v => v.product_name))).sort().map(productName => (
                           <option key={productName} value={productName}>
-                            {productName} ({availableVariants.filter(v => v.product_name === productName).length})
+                            {productName} ({standardAvailableVariants.filter(v => v.product_name === productName).length})
                           </option>
                         ))}
                       </select>
@@ -975,6 +1108,8 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                         )
                       })}
                     </div>
+                  )}
+                    </>
                   )}
                 </>
               )}
