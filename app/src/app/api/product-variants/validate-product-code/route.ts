@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
   PRODUCT_CODE_DUPLICATE_MESSAGE,
+  PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
   normalizeProductCode,
   validateProductCode,
 } from '@/lib/products/product-code'
@@ -80,6 +81,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ valid: true, productCode })
   } catch (error) {
     console.error('Error validating Product Code:', error)
-    return NextResponse.json({ error: 'Failed to validate Product Code.' }, { status: 500 })
+    return NextResponse.json(
+      { error: PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE },
+      { status: 500 },
+    )
   }
 }

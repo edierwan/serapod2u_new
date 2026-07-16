@@ -16,6 +16,7 @@ import {
 import { getStorageUrl } from '@/lib/utils'
 import {
   PRODUCT_CODE_MAX_LENGTH,
+  PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
   normalizeProductCode,
   validateProductCode,
 } from '@/lib/products/product-code'
@@ -325,14 +326,14 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
       if (!response.ok) {
         setErrors((previous) => ({
           ...previous,
-          product_code: result.error || 'Failed to validate Product Code.',
+          product_code: result.error || PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
         }))
         return
       }
     } catch {
       setErrors((previous) => ({
         ...previous,
-        product_code: 'Failed to validate Product Code.',
+        product_code: PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE,
       }))
       return
     } finally {

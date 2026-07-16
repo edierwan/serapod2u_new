@@ -1,6 +1,12 @@
 export const PRODUCT_CODE_MAX_LENGTH = 5
 
-export const PRODUCT_CODE_DUPLICATE_MESSAGE =
+export const PRODUCT_CODE_DUPLICATE_MESSAGE = 'Product Code is already in use.'
+
+export const PRODUCT_CODE_VALIDATION_UNAVAILABLE_MESSAGE =
+  'Unable to validate Product Code. Please try again.'
+
+// Message raised by the database trigger installed before the UI copy changed.
+const LEGACY_PRODUCT_CODE_DUPLICATE_MESSAGE =
   'This Product Code is already used by another variant under this brand.'
 
 export function normalizeProductCode(value: unknown): string | null {
@@ -29,6 +35,7 @@ export function isProductCodeDuplicateError(error: unknown): boolean {
 
   return (
     text.includes(PRODUCT_CODE_DUPLICATE_MESSAGE) ||
+    text.includes(LEGACY_PRODUCT_CODE_DUPLICATE_MESSAGE) ||
     text.includes('product_variants_brand_product_code_key')
   )
 }
