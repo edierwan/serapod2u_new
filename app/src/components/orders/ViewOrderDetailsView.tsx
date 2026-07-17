@@ -69,6 +69,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [creatorSignatureFailed, setCreatorSignatureFailed] = useState(false)
   const [approverSignatureUrl, setApproverSignatureUrl] = useState<string | null>(null)
   const [approverSignatureFailed, setApproverSignatureFailed] = useState(false)
+  const [stockConfigurations, setStockConfigurations] = useState<any[]>([])
+  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null)
   const printAreaRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
@@ -211,7 +213,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           .select(`
             *,
             product:products(product_name, product_code),
-            variant:product_variants(variant_name)
+            variant:product_variants(variant_name),
+            stock_config:inventory_stock_configurations!order_items_stock_config_variant_fkey(id, config_code, config_label, stock_sku, volume_ml, packaging)
           `)
           .eq('order_id', orderId),
 
@@ -231,6 +234,24 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           .eq('doc_type', 'PAYMENT')
           .eq('status', 'acknowledged')
       ])
+
+      if (itemsResult.error) throw itemsResult.error
+
+      const itemVariantIds = Array.from(new Set((itemsResult.data || []).map((item: any) => item.variant_id)))
+      if (itemVariantIds.length > 0 && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code)) {
+        const { data: configs, error: configsError } = await supabase
+          .from('inventory_stock_configurations')
+          .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, allow_so, status, requires_repacking_before_sale')
+          .in('variant_id', itemVariantIds)
+          .eq('status', 'active')
+          .eq('allow_so', true)
+          .eq('requires_repacking_before_sale', false)
+          .order('sort_order')
+        if (configsError) throw configsError
+        setStockConfigurations((configs || []).filter((config: any) => config.packaging !== 'old_box'))
+      } else {
+        setStockConfigurations([])
+      }
 
       const itemsWithDetails = itemsResult.data || []
       const poDoc = poDocResult.data
@@ -418,6 +439,23 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const formatCurrency = (amount: number): string => {
     return formatCurrencyUtil(amount)
+  }
+
+  const confirmStockConfiguration = async (itemId: string, stockConfigId: string) => {
+    try {
+      setConfirmingItemId(itemId)
+      const { error } = await supabase.rpc('set_order_item_stock_config', {
+        p_order_item_id: itemId,
+        p_stock_config_id: stockConfigId,
+      })
+      if (error) throw error
+      await loadOrderData(orderData.id)
+      toast({ title: 'Configuration confirmed', description: 'The exact warehouse stock configuration is now locked to this line.' })
+    } catch (error: any) {
+      toast({ title: 'Configuration not confirmed', description: error?.message || 'Unable to confirm stock configuration.', variant: 'destructive' })
+    } finally {
+      setConfirmingItemId(null)
+    }
   }
 
   if (loading) {
@@ -681,6 +719,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               <tr className="border-b border-gray-200">
                 <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
                 <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
+                <th className="py-2 text-left text-xs font-bold text-gray-900 print:hidden">Stock configuration</th>
                 <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
                 <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
                 <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
@@ -709,6 +748,28 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                       })()}
                     </p>
                   </td>
+                  <td className="py-3 pr-3 text-xs text-gray-900 align-top pt-4 print:hidden">
+                    {orderData.status === 'submitted' && ['D2H', 'S2D'].includes(orderData.order_type) && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code) ? (
+                      <div className="space-y-1">
+                        <select
+                          className="h-8 min-w-48 rounded border border-gray-300 bg-white px-2"
+                          value={item.stock_config_id || ''}
+                          disabled={confirmingItemId === item.id}
+                          onChange={(event) => confirmStockConfiguration(item.id, event.target.value)}
+                        >
+                          <option value="" disabled>Select actual stock…</option>
+                          {stockConfigurations.filter(config => config.variant_id === item.variant_id).map(config => (
+                            <option key={config.id} value={config.id}>{config.config_label} ({config.stock_sku})</option>
+                          ))}
+                        </select>
+                        <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>
+                          {item.stock_config_confirmed_at ? 'Confirmed' : 'Confirmation required before approval'}
+                        </div>
+                      </div>
+                    ) : (
+                      <span>{item.stock_config?.config_label || (item.stock_config_id ? 'Configured stock' : 'Legacy / not assigned')}</span>
+                    )}
+                  </td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
@@ -717,7 +778,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             </tbody>
             <tfoot>
               <tr className="border-t border-gray-200">
-                <td colSpan={2} className="py-4"></td>
+                <td colSpan={3} className="py-4"></td>
                 <td className="py-4 text-right text-xs font-bold text-gray-900">{formatNumber(totalQuantity)}</td>
                 <td className="py-4 text-right text-xs font-bold text-gray-900">Total</td>
                 <td className="py-4 text-right text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</td>

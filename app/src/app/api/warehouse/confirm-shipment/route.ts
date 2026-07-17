@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
     // Then call WMS function manually with ALL codes to create ONE consolidated movement
     if (uniqueCodesScanned.length > 0) {
       // First, get the QR code IDs with batch information
-      const { data: qrCodesData, error: fetchError } = await supabase
+      const { data: qrCodesData, error: fetchError } = await (supabase as any)
         .from('qr_codes')
         .select(`
           id, 
@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
           batch_id,
           current_location_org_id,
           variant_id,
+          status,
           qr_batches (
             order_id,
             orders (
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      qrCodeIds = qrCodesData.map(qr => qr.id)
+      qrCodeIds = qrCodesData.map((qr: any) => String(qr.id))
       console.log('🔍 Found', qrCodeIds.length, 'QR codes to ship')
 
       // Get order_id directly from QR codes' batch relationship
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
         const { data: batchData, error: batchError } = await supabase
           .from('qr_batches')
           .select('order_id')
-          .eq('id', batchId)
+          .eq('id', batchId as string)
           .single()
         
         if (!batchError && batchData?.order_id) {
@@ -248,10 +249,10 @@ export async function POST(request: NextRequest) {
       const toOrg = resolvedToOrg || session.distributor_org_id || null
 
       // If QR codes have master codes, try to get additional info from them
-      const masterCodeIds = Array.from(new Set(
+      const masterCodeIds: string[] = Array.from(new Set<string>(
         qrCodesData
-          .map(qr => qr.master_code_id)
-          .filter((id): id is string => Boolean(id))
+          .map((qr: any) => qr.master_code_id)
+          .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
       ))
 
       if (masterCodeIds.length > 0) {
@@ -319,45 +320,6 @@ export async function POST(request: NextRequest) {
       resolvedFromOrg = fromOrg
       resolvedToOrg = toOrg
 
-      // 🛡️ PRE-FLIGHT CHECK: Auto-correct inventory if needed
-      // If we have valid warehouse_packed QR codes, we MUST have the inventory.
-      // If inventory is lower, it's a data sync error (likely from previous bugs).
-      // We auto-correct it here to prevent blocking the shipment.
-      if (qrCodesData && qrCodesData.length > 0) {
-        const variantCounts = new Map<string, number>()
-        qrCodesData.forEach(qr => {
-          if (qr.variant_id) {
-            variantCounts.set(qr.variant_id, (variantCounts.get(qr.variant_id) || 0) + 1)
-          }
-        })
-
-        for (const [variantId, requiredCount] of variantCounts.entries()) {
-          const { data: invData } = await supabase
-            .from('product_inventory')
-            .select('quantity_on_hand')
-            .eq('variant_id', variantId)
-            .eq('organization_id', fromOrg)
-            .single()
-          
-          const currentStock = invData?.quantity_on_hand || 0
-          
-          if (currentStock < requiredCount) {
-            const missing = requiredCount - currentStock
-            console.warn(`⚠️ [CONFIRM] Inventory mismatch detected for variant ${variantId}. Required: ${requiredCount}, On Hand: ${currentStock}. Auto-correcting by adding ${missing}...`)
-            
-            // Auto-correct inventory
-            await supabaseAdmin.rpc('adjust_inventory_quantity', {
-              p_variant_id: variantId,
-              p_organization_id: fromOrg,
-              p_delta: missing
-            })
-            
-            // Log the correction (optional, but good for audit)
-            console.log(`✅ [CONFIRM] Auto-corrected inventory for variant ${variantId}`)
-          }
-        }
-      }
-
       // ✅ FIXED APPROACH: 
       // 1. Call WMS function FIRST with ALL codes → creates ONE consolidated movement
       // 2. Set session variable to skip trigger
@@ -398,11 +360,11 @@ export async function POST(request: NextRequest) {
       console.log('✅ Updated', updatedUniqueCount, 'QR codes to shipped_distributor (via WMS function)')
 
       // Auto-update related master cases if all their children are now shipped
-      const masterIdsFromUnique = Array.from(
-        new Set(
+      const masterIdsFromUnique: string[] = Array.from(
+        new Set<string>(
           (qrCodesData || [])
-            .map((qr) => qr.master_code_id)
-            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            .map((qr: any) => qr.master_code_id)
+            .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
         )
       ).filter((id) => !updatedMasterIdSet.has(id))
 
@@ -620,8 +582,10 @@ export async function POST(request: NextRequest) {
 
             if (masterWmsError) {
               console.error(`❌ WMS function failed for master ${master.master_code}:`, masterWmsError.message)
-              console.log(`⚠️ Continuing with status update despite WMS error (children may have already handled inventory)`)
-              // Don't return error - continue to update status anyway since inventory might have been handled by children
+              return NextResponse.json(
+                { error: `WMS rejected master ${master.master_code}: ${masterWmsError.message}` },
+                { status: 409 }
+              )
             } else {
               console.log(`✅ WMS function processed master ${master.master_code}`)
             }

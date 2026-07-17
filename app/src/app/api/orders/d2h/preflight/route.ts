@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { resolveQuickOrderCatalog, validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
+import { resolveQuickOrderCatalog, resolveSellableAvailability, validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
 
 interface RequestedItem {
   variantId: string
@@ -86,7 +86,11 @@ export async function POST(request: Request) {
       if (warehouse) inventoryOrganizationId = warehouse.id
     }
 
-    const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }] = await Promise.all([
+    if (typeof body?.distributorId !== 'string' || !body.distributorId) {
+      return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
+    }
+
+    const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
       supabase
         .from('product_variants')
         .select('id, distributor_price, is_active, products!inner(is_active)')
@@ -95,13 +99,18 @@ export async function POST(request: Request) {
         .eq('products.is_active', true),
       supabase
         .from('product_inventory')
-        .select('variant_id, quantity_available')
+        .select('variant_id, stock_config_id, quantity_available')
         .eq('organization_id', inventoryOrganizationId)
         .in('variant_id', variantIds),
+      supabase.from('inventory_stock_configurations')
+        .select('id, volume_ml, packaging, status, allow_so, requires_repacking_before_sale')
+        .in('variant_id', variantIds),
+      supabase.from('distributor_stock_config_eligibility').select('allow_50ml_new_box')
+        .eq('distributor_org_id', body.distributorId).maybeSingle(),
     ])
 
-    if (variantsError || inventoryError) {
-      console.error('D2H preflight query failed:', variantsError || inventoryError)
+    if (variantsError || inventoryError || configurationsError) {
+      console.error('D2H preflight query failed:', variantsError || inventoryError || configurationsError)
       return NextResponse.json({ error: 'Unable to validate current stock and prices.' }, { status: 500 })
     }
     if ((variants || []).length !== variantIds.length) {
@@ -109,7 +118,7 @@ export async function POST(request: Request) {
     }
 
     const variantsById = new Map((variants || []).map(variant => [variant.id, variant]))
-    const stockByVariant = new Map((inventory || []).map(stock => [stock.variant_id, Number(stock.quantity_available || 0)]))
+    const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
     const validated = items.map(item => {
       const variant = variantsById.get(item.variantId)!
       return {
