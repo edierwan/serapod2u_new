@@ -15819,6 +15819,80 @@ export type Database = {
           },
         ]
       }
+      inventory_stock_configurations: {
+        Row: {
+          allow_ord: boolean
+          allow_so: boolean
+          config_code: string
+          config_label: string
+          created_at: string
+          created_by: string | null
+          default_for_ord: boolean
+          id: string
+          is_variant_default: boolean
+          notes: string | null
+          packaging: string | null
+          requires_repacking_before_sale: boolean
+          sort_order: number
+          status: string
+          stock_sku: string
+          units_per_case: number | null
+          updated_at: string
+          variant_id: string
+          volume_ml: number | null
+        }
+        Insert: {
+          allow_ord?: boolean
+          allow_so?: boolean
+          config_code: string
+          config_label: string
+          created_at?: string
+          created_by?: string | null
+          default_for_ord?: boolean
+          id?: string
+          is_variant_default?: boolean
+          notes?: string | null
+          packaging?: string | null
+          requires_repacking_before_sale?: boolean
+          sort_order?: number
+          status?: string
+          stock_sku: string
+          units_per_case?: number | null
+          updated_at?: string
+          variant_id: string
+          volume_ml?: number | null
+        }
+        Update: {
+          allow_ord?: boolean
+          allow_so?: boolean
+          config_code?: string
+          config_label?: string
+          created_at?: string
+          created_by?: string | null
+          default_for_ord?: boolean
+          id?: string
+          is_variant_default?: boolean
+          notes?: string | null
+          packaging?: string | null
+          requires_repacking_before_sale?: boolean
+          sort_order?: number
+          status?: string
+          stock_sku?: string
+          units_per_case?: number | null
+          updated_at?: string
+          variant_id?: string
+          volume_ml?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_stock_configurations_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journey_configurations: {
         Row: {
           activation_mode: string | null
@@ -21998,6 +22072,7 @@ export type Database = {
           reorder_point: number | null
           reorder_quantity: number | null
           safety_stock: number | null
+          stock_config_id: string | null
           total_value: number | null
           units_on_hand: number | null
           updated_at: string | null
@@ -22021,6 +22096,7 @@ export type Database = {
           reorder_point?: number | null
           reorder_quantity?: number | null
           safety_stock?: number | null
+          stock_config_id?: string | null
           total_value?: number | null
           units_on_hand?: number | null
           updated_at?: string | null
@@ -22044,6 +22120,7 @@ export type Database = {
           reorder_point?: number | null
           reorder_quantity?: number | null
           safety_stock?: number | null
+          stock_config_id?: string | null
           total_value?: number | null
           units_on_hand?: number | null
           updated_at?: string | null
@@ -31929,6 +32006,7 @@ export type Database = {
           reference_id: string | null
           reference_no: string | null
           reference_type: string | null
+          stock_config_id: string | null
           to_organization_id: string | null
           total_cost: number | null
           unit_cost: number | null
@@ -31952,6 +32030,7 @@ export type Database = {
           reference_id?: string | null
           reference_no?: string | null
           reference_type?: string | null
+          stock_config_id?: string | null
           to_organization_id?: string | null
           total_cost?: number | null
           unit_cost?: number | null
@@ -31975,6 +32054,7 @@ export type Database = {
           reference_id?: string | null
           reference_no?: string | null
           reference_type?: string | null
+          stock_config_id?: string | null
           to_organization_id?: string | null
           total_cost?: number | null
           unit_cost?: number | null
