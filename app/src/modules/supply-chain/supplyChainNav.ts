@@ -127,6 +127,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
             { id: 'add-stock', label: 'Add Stock', icon: Plus },
             { id: 'stock-adjustment', label: 'Stock Adjustment', icon: SettingsIcon },
             { id: 'stock-transfer', label: 'Stock Transfer', icon: Truck },
+            { id: 'repack-stock', label: 'Repack Stock', icon: Package },
             { id: 'stock-movements', label: 'Movement Reports', icon: ListTree },
         ],
     },
@@ -244,6 +245,7 @@ export const supplyChainViewToPath: Record<string, string> = {
     'inventory': 'inventory',
     'inventory-list': 'inventory',
     'inventory-settings': 'inventory-settings',
+    'repack-stock': 'inventory/repack',
 }
 
 export const supplyChainPathToView: Record<string, string> = {
@@ -251,6 +253,8 @@ export const supplyChainPathToView: Record<string, string> = {
     'inventory/settings': 'inventory-settings',
     'view-inventory': 'inventory-list',
     'inventory-settings': 'inventory-settings',
+    'inventory/repack': 'repack-stock',
+    'repack-stock': 'repack-stock',
     'settings': 'inventory-settings',
     'organizations': 'organizations',
     'organizations/new': 'add-organization',

@@ -39883,11 +39883,32 @@ export type Database = {
           p_reference_id?: string
           p_reference_no?: string
           p_reference_type?: string
+          p_stock_config_id?: string
           p_unit_cost?: number
           p_variant_id: string
           p_warehouse_location?: string
         }
         Returns: string
+      }
+      repack_stock: {
+        Args: {
+          p_created_by?: string
+          p_from_config_id: string
+          p_notes?: string
+          p_quantity: number
+          p_to_config_id: string
+          p_variant_id: string
+          p_warehouse_org_id: string
+        }
+        Returns: Json
+      }
+      resolve_default_stock_config: {
+        Args: { p_variant_id: string }
+        Returns: string
+      }
+      enable_variant_stock_configurations: {
+        Args: { p_variant_id: string }
+        Returns: Json
       }
       recycle_doc_number: {
         Args: {
