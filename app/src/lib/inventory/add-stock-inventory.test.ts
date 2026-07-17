@@ -212,6 +212,6 @@ describe('Add Stock existing inventory balance', () => {
 
   it('cancels stale lookups and keys the effect by both warehouse and variant', () => {
     expect(addStockComponent).toContain('if (cancelled) return')
-    expect(addStockComponent).toContain('[selectedVariant, selectedWarehouse, supabase]')
+    expect(addStockComponent).toContain('[selectedVariant, selectedWarehouse, selectedStockConfig, supabase]')
   })
 })

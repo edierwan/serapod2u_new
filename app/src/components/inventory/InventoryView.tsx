@@ -41,6 +41,12 @@ interface InventoryItem {
   variant_code?: string | null
   variant_name?: string | null
   variant_image_url?: string | null
+  stock_config_id?: string | null
+  config_label?: string | null
+  stock_sku?: string | null
+  volume_ml?: number | null
+  packaging?: string | null
+  default_for_ord?: boolean | null
   product_name?: string | null
   product_code?: string | null
   organization_id?: string | null
@@ -168,6 +174,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         item.variant_name,
         item.product_name,
         item.product_code,
+        item.stock_sku,
+        item.config_label,
         item.organization_name,
         item.organization_code
       ]
@@ -446,6 +454,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
   // Function declarations (hoisted) — also called from the sort memo above.
   function getIncomingRow(item: InventoryItem): IncomingStockRow | undefined {
+    if (item.default_for_ord === false) return undefined
     return incomingMap.get(incomingKey(item.organization_id, item.variant_id))
   }
 
@@ -526,6 +535,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             total_value,
             warehouse_location,
             updated_at,
+            stock_config_id,
+            inventory_stock_configurations!product_inventory_stock_config_fk (
+              config_label,
+              stock_sku,
+              volume_ml,
+              packaging,
+              default_for_ord
+            ),
             product_variants (
               id,
               variant_code,
@@ -633,7 +650,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         try {
           const { data: warrantyMovements, error: warrantyError } = await supabase
             .from('stock_movements')
-            .select('variant_id, to_organization_id, quantity_change, movement_type')
+            .select('variant_id, stock_config_id, to_organization_id, quantity_change, movement_type')
             .in('variant_id', collectedVariantIds as string[])
             .in('to_organization_id', organizationIds as string[])
             .ilike('movement_type', 'warranty_bonus')
@@ -641,7 +658,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           if (!warrantyError && warrantyMovements) {
             warrantyMovements.forEach((movement: any) => {
               if (movement.to_organization_id && movement.variant_id) {
-                const key = `${movement.to_organization_id}:${movement.variant_id}`
+                const key = `${movement.to_organization_id}:${movement.variant_id}:${movement.stock_config_id || 'legacy'}`
                 const qty = Number(movement.quantity_change ?? 0)
                 warrantyBonusMap.set(key, (warrantyBonusMap.get(key) ?? 0) + qty)
               }
@@ -694,7 +711,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         const resolvedTotalValue = (() => {
           if (resolvedUnitCost !== null) {
             // Exclude warranty_bonus quantities from value calculation
-            const key = organizationId && variantId ? `${organizationId}:${variantId}` : null
+            const key = organizationId && variantId ? `${organizationId}:${variantId}:${item.stock_config_id || 'legacy'}` : null
             const warrantyBonusQty = key ? (warrantyBonusMap.get(key) ?? 0) : 0
             const valuableQty = quantityOnHand - warrantyBonusQty
             return Number((valuableQty * resolvedUnitCost).toFixed(2))
@@ -714,6 +731,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           variant_code: item.variant_code ?? rawVariant?.variant_code ?? null,
           variant_name: item.variant_name ?? rawVariant?.variant_name ?? null,
           variant_image_url: variantImage,
+          stock_config_id: item.stock_config_id ?? null,
+          config_label: item.config_label ?? item.inventory_stock_configurations?.config_label ?? null,
+          stock_sku: item.stock_sku ?? item.inventory_stock_configurations?.stock_sku ?? null,
+          volume_ml: parseNumber(item.volume_ml ?? item.inventory_stock_configurations?.volume_ml),
+          packaging: item.packaging ?? item.inventory_stock_configurations?.packaging ?? null,
+          default_for_ord: item.default_for_ord ?? item.inventory_stock_configurations?.default_for_ord ?? null,
           product_name: item.product_name ?? rawProduct?.product_name ?? null,
           product_code: item.product_code ?? rawProduct?.product_code ?? null,
           organization_id: organizationId,
@@ -749,21 +772,21 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
           const { data: manualViewData, error: manualViewError } = await supabase
             .from('vw_manual_stock_balance')
-            .select('warehouse_id, variant_id, manual_balance_qty')
+            .select('warehouse_id, variant_id, stock_config_id, manual_balance_qty')
             .in('variant_id', variantIds)
             .in('warehouse_id', organizationIds)
 
           if (!manualViewError) {
             manualViewData?.forEach((row: any) => {
               if (!row?.warehouse_id || !row?.variant_id) return
-              const key = `${row.warehouse_id}:${row.variant_id}`
+              const key = `${row.warehouse_id}:${row.variant_id}:${row.stock_config_id || 'legacy'}`
               manualBalanceMap.set(key, Number(row.manual_balance_qty ?? 0))
             })
           } else {
             console.warn('vw_manual_stock_balance unavailable, aggregating manual balance from stock_movements', manualViewError)
             const { data: manualMovementData, error: manualMovementError } = await supabase
               .from('stock_movements')
-              .select('variant_id, movement_type, to_organization_id, from_organization_id, quantity_change')
+              .select('variant_id, stock_config_id, movement_type, to_organization_id, from_organization_id, quantity_change')
               .in('variant_id', variantIds)
               .in('movement_type', ['manual_in', 'manual_out'])
 
@@ -781,7 +804,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   return
                 }
 
-                const key = `${targetOrg}:${movement.variant_id}`
+                const key = `${targetOrg}:${movement.variant_id}:${movement.stock_config_id || 'legacy'}`
                 const existing = manualBalanceMap.get(key) ?? 0
                 const delta = Number(movement.quantity_change ?? 0)
                 manualBalanceMap.set(key, existing + delta)
@@ -796,7 +819,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               if (!item.organization_id || !item.variant_id) {
                 return item
               }
-              const key = `${item.organization_id}:${item.variant_id}`
+              const key = `${item.organization_id}:${item.variant_id}:${item.stock_config_id || 'legacy'}`
               if (!manualBalanceMap.has(key)) {
                 return item
               }
@@ -813,7 +836,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           try {
             const { data: movementTotalsData, error: movementTotalsError } = await supabase
               .from('stock_movements')
-              .select('variant_id, quantity_change, from_organization_id, to_organization_id, movement_type')
+              .select('variant_id, stock_config_id, quantity_change, from_organization_id, to_organization_id, movement_type')
               .in('variant_id', variantIds)
               .or(`from_organization_id.in.(${organizationIds.join(',')}),to_organization_id.in.(${organizationIds.join(',')})`)
 
@@ -831,7 +854,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
                 const toOrg = movement.to_organization_id
                 if (toOrg && organizationIdSet.has(toOrg)) {
-                  const key = `${toOrg}:${variantId}`
+                  const key = `${toOrg}:${variantId}:${movement.stock_config_id || 'legacy'}`
                   movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
 
                   // Track warranty_bonus quantities
@@ -843,7 +866,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
                 const fromOrg = movement.from_organization_id
                 if (fromOrg && organizationIdSet.has(fromOrg)) {
-                  const key = `${fromOrg}:${variantId}`
+                  const key = `${fromOrg}:${variantId}:${movement.stock_config_id || 'legacy'}`
                   movementTotalsMap.set(key, (movementTotalsMap.get(key) ?? 0) + qty)
                 }
               })
@@ -860,7 +883,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 return item
               }
 
-              const key = `${item.organization_id}:${item.variant_id}`
+              const key = `${item.organization_id}:${item.variant_id}:${item.stock_config_id || 'legacy'}`
               if (!movementTotalsMap.has(key)) {
                 return item
               }
@@ -1477,6 +1500,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           <p className="text-xs text-gray-600">
                             [{item.variant_name || 'No variant'}]
                           </p>
+                          {item.stock_sku && (
+                            <p className="text-xs font-medium text-blue-700">{item.stock_sku}</p>
+                          )}
+                          {(item.volume_ml || item.packaging) && (
+                            <p className="text-xs text-gray-500">
+                              {[item.volume_ml ? `${item.volume_ml}ml` : null, item.packaging === 'new_box' ? 'New Box' : item.packaging === 'old_box' ? 'Old Box' : null].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </TableCell>

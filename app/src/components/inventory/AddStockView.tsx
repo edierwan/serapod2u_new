@@ -61,6 +61,17 @@ interface StockItem {
   quantity: number
   unit_cost: number | null
   image_url: string | null
+  stock_config_id: string
+  stock_config_label: string
+  stock_sku: string
+}
+
+interface StockConfiguration {
+  id: string
+  config_label: string
+  stock_sku: string
+  volume_ml: number | null
+  packaging: string | null
 }
 
 interface Manufacturer {
@@ -88,6 +99,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   
   const [selectedProduct, setSelectedProduct] = useState('')
   const [selectedVariant, setSelectedVariant] = useState('')
+  const [stockConfigurations, setStockConfigurations] = useState<StockConfiguration[]>([])
+  const [selectedStockConfig, setSelectedStockConfig] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [quantity, setQuantity] = useState('')
@@ -142,6 +155,26 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProduct])
 
+  useEffect(() => {
+    const loadConfigurations = async () => {
+      setSelectedStockConfig('')
+      setStockConfigurations([])
+      if (!selectedVariant) return
+      const { data, error } = await supabase.from('inventory_stock_configurations')
+        .select('id, config_label, stock_sku, volume_ml, packaging')
+        .eq('variant_id', selectedVariant).eq('status', 'active').order('sort_order')
+      if (error) {
+        toast({ title: 'Configuration error', description: error.message, variant: 'destructive' })
+        return
+      }
+      const configs = data || []
+      setStockConfigurations(configs)
+      if (configs.length === 1) setSelectedStockConfig(configs[0].id)
+    }
+    loadConfigurations()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariant])
+
   // Existing stock is scoped to the exact warehouse + variant combination.
   useEffect(() => {
     let cancelled = false
@@ -151,7 +184,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       setExistingStockLoaded(false)
       setExistingStockError(null)
 
-      if (!selectedVariant || !selectedWarehouse) {
+      if (!selectedVariant || !selectedWarehouse || !selectedStockConfig) {
         setExistingStockLoading(false)
         return
       }
@@ -162,7 +195,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         const balance = await fetchExistingStockForWarehouse(
           supabase,
           selectedWarehouse,
-          selectedVariant
+          selectedVariant,
+          selectedStockConfig
         )
 
         if (cancelled) return
@@ -183,10 +217,10 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     return () => {
       cancelled = true
     }
-  }, [selectedVariant, selectedWarehouse, supabase])
+  }, [selectedVariant, selectedWarehouse, selectedStockConfig, supabase])
 
   const addItem = () => {
-    if (!selectedProduct || !selectedVariant || !quantity) {
+    if (!selectedProduct || !selectedVariant || !selectedStockConfig || !quantity) {
       toast({
         title: 'Validation Error',
         description: 'Please select product, variant and enter quantity',
@@ -216,7 +250,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     }
 
     // Check if variant already added
-    if (stockItems.some(item => item.variant_id === selectedVariant)) {
+    if (stockItems.some(item => item.variant_id === selectedVariant && item.stock_config_id === selectedStockConfig)) {
       toast({
         title: 'Duplicate Item',
         description: 'This variant is already in the list',
@@ -229,6 +263,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     const variant = variants.find(v => v.id === selectedVariant)
 
     if (!product || !variant) return
+    const stockConfig = stockConfigurations.find(config => config.id === selectedStockConfig)
+    if (!stockConfig) return
 
     const newItem: StockItem = {
       id: Date.now().toString(),
@@ -239,7 +275,10 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       variant_code: variant.variant_code,
       quantity: qty,
       unit_cost: cost,
-      image_url: variant.image_url
+      image_url: variant.image_url,
+      stock_config_id: stockConfig.id,
+      stock_config_label: stockConfig.config_label,
+      stock_sku: stockConfig.stock_sku
     }
 
     setStockItems([...stockItems, newItem])
@@ -410,6 +449,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
           notes: notes || null,
           companyId: userProfile.organizations.id,
           createdBy: userProfile.id,
+          stockConfigId: item.stock_config_id,
         }) as any)
 
         if (error) throw error
@@ -586,6 +626,22 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   </Select>
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Stock Configuration <span className="text-red-500">*</span>
+                  </label>
+                  <Select value={selectedStockConfig} onValueChange={setSelectedStockConfig} disabled={!selectedVariant || stockConfigurations.length === 0}>
+                    <SelectTrigger><SelectValue placeholder="Select physical stock configuration" /></SelectTrigger>
+                    <SelectContent>
+                      {stockConfigurations.map(config => (
+                        <SelectItem key={config.id} value={config.id}>
+                          {config.config_label} ({config.stock_sku})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Selected Product Summary */}
                 {selectedVariantData && selectedProductData && (
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -743,7 +799,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 <Button 
                   type="button" 
                   onClick={addItem}
-                  disabled={!selectedProduct || !selectedVariant || !quantity}
+                  disabled={!selectedProduct || !selectedVariant || !selectedStockConfig || !quantity}
                   className="w-full"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -788,6 +844,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               </div>
                               <div>
                                 <p className="text-sm font-medium text-gray-900">{item.product_name}</p>
+                                <p className="text-xs font-medium text-blue-700">{item.stock_config_label} · {item.stock_sku}</p>
                                 <p className="text-xs text-gray-500">[{item.variant_name}]</p>
                               </div>
                             </div>

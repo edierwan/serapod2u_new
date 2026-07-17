@@ -48,6 +48,12 @@ interface StockMovement {
   organization_code?: string | null
   manufacturer_name?: string | null
   created_by_email?: string | null
+  stock_config_id?: string | null
+  config_label?: string | null
+  stock_sku?: string | null
+  volume_ml?: number | null
+  packaging?: string | null
+  is_legacy_configuration?: boolean
   product_variants?: {
     variant_code: string
     variant_name: string
@@ -280,7 +286,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
       // Try using the optimized ordered view first, fallback to base table if unavailable
       let tableName = 'vw_stock_movements_ordered'
-      let query = supabase
+      let query = (supabase as any)
         .from(tableName)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
@@ -337,7 +343,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       if (error && (error.message?.includes('does not exist') || error.code === '42P01')) {
         console.log('View not found, using stock_movements table as fallback')
         tableName = 'stock_movements'
-        query = supabase
+        query = (supabase as any)
           .from(tableName)
           .select(`
             id,
@@ -358,7 +364,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             from_organization_id,
             to_organization_id,
             manufacturer_id,
-            created_by
+            created_by,
+            stock_config_id,
+            inventory_stock_configurations!stock_movements_stock_config_fk(config_label, stock_sku, volume_ml, packaging)
           `)
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
@@ -412,14 +420,14 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       }
 
       // Fetch related data separately when not already provided by the view
-      const variantIds = Array.from(new Set(data.map((item: any) => item.variant_id).filter(Boolean)))
-      const orgIds = Array.from(new Set([
+      const variantIds: string[] = Array.from(new Set<string>(data.map((item: any) => item.variant_id).filter((id: unknown): id is string => typeof id === 'string')))
+      const orgIds: string[] = Array.from(new Set<string>([
         ...data.map((item: any) => item.from_organization_id),
         ...data.map((item: any) => item.to_organization_id),
         ...data.map((item: any) => item.manufacturer_id)
-      ].filter(Boolean)))
-      const userIds = Array.from(new Set(data.map((item: any) => item.created_by).filter(Boolean)))
-      const orderIds = Array.from(new Set(
+      ].filter((id: unknown): id is string => typeof id === 'string')))
+      const userIds: string[] = Array.from(new Set<string>(data.map((item: any) => item.created_by).filter((id: unknown): id is string => typeof id === 'string')))
+      const orderIds: string[] = Array.from(new Set<string>(
         data
           .filter((item: any) => item.movement_type === 'order_fulfillment' && item.reference_id)
           .map((item: any) => item.reference_id)
@@ -640,6 +648,11 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
         return resolveStockMovementHistoryValues({
           ...item,
+          config_label: item.config_label ?? item.inventory_stock_configurations?.config_label ?? null,
+          stock_sku: item.stock_sku ?? item.inventory_stock_configurations?.stock_sku ?? null,
+          volume_ml: item.volume_ml ?? item.inventory_stock_configurations?.volume_ml ?? null,
+          packaging: item.packaging ?? item.inventory_stock_configurations?.packaging ?? null,
+          is_legacy_configuration: item.is_legacy_configuration ?? item.stock_config_id == null,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
           reference_no: isShipment && order ? (order.display_doc_no || order.order_no) : item.reference_no,
@@ -1278,6 +1291,13 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                                 return match ? `[ ${match[1]} ]` : variantName
                               })()}
                             </p>
+                            {movement.stock_sku ? (
+                              <p className="text-xs font-medium text-blue-700">
+                                {movement.stock_sku} · {[movement.volume_ml ? `${movement.volume_ml}ml` : null, movement.packaging === 'new_box' ? 'New Box' : movement.packaging === 'old_box' ? 'Old Box' : null].filter(Boolean).join(' · ')}
+                              </p>
+                            ) : movement.is_legacy_configuration ? (
+                              <p className="text-xs text-amber-700">Legacy / unclassified movement</p>
+                            ) : null}
                           </div>
                         </div>
                       </TableCell>

@@ -41,6 +41,17 @@ interface TransferItem {
   available_qty: number
   unit_cost: number | null
   variant_image_url?: string | null
+  stock_config_id: string
+  stock_config_label: string
+  stock_sku: string
+}
+
+interface StockConfiguration {
+  id: string
+  config_label: string
+  stock_sku: string
+  volume_ml: number | null
+  packaging: string | null
 }
 
 interface StockTransferViewProps {
@@ -57,6 +68,8 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   const [toWarehouse, setToWarehouse] = useState('')
   const [selectedProduct, setSelectedProduct] = useState('')
   const [selectedVariant, setSelectedVariant] = useState('')
+  const [stockConfigurations, setStockConfigurations] = useState<StockConfiguration[]>([])
+  const [selectedStockConfig, setSelectedStockConfig] = useState('')
   const [quantity, setQuantity] = useState('')
   const [notes, setNotes] = useState('')
   
@@ -102,7 +115,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   }, [selectedProduct])
 
   useEffect(() => {
-    if (selectedVariant && fromWarehouse) {
+    if (selectedVariant && selectedStockConfig && fromWarehouse) {
       checkAvailableStock()
     } else {
       setAvailableStock(0)
@@ -110,7 +123,24 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVariant, fromWarehouse])
+  }, [selectedVariant, selectedStockConfig, fromWarehouse])
+
+  useEffect(() => {
+    const loadConfigurations = async () => {
+      setSelectedStockConfig('')
+      setStockConfigurations([])
+      if (!selectedVariant) return
+      const { data, error } = await supabase.from('inventory_stock_configurations')
+        .select('id, config_label, stock_sku, volume_ml, packaging')
+        .eq('variant_id', selectedVariant).eq('status', 'active').order('sort_order')
+      if (error) return
+      const configs = data || []
+      setStockConfigurations(configs)
+      if (configs.length === 1) setSelectedStockConfig(configs[0].id)
+    }
+    loadConfigurations()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariant])
 
   const loadWarehouses = async () => {
     try {
@@ -210,7 +240,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   }
 
   const checkAvailableStock = async () => {
-    if (!selectedVariant || !fromWarehouse) return
+    if (!selectedVariant || !selectedStockConfig || !fromWarehouse) return
 
     try {
       const { data, error } = await supabase
@@ -218,6 +248,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
         .select('quantity_available, average_cost')
         .eq('variant_id', selectedVariant)
         .eq('organization_id', fromWarehouse)
+        .eq('stock_config_id', selectedStockConfig)
         .eq('is_active', true)
         .single()
 
@@ -233,7 +264,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   }
 
   const addItem = async () => {
-    if (!selectedProduct || !selectedVariant || !quantity || !fromWarehouse) {
+    if (!selectedProduct || !selectedVariant || !selectedStockConfig || !quantity || !fromWarehouse) {
       toast({
         title: 'Validation Error',
         description: 'Please select product, variant, and enter quantity',
@@ -262,7 +293,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
     }
 
     // Check if variant already added
-    if (transferItems.some(item => item.variant_id === selectedVariant)) {
+    if (transferItems.some(item => item.variant_id === selectedVariant && item.stock_config_id === selectedStockConfig)) {
       toast({
         title: 'Duplicate Item',
         description: 'This variant is already added to the transfer',
@@ -298,9 +329,12 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
         .select('average_cost')
         .eq('variant_id', selectedVariant)
         .eq('organization_id', fromWarehouse)
+        .eq('stock_config_id', selectedStockConfig)
         .single()
 
       const inventoryCost: any = inventoryData
+      const stockConfig = stockConfigurations.find(config => config.id === selectedStockConfig)
+      if (!stockConfig) throw new Error('Stock configuration is required')
 
       const newItem: TransferItem = {
         id: Date.now().toString(),
@@ -311,7 +345,10 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
         quantity: qty,
         available_qty: availableStock,
         unit_cost: inventoryCost?.average_cost || variantInfo.base_cost || null,
-        variant_image_url: variantInfo.image_url
+        variant_image_url: variantInfo.image_url,
+        stock_config_id: stockConfig.id,
+        stock_config_label: stockConfig.config_label,
+        stock_sku: stockConfig.stock_sku
       }
 
       setTransferItems([...transferItems, newItem])
@@ -389,76 +426,25 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
       if (transferNoError) throw transferNoError
 
-      // Create transfer record
-      const { data: transfer, error: transferError } = await supabase
-        .from('stock_transfers')
-        .insert([{
-          transfer_no: transferNo,
-          from_organization_id: fromWarehouse,
-          to_organization_id: toWarehouse,
-          status: 'in_transit',
-          items: transferItems.map(item => ({
-            variant_id: item.variant_id,
-            variant_name: item.variant_name,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            cost: item.unit_cost
-          })),
-          total_items: transferItems.reduce((sum, item) => sum + item.quantity, 0),
-          total_value: calculateTotalValue(),
-          notes: notes,
-          company_id: userProfile.organizations.id,
-          created_by: userProfile.id
-        }] as any)
-        .select()
-        .single()
-
+      const configuredItems = transferItems.map(item => ({
+        variant_id: item.variant_id,
+        variant_name: item.variant_name,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        cost: item.unit_cost,
+        stock_config_id: item.stock_config_id,
+        stock_sku: item.stock_sku
+      }))
+      const { error: transferError } = await supabase.rpc('post_stock_transfer_configured', {
+        p_transfer_no: transferNo,
+        p_company_id: userProfile.organizations.id,
+        p_from_organization_id: fromWarehouse,
+        p_to_organization_id: toWarehouse,
+        p_items: configuredItems,
+        p_notes: notes || undefined,
+        p_created_by: userProfile.id,
+      })
       if (transferError) throw transferError
-
-      const transferRecord: any = transfer
-
-      // Create stock movements for each item
-      for (const item of transferItems) {
-        // 1. Transfer Out (Source)
-        const { error: outError } = await supabase.rpc('record_stock_movement', {
-          p_movement_type: 'transfer_out',
-          p_variant_id: item.variant_id,
-          p_organization_id: fromWarehouse,
-          p_quantity_change: -item.quantity,
-          p_unit_cost: item.unit_cost,
-          p_manufacturer_id: null,
-          p_warehouse_location: null,
-          p_reason: `Transfer to ${warehouses.find(w => w.id === toWarehouse)?.org_name}`,
-          p_notes: `Transfer ${transferNo}`,
-          p_reference_type: 'transfer',
-          p_reference_id: transferRecord.id,
-          p_reference_no: transferNo,
-          p_company_id: userProfile.organizations.id,
-          p_created_by: userProfile.id
-        } as any)
-
-        if (outError) throw outError
-
-        // 2. Transfer In (Destination)
-        const { error: inError } = await supabase.rpc('record_stock_movement', {
-          p_movement_type: 'transfer_in',
-          p_variant_id: item.variant_id,
-          p_organization_id: toWarehouse,
-          p_quantity_change: item.quantity,
-          p_unit_cost: item.unit_cost,
-          p_manufacturer_id: null,
-          p_warehouse_location: null,
-          p_reason: `Transfer from ${warehouses.find(w => w.id === fromWarehouse)?.org_name}`,
-          p_notes: `Transfer ${transferNo}`,
-          p_reference_type: 'transfer',
-          p_reference_id: transferRecord.id,
-          p_reference_no: transferNo,
-          p_company_id: userProfile.organizations.id,
-          p_created_by: userProfile.id
-        } as any)
-
-        if (inError) throw inError
-      }
 
       toast({
         title: 'Transfer Created',
@@ -587,7 +573,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                 <CardDescription>Select products and quantities to transfer</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                   {/* Product */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Product</label>
@@ -629,14 +615,26 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                         ))}
                       </SelectContent>
                     </Select>
-                    {selectedVariant && availableStock > 0 && (
+                    {selectedVariant && selectedStockConfig && availableStock > 0 && (
                       <p className="text-xs text-green-600 mt-1">
                         Available: {availableStock.toLocaleString()} units
                       </p>
                     )}
-                    {selectedVariant && availableStock === 0 && (
+                    {selectedVariant && selectedStockConfig && availableStock === 0 && (
                       <p className="text-xs text-red-600 mt-1">Out of stock</p>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Configuration</label>
+                    <Select value={selectedStockConfig} onValueChange={setSelectedStockConfig} disabled={!selectedVariant || stockConfigurations.length === 0}>
+                      <SelectTrigger><SelectValue placeholder="Physical stock" /></SelectTrigger>
+                      <SelectContent>
+                        {stockConfigurations.map(config => (
+                          <SelectItem key={config.id} value={config.id}>{config.config_label} ({config.stock_sku})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Quantity */}
@@ -650,12 +648,12 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
                         placeholder="Qty"
-                        disabled={!selectedVariant || availableStock === 0}
+                        disabled={!selectedVariant || !selectedStockConfig || availableStock === 0}
                       />
                       <Button 
                         type="button" 
                         onClick={addItem}
-                        disabled={!selectedVariant || !quantity || availableStock === 0}
+                        disabled={!selectedVariant || !selectedStockConfig || !quantity || availableStock === 0}
                         size="icon"
                       >
                         <Plus className="w-4 h-4" />
@@ -700,6 +698,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                                 <p className="text-sm text-gray-500">
                                   [{item.variant_name}]
                                 </p>
+                                <p className="text-xs font-medium text-blue-700">{item.stock_config_label} · {item.stock_sku}</p>
                               </div>
                             </div>
                           </TableCell>

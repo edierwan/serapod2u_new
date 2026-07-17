@@ -19,11 +19,12 @@ interface ExistingStockRow {
 export async function fetchExistingStockForWarehouse(
   supabase: any,
   warehouseId: string,
-  variantId: string
+  variantId: string,
+  stockConfigId?: string
 ): Promise<ExistingStockBalance | null> {
   if (!warehouseId || !variantId) return null
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('product_inventory')
     .select(`
       quantity_on_hand,
@@ -36,7 +37,8 @@ export async function fetchExistingStockForWarehouse(
     .eq('organization_id', warehouseId)
     .eq('variant_id', variantId)
     .eq('is_active', true)
-    .maybeSingle()
+  if (stockConfigId) query = query.eq('stock_config_id', stockConfigId)
+  const { data, error } = await query.maybeSingle()
 
   if (error) throw error
   if (!data) return null
@@ -66,6 +68,7 @@ interface AddStockMovementInput {
   notes: string | null
   companyId: string
   createdBy: string
+  stockConfigId?: string
 }
 
 export function buildAddStockMovementParams(input: AddStockMovementInput) {
@@ -86,5 +89,6 @@ export function buildAddStockMovementParams(input: AddStockMovementInput) {
     p_reference_no: null,
     p_company_id: input.companyId,
     p_created_by: input.createdBy,
+    ...(input.stockConfigId ? { p_stock_config_id: input.stockConfigId } : {}),
   }
 }
