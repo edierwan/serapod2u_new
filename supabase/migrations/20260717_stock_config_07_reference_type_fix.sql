@@ -78,5 +78,8 @@ COMMENT ON CONSTRAINT stock_movements_reference_type_check ON public.stock_movem
 COMMENT ON CONSTRAINT valid_quantity_change ON public.stock_movements IS
   'Closed movement/sign allowlist. Positive inbound, negative outbound, and nonzero adjustment movements only; includes active Scratch Card and Spin Wheel campaign flows.';
 
-COMMIT;
+-- Refresh PostgREST metadata after the forward-only constraint replacement.
+-- This does not mutate inventory or transaction history.
+NOTIFY pgrst, 'reload schema';
 
+COMMIT;
