@@ -444,6 +444,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         isSaving={isSaving}
         onOpenChange={setDialogOpen}
         onSave={handleSave}
+        canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
       />
 
       <div className="border rounded-lg overflow-hidden">

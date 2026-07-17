@@ -1062,6 +1062,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         products={product ? [{ id: product.id, product_name: product.product_name }] : []}
         onSave={handleSaveVariant}
         isSaving={savingVariant}
+        canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
       />
     </div>
   )
