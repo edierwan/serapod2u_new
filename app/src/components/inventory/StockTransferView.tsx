@@ -44,6 +44,8 @@ interface TransferItem {
   stock_config_id: string
   stock_config_label: string
   stock_sku: string
+  volume_ml: number | null
+  packaging: string | null
 }
 
 interface StockConfiguration {
@@ -348,7 +350,9 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
         variant_image_url: variantInfo.image_url,
         stock_config_id: stockConfig.id,
         stock_config_label: stockConfig.config_label,
-        stock_sku: stockConfig.stock_sku
+        stock_sku: stockConfig.stock_sku,
+        volume_ml: stockConfig.volume_ml,
+        packaging: stockConfig.packaging,
       }
 
       setTransferItems([...transferItems, newItem])
@@ -625,7 +629,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                     )}
                   </div>
 
-                  <div>
+                  {stockConfigurations.some(config => config.volume_ml !== null || config.packaging !== null) ? <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Configuration</label>
                     <Select value={selectedStockConfig} onValueChange={setSelectedStockConfig} disabled={!selectedVariant || stockConfigurations.length === 0}>
                       <SelectTrigger><SelectValue placeholder="Physical stock" /></SelectTrigger>
@@ -635,7 +639,11 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
+                  </div> : selectedVariant && selectedStockConfig ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                      Standard inventory configuration selected automatically.
+                    </div>
+                  ) : null}
 
                   {/* Quantity */}
                   <div>
@@ -699,6 +707,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                                   [{item.variant_name}]
                                 </p>
                                 <p className="text-xs font-medium text-blue-700">{item.stock_config_label} · {item.stock_sku}</p>
+                                {item.volume_ml !== null ? <p className="text-xs text-slate-500">{item.volume_ml}ml · {item.packaging === 'new_box' ? 'New Box' : 'Old Box'}</p> : null}
                               </div>
                             </div>
                           </TableCell>

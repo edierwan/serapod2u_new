@@ -92,6 +92,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
   const [variantFilter, setVariantFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [quantityRangeFilter, setQuantityRangeFilter] = useState('all')
+  const [stockConfigFilter, setStockConfigFilter] = useState('all')
+  const [volumeFilter, setVolumeFilter] = useState('all')
+  const [packagingFilter, setPackagingFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -100,6 +103,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
   const [products, setProducts] = useState<any[]>([])
   const [variants, setVariants] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
+  const [stockConfigurations, setStockConfigurations] = useState<any[]>([])
 
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 20
@@ -142,13 +146,14 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       loadMovements()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, dateFrom, dateTo, currentPage])
+  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, stockConfigFilter, volumeFilter, packagingFilter, dateFrom, dateTo, currentPage])
 
   useEffect(() => {
     if (isReady) {
       fetchProducts()
       fetchVariants()
       fetchLocations()
+      supabase.from('inventory_stock_configurations').select('id, stock_sku, config_label, volume_ml, packaging').order('stock_sku').then(({ data }) => setStockConfigurations(data || []))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
@@ -699,6 +704,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
         })
       }
 
+      if (stockConfigFilter !== 'all') filteredData = filteredData.filter(item => item.stock_config_id === stockConfigFilter)
+      if (volumeFilter !== 'all') filteredData = filteredData.filter(item => String(item.volume_ml ?? 'legacy') === volumeFilter)
+      if (packagingFilter !== 'all') filteredData = filteredData.filter(item => String(item.packaging ?? 'legacy') === packagingFilter)
+
       setMovements(filteredData)
     } catch (error: any) {
       console.error('Failed to load movements:', error)
@@ -983,6 +992,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     <SelectItem value="scratch_game_out">Scratch Game Out</SelectItem>
                     <SelectItem value="scratch_game_in">Scratch Game In</SelectItem>
                     <SelectItem value="warranty_bonus">Warranty Bonus</SelectItem>
+                    <SelectItem value="repack_out">Repack Out</SelectItem>
+                    <SelectItem value="repack_in">Repack In</SelectItem>
+                    <SelectItem value="spin_wheel_out">Spin Wheel Out</SelectItem>
+                    <SelectItem value="spin_wheel_in">Spin Wheel In</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1062,6 +1075,18 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             {/* Filter Grid Row 2 - Date Range & Quantity */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Stock SKU / Configuration</label>
+                <Select value={stockConfigFilter} onValueChange={setStockConfigFilter}><SelectTrigger><SelectValue placeholder="All configurations" /></SelectTrigger><SelectContent><SelectItem value="all">All configurations</SelectItem>{stockConfigurations.map(config => <SelectItem key={config.id} value={config.id}>{config.stock_sku} · {config.config_label}</SelectItem>)}</SelectContent></Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Volume</label>
+                <Select value={volumeFilter} onValueChange={setVolumeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All volumes</SelectItem><SelectItem value="20">20ml</SelectItem><SelectItem value="50">50ml</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Packaging</label>
+                <Select value={packagingFilter} onValueChange={setPackagingFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All packaging</SelectItem><SelectItem value="new_box">New Box</SelectItem><SelectItem value="old_box">Old Box</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">
                   <Calendar className="w-3 h-3 inline mr-1" />
                   Date From
@@ -1112,6 +1137,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     setVariantFilter('all')
                     setLocationFilter('all')
                     setQuantityRangeFilter('all')
+                    setStockConfigFilter('all')
+                    setVolumeFilter('all')
+                    setPackagingFilter('all')
                     setDateFrom('')
                     setDateTo('')
                     setCurrentPage(1)
@@ -1125,7 +1153,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             </div>
 
             {/* Active Filters Display */}
-            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
+            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || stockConfigFilter !== 'all' || volumeFilter !== 'all' || packagingFilter !== 'all' || dateFrom || dateTo) && (
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
                 <span className="text-sm text-gray-600 font-medium">Active:</span>
                 {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
@@ -1135,6 +1163,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                 {variantFilter !== 'all' && <Badge variant="secondary">Variant</Badge>}
                 {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
                 {quantityRangeFilter !== 'all' && <Badge variant="secondary">Quantity Range</Badge>}
+                {stockConfigFilter !== 'all' && <Badge variant="secondary">Stock SKU</Badge>}
+                {volumeFilter !== 'all' && <Badge variant="secondary">Volume</Badge>}
+                {packagingFilter !== 'all' && <Badge variant="secondary">Packaging</Badge>}
                 {dateFrom && <Badge variant="secondary">From: {dateFrom}</Badge>}
                 {dateTo && <Badge variant="secondary">To: {dateTo}</Badge>}
               </div>

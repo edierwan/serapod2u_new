@@ -21,7 +21,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Settings
+  Settings,
+  ChevronDown
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
 import StockSettingsPanel from './StockSettingsPanel'
@@ -47,6 +48,7 @@ interface InventoryItem {
   volume_ml?: number | null
   packaging?: string | null
   default_for_ord?: boolean | null
+  stock_config_status?: string | null
   product_name?: string | null
   product_code?: string | null
   organization_id?: string | null
@@ -93,6 +95,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [incomingDetailItem, setIncomingDetailItem] = useState<InventoryItem | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [showInactive, setShowInactive] = useState(false)
+  const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set())
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -118,7 +122,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       fetchProducts()
       fetchVariants()
     }
-  }, [isReady])
+  }, [isReady, showInactive])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -263,6 +267,18 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     const end = start + itemsPerPage
     return sortedInventory.slice(start, end)
   }, [sortedInventory, currentPage, itemsPerPage])
+
+  const configuredVariantGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; rows: InventoryItem[] }>()
+    filteredInventory.forEach(item => {
+      if (!item.variant_id || !item.organization_id) return
+      const key = `${item.organization_id}:${item.variant_id}`
+      const group = groups.get(key) || { key, rows: [] }
+      group.rows.push(item)
+      groups.set(key, group)
+    })
+    return Array.from(groups.values()).filter(group => group.rows.some(row => row.volume_ml !== null && row.volume_ml !== undefined))
+  }, [filteredInventory])
 
   const renderSortIcon = (column: string) => {
     if (sortColumn !== column) {
@@ -486,7 +502,9 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         }
       }
 
-      const viewResult = await fetchAllPages(() => {
+      const viewResult: { data: any[] | null; error: any } = showInactive
+        ? { data: null, error: { code: 'PGRST204', message: 'Show inactive requires base inventory rows' } }
+        : await fetchAllPages(() => {
         let query = supabase
           .from('vw_inventory_on_hand' as any)
           .select('*')
@@ -541,6 +559,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               stock_sku,
               volume_ml,
               packaging,
+              status,
               default_for_ord
             ),
             product_variants (
@@ -737,6 +756,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           volume_ml: parseNumber(item.volume_ml ?? item.inventory_stock_configurations?.volume_ml),
           packaging: item.packaging ?? item.inventory_stock_configurations?.packaging ?? null,
           default_for_ord: item.default_for_ord ?? item.inventory_stock_configurations?.default_for_ord ?? null,
+          stock_config_status: item.stock_config_status ?? item.inventory_stock_configurations?.status ?? null,
           product_name: item.product_name ?? rawProduct?.product_name ?? null,
           product_code: item.product_code ?? rawProduct?.product_code ?? null,
           organization_id: organizationId,
@@ -930,6 +950,39 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       if (source === 'fallback') {
         console.info(`Inventory fallback loaded ${normalized.length} records from product_inventory`)
+      }
+
+      if (showInactive && collectedVariantIds.length > 0) {
+        const { data: allConfigs } = await supabase.from('inventory_stock_configurations')
+          .select('id, variant_id, config_label, stock_sku, volume_ml, packaging, status, default_for_ord')
+          .in('variant_id', collectedVariantIds as string[])
+          .order('sort_order')
+        const present = new Set(normalized.map(row => `${row.organization_id}:${row.variant_id}:${row.stock_config_id}`))
+        const contexts = new Map<string, InventoryItem>(
+          normalized.filter(row => row.organization_id && row.variant_id).map(row => [`${row.organization_id}:${row.variant_id}`, row]),
+        )
+        for (const context of contexts.values()) {
+          for (const config of (allConfigs || []).filter((candidate: any) => candidate.variant_id === context.variant_id)) {
+            const key = `${context.organization_id}:${context.variant_id}:${config.id}`
+            if (present.has(key)) continue
+            normalized.push({
+              ...context,
+              id: `zero-${key}`,
+              stock_config_id: config.id,
+              config_label: config.config_label,
+              stock_sku: config.stock_sku,
+              volume_ml: config.volume_ml,
+              packaging: config.packaging,
+              stock_config_status: config.status,
+              default_for_ord: config.default_for_ord,
+              quantity_on_hand: 0,
+              quantity_allocated: 0,
+              quantity_available: 0,
+              total_value: 0,
+              manual_balance_qty: 0,
+            })
+          }
+        }
       }
 
       setInventory(normalized)
@@ -1381,6 +1434,28 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       </Card>
 
       {/* Inventory Table */}
+      {configuredVariantGroups.length > 0 ? <Card>
+        <CardHeader><CardTitle>Configured Flavour Summary</CardTitle><CardDescription>Each flavour total is calculated once from its configuration rows. Expand to inspect the physical Stock SKUs.</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex justify-end"><label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={showInactive} onChange={event => setShowInactive(event.target.checked)} /> Show inactive zero-balance configurations</label></div>
+          {configuredVariantGroups.map(group => {
+            const first = group.rows[0]
+            const expanded = expandedVariants.has(group.key)
+            const totals = group.rows.reduce((sum, row) => ({ onHand: sum.onHand + row.quantity_on_hand, allocated: sum.allocated + row.quantity_allocated, available: sum.available + row.quantity_available }), { onHand: 0, allocated: 0, available: 0 })
+            return <div key={group.key} className="rounded-lg border">
+              <button type="button" className="grid w-full grid-cols-[1fr_auto] items-center gap-4 p-4 text-left md:grid-cols-[1fr_repeat(3,120px)_auto]" onClick={() => setExpandedVariants(current => { const next = new Set(current); next.has(group.key) ? next.delete(group.key) : next.add(group.key); return next })}>
+                <div><p className="font-semibold">{first.product_name} [{first.variant_name}]</p><p className="text-xs text-slate-500">{first.organization_name} · Aggregate variant total</p></div>
+                <div className="hidden text-right md:block"><p className="text-xs text-slate-500">On Hand</p><p className="font-bold">{formatNumber(totals.onHand)}</p></div>
+                <div className="hidden text-right md:block"><p className="text-xs text-slate-500">Allocated</p><p className="font-bold">{formatNumber(totals.allocated)}</p></div>
+                <div className="hidden text-right md:block"><p className="text-xs text-slate-500">Available</p><p className="font-bold">{formatNumber(totals.available)}</p></div>
+                <ChevronDown className={`h-5 w-5 transition ${expanded ? '' : '-rotate-90'}`} />
+              </button>
+              {expanded ? <div className="overflow-x-auto border-t"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3 text-left">Stock SKU</th><th className="p-3 text-left">Configuration</th><th className="p-3 text-left">Status</th><th className="p-3 text-right">On Hand</th><th className="p-3 text-right">Allocated</th><th className="p-3 text-right">Available</th></tr></thead><tbody>{group.rows.map(row => <tr key={row.id} className="border-t"><td className="p-3 font-mono text-blue-700">{row.stock_sku || 'Legacy'}</td><td className="p-3">{row.volume_ml ? `${row.volume_ml}ml · ${row.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : <span className="text-amber-700">Legacy / Unclassified</span>}</td><td className="p-3"><Badge variant="outline">{row.stock_config_status || 'active'}</Badge></td><td className="p-3 text-right">{formatNumber(row.quantity_on_hand)}</td><td className="p-3 text-right">{formatNumber(row.quantity_allocated)}</td><td className="p-3 text-right font-semibold">{formatNumber(row.quantity_available)}</td></tr>)}</tbody></table></div> : null}
+            </div>
+          })}
+        </CardContent>
+      </Card> : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Inventory Items</CardTitle>

@@ -239,16 +239,43 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
       const itemVariantIds = Array.from(new Set((itemsResult.data || []).map((item: any) => item.variant_id)))
       if (itemVariantIds.length > 0 && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code)) {
-        const { data: configs, error: configsError } = await supabase
+        const [{ data: configs, error: configsError }, inventoryOrgResult, eligibilityResult] = await Promise.all([
+          supabase
           .from('inventory_stock_configurations')
           .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, allow_so, status, requires_repacking_before_sale')
           .in('variant_id', itemVariantIds)
           .eq('status', 'active')
           .eq('allow_so', true)
           .eq('requires_repacking_before_sale', false)
-          .order('sort_order')
+          .order('sort_order'),
+          (supabase as any).rpc('order_inventory_organization', { p_order_id: orderId }),
+          supabase.from('distributor_stock_config_eligibility')
+            .select('allow_50ml_new_box')
+            .eq('distributor_org_id', order.buyer_org_id)
+            .maybeSingle(),
+        ])
         if (configsError) throw configsError
-        setStockConfigurations((configs || []).filter((config: any) => config.packaging !== 'old_box'))
+        const inventoryOrgId = inventoryOrgResult.data as string | null
+        const { data: balances, error: balancesError } = inventoryOrgId
+          ? await supabase.from('product_inventory')
+            .select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated, quantity_available')
+            .eq('organization_id', inventoryOrgId)
+            .in('variant_id', itemVariantIds)
+            .eq('is_active', true)
+          : { data: [], error: inventoryOrgResult.error }
+        if (balancesError) throw balancesError
+        const balanceMap = new Map((balances || []).map((balance: any) => [balance.stock_config_id, balance]))
+        const eligible50ml = eligibilityResult.data?.allow_50ml_new_box === true
+        setStockConfigurations((configs || []).filter((config: any) => config.packaging !== 'old_box').map((config: any) => {
+          const balance: any = balanceMap.get(config.id)
+          return {
+            ...config,
+            onHand: Number(balance?.quantity_on_hand || 0),
+            allocated: Number(balance?.quantity_allocated || 0),
+            available: Number(balance?.quantity_available || 0),
+            eligible: config.volume_ml === 50 ? eligible50ml : true,
+          }
+        }))
       } else {
         setStockConfigurations([])
       }
@@ -441,12 +468,16 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     return formatCurrencyUtil(amount)
   }
 
-  const confirmStockConfiguration = async (itemId: string, stockConfigId: string) => {
+  const confirmStockConfiguration = async (item: any, stockConfig: any) => {
+    if (item.stock_config_id && item.stock_config_id !== stockConfig.id) {
+      const current = item.stock_config?.config_label || 'the current configuration'
+      if (!window.confirm(`Move this line's allocation from ${current} to ${stockConfig.config_label}? This change is atomic and will not alter the order price.`)) return
+    }
     try {
-      setConfirmingItemId(itemId)
+      setConfirmingItemId(item.id)
       const { error } = await supabase.rpc('set_order_item_stock_config', {
-        p_order_item_id: itemId,
-        p_stock_config_id: stockConfigId,
+        p_order_item_id: item.id,
+        p_stock_config_id: stockConfig.id,
       })
       if (error) throw error
       await loadOrderData(orderData.id)
@@ -750,24 +781,36 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   </td>
                   <td className="py-3 pr-3 text-xs text-gray-900 align-top pt-4 print:hidden">
                     {orderData.status === 'submitted' && ['D2H', 'S2D'].includes(orderData.order_type) && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code) ? (
-                      <div className="space-y-1">
-                        <select
-                          className="h-8 min-w-48 rounded border border-gray-300 bg-white px-2"
-                          value={item.stock_config_id || ''}
-                          disabled={confirmingItemId === item.id}
-                          onChange={(event) => confirmStockConfiguration(item.id, event.target.value)}
-                        >
-                          <option value="" disabled>Select actual stock…</option>
-                          {stockConfigurations.filter(config => config.variant_id === item.variant_id).map(config => (
-                            <option key={config.id} value={config.id}>{config.config_label} ({config.stock_sku})</option>
-                          ))}
-                        </select>
-                        <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>
-                          {item.stock_config_confirmed_at ? 'Confirmed' : 'Confirmation required before approval'}
+                      (() => {
+                        const options = stockConfigurations.filter(config => config.variant_id === item.variant_id && config.eligible)
+                        const selectable = options.filter(config => {
+                          const effectiveAvailable = config.available + (config.id === item.stock_config_id ? Number(item.qty || 0) : 0)
+                          return effectiveAvailable >= Number(item.qty || 0)
+                        })
+                        return <div className="min-w-[310px] space-y-2">
+                          <div className="font-semibold text-slate-900">Requested: {item.variant?.variant_name || 'Flavour'} · {formatNumber(item.qty)}</div>
+                          {options.map(config => {
+                            const enough = selectable.some(candidate => candidate.id === config.id)
+                            const selected = item.stock_config_id === config.id
+                            return <button
+                              key={config.id}
+                              type="button"
+                              disabled={!enough || confirmingItemId === item.id}
+                              onClick={() => confirmStockConfiguration(item, config)}
+                              className={`block w-full rounded-md border p-2 text-left transition ${selected ? 'border-blue-500 bg-blue-50' : enough ? 'border-slate-200 bg-white hover:border-blue-300' : 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'}`}
+                            >
+                              <div className="flex items-center justify-between gap-2"><span className="font-semibold">{config.volume_ml ? `${config.volume_ml}ml · ${config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'}</span><span className={selected ? 'text-blue-700' : 'text-slate-500'}>{selected ? (item.stock_config_confirmed_at ? 'Confirmed' : 'Allocated') : enough ? 'Available' : 'Insufficient'}</span></div>
+                              <div className="font-mono text-[11px] text-blue-700">{config.stock_sku}</div>
+                              <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-slate-600"><span>On hand {formatNumber(config.onHand)}</span><span>Allocated {formatNumber(config.allocated)}</span><span>Available {formatNumber(config.available)}</span></div>
+                              {config.volume_ml === 50 ? <div className="mt-1 text-[11px] text-emerald-700">Distributor eligible for 50ml New Box</div> : null}
+                            </button>
+                          })}
+                          {selectable.length === 0 ? <div className="rounded border border-red-200 bg-red-50 p-2 font-medium text-red-700">Insufficient available stock. Fulfilment is blocked.</div> : null}
+                          <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>{item.stock_config_confirmed_at ? 'Exact configuration confirmed for picking' : 'Confirmation required before approval'}</div>
                         </div>
-                      </div>
+                      })()
                     ) : (
-                      <span>{item.stock_config?.config_label || (item.stock_config_id ? 'Configured stock' : 'Legacy / not assigned')}</span>
+                      <span>{item.stock_config ? `${item.stock_config.stock_sku} · ${item.stock_config.volume_ml ? `${item.stock_config.volume_ml}ml · ${item.stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : item.stock_config.config_label}` : (item.stock_config_id ? 'Configured stock' : 'Legacy / not assigned')}</span>
                     )}
                   </td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>

@@ -64,6 +64,8 @@ interface StockItem {
   stock_config_id: string
   stock_config_label: string
   stock_sku: string
+  volume_ml: number | null
+  packaging: string | null
 }
 
 interface StockConfiguration {
@@ -278,7 +280,9 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       image_url: variant.image_url,
       stock_config_id: stockConfig.id,
       stock_config_label: stockConfig.config_label,
-      stock_sku: stockConfig.stock_sku
+      stock_sku: stockConfig.stock_sku,
+      volume_ml: stockConfig.volume_ml,
+      packaging: stockConfig.packaging,
     }
 
     setStockItems([...stockItems, newItem])
@@ -626,7 +630,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   </Select>
                 </div>
 
-                <div>
+                {stockConfigurations.some(config => config.volume_ml !== null || config.packaging !== null) ? <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Stock Configuration <span className="text-red-500">*</span>
                   </label>
@@ -640,7 +644,11 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div> : selectedVariant && selectedStockConfig ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                    Standard inventory configuration selected automatically.
+                  </div>
+                ) : null}
 
                 {/* Selected Product Summary */}
                 {selectedVariantData && selectedProductData && (
@@ -845,6 +853,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               <div>
                                 <p className="text-sm font-medium text-gray-900">{item.product_name}</p>
                                 <p className="text-xs font-medium text-blue-700">{item.stock_config_label} · {item.stock_sku}</p>
+                                {item.volume_ml !== null ? <p className="text-xs text-slate-500">{item.volume_ml}ml · {item.packaging === 'new_box' ? 'New Box' : 'Old Box'}</p> : null}
                                 <p className="text-xs text-gray-500">[{item.variant_name}]</p>
                               </div>
                             </div>
