@@ -131,3 +131,24 @@ JOIN public.inventory_stock_configurations c_out ON c_out.id = sm_out.stock_conf
 JOIN public.inventory_stock_configurations c_in  ON c_in.id  = sm_in.stock_config_id
 WHERE sm_out.movement_type = 'repack_out'
   AND c_out.volume_ml IS DISTINCT FROM c_in.volume_ml;
+
+\echo '=== [15] Stock Count configuration uniqueness (Phase 3+; MUST BE EMPTY) ==='
+SELECT session_id, stock_config_id, count(*)
+FROM public.stock_count_session_items
+WHERE stock_config_id IS NOT NULL
+GROUP BY session_id, stock_config_id
+HAVING count(*) > 1;
+
+\echo '=== [16] Stock Count configuration/variant consistency (Phase 3+; MUST BE EMPTY) ==='
+SELECT i.id, i.session_id, i.variant_id, i.stock_config_id
+FROM public.stock_count_session_items i
+LEFT JOIN public.inventory_stock_configurations c
+  ON c.id = i.stock_config_id AND c.variant_id = i.variant_id
+WHERE i.stock_config_id IS NOT NULL AND c.id IS NULL;
+
+\echo '=== [17] Adjustment audit configuration/variant consistency (Phase 3+; MUST BE EMPTY) ==='
+SELECT i.id, i.adjustment_id, i.variant_id, i.stock_config_id
+FROM public.stock_adjustment_items i
+LEFT JOIN public.inventory_stock_configurations c
+  ON c.id = i.stock_config_id AND c.variant_id = i.variant_id
+WHERE i.stock_config_id IS NOT NULL AND c.id IS NULL;

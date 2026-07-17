@@ -61,6 +61,12 @@ interface WarehouseLocation {
 
 interface CountRow {
   inventoryId: string
+  stockConfigId: string
+  stockSku: string
+  configLabel: string
+  volumeMl: number | null
+  packagingVersion: string | null
+  configStatus: string
   variantId: string
   productName: string
   productCode: string
@@ -130,7 +136,7 @@ const countTypeOptions: Array<{ value: CountType; label: string }> = [
 const formatNumber = (value: number) => value.toLocaleString('en-MY')
 const formatMoney = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const parseCount = (value: string) => (value.trim() === '' ? null : Number(value))
-const skuForRow = (row: CountRow) => row.manufacturerSku || row.variantCode || row.manualSku || row.variantId
+const skuForRow = (row: CountRow) => row.stockSku
 const varianceForRow = (row: CountRow) => {
   const physical = parseCount(row.physicalCount)
   return physical === null ? null : physical - row.systemQuantity
@@ -165,6 +171,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [selectedGroupId, setSelectedGroupId] = useState(ALL_GROUP_ID)
   const [searchTerm, setSearchTerm] = useState('')
   const [showVarianceOnly, setShowVarianceOnly] = useState(false)
+  const [showInactive, setShowInactive] = useState(false)
   const [groupExpanded, setGroupExpanded] = useState(true)
   const [saving, setSaving] = useState(false)
   const [posting, setPosting] = useState(false)
@@ -246,14 +253,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setLoadingRows(true)
       // Wildcard variant fields keep Stock Count usable before the optional Product
       // Code migration and expose product_code automatically after it is applied.
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('product_inventory')
         .select(`
           id,
           variant_id,
+          stock_config_id,
           organization_id,
           quantity_on_hand,
           warehouse_location,
+          inventory_stock_configurations!product_inventory_stock_config_fk (
+            id, config_label, stock_sku, volume_ml, packaging, status
+          ),
           product_variants!inner (
             *,
             products!inner (
@@ -275,6 +286,12 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       if (error) throw error
 
       const nextRows: CountRow[] = (data || []).map((item: any) => {
+        const config = Array.isArray(item.inventory_stock_configurations)
+          ? item.inventory_stock_configurations[0]
+          : item.inventory_stock_configurations
+        if (!item.stock_config_id || !config) {
+          throw new Error(`Inventory row ${item.id} has no Stock Configuration ID. Stock Count cannot safely guess its configuration.`)
+        }
         const variant = Array.isArray(item.product_variants) ? item.product_variants[0] : item.product_variants
         const product = Array.isArray(variant?.products) ? variant.products[0] : variant?.products
         const group = Array.isArray(product?.product_groups) ? product.product_groups[0] : product?.product_groups
@@ -283,6 +300,12 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         const groupName = group?.group_name || brand?.brand_name || 'Ungrouped'
         return {
           inventoryId: item.id,
+          stockConfigId: item.stock_config_id,
+          stockSku: config.stock_sku,
+          configLabel: config.config_label,
+          volumeMl: config.volume_ml,
+          packagingVersion: config.packaging,
+          configStatus: config.status,
           variantId: item.variant_id,
           productName: product?.product_name || 'Unnamed product',
           productCode: variant?.product_code || '',
@@ -301,7 +324,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           unitCost: normalizeBaseCost(variant?.base_cost),
           warehouseLocation: item.warehouse_location || null,
         }
-      }).sort((a, b) => `${a.groupName} ${a.productName} ${a.variantName}`.localeCompare(`${b.groupName} ${b.productName} ${b.variantName}`))
+      }).sort((a: CountRow, b: CountRow) => `${a.groupName} ${a.productName} ${a.variantName} ${a.configLabel}`.localeCompare(`${b.groupName} ${b.productName} ${b.variantName} ${b.configLabel}`))
 
       setRows(nextRows)
     } catch (error: any) {
@@ -311,69 +334,78 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   }
 
+  const visibleRows = useMemo(
+    () => rows.filter(row => showInactive
+      || row.configStatus === 'active'
+      || row.systemQuantity !== 0
+      || parseCount(row.physicalCount) !== null
+      || Boolean(row.note.trim())),
+    [rows, showInactive],
+  )
+
   const groups = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number; logoUrl: string | null; description: string | null }>()
-    rows.forEach(row => {
+    visibleRows.forEach(row => {
       const existing = map.get(row.groupId)
       if (existing) existing.count += 1
       else map.set(row.groupId, { id: row.groupId, name: row.groupName, count: 1, logoUrl: row.brandLogoUrl || row.imageUrl, description: row.groupDescription })
     })
-    return [{ id: ALL_GROUP_ID, name: 'All', count: rows.length, logoUrl: null, description: null }, ...Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))]
-  }, [rows])
+    return [{ id: ALL_GROUP_ID, name: 'All', count: visibleRows.length, logoUrl: null, description: null }, ...Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))]
+  }, [visibleRows])
 
   const selectedGroup = groups.find(group => group.id === selectedGroupId) || groups[0]
   const selectedGroupRows = useMemo(() => {
-    const scoped = selectedGroupId === ALL_GROUP_ID ? rows : rows.filter(row => row.groupId === selectedGroupId)
+    const scoped = selectedGroupId === ALL_GROUP_ID ? visibleRows : visibleRows.filter(row => row.groupId === selectedGroupId)
     const query = searchTerm.trim().toLowerCase()
     return scoped.filter(row => {
       const variance = varianceForRow(row)
       if (showVarianceOnly && (!variance || variance === 0)) return false
       if (!query) return true
-      return [row.productName, row.variantName, row.variantCode, row.manufacturerSku, row.manualSku].filter(Boolean).some(value => String(value).toLowerCase().includes(query))
+      return [row.productName, row.variantName, row.variantCode, row.stockSku, row.configLabel, row.manufacturerSku, row.manualSku].filter(Boolean).some(value => String(value).toLowerCase().includes(query))
     })
-  }, [rows, searchTerm, selectedGroupId, showVarianceOnly])
+  }, [visibleRows, searchTerm, selectedGroupId, showVarianceOnly])
 
   const pageSummary = useMemo(() => {
-    const counted = rows.filter(row => parseCount(row.physicalCount) !== null)
+    const counted = visibleRows.filter(row => parseCount(row.physicalCount) !== null)
     const variances = counted.map(row => varianceForRow(row) || 0)
     return {
-      totalItems: rows.length,
+      totalItems: visibleRows.length,
       counted: counted.length,
-      notCounted: rows.length - counted.length,
+      notCounted: visibleRows.length - counted.length,
       varianceItems: variances.filter(value => value !== 0).length,
       netAdjustment: variances.reduce((sum, value) => sum + value, 0),
-      estimatedValue: sumStockCountImpacts(rows.flatMap(row => {
+      estimatedValue: sumStockCountImpacts(visibleRows.flatMap(row => {
         const variance = varianceForRow(row)
         return variance === null ? [] : [{ quantityChange: variance, baseCost: row.unitCost }]
       })),
     }
-  }, [rows])
+  }, [visibleRows])
 
   const groupSummary = useMemo(() => {
-    const scoped = selectedGroupId === ALL_GROUP_ID ? rows : rows.filter(row => row.groupId === selectedGroupId)
+    const scoped = selectedGroupId === ALL_GROUP_ID ? visibleRows : visibleRows.filter(row => row.groupId === selectedGroupId)
     return {
       variants: scoped.length,
       systemTotal: scoped.reduce((sum, row) => sum + row.systemQuantity, 0),
       countedTotal: scoped.reduce((sum, row) => sum + (parseCount(row.physicalCount) ?? 0), 0),
       varianceTotal: scoped.reduce((sum, row) => sum + (varianceForRow(row) || 0), 0),
     }
-  }, [rows, selectedGroupId])
+  }, [visibleRows, selectedGroupId])
 
-  const canSave = Boolean(selectedWarehouse && countDate && rows.length > 0 && currentStatus !== 'posted')
+  const canSave = Boolean(selectedWarehouse && countDate && visibleRows.length > 0 && currentStatus !== 'posted')
   const canPost = canSave && pageSummary.counted > 0
 
-  const updateRow = (variantId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
-    setRows(prev => prev.map(row => row.variantId === variantId ? { ...row, ...patch } : row))
+  const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
+    setRows(prev => prev.map(row => row.stockConfigId === stockConfigId ? { ...row, ...patch } : row))
   }
 
-  const handlePhysicalCountChange = (variantId: string, value: string) => {
-    if (value === '' || /^\d+$/.test(value)) updateRow(variantId, { physicalCount: value })
+  const handlePhysicalCountChange = (stockConfigId: string, value: string) => {
+    if (value === '' || /^\d+$/.test(value)) updateRow(stockConfigId, { physicalCount: value })
   }
 
-  const focusNextCountInput = (variantId: string) => {
-    const index = selectedGroupRows.findIndex(row => row.variantId === variantId)
+  const focusNextCountInput = (stockConfigId: string) => {
+    const index = selectedGroupRows.findIndex(row => row.stockConfigId === stockConfigId)
     const next = selectedGroupRows[index + 1]
-    if (next) document.querySelector<HTMLInputElement>(`input[data-count-input="${next.variantId}"]`)?.focus()
+    if (next) document.querySelector<HTMLInputElement>(`input[data-count-input="${next.stockConfigId}"]`)?.focus()
   }
 
   const saveDraft = async (options: { noteOverride?: string; silent?: boolean } = {}): Promise<string | null> => {
@@ -408,7 +440,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         setCurrentSessionId(sessionId)
       }
 
-      const draftRows = rows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim())
+      const draftRows = visibleRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim())
       await supabase.from('stock_count_session_items' as any).delete().eq('session_id', sessionId)
       if (draftRows.length > 0) {
         const { error: itemError } = await supabase.from('stock_count_session_items' as any).insert(draftRows.map(row => {
@@ -416,6 +448,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           return {
             session_id: sessionId,
             variant_id: row.variantId,
+            stock_config_id: row.stockConfigId,
             sku: skuForRow(row),
             system_quantity: row.systemQuantity,
             physical_quantity: physical,
@@ -444,13 +477,23 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       toast({ title: 'Open draft failed', description: error.message, variant: 'destructive' })
       return
     }
-    const { data: items, error: itemError } = await supabase.from('stock_count_session_items' as any).select('variant_id, physical_quantity, note').eq('session_id', sessionId)
+    const { data: items, error: itemError } = await supabase.from('stock_count_session_items' as any).select('stock_config_id, variant_id, physical_quantity, note').eq('session_id', sessionId)
     if (itemError) {
       toast({ title: 'Open draft failed', description: itemError.message, variant: 'destructive' })
       return
     }
 
-    const itemMap = new Map((items || []).map((item: any) => [item.variant_id, item]))
+    const legacyItem = (items || []).find((item: any) => !item.stock_config_id)
+    if (legacyItem) {
+      toast({
+        title: 'Draft template is incompatible',
+        description: 'This draft predates Stock Configuration IDs and cannot be matched safely. Start a new Stock Count; the historical draft remains unchanged.',
+        variant: 'destructive',
+      })
+      return
+    }
+    const itemMap = new Map((items || []).map((item: any) => [item.stock_config_id, item]))
+    if (rows.some(row => itemMap.has(row.stockConfigId) && row.configStatus !== 'active' && row.systemQuantity === 0)) setShowInactive(true)
     setCurrentSessionId((session as any).id)
     setCurrentStatus((session as any).status)
     setCountDate((session as any).count_date)
@@ -458,7 +501,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setReferenceName((session as any).reference_name || '')
     setNotes((session as any).notes || '')
     setRows(prev => prev.map(row => {
-      const item = itemMap.get(row.variantId) as any
+      const item = itemMap.get(row.stockConfigId) as any
       return item ? { ...row, physicalCount: item.physical_quantity === null ? '' : String(item.physical_quantity), note: item.note || '' } : { ...row, physicalCount: '', note: '' }
     }))
     toast({ title: 'Draft opened', description: 'Saved counts are loaded for review.' })
@@ -475,12 +518,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const downloadExcel = async () => {
-    if (rows.length === 0) return
+    if (visibleRows.length === 0) return
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
-    buildStockCountWorksheet(workbook, rows.map(row => ({
+    buildStockCountWorksheet(workbook, visibleRows.map(row => ({
+      stockConfigId: row.stockConfigId,
+      stockSku: row.stockSku,
       variantId: row.variantId,
-      sku: skuForRow(row),
+      volumeMl: row.volumeMl,
+      packagingVersion: row.packagingVersion,
       groupName: row.groupName,
       variantName: row.variantName,
       productName: row.productName,
@@ -510,12 +556,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       if (!sheet) throw new Error('The Excel file does not contain a worksheet.')
 
       const result = parseStockCountWorksheet(sheet, rows.map(row => ({
+        stockConfigId: row.stockConfigId,
         variantId: row.variantId,
-        sku: skuForRow(row),
+        stockSku: row.stockSku,
         physicalCount: row.physicalCount,
         note: row.note,
       })))
-      setRows(prev => prev.map(row => result.patches.has(row.variantId) ? { ...row, ...result.patches.get(row.variantId)! } : row))
+      setRows(prev => prev.map(row => result.patches.has(row.stockConfigId) ? { ...row, ...result.patches.get(row.stockConfigId)! } : row))
       setImportSummary({
         updated: result.updated,
         unchanged: result.unchanged,
@@ -722,7 +769,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {onViewChange && <Button variant="outline" onClick={() => onViewChange('inventory')}><ArrowLeft className="mr-2 h-4 w-4" /> Inventory</Button>}
-          <Button variant="outline" onClick={downloadExcel} disabled={!rows.length}><Download className="mr-2 h-4 w-4" /> Download Excel Template</Button>
+          <Button variant="outline" onClick={downloadExcel} disabled={!visibleRows.length}><Download className="mr-2 h-4 w-4" /> Download Excel Template</Button>
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={event => {
             const file = event.target.files?.[0]
@@ -792,6 +839,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="w-72 pl-9" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={selectedGroupId === ALL_GROUP_ID ? 'Search all variants...' : 'Search variants in this group...'} /></div>
               <div className="flex items-center gap-2"><Switch checked={showVarianceOnly} onCheckedChange={setShowVarianceOnly} /><span className="text-sm font-semibold text-slate-700">Show Variance Only</span></div>
+              <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><span className="text-sm font-semibold text-slate-700">Show inactive</span></div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild><Button variant="outline"><Columns3 className="mr-2 h-4 w-4" /> Columns</Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -807,7 +855,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <button type="button" className="flex w-full items-center justify-between gap-4 p-4 text-left" onClick={() => setGroupExpanded(!groupExpanded)}>
               <div className="flex items-center gap-4">
                 <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg bg-slate-100">{selectedGroup?.logoUrl ? <img src={getStorageUrl(selectedGroup.logoUrl) || selectedGroup.logoUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-8 w-8 text-slate-400" />}</div>
-                <div><div className="flex items-center gap-2"><h2 className="text-xl font-bold text-slate-950">{selectedGroup?.name || 'All'}</h2><Badge variant="outline">{groupSummary.variants} variants</Badge></div><p className="text-sm text-slate-500">{selectedGroup?.description || (selectedGroupId === ALL_GROUP_ID ? 'All active inventory variants in the selected warehouse.' : 'Active variants in this product group.')}</p></div>
+                <div><div className="flex items-center gap-2"><h2 className="text-xl font-bold text-slate-950">{selectedGroup?.name || 'All'}</h2><Badge variant="outline">{groupSummary.variants} configurations</Badge></div><p className="text-sm text-slate-500">{selectedGroup?.description || (selectedGroupId === ALL_GROUP_ID ? 'Configuration-aware inventory balances in the selected warehouse.' : 'Stock configurations in this product group.')}</p></div>
               </div>
               <div className="hidden flex-1 grid-cols-3 divide-x text-center md:grid">
                 <div><p className="text-xs font-semibold text-slate-500">System Qty (Total)</p><p className="text-lg font-bold">{formatNumber(groupSummary.systemTotal)}</p></div>
@@ -820,22 +868,22 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             {groupExpanded && (
               <div className="overflow-x-auto border-t">
                 <Table>
-                  <TableHeader><TableRow><TableHead className="min-w-[280px]">Variant / SKU</TableHead><TableHead className="text-right">System Quantity</TableHead><TableHead className="min-w-[170px]">Physical Count</TableHead><TableHead className="text-right">Variance</TableHead>{visibleColumns.unitCost && <TableHead className="text-right">Unit Cost</TableHead>}{visibleColumns.adjustmentValue && <TableHead className="text-right">Adjustment Value</TableHead>}{visibleColumns.note && <TableHead className="min-w-[240px]">Note / Status</TableHead>}</TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead className="min-w-[320px]">Variant / Stock Configuration</TableHead><TableHead className="text-right">System Quantity</TableHead><TableHead className="min-w-[170px]">Physical Count</TableHead><TableHead className="text-right">Variance</TableHead>{visibleColumns.unitCost && <TableHead className="text-right">Unit Cost</TableHead>}{visibleColumns.adjustmentValue && <TableHead className="text-right">Adjustment Value</TableHead>}{visibleColumns.note && <TableHead className="min-w-[240px]">Note / Status</TableHead>}</TableRow></TableHeader>
                   <TableBody>
-                    {loadingRows && <TableRow><TableCell colSpan={7} className="py-8 text-center text-slate-500">Loading inventory variants...</TableCell></TableRow>}
+                    {loadingRows && <TableRow><TableCell colSpan={7} className="py-8 text-center text-slate-500">Loading inventory configurations...</TableCell></TableRow>}
                     {!loadingRows && selectedGroupRows.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-slate-500">No variants match this view.</TableCell></TableRow>}
                     {selectedGroupRows.map(row => {
                       const variance = varianceForRow(row)
                       const adjustmentValue = adjustmentValueForRow(row)
                       return (
-                        <TableRow key={row.variantId}>
-                          <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><p className="text-xs text-slate-500">{row.productName} · {skuForRow(row)}</p></div></div></TableCell>
+                        <TableRow key={row.stockConfigId}>
+                          <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge><span className="font-mono text-xs text-slate-500">{skuForRow(row)}</span></div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                           <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
-                          <TableCell><Input data-count-input={row.variantId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted'} onChange={event => handlePhysicalCountChange(row.variantId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.variantId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
+                          <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted'} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                           <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
                           {visibleColumns.unitCost && <TableCell className="text-right tabular-nums">{row.unitCost === null ? '—' : formatMoney(row.unitCost)}</TableCell>}
                           {visibleColumns.adjustmentValue && <TableCell className={`text-right font-semibold tabular-nums ${!adjustmentValue ? 'text-slate-600' : adjustmentValue > 0 ? 'text-green-600' : 'text-red-600'}`}>{adjustmentValue === null ? '-' : formatMoney(adjustmentValue)}</TableCell>}
-                          {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted'} onChange={event => updateRow(row.variantId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
+                          {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted'} onChange={event => updateRow(row.stockConfigId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
                         </TableRow>
                       )
                     })}
@@ -861,7 +909,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               <div><span className="text-slate-500">Count date</span><strong className="block text-slate-900">{countDate}</strong></div>
               <div><span className="text-slate-500">Count type</span><strong className="block text-slate-900">{countTypeOptions.find(option => option.value === countType)?.label}</strong></div>
               <div><span className="text-slate-500">Reference / batch</span><strong className="block text-slate-900">{referenceName || '—'}</strong></div>
-              <div className="flex justify-between sm:col-span-2"><span>Total variants counted</span><strong>{formatNumber(pageSummary.counted)}</strong></div>
+              <div className="flex justify-between sm:col-span-2"><span>Total configurations counted</span><strong>{formatNumber(pageSummary.counted)}</strong></div>
               <div className="flex justify-between sm:col-span-2"><span>Variance items</span><strong>{formatNumber(pageSummary.varianceItems)}</strong></div>
               <div className={`flex justify-between rounded-md px-2 py-1 sm:col-span-2 ${highImpact ? 'bg-amber-100 text-amber-950' : ''}`}><span>Net quantity adjustment</span><strong className={pageSummary.netAdjustment < 0 ? 'text-red-700' : pageSummary.netAdjustment > 0 ? 'text-emerald-700' : ''}>{pageSummary.netAdjustment > 0 ? '+' : ''}{formatNumber(pageSummary.netAdjustment)}</strong></div>
               <div className={`flex justify-between rounded-md px-2 py-1 sm:col-span-2 ${highImpact ? 'bg-amber-100 text-amber-950' : ''}`}><span>Estimated adjustment value</span><strong className={pageSummary.estimatedValue < 0 ? 'text-red-700' : pageSummary.estimatedValue > 0 ? 'text-emerald-700' : ''}>{formatMoney(pageSummary.estimatedValue)}</strong></div>

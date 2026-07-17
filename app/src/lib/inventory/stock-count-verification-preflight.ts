@@ -25,6 +25,7 @@ export interface StockCountPreflightSuccess {
 export type StockCountPreflightResult = StockCountPreflightSuccess | { ok: false; code: StockCountVerificationErrorCode }
 
 interface StockCountSessionItem {
+    stock_config_id: string | null
     variant_id: string
     physical_quantity: number | null
     adjustment_quantity: number | null
@@ -69,6 +70,7 @@ export async function evaluateStockCountPreflight(
         : []
     const counted = items.filter((item) => item.physical_quantity !== null)
     if (!counted.length) return { ok: false, code: 'invalid_count_data' }
+    if (counted.some((item) => !item.stock_config_id)) return { ok: false, code: 'configuration_identity_missing' }
     const varianceItems = counted.filter((item) => Number(item.adjustment_quantity || 0) !== 0)
     if (varianceItems.length && !isValidStockCountPostingNote(session.notes)) return { ok: false, code: 'posting_note_required' }
 
@@ -126,7 +128,7 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
         loadAccessibleSession: async (sessionId) => {
             const { data } = await supabase.from('stock_count_sessions').select(`
                 id, warehouse_organization_id, count_date, count_type, reference_name, notes, status,
-                stock_count_session_items(variant_id, physical_quantity, adjustment_quantity, unit_cost)
+                stock_count_session_items(stock_config_id, variant_id, physical_quantity, adjustment_quantity, unit_cost)
             `).eq('id', sessionId).maybeSingle()
             return data || null
         },

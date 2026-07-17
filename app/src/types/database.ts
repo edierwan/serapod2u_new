@@ -23034,6 +23034,7 @@ export type Database = {
           product_id: string | null
           received_now: number
           receipt_id: string
+          stock_config_id: string | null
           stock_movement_id: string | null
           variant_id: string
         }
@@ -23050,6 +23051,7 @@ export type Database = {
           product_id?: string | null
           received_now?: number
           receipt_id: string
+          stock_config_id?: string | null
           stock_movement_id?: string | null
           variant_id: string
         }
@@ -23066,6 +23068,7 @@ export type Database = {
           product_id?: string | null
           received_now?: number
           receipt_id?: string
+          stock_config_id?: string | null
           stock_movement_id?: string | null
           variant_id?: string
         }
@@ -31677,6 +31680,7 @@ export type Database = {
           created_at: string | null
           id: string
           physical_quantity: number
+          stock_config_id: string | null
           system_quantity: number
           unit_cost: number | null
           variant_id: string
@@ -31687,6 +31691,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           physical_quantity: number
+          stock_config_id?: string | null
           system_quantity: number
           unit_cost?: number | null
           variant_id: string
@@ -31697,6 +31702,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           physical_quantity?: number
+          stock_config_id?: string | null
           system_quantity?: number
           unit_cost?: number | null
           variant_id?: string

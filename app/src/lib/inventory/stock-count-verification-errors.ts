@@ -9,6 +9,7 @@ export type StockCountVerificationErrorCode =
     | 'stock_count_not_found'
     | 'already_posted'
     | 'invalid_count_data'
+    | 'configuration_identity_missing'
     | 'base_cost_missing'
     | 'posting_note_required'
     | 'notification_event_missing'
@@ -40,6 +41,7 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     stock_count_not_found: { message: 'This Stock Count could not be found.', status: 404, recoverable: false },
     already_posted: { message: 'This Stock Count has already been posted.', status: 409, recoverable: false },
     invalid_count_data: { message: 'This Stock Count does not contain valid counted quantities.', status: 400, recoverable: true },
+    configuration_identity_missing: { message: 'This Stock Count uses a legacy variant-only draft and cannot be posted safely. Start a new configuration-aware Stock Count.', status: 409, recoverable: true },
     base_cost_missing: { message: 'Every variance item must have a Variant Base Cost before this Stock Count can be posted.', status: 409, recoverable: true },
     posting_note_required: { message: 'A Posting Note is required when the Stock Count contains variance.', status: 400, recoverable: true },
     notification_event_missing: { message: 'Stock Count verification is not available because its notification configuration has not been installed. Please contact your system administrator.', status: 503, guidance: STOCK_COUNT_CONFIG_GUIDANCE, recoverable: true },
@@ -85,6 +87,7 @@ export function mapStockCountDatabaseError(message: string): StockCountVerificat
         ['request_rate_limited', 'request_rate_limited'],
         ['posting_note_required', 'posting_note_required'],
         ['no_counted_variants', 'invalid_count_data'],
+        ['stock_count_config_identity_missing', 'configuration_identity_missing'],
         ['stock_count_base_cost_missing', 'base_cost_missing'],
     ]
     const match = mappings.find(([needle]) => message.includes(needle))

@@ -1,8 +1,11 @@
 import type ExcelJS from 'exceljs'
 
 export const STOCK_COUNT_EXCEL_HEADERS = [
+  'Stock Configuration ID',
+  'Stock SKU',
   'Variant ID',
-  'SKU',
+  'Volume (ml)',
+  'Packaging Version',
   'Product Group/Brand',
   'Variant Name',
   'Product Name',
@@ -13,11 +16,19 @@ export const STOCK_COUNT_EXCEL_HEADERS = [
   'Note',
 ] as const
 
-const REQUIRED_IMPORT_HEADERS = ['Variant ID', 'Physical Count', 'Note'] as const
+const REQUIRED_IMPORT_HEADERS = [
+  'Stock Configuration ID',
+  'Variant ID',
+  'Physical Count',
+  'Note',
+] as const
 
 export interface StockCountExcelRow {
+  stockConfigId: string
+  stockSku: string
   variantId: string
-  sku: string
+  volumeMl: number | null
+  packagingVersion: string | null
   groupName: string
   variantName: string
   productName: string
@@ -28,8 +39,9 @@ export interface StockCountExcelRow {
 }
 
 export interface StockCountImportTarget {
+  stockConfigId: string
   variantId: string
-  sku: string
+  stockSku: string
   physicalCount: string
   note: string
 }
@@ -53,6 +65,12 @@ export function extractFlavour(variantName: string): string {
   return flavour ? `[${flavour}]` : ''
 }
 
+export function formatPackagingVersion(packaging: string | null): string {
+  if (packaging === 'new_box') return 'New Box'
+  if (packaging === 'old_box') return 'Old Box'
+  return packaging || 'Standard'
+}
+
 export function buildStockCountWorksheet(
   workbook: ExcelJS.Workbook,
   rows: StockCountExcelRow[],
@@ -62,8 +80,11 @@ export function buildStockCountWorksheet(
 
   rows.forEach((row) => {
     worksheet.addRow([
+      row.stockConfigId,
+      row.stockSku,
       row.variantId,
-      row.sku,
+      row.volumeMl,
+      formatPackagingVersion(row.packagingVersion),
       row.groupName,
       row.variantName,
       row.productName,
@@ -76,19 +97,12 @@ export function buildStockCountWorksheet(
   })
 
   worksheet.columns = [
-    { width: 38 },
-    { width: 22 },
-    { width: 24 },
-    { width: 42 },
-    { width: 34 },
-    { width: 24 },
-    { width: 18 },
-    { width: 18 },
-    { width: 18 },
-    { width: 34 },
+    { width: 38 }, { width: 24 }, { width: 38 }, { width: 14 },
+    { width: 20 }, { width: 24 }, { width: 42 }, { width: 34 },
+    { width: 24 }, { width: 18 }, { width: 18 }, { width: 18 }, { width: 34 },
   ]
   worksheet.views = [{ state: 'frozen', ySplit: 1 }]
-  worksheet.autoFilter = { from: 'A1', to: 'J1' }
+  worksheet.autoFilter = { from: 'A1', to: 'M1' }
 
   const header = worksheet.getRow(1)
   header.height = 24
@@ -99,11 +113,10 @@ export function buildStockCountWorksheet(
     cell.border = { bottom: { style: 'thin', color: { argb: 'FFC2410C' } } }
   })
 
-  worksheet.getColumn(1).numFmt = '@'
-  worksheet.getColumn(2).numFmt = '@'
-  worksheet.getColumn(7).numFmt = '@'
-  worksheet.getColumn(8).numFmt = '#,##0'
-  worksheet.getColumn(9).numFmt = '#,##0'
+  for (const column of [1, 2, 3, 10]) worksheet.getColumn(column).numFmt = '@'
+  worksheet.getColumn(4).numFmt = '0'
+  worksheet.getColumn(11).numFmt = '#,##0'
+  worksheet.getColumn(12).numFmt = '#,##0'
 
   return worksheet
 }
@@ -120,13 +133,12 @@ function resolveImportHeaders(sheet: ExcelJS.Worksheet): Map<string, number> {
     indexes.set(normalized, [...(indexes.get(normalized) || []), column])
   }
 
-  const missing = REQUIRED_IMPORT_HEADERS.filter(
-    (header) => !indexes.has(normalizeHeader(header)),
-  )
-  const duplicates = REQUIRED_IMPORT_HEADERS.filter(
-    (header) => (indexes.get(normalizeHeader(header))?.length || 0) > 1,
-  )
+  const missing = REQUIRED_IMPORT_HEADERS.filter((header) => !indexes.has(normalizeHeader(header)))
+  const duplicates = REQUIRED_IMPORT_HEADERS.filter((header) => (indexes.get(normalizeHeader(header))?.length || 0) > 1)
 
+  if (missing.includes('Stock Configuration ID')) {
+    throw new Error('This Stock Count file uses an older template and cannot be imported. Export a new configuration-aware template and copy the physical counts into it.')
+  }
   if (missing.length || duplicates.length) {
     const details = [
       missing.length ? `Missing required header(s): ${missing.join(', ')}.` : '',
@@ -144,12 +156,13 @@ export function parseStockCountWorksheet(
 ): StockCountImportResult {
   const headers = resolveImportHeaders(sheet)
   const column = (name: string) => headers.get(normalizeHeader(name))!
+  const stockConfigIdColumn = column('Stock Configuration ID')
   const variantIdColumn = column('Variant ID')
   const physicalCountColumn = column('Physical Count')
   const noteColumn = column('Note')
-  const skuColumn = headers.get(normalizeHeader('SKU'))
-  const byVariant = new Map(targets.map((row) => [row.variantId, row]))
-  const seenVariantIds = new Set<string>()
+  const stockSkuColumn = headers.get(normalizeHeader('Stock SKU'))
+  const byConfig = new Map(targets.map((target) => [target.stockConfigId, target]))
+  const seenConfigIds = new Set<string>()
   const patches = new Map<string, { physicalCount: string; note: string }>()
   const results: StockCountImportResult['rows'] = []
   let updated = 0
@@ -158,67 +171,45 @@ export function parseStockCountWorksheet(
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
 
+    const stockConfigId = row.getCell(stockConfigIdColumn).text.trim()
     const variantId = row.getCell(variantIdColumn).text.trim()
-    const sku = skuColumn ? row.getCell(skuColumn).text.trim() : ''
-    const matched = byVariant.get(variantId)
+    const sku = stockSkuColumn ? row.getCell(stockSkuColumn).text.trim() : ''
+    const matched = byConfig.get(stockConfigId)
 
-    if (!variantId || !matched) {
-      results.push({
-        row: rowNumber,
-        sku: sku || variantId || '-',
-        status: 'Failed',
-        message: 'Unknown or missing Variant ID.',
-      })
+    if (!stockConfigId || !matched) {
+      results.push({ row: rowNumber, sku: sku || stockConfigId || '-', status: 'Failed', message: 'Unknown or missing Stock Configuration ID.' })
       return
     }
-    if (seenVariantIds.has(variantId)) {
-      results.push({
-        row: rowNumber,
-        sku: sku || variantId,
-        status: 'Failed',
-        message: 'Duplicate Variant ID in import file.',
-      })
+    if (!variantId || variantId !== matched.variantId) {
+      results.push({ row: rowNumber, sku: sku || matched.stockSku, status: 'Failed', message: 'Variant ID does not match the Stock Configuration ID.' })
       return
     }
-    seenVariantIds.add(variantId)
+    if (seenConfigIds.has(stockConfigId)) {
+      results.push({ row: rowNumber, sku: sku || matched.stockSku, status: 'Failed', message: 'Duplicate Stock Configuration ID in import file.' })
+      return
+    }
+    seenConfigIds.add(stockConfigId)
 
     const physicalValue = row.getCell(physicalCountColumn).value
-    const physicalString = physicalValue === null || physicalValue === undefined
-      ? ''
-      : String(physicalValue).trim()
+    const physicalString = physicalValue === null || physicalValue === undefined ? '' : String(physicalValue).trim()
     const note = row.getCell(noteColumn).text.trim()
 
     if (physicalString !== '' && !/^\d+$/.test(physicalString)) {
-      results.push({
-        row: rowNumber,
-        sku: sku || variantId,
-        status: 'Failed',
-        message: 'Physical Count must be zero or a positive integer.',
-      })
+      results.push({ row: rowNumber, sku: sku || matched.stockSku, status: 'Failed', message: 'Physical Count must be zero or a positive integer.' })
       return
     }
 
     const changed = matched.physicalCount !== physicalString || matched.note !== note
-    patches.set(matched.variantId, { physicalCount: physicalString, note })
+    patches.set(matched.stockConfigId, { physicalCount: physicalString, note })
     if (changed) updated += 1
     else unchanged += 1
     results.push({
       row: rowNumber,
-      sku: sku || variantId,
+      sku: sku || matched.stockSku,
       status: changed ? 'Updated' : 'Unchanged',
-      message: physicalString === ''
-        ? 'Blank physical count kept as not counted.'
-        : changed
-          ? 'Loaded into draft.'
-          : 'No change from current draft.',
+      message: physicalString === '' ? 'Blank physical count kept as not counted.' : changed ? 'Loaded into draft.' : 'No change from current draft.',
     })
   })
 
-  return {
-    updated,
-    unchanged,
-    failed: results.filter((row) => row.status === 'Failed').length,
-    patches,
-    rows: results,
-  }
+  return { updated, unchanged, failed: results.filter((row) => row.status === 'Failed').length, patches, rows: results }
 }
