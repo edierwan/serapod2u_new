@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Boxes, ArrowRight, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react'
+import { Boxes, ArrowRight, AlertCircle, Check, CheckCircle2, RefreshCw, Search } from 'lucide-react'
+import {
+  createRepackPreview,
+  isRepackDestinationConfiguration,
+  isRepackSourceConfiguration,
+} from '@/lib/inventory/repack-stock'
 
 interface Warehouse {
   id: string
@@ -32,6 +37,10 @@ interface RepackableRow {
   toConfigId: string
   toConfigLabel: string
   toStockSku: string
+  sourceOnHand: number
+  sourceAllocated: number
+  destinationOnHand: number
+  destinationAllocated: number
   availableQty: number
 }
 
@@ -50,12 +59,8 @@ interface RepackStockViewProps {
 }
 
 /**
- * Manual warehouse repacking: 50ml Old Box -> 50ml New Box.
- * Lists only balances whose configuration requires repacking before sale and
- * that have unallocated stock; the target configuration (same variant, same
- * volume, new box) is resolved automatically. Posting goes through the atomic
- * repack_stock RPC which creates paired repack_out / repack_in movements
- * under one RPK-* reference.
+ * Manual 1:1 box reclassification: 50OB or 50NB -> 20NB.
+ * Source configurations remain distinct in the paired movement audit trail.
  */
 export default function RepackStockView({ userProfile }: RepackStockViewProps) {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
@@ -66,10 +71,14 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
   const [quantity, setQuantity] = useState('')
   const [notes, setNotes] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const [loadingRows, setLoadingRows] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [lastReferenceNo, setLastReferenceNo] = useState<string | null>(null)
   const submittingRef = useRef(false)
+  const requestIdRef = useRef<string | null>(null)
+  const formRef = useRef<HTMLDivElement>(null)
+  const quantityRef = useRef<HTMLInputElement>(null)
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -91,8 +100,30 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
     setQuantity('')
     setNotes('')
     setLastReferenceNo(null)
+    requestIdRef.current = null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWarehouse])
+
+  /** Auto-scroll the form into view on selection, respecting reduced motion. */
+  useEffect(() => {
+    if (!selectedRow) return
+    // Use requestAnimationFrame to ensure the DOM has rendered the form first
+    const raf = requestAnimationFrame(() => {
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      formRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+      })
+      // Focus the quantity field after a short delay to let scroll finish
+      setTimeout(() => quantityRef.current?.focus(), prefersReducedMotion ? 0 : 100)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [selectedRow])
+
+  const warehouseName = useMemo(() => {
+    const warehouse = warehouses.find(wh => wh.id === selectedWarehouse)
+    return warehouse ? `${warehouse.org_name} (${warehouse.org_code})` : ''
+  }, [warehouses, selectedWarehouse])
 
   const loadWarehouses = async () => {
     const { data, error } = await supabase
@@ -117,16 +148,18 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
   const loadRepackableRows = async (warehouseId: string) => {
     setLoadingRows(true)
     try {
-      // Balances whose configuration requires repacking (50ml Old Box).
+      // Load exact configuration balances, then retain 50OB and 50NB as
+      // separate source rows. Eligibility is never inferred from quantity.
       const { data, error } = await supabase
         .from('product_inventory')
         .select(`
           variant_id,
           quantity_on_hand,
           quantity_allocated,
+          quantity_available,
           stock_config_id,
           inventory_stock_configurations!product_inventory_stock_config_fk (
-            id, config_label, stock_sku, volume_ml, packaging, status, requires_repacking_before_sale
+            id, config_code, config_label, stock_sku, volume_ml, packaging, status, requires_repacking_before_sale
           ),
           product_variants!inner (
             id, variant_code, variant_name,
@@ -135,8 +168,6 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
         `)
         .eq('organization_id', warehouseId)
         .eq('is_active', true)
-        .eq('inventory_stock_configurations.volume_ml', 50)
-        .eq('inventory_stock_configurations.packaging', 'old_box')
         .gt('quantity_on_hand', 0)
 
       if (error) throw error
@@ -145,10 +176,8 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
         const cfg = Array.isArray(item.inventory_stock_configurations)
           ? item.inventory_stock_configurations[0]
           : item.inventory_stock_configurations
-        return cfg?.volume_ml === 50
-          && cfg?.packaging === 'old_box'
-          && cfg?.requires_repacking_before_sale === true
-          && cfg?.status !== 'inactive'
+        return cfg && isRepackSourceConfiguration(cfg)
+          && Number(item.quantity_available ?? 0) > 0
       })
 
       if (candidates.length === 0) {
@@ -156,17 +185,31 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
         return
       }
 
-      // Resolve each source row's target configuration: same variant, same
-      // volume, new box, active.
+      // Both source types converge on the same flavour's active 20NB config.
       const variantIds = Array.from(new Set(candidates.map((item: any) => item.variant_id)))
       const { data: targets, error: targetError } = await supabase
         .from('inventory_stock_configurations')
-        .select('id, variant_id, config_label, stock_sku, volume_ml, packaging, status')
+        .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, status')
         .in('variant_id', variantIds)
-        .eq('volume_ml', 50)
+        .eq('config_code', '20NB')
+        .eq('volume_ml', 20)
         .eq('packaging', 'new_box')
         .eq('status', 'active')
       if (targetError) throw targetError
+
+      const targetIds = (targets || []).map(target => target.id)
+      const { data: targetBalances, error: targetBalanceError } = targetIds.length > 0
+        ? await supabase
+          .from('product_inventory')
+          .select('stock_config_id, quantity_on_hand, quantity_allocated')
+          .eq('organization_id', warehouseId)
+          .eq('is_active', true)
+          .in('stock_config_id', targetIds)
+        : { data: [], error: null }
+      if (targetBalanceError) throw targetBalanceError
+      const targetBalanceByConfig = new Map(
+        (targetBalances || []).map(balance => [balance.stock_config_id, balance]),
+      )
 
       const nextRows: RepackableRow[] = candidates.flatMap((item: any) => {
         const cfg = Array.isArray(item.inventory_stock_configurations)
@@ -174,9 +217,12 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
           : item.inventory_stock_configurations
         const variant = Array.isArray(item.product_variants) ? item.product_variants[0] : item.product_variants
         const product = Array.isArray(variant?.products) ? variant.products[0] : variant?.products
-        const target = (targets || []).find(t => t.variant_id === item.variant_id && t.volume_ml === cfg.volume_ml)
-        if (!target) return []
-        const availableQty = Number(item.quantity_on_hand || 0) - Number(item.quantity_allocated || 0)
+        const target = (targets || []).find(t =>
+          t.variant_id === item.variant_id && isRepackDestinationConfiguration(t)
+        )
+        if (!target || target.id === cfg.id) return []
+        const targetBalance = targetBalanceByConfig.get(target.id)
+        const availableQty = Number(item.quantity_available ?? 0)
         if (availableQty <= 0) return []
         return [{
           variantId: item.variant_id,
@@ -189,9 +235,16 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
           toConfigId: target.id,
           toConfigLabel: target.config_label,
           toStockSku: target.stock_sku,
+          sourceOnHand: Number(item.quantity_on_hand || 0),
+          sourceAllocated: Number(item.quantity_allocated || 0),
+          destinationOnHand: Number(targetBalance?.quantity_on_hand || 0),
+          destinationAllocated: Number(targetBalance?.quantity_allocated || 0),
           availableQty,
         }]
-      }).sort((a, b) => `${a.productName} ${a.variantName}`.localeCompare(`${b.productName} ${b.variantName}`))
+      }).sort((a, b) =>
+        `${a.productName} ${a.variantName} ${a.fromConfigLabel}`
+          .localeCompare(`${b.productName} ${b.variantName} ${b.fromConfigLabel}`)
+      )
 
       setRows(nextRows)
     } catch (error: any) {
@@ -205,31 +258,40 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
     const { data, error } = await supabase
       .from('stock_movements')
       .select(`
-        reference_no, created_at, quantity_change, movement_type,
+        reference_id, reference_no, created_at, quantity_change, movement_type,
         product_variants ( variant_name ),
         config:inventory_stock_configurations!stock_movements_stock_config_fk ( config_label )
       `)
       .eq('reference_type', 'repack')
-      .eq('from_organization_id', warehouseId)
-      .eq('movement_type', 'repack_out')
+      .or(`from_organization_id.eq.${warehouseId},to_organization_id.eq.${warehouseId}`)
+      .in('movement_type', ['repack_out', 'repack_in'])
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(40)
     if (error) {
       console.warn('Failed to load repack history:', error.message)
       return
     }
-    setHistory((data || []).map((m: any) => {
-      const variant = Array.isArray(m.product_variants) ? m.product_variants[0] : m.product_variants
-      const cfg = Array.isArray(m.config) ? m.config[0] : m.config
-      return {
-        referenceNo: m.reference_no || '-',
-        createdAt: m.created_at,
+    const grouped = new Map<string, any[]>()
+    for (const movement of data || []) {
+      const key = movement.reference_id || movement.reference_no || movement.created_at
+      grouped.set(key, [...(grouped.get(key) || []), movement])
+    }
+    setHistory(Array.from(grouped.values()).flatMap(group => {
+      const outgoing = group.find(movement => movement.movement_type === 'repack_out')
+      const incoming = group.find(movement => movement.movement_type === 'repack_in')
+      if (!outgoing) return []
+      const variant = Array.isArray(outgoing.product_variants) ? outgoing.product_variants[0] : outgoing.product_variants
+      const fromConfig = Array.isArray(outgoing.config) ? outgoing.config[0] : outgoing.config
+      const toConfig = Array.isArray(incoming?.config) ? incoming.config[0] : incoming?.config
+      return [{
+        referenceNo: outgoing.reference_no || '-',
+        createdAt: outgoing.created_at,
         variantName: variant?.variant_name || '-',
-        quantity: Math.abs(Number(m.quantity_change || 0)),
-        fromLabel: cfg?.config_label || 'Old Box',
-        toLabel: 'New Box',
-      }
-    }))
+        quantity: Math.abs(Number(outgoing.quantity_change || 0)),
+        fromLabel: fromConfig?.config_label || 'Unknown source',
+        toLabel: toConfig?.config_label || 'Unknown destination',
+      }]
+    }).slice(0, 20))
   }
 
   const parsedQuantity = useMemo(() => {
@@ -241,12 +303,61 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
     selectedWarehouse && selectedRow && parsedQuantity && parsedQuantity <= (selectedRow?.availableQty ?? 0)
   )
 
+  const preview = useMemo(() => {
+    if (!selectedRow || parsedQuantity === null) return null
+    try {
+      return createRepackPreview(
+        {
+          configId: selectedRow.fromConfigId,
+          onHand: selectedRow.sourceOnHand,
+          allocated: selectedRow.sourceAllocated,
+        },
+        {
+          configId: selectedRow.toConfigId,
+          onHand: selectedRow.destinationOnHand,
+          allocated: selectedRow.destinationAllocated,
+        },
+        parsedQuantity,
+      )
+    } catch {
+      return null
+    }
+  }, [parsedQuantity, selectedRow])
+
+  const filteredRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return rows
+    return rows.filter(row => [
+      row.productName,
+      row.variantName,
+      row.variantCode,
+      row.fromConfigLabel,
+      row.fromStockSku,
+    ].some(value => value.toLowerCase().includes(query)))
+  }, [rows, searchQuery])
+
+  const handleSelectRow = useCallback((row: RepackableRow) => {
+    setSelectedRow(row)
+    setQuantity('')
+    setLastReferenceNo(null)
+    requestIdRef.current = crypto.randomUUID()
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    setSelectedRow(null)
+    setQuantity('')
+    setNotes('')
+    requestIdRef.current = null
+  }, [])
+
   const submitRepack = async () => {
-    if (submittingRef.current || !selectedRow || !parsedQuantity || !canSubmit) return
+    if (submittingRef.current || !selectedRow || !parsedQuantity || !canSubmit || !preview) return
+    requestIdRef.current ||= crypto.randomUUID()
     submittingRef.current = true
     setSubmitting(true)
     try {
-      const { data, error } = await supabase.rpc('repack_stock', {
+      const { data, error } = await supabase.rpc('repack_stock_v2', {
+        p_request_id: requestIdRef.current,
         p_variant_id: selectedRow.variantId,
         p_warehouse_org_id: selectedWarehouse,
         p_from_config_id: selectedRow.fromConfigId,
@@ -265,6 +376,7 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
       setSelectedRow(null)
       setQuantity('')
       setNotes('')
+      requestIdRef.current = null
       await Promise.all([
         loadRepackableRows(selectedWarehouse),
         loadHistory(selectedWarehouse),
@@ -278,16 +390,18 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
     }
   }
 
+  const isRowSelected = (row: RepackableRow) => selectedRow?.fromConfigId === row.fromConfigId && selectedRow?.variantId === row.variantId
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Boxes className="h-6 w-6" />
-            Repacking
+            Repack Stock
           </h1>
           <p className="text-muted-foreground">
-            Convert 50ml Old Box stock into 50ml New Box. Volume never changes; each repack posts a traceable RPK reference.
+            Reclassify 50ml Old Box or 50ml New Box into 20ml New Box at a 1:1 unit ratio. This operation changes the recorded box configuration, not measured liquid contents.
           </p>
         </div>
         <Button
@@ -305,7 +419,9 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
           <CheckCircle2 className="h-5 w-5 shrink-0" />
           <div>
             <div className="font-medium">Repack posted successfully</div>
-            <div className="text-sm">Reference: <span className="font-mono font-semibold">{lastReferenceNo}</span></div>
+            <div className="text-sm">
+              Generated RPK reference: <span className="font-mono font-semibold text-base">{lastReferenceNo}</span>
+            </div>
           </div>
         </div>
       )}
@@ -334,9 +450,9 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
       {selectedWarehouse && (
         <Card>
           <CardHeader>
-            <CardTitle>Stock awaiting repack</CardTitle>
+            <CardTitle>Stock eligible for reclassification</CardTitle>
             <CardDescription>
-              Only configurations flagged “requires repacking before sale” with unallocated stock are listed.
+              50ml Old Box and 50ml New Box balances are listed separately when unallocated available stock is greater than zero.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -345,58 +461,96 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
             ) : rows.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
                 <AlertCircle className="h-4 w-4" />
-                No stock awaiting repack at this warehouse.
+                No eligible 50ml stock at this warehouse.
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product / Flavour</TableHead>
-                    <TableHead>From</TableHead>
-                    <TableHead></TableHead>
-                    <TableHead>To</TableHead>
-                    <TableHead className="text-right">Available</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map(row => (
-                    <TableRow key={`${row.variantId}:${row.fromConfigId}`} data-state={selectedRow?.fromConfigId === row.fromConfigId ? 'selected' : undefined}>
-                      <TableCell>
-                        <div className="font-medium">{row.productName}</div>
-                        <div className="text-sm text-muted-foreground">{row.variantName} · {row.variantCode}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{row.fromConfigLabel}</Badge>
-                        <div className="text-xs text-muted-foreground mt-1">{row.fromStockSku}</div>
-                      </TableCell>
-                      <TableCell><ArrowRight className="h-4 w-4 text-muted-foreground" /></TableCell>
-                      <TableCell>
-                        <Badge>{row.toConfigLabel}</Badge>
-                        <div className="text-xs text-muted-foreground mt-1">{row.toStockSku}</div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">{row.availableQty}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          disabled={submitting}
-                          variant={selectedRow?.fromConfigId === row.fromConfigId ? 'default' : 'outline'}
-                          onClick={() => { setSelectedRow(row); setQuantity('') }}
-                        >
-                          Select
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="space-y-4">
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                    placeholder="Search product, flavour or stock SKU"
+                  />
+                </div>
+                {filteredRows.length === 0 ? (
+                  <p className="py-6 text-sm text-muted-foreground">No eligible source balances match this search.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product / Flavour</TableHead>
+                        <TableHead>Source Configuration</TableHead>
+                        <TableHead></TableHead>
+                        <TableHead>Destination (20ml New Box)</TableHead>
+                        <TableHead className="text-right">Available</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRows.map(row => {
+                        const isSelected = isRowSelected(row)
+                        return (
+                          <TableRow
+                            key={`${row.variantId}:${row.fromConfigId}`}
+                            data-state={isSelected ? 'selected' : undefined}
+                            className={isSelected ? 'bg-green-50 hover:bg-green-100' : undefined}
+                            aria-selected={isSelected}
+                          >
+                            <TableCell>
+                              <div className="font-medium">{row.productName}</div>
+                              <div className="text-sm text-muted-foreground">{row.variantName} · {row.variantCode}</div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{row.fromConfigLabel}</Badge>
+                              <div className="text-xs text-muted-foreground mt-1">{row.fromStockSku}</div>
+                            </TableCell>
+                            <TableCell><ArrowRight className="h-4 w-4 text-muted-foreground" /></TableCell>
+                            <TableCell>
+                              <Badge>{row.toConfigLabel}</Badge>
+                              <div className="text-xs text-muted-foreground mt-1">{row.toStockSku}</div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{row.availableQty}</TableCell>
+                            <TableCell className="text-right">
+                              {isSelected ? (
+                                <Button
+                                  size="sm"
+                                  disabled={submitting}
+                                  variant="default"
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                  aria-pressed="true"
+                                  onClick={() => handleSelectRow(row)}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Selected
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  disabled={submitting}
+                                  variant="outline"
+                                  aria-pressed="false"
+                                  onClick={() => handleSelectRow(row)}
+                                >
+                                  Select
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
       )}
 
       {selectedRow && (
-        <Card>
+        <Card ref={formRef}>
           <CardHeader>
             <CardTitle>Repack {selectedRow.variantName}</CardTitle>
             <CardDescription>
@@ -407,8 +561,10 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="text-sm font-medium">Quantity to repack</label>
+                <label className="text-sm font-medium" htmlFor="repack-quantity">Quantity to repack</label>
                 <Input
+                  id="repack-quantity"
+                  ref={quantityRef}
                   type="number"
                   min={1}
                   max={selectedRow.availableQty}
@@ -421,15 +577,38 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
                 )}
               </div>
               <div>
-                <label className="text-sm font-medium">Notes (optional)</label>
-                <Input value={notes} onChange={event => setNotes(event.target.value)} placeholder="e.g. repack batch reference" />
+                <label className="text-sm font-medium" htmlFor="repack-notes">Notes (optional)</label>
+                <Input
+                  id="repack-notes"
+                  value={notes}
+                  onChange={event => setNotes(event.target.value)}
+                  placeholder="Reason or operational notes"
+                />
               </div>
             </div>
+            {preview && (
+              <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 text-sm md:grid-cols-3">
+                <div>
+                  <div className="font-medium">{selectedRow.fromConfigLabel}</div>
+                  <div className="text-muted-foreground">Source: {preview.sourceBefore} → {preview.sourceAfter}</div>
+                  <div className="text-xs text-muted-foreground">{preview.sourceAvailable} available before conversion</div>
+                </div>
+                <div>
+                  <div className="font-medium">{selectedRow.toConfigLabel}</div>
+                  <div className="text-muted-foreground">Destination: {preview.destinationBefore} → {preview.destinationAfter}</div>
+                </div>
+                <div>
+                  <div className="font-medium">Total units</div>
+                  <div className="text-muted-foreground">{preview.totalBefore} → {preview.totalAfter}</div>
+                  <div className="text-xs text-green-700">No unit loss or gain</div>
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button disabled={!canSubmit || submitting} onClick={() => setConfirmOpen(true)}>
+              <Button disabled={!canSubmit || !preview || submitting} onClick={() => setConfirmOpen(true)}>
                 Repack {parsedQuantity ?? ''} unit{(parsedQuantity ?? 0) === 1 ? '' : 's'}
               </Button>
-              <Button disabled={submitting} variant="ghost" onClick={() => { setSelectedRow(null); setQuantity(''); setNotes('') }}>
+              <Button disabled={submitting} variant="ghost" onClick={handleCancel}>
                 Cancel
               </Button>
             </div>
@@ -438,20 +617,56 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
       )}
 
       <AlertDialog open={confirmOpen} onOpenChange={open => { if (!submitting) setConfirmOpen(open) }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm repack</AlertDialogTitle>
-            <AlertDialogDescription>
-              {parsedQuantity} unit{(parsedQuantity ?? 0) === 1 ? '' : 's'} of {selectedRow?.productName} — {selectedRow?.variantName} will be
-              moved from {selectedRow?.fromConfigLabel} ({selectedRow?.fromStockSku}) to {selectedRow?.toConfigLabel} ({selectedRow?.toStockSku}).
-              {' '}The current source balance available to repack is {selectedRow?.availableQty ?? 0} units. This posts paired stock-out and
-              stock-in movements under one RPK reference and cannot be edited afterwards.
+            <AlertDialogTitle>Confirm Repack</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div className="font-medium text-foreground">Product / Flavour</div>
+                  <div>{selectedRow?.productName} — {selectedRow?.variantName}</div>
+
+                  <div className="font-medium text-foreground">Warehouse</div>
+                  <div>{warehouseName}</div>
+
+                  <div className="font-medium text-foreground">Source Configuration</div>
+                  <div>{selectedRow?.fromConfigLabel} · Stock SKU: {selectedRow?.fromStockSku}</div>
+
+                  <div className="font-medium text-foreground">Destination</div>
+                  <div>{selectedRow?.toConfigLabel} · Stock SKU: {selectedRow?.toStockSku}</div>
+
+                  <div className="font-medium text-foreground">Quantity</div>
+                  <div>{parsedQuantity} unit{(parsedQuantity ?? 0) === 1 ? '' : 's'}</div>
+                </div>
+
+                <div className="border-t pt-2">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="font-medium text-foreground">Source</div>
+                      <div className="text-muted-foreground">{preview?.sourceBefore ?? 0} → {preview?.sourceAfter ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-foreground">Destination</div>
+                      <div className="text-muted-foreground">{preview?.destinationBefore ?? 0} → {preview?.destinationAfter ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-foreground">Total</div>
+                      <div className="text-muted-foreground">{preview?.totalBefore ?? 0} → {preview?.totalAfter ?? 0}</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-green-700 text-center mt-1">No unit loss or gain</p>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  This posts paired stock-out and stock-in movements under one auto-generated RPK reference and cannot be edited afterwards.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Back</AlertDialogCancel>
+            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
             <AlertDialogAction disabled={submitting} onClick={event => { event.preventDefault(); submitRepack() }}>
-              {submitting ? 'Posting…' : 'Confirm repack'}
+              {submitting ? 'Posting…' : 'Confirm Repack'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
