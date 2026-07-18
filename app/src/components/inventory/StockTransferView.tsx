@@ -48,6 +48,7 @@ import {
   validateTransferQuantity,
   validateTransferRoute,
 } from '@/lib/inventory/stock-transfer'
+import type { Json } from '@/types/database'
 import {
   buildStockTransferWorksheet,
   parseStockTransferImport,
@@ -461,7 +462,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
         p_company_id: userProfile.organizations.id,
         p_from_organization_id: fromWarehouse,
         p_to_organization_id: toWarehouse,
-        p_items: items,
+        p_items: items as unknown as Json,
         p_notes: notes || undefined,
         p_required_date: requiredDate || undefined,
         p_transfer_id: transferId || undefined,
@@ -496,7 +497,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
             p_company_id: userProfile.organizations.id,
             p_from_organization_id: fromWarehouse,
             p_to_organization_id: toWarehouse,
-            p_items: items,
+            p_items: items as unknown as Json,
             p_notes: notes || undefined,
             p_required_date: requiredDate || undefined,
             p_transfer_id: transferId || undefined,
