@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildInitialClassificationGroups,
   computeClassificationEntry,
+  getClassificationCardDisplay,
   summarizeClassificationRound,
   type ClassificationRoundGroupInput,
 } from './stock-count-classification'
@@ -70,6 +71,11 @@ describe('computeClassificationEntry', () => {
     // Classified total only reflects entered counts — the blank row is not
     // folded in as 0, so this total is informational only until complete.
     expect(result.classifiedTotal).toBe(65)
+    expect(getClassificationCardDisplay(result)).toEqual({
+      totalTargetPhysicalCount: 65,
+      variance: -35,
+      completionStatus: 'Incomplete',
+    })
   })
 
   it('is incomplete with zero targets (no 20NB/50NB/50OB catalog rows yet)', () => {
@@ -90,6 +96,11 @@ describe('computeClassificationEntry', () => {
     expect(result.selected).toBe(false)
     expect(result.complete).toBe(false)
     expect(result.countedTargets).toBe(0)
+    expect(getClassificationCardDisplay(result)).toEqual({
+      totalTargetPhysicalCount: null,
+      variance: null,
+      completionStatus: 'Deferred',
+    })
   })
 
   it('treats an explicit 0 in every target as counted, complete, and selected', () => {
@@ -103,6 +114,11 @@ describe('computeClassificationEntry', () => {
     expect(result.classifiedTotal).toBe(0)
     expect(result.variance).toBe(0)
     expect(result.totalInventory).toBe(0)
+    expect(getClassificationCardDisplay(result)).toEqual({
+      totalTargetPhysicalCount: 0,
+      variance: 0,
+      completionStatus: 'Complete',
+    })
   })
 
   it('a single explicit 0 selects the flavour (an explicit 0 is a real count)', () => {

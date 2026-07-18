@@ -94,6 +94,35 @@ export interface ClassificationEntryResult {
   totalInventory: number
 }
 
+export interface ClassificationCardDisplay {
+  totalTargetPhysicalCount: number | null
+  variance: number | null
+  completionStatus: 'Deferred' | 'Incomplete' | 'Complete'
+}
+
+/**
+ * Keep deferred flavours visually distinct from a selected count of zero.
+ * Their numeric entry result is retained for internal calculations, but an
+ * all-blank flavour has no display total or variance and is not incomplete.
+ */
+export function getClassificationCardDisplay(
+  entry: Pick<ClassificationEntryResult, 'classifiedTotal' | 'variance' | 'complete' | 'selected'>,
+): ClassificationCardDisplay {
+  if (!entry.selected) {
+    return {
+      totalTargetPhysicalCount: null,
+      variance: null,
+      completionStatus: 'Deferred',
+    }
+  }
+
+  return {
+    totalTargetPhysicalCount: entry.classifiedTotal,
+    variance: entry.variance,
+    completionStatus: entry.complete ? 'Complete' : 'Incomplete',
+  }
+}
+
 const parseCount = (value: string): number | null => (value.trim() === '' ? null : Number(value))
 
 export function computeClassificationEntry(

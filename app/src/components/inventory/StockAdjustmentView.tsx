@@ -22,6 +22,7 @@ import {
   CLASSIFICATION_TARGET_CONFIG_CODES as TARGET_CONFIG_CODES,
   buildInitialClassificationGroups,
   computeClassificationEntry,
+  getClassificationCardDisplay,
   summarizeClassificationRound,
 } from '@/lib/inventory/stock-count-classification'
 import { stockCountRowsSignature } from '@/lib/inventory/stock-count-snapshot'
@@ -540,10 +541,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   )
 
   const classificationSummary = useMemo(() => {
-    const perGroup = classificationGroups.map(group => ({
-      group,
-      ...computeClassificationEntry(group.legacyRow.systemQuantity, group.targetRows),
-    }))
+    const perGroup = classificationGroups.map(group => {
+      const entry = computeClassificationEntry(group.legacyRow.systemQuantity, group.targetRows)
+      return {
+        group,
+        ...entry,
+        cardDisplay: getClassificationCardDisplay(entry),
+      }
+    })
     // Only *selected* flavours (≥1 target counted) belong to this round. Blank
     // flavours are deferred and must never contribute their Legacy balance to
     // the summary — that double-charging was the -3,160 in the incident. The
@@ -1424,7 +1429,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           {classificationSummary.perGroup.length === 0 && (
             <Card><CardContent className="p-8 text-center text-sm text-slate-500">No flavour at this warehouse has a Legacy/Unclassified balance to classify.</CardContent></Card>
           )}
-          {classificationSummary.perGroup.map(({ group, classifiedTotal, variance, complete, selected }) => (
+          {classificationSummary.perGroup.map(({ group, complete, selected, cardDisplay }) => (
             <Card key={group.variantId} className={selected ? '' : 'opacity-70'}>
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1481,9 +1486,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
                 <div className="grid grid-cols-4 divide-x rounded-lg border bg-slate-50 text-center">
                   <div className="p-2"><p className="text-xs font-semibold text-slate-500">Legacy System Qty</p><p className="text-lg font-bold">{formatNumber(group.legacyRow.systemQuantity)}</p></div>
-                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Total Target Physical Count</p><p className="text-lg font-bold">{formatNumber(classifiedTotal)}</p></div>
-                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Variance</p><p className={`text-lg font-bold ${variance === 0 ? 'text-slate-700' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance > 0 ? '+' : ''}{formatNumber(variance)}</p></div>
-                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Completion Status</p><p className={`text-lg font-bold ${complete ? 'text-emerald-600' : 'text-amber-600'}`}>{complete ? 'Complete' : 'Incomplete'}</p></div>
+                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Total Target Physical Count</p><p className="text-lg font-bold">{cardDisplay.totalTargetPhysicalCount === null ? '—' : formatNumber(cardDisplay.totalTargetPhysicalCount)}</p></div>
+                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Variance</p><p className={`text-lg font-bold ${cardDisplay.variance === null || cardDisplay.variance === 0 ? 'text-slate-700' : cardDisplay.variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{cardDisplay.variance === null ? '—' : `${cardDisplay.variance > 0 ? '+' : ''}${formatNumber(cardDisplay.variance)}`}</p></div>
+                  <div className="p-2"><p className="text-xs font-semibold text-slate-500">Completion Status</p><p className={`text-lg font-bold ${complete ? 'text-emerald-600' : selected ? 'text-amber-600' : 'text-slate-500'}`}>{cardDisplay.completionStatus}</p></div>
                 </div>
               </CardContent>
             </Card>

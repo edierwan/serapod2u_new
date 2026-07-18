@@ -96,8 +96,8 @@ The operator must choose and paste real staging values for `TEST_VARIANT_ID`, `T
 | Inventory | Detail rows plus non-duplicating expandable flavour total | Summary/detail, legacy warning, inactive toggle | `vw_inventory_on_hand`; base fallback for inactive | UI + report contracts | None |
 | Add Stock | Exact selected config; STD auto-selected | Physical selector only for configured variants | Exact movement RPC | Helper + UI contracts | None |
 | Stock Count/Excel | Exact row/config identity, drafts and posting | Three-row maximum, lifecycle, inactive toggle | Phase 04 RPC/tables | Excel/preflight/SQL tests | None |
-| Repacking | 50OB→50NB only, shared RPK, atomic | Source/destination/balances/history | `repack_stock` | Component + SQL contracts | None |
-| Stock Transfer | Same config at both ends; atomic lines; over-transfer blocked | Exact physical selector; STD auto | `post_stock_transfer_configured` | SQL + UI contracts | None |
+| Repacking | 50OB or 50NB → 20NB, 1:1 partial, shared RPK, idempotent and atomic | Separate source balances, preview, confirmation, history | `repack_stock_v2` | Helper + UI + Phase 10 SQL contracts | Forward-only migration 10 |
+| Stock Transfer | Exact config identity; Draft → Pending Approval → Ready to Dispatch → Received; reserve on submit; source out on approve; dest in on receive | Bulk inventory table, sticky summary, Transfer Note | Migration 11 RPCs (`save_stock_transfer_draft`, submit/approve/receive/cancel/reject); legacy `post_stock_transfer_configured` retained | Helper + UI + Phase 11 SQL contracts | Apply migration 11 before exercising new RPCs |
 | WMS QR shipping | Configuration comes only from confirmed `order_item_id` | Picking Stock SKU; missing linkage blocks | Phase 05 WMS RPCs/dedup | UI + SQL contracts | Phone/manual shipping remains STD-only by design |
 | Movement Report | Configuration detail and historical NULL retained | SKU/volume/packaging/reference/date/warehouse filters | Phase 06 detail view | UI + view contracts | None |
 | Incoming Stock | Variant-level incoming totals; internal default destination | Inventory incoming detail | Phase 06 aggregate views | Incoming/report tests | None |
@@ -112,7 +112,8 @@ The operator must choose and paste real staging values for `TEST_VARIANT_ID`, `T
 - SO order detail: requested flavour/quantity plus selectable physical cards with balances, eligibility, sufficiency and confirmation state.
 - ORD receiving/history: exact destination badge and Stock SKU.
 - Inventory: expandable aggregate flavour rows and configuration detail.
-- Add Stock/Transfer: configured selector with physical labels; unobtrusive automatic Standard message for unrelated products.
+- Add Stock: configured selector with physical labels; unobtrusive automatic Standard message for unrelated products.
+- Stock Transfer: bulk configuration table with Available / Transfer Qty / After Transfer; four-stage lifecycle; historical transfers still openable.
 - WMS: order-linked picking card and explicit blocked state.
 - Movement Report: Stock SKU, volume and packaging filters alongside existing filters.
 

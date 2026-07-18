@@ -10,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
-import { formatSignedMovementImpact, resolveStockMovementHistoryValues } from '@/lib/inventory/stock-movement-history'
+import {
+  formatSignedMovementImpact,
+  resolveStockMovementConfiguration,
+  resolveStockMovementHistoryValues,
+} from '@/lib/inventory/stock-movement-history'
 import {
   BarChart3,
   Search,
@@ -49,10 +53,13 @@ interface StockMovement {
   manufacturer_name?: string | null
   created_by_email?: string | null
   stock_config_id?: string | null
+  config_code?: string | null
   config_label?: string | null
   stock_sku?: string | null
   volume_ml?: number | null
   packaging?: string | null
+  stock_config_status?: string | null
+  configuration_display_label?: string
   is_legacy_configuration?: boolean
   product_variants?: {
     variant_code: string
@@ -153,7 +160,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       fetchProducts()
       fetchVariants()
       fetchLocations()
-      supabase.from('inventory_stock_configurations').select('id, stock_sku, config_label, volume_ml, packaging').order('stock_sku').then(({ data }) => setStockConfigurations(data || []))
+      supabase.from('inventory_stock_configurations').select('id, config_code, stock_sku, config_label, volume_ml, packaging, status').order('stock_sku').then(({ data }) => setStockConfigurations(data || []))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
@@ -371,7 +378,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             manufacturer_id,
             created_by,
             stock_config_id,
-            inventory_stock_configurations!stock_movements_stock_config_fk(config_label, stock_sku, volume_ml, packaging)
+            inventory_stock_configurations!stock_movements_stock_config_fk(id, config_code, config_label, stock_sku, volume_ml, packaging, status)
           `)
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
@@ -432,6 +439,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
         ...data.map((item: any) => item.manufacturer_id)
       ].filter((id: unknown): id is string => typeof id === 'string')))
       const userIds: string[] = Array.from(new Set<string>(data.map((item: any) => item.created_by).filter((id: unknown): id is string => typeof id === 'string')))
+      const stockConfigIds: string[] = Array.from(new Set<string>(
+        data.map((item: any) => item.stock_config_id).filter((id: unknown): id is string => typeof id === 'string')
+      ))
       const orderIds: string[] = Array.from(new Set<string>(
         data
           .filter((item: any) => item.movement_type === 'order_fulfillment' && item.reference_id)
@@ -500,6 +510,22 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
         orders?.forEach((order: any) => {
           ordersMap.set(order.id, order)
+        })
+      }
+
+      // Resolve each row through its persisted stock_config_id. This also
+      // protects the report from stale/missing denormalized metadata on the
+      // movement view without guessing from quantity, sign, or display order.
+      const stockConfigurationsMap = new Map()
+      if (stockConfigIds.length > 0) {
+        const { data: configurations, error: configurationsError } = await supabase
+          .from('inventory_stock_configurations')
+          .select('id, config_code, config_label, stock_sku, volume_ml, packaging, status')
+          .in('id', stockConfigIds)
+
+        if (configurationsError) throw configurationsError
+        configurations?.forEach((configuration: any) => {
+          stockConfigurationsMap.set(configuration.id, configuration)
         })
       }
 
@@ -651,13 +677,20 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           return directTotal
         })()
 
-        return resolveStockMovementHistoryValues({
+        const joinedConfiguration = Array.isArray(item.inventory_stock_configurations)
+          ? item.inventory_stock_configurations[0] ?? null
+          : item.inventory_stock_configurations ?? null
+        const configuration = item.stock_config_id
+          ? stockConfigurationsMap.get(item.stock_config_id) ?? joinedConfiguration
+          : null
+        const configuredMovement = resolveStockMovementConfiguration({
           ...item,
-          config_label: item.config_label ?? item.inventory_stock_configurations?.config_label ?? null,
-          stock_sku: item.stock_sku ?? item.inventory_stock_configurations?.stock_sku ?? null,
-          volume_ml: item.volume_ml ?? item.inventory_stock_configurations?.volume_ml ?? null,
-          packaging: item.packaging ?? item.inventory_stock_configurations?.packaging ?? null,
-          is_legacy_configuration: item.is_legacy_configuration ?? item.stock_config_id == null,
+          config_code: item.config_code ?? joinedConfiguration?.config_code ?? null,
+          config_label: item.config_label ?? joinedConfiguration?.config_label ?? null,
+          stock_sku: item.stock_sku ?? joinedConfiguration?.stock_sku ?? null,
+          volume_ml: item.volume_ml ?? joinedConfiguration?.volume_ml ?? null,
+          packaging: item.packaging ?? joinedConfiguration?.packaging ?? null,
+          stock_config_status: item.stock_config_status ?? joinedConfiguration?.status ?? null,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
           reference_no: isShipment && order ? (order.display_doc_no || order.order_no) : item.reference_no,
@@ -666,7 +699,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           organizations,
           manufacturers,
           users
-        })
+        }, configuration)
+
+        return resolveStockMovementHistoryValues(configuredMovement)
       })
 
       // Apply client-side filtering for product and variant (needed when using stock_movements fallback table)
@@ -1012,6 +1047,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     <SelectItem value="transfer">Transfer</SelectItem>
                     <SelectItem value="adjustment">Adjustment</SelectItem>
                     <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="repack">Repack (RPK)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1322,13 +1358,11 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                                 return match ? `[ ${match[1]} ]` : variantName
                               })()}
                             </p>
-                            {movement.stock_sku ? (
-                              <p className="text-xs font-medium text-blue-700">
-                                {movement.stock_sku} · {[movement.volume_ml ? `${movement.volume_ml}ml` : null, movement.packaging === 'new_box' ? 'New Box' : movement.packaging === 'old_box' ? 'Old Box' : null].filter(Boolean).join(' · ')}
+                            {movement.configuration_display_label && (
+                              <p className={`text-xs font-medium ${movement.is_legacy_configuration ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {movement.configuration_display_label}
                               </p>
-                            ) : movement.is_legacy_configuration ? (
-                              <p className="text-xs text-amber-700">Legacy / unclassified movement</p>
-                            ) : null}
+                            )}
                           </div>
                         </div>
                       </TableCell>
