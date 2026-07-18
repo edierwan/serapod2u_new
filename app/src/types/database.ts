@@ -32368,19 +32368,27 @@ export type Database = {
       }
       stock_transfers: {
         Row: {
+          approved_at: string | null
           approved_by: string | null
           cancelled_at: string | null
           company_id: string
           created_at: string
           created_by: string
+          dispatched_by: string | null
           from_organization_id: string
           id: string
           items: Json
           notes: string | null
           received_at: string | null
           received_by: string | null
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          required_date: string | null
           shipped_at: string | null
           status: string
+          submitted_at: string | null
+          submitted_by: string | null
           to_organization_id: string
           total_items: number | null
           total_value: number | null
@@ -32388,19 +32396,27 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
           approved_by?: string | null
           cancelled_at?: string | null
           company_id: string
           created_at?: string
           created_by: string
+          dispatched_by?: string | null
           from_organization_id: string
           id?: string
           items?: Json
           notes?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          required_date?: string | null
           shipped_at?: string | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_organization_id: string
           total_items?: number | null
           total_value?: number | null
@@ -32408,19 +32424,27 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
           approved_by?: string | null
           cancelled_at?: string | null
           company_id?: string
           created_at?: string
           created_by?: string
+          dispatched_by?: string | null
           from_organization_id?: string
           id?: string
           items?: Json
           notes?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          required_date?: string | null
           shipped_at?: string | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_organization_id?: string
           total_items?: number | null
           total_value?: number | null
@@ -40005,12 +40029,47 @@ export type Database = {
         }
         Returns: string
       }
+      manual_stock_addition_user_can_post: {
+        Args: {
+          p_user_id: string
+          p_warehouse_id: string
+        }
+        Returns: boolean
+      }
+      post_manual_stock_addition: {
+        Args: {
+          p_company_id?: string
+          p_created_by?: string
+          p_external_reference?: string
+          p_items: Json
+          p_manufacturer_id?: string
+          p_notes?: string
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+          p_warehouse_location?: string
+        }
+        Returns: Json
+      }
       repack_stock: {
         Args: {
           p_created_by?: string
           p_from_config_id: string
           p_notes?: string
           p_quantity: number
+          p_to_config_id: string
+          p_variant_id: string
+          p_warehouse_org_id: string
+        }
+        Returns: Json
+      }
+      repack_stock_v2: {
+        Args: {
+          p_created_by?: string
+          p_from_config_id: string
+          p_notes?: string
+          p_quantity: number
+          p_request_id: string
           p_to_config_id: string
           p_variant_id: string
           p_warehouse_org_id: string
@@ -40083,6 +40142,63 @@ export type Database = {
           p_notes?: string
           p_to_organization_id: string
           p_transfer_no: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      save_stock_transfer_draft: {
+        Args: {
+          p_company_id: string
+          p_created_by?: string
+          p_from_organization_id: string
+          p_items: Json
+          p_notes?: string
+          p_required_date?: string
+          p_to_organization_id: string
+          p_transfer_id?: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      submit_stock_transfer_for_approval: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      approve_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      dispatch_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      receive_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      cancel_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_reason?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      reject_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_reason?: string
+          p_transfer_id: string
         }
         Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
       }

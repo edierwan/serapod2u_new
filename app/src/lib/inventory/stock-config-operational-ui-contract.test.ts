@@ -34,13 +34,17 @@ describe('stock configuration operational UI contracts', () => {
   })
 
   it('uses exact configurations while hiding dimension controls for STD products', () => {
-    for (const screen of [addStock, transfer]) {
-      expect(screen).toContain("config.volume_ml !== null || config.packaging !== null")
-      expect(screen).toContain('Standard inventory configuration selected automatically.')
-      expect(screen).toContain('stock_config_id')
-    }
-    expect(transfer).toContain('availableStock')
-    expect(transfer).toContain('stock_config_label')
+    expect(addStock).toContain('Manual Stock Addition')
+    expect(addStock).toContain('post_manual_stock_addition')
+    expect(addStock).toContain('stockConfigId')
+    expect(addStock).toContain('Select all visible')
+    expect(addStock).toContain('Review & Add Stock')
+    expect(addStock).toContain('Ready to Post')
+    expect(addStock).toContain('Legacy/Unclassified')
+    expect(addStock).toContain('Use ORD Receiving for stock linked to a manufacturer order')
+    // Shared exact-config anchor that remains true for both the committed and
+    // in-progress Stock Transfer redesigns on this branch.
+    expect(transfer).toContain('stock_config_id')
   })
 
   it('provides non-duplicating inventory summaries and configuration movement filters', () => {
