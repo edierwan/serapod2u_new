@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateStockCountPreflight, type StockCountPreflightDependencies } from './stock-count-verification-preflight'
+import { stockCountRowsSignature } from './stock-count-snapshot'
 import {
     isValidStockCountPostingNote,
     normalizeStockCountPostingNote,
@@ -102,5 +103,68 @@ describe('Stock Count verification preflight', () => {
         expect(stockCountVerificationError('notification_event_disabled').message).toContain('disabled')
         expect(stockCountVerificationError('email_provider_missing').message).toContain('No active email provider')
         expect(stockCountVerificationError('unexpected_error').message).not.toContain('database')
+    })
+
+    // ── Stale-draft regression (incident: Review showed the first import) ──────
+    describe('persistedSignature (stale draft guard)', () => {
+        const threeTargets = [
+            { stock_config_id: '20NB', variant_id: 'v1', physical_quantity: 50, adjustment_quantity: 50, unit_cost: 14, note: '' },
+            { stock_config_id: '50NB', variant_id: 'v1', physical_quantity: 50, adjustment_quantity: 50, unit_cost: 14, note: '' },
+            { stock_config_id: '50OB', variant_id: 'v1', physical_quantity: 50, adjustment_quantity: 50, unit_cost: 14, note: '' },
+        ]
+
+        it('returns a signature of the persisted counted rows', async () => {
+            const result = await evaluateStockCountPreflight(dependencies({
+                loadAccessibleSession: async () => ({ ...session, stock_count_session_items: threeTargets }),
+                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
+            }), 'user-1', 'session-1')
+            expect(result.ok).toBe(true)
+            if (!result.ok) return
+            // The server signature must equal the client signature over the same
+            // on-screen rows — this is the equality Review & Post relies on.
+            expect(result.persistedSignature).toBe(stockCountRowsSignature([
+                { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
+                { stockConfigId: '50NB', variantId: 'v1', physicalCount: 50, note: '' },
+                { stockConfigId: '50OB', variantId: 'v1', physicalCount: 50, note: '' },
+            ]))
+        })
+
+        it('a first-import draft (50/50/50) never matches the latest screen (50/40/20)', async () => {
+            // The persisted draft still holds the FIRST import…
+            const result = await evaluateStockCountPreflight(dependencies({
+                loadAccessibleSession: async () => ({ ...session, stock_count_session_items: threeTargets }),
+                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
+            }), 'user-1', 'session-1')
+            expect(result.ok).toBe(true)
+            if (!result.ok) return
+            // …but the user's latest import on screen is 50/40/20. The client
+            // compares its signature to result.persistedSignature; they differ,
+            // so Review & Post blocks instead of silently posting +150.
+            const latestScreenSignature = stockCountRowsSignature([
+                { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
+                { stockConfigId: '50NB', variantId: 'v1', physicalCount: 40, note: '' },
+                { stockConfigId: '50OB', variantId: 'v1', physicalCount: 20, note: '' },
+            ])
+            expect(result.persistedSignature).not.toBe(latestScreenSignature)
+        })
+
+        it('matches once the latest import has been saved to the draft', async () => {
+            const savedSecondImport = [
+                { stock_config_id: '20NB', variant_id: 'v1', physical_quantity: 50, adjustment_quantity: 50, unit_cost: 14, note: '' },
+                { stock_config_id: '50NB', variant_id: 'v1', physical_quantity: 40, adjustment_quantity: 40, unit_cost: 14, note: '' },
+                { stock_config_id: '50OB', variant_id: 'v1', physical_quantity: 20, adjustment_quantity: 20, unit_cost: 14, note: '' },
+            ]
+            const result = await evaluateStockCountPreflight(dependencies({
+                loadAccessibleSession: async () => ({ ...session, stock_count_session_items: savedSecondImport }),
+                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
+            }), 'user-1', 'session-1')
+            expect(result.ok).toBe(true)
+            if (!result.ok) return
+            expect(result.persistedSignature).toBe(stockCountRowsSignature([
+                { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
+                { stockConfigId: '50NB', variantId: 'v1', physicalCount: 40, note: '' },
+                { stockConfigId: '50OB', variantId: 'v1', physicalCount: 20, note: '' },
+            ]))
+        })
     })
 })

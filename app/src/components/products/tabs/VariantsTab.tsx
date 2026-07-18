@@ -24,6 +24,9 @@ import {
 interface Product {
   id: string
   product_name: string
+  is_active?: boolean
+  is_vape?: boolean
+  product_code?: string | null
 }
 
 interface Variant {
@@ -87,7 +90,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, product_name')
+        .select('id, product_name, is_active, is_vape, product_code')
         .order('product_name', { ascending: true })
 
       if (error) throw error
@@ -280,6 +283,20 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         const { data: inserted, error } = await (supabase as any).from('product_variants').insert([dataToSave]).select('id').single()
         if (error) throw error
         variantId = inserted.id
+        if (dbDataClean.configurationProfile) {
+          try {
+            const response = await fetch(`/api/inventory/stock-configurations/variant/${variantId}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ profile: dbDataClean.configurationProfile }),
+            })
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}))
+              toast({ title: 'Stock configuration setup warning', description: body.error || 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+            }
+          } catch {
+            toast({ title: 'Stock configuration setup warning', description: 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+          }
+        }
       }
 
       // ── Sync variant_media rows ──────────────────────

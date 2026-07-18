@@ -24,6 +24,10 @@ export type StockCountVerificationErrorCode =
     | 'resend_cooldown'
     | 'snapshot_changed'
     | 'invalid_or_expired_code'
+    | 'classification_incomplete'
+    | 'classification_legacy_not_cleared'
+    | 'full_count_on_unclassified'
+    | 'wrong_posting_function'
     | 'unexpected_error'
 
 export interface StockCountVerificationFriendlyError {
@@ -56,6 +60,10 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     resend_cooldown: { message: 'Please wait 60 seconds before requesting another code.', status: 429, recoverable: true },
     snapshot_changed: { message: 'This Stock Count changed after the verification code was requested. Review it and request a new code.', status: 409, recoverable: true },
     invalid_or_expired_code: { message: 'The verification code is invalid or has expired. Request a new code.', status: 400, recoverable: true },
+    classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Configuration Classification.', status: 409, recoverable: true },
+    classification_legacy_not_cleared: { message: 'The Legacy/Unclassified balance must be fully cleared (counted at 0) before this classification can post.', status: 409, recoverable: true },
+    full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use the “Initial Configuration Classification” count type to move it into 20ml/50ml boxes — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
+    wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
     unexpected_error: { message: 'We couldn’t request the verification code due to an unexpected error. Please try again or contact your administrator.', status: 500, recoverable: true },
 }
 
@@ -89,6 +97,10 @@ export function mapStockCountDatabaseError(message: string): StockCountVerificat
         ['no_counted_variants', 'invalid_count_data'],
         ['stock_count_config_identity_missing', 'configuration_identity_missing'],
         ['stock_count_base_cost_missing', 'base_cost_missing'],
+        ['stock_count_classification_incomplete', 'classification_incomplete'],
+        ['stock_count_classification_legacy_not_cleared', 'classification_legacy_not_cleared'],
+        ['stock_count_full_count_on_unclassified', 'full_count_on_unclassified'],
+        ['stock_count_wrong_posting_function', 'wrong_posting_function'],
     ]
     const match = mappings.find(([needle]) => message.includes(needle))
     return stockCountVerificationError(match?.[1] || 'unexpected_error')

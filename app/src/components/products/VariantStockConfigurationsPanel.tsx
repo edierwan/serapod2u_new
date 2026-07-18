@@ -5,6 +5,7 @@ import { AlertTriangle, Boxes, Check, Loader2, Search, ShieldCheck, X } from 'lu
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { isCelleraVapeVariant, type CelleraVapeProductLike } from '@/lib/inventory/cellera-variant'
 
 interface ConfigurationRow {
   id: string
@@ -42,11 +43,11 @@ interface DistributorRow {
 
 export default function VariantStockConfigurationsPanel({
   variantId,
-  productName,
+  product,
   canManage,
 }: {
   variantId: string
-  productName: string
+  product: CelleraVapeProductLike | null
   canManage: boolean
 }) {
   const [data, setData] = useState<PanelData | null>(null)
@@ -54,7 +55,7 @@ export default function VariantStockConfigurationsPanel({
   const [enabling, setEnabling] = useState(false)
   const [error, setError] = useState('')
   const [eligibilityOpen, setEligibilityOpen] = useState(false)
-  const relevant = /cellera/i.test(productName)
+  const relevant = isCelleraVapeVariant(product)
 
   const load = useCallback(async () => {
     if (!variantId || !relevant || !canManage) return

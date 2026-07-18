@@ -6,7 +6,7 @@ import { PRODUCT_CODE_DUPLICATE_MESSAGE } from '@/lib/products/product-code'
 import { ALTERNATIVE_NAME_DUPLICATE_MESSAGE } from '@/lib/products/alternative-name'
 import VariantDialog from './VariantDialog'
 
-const products = [{ id: 'product-1', product_name: 'Cellera Hero' }]
+const products = [{ id: 'product-1', product_name: 'Cellera Hero', is_active: true, is_vape: true, product_code: 'CEL01' }]
 
 describe('VariantDialog Product Code', () => {
   afterEach(() => {

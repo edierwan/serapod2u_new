@@ -8,7 +8,7 @@ export async function getStockConfigAdminContext() {
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .select('id, organization_id, role_code, roles(role_level), organizations(org_type_code)')
+    .select('id, organization_id, role_code, roles:role_code(role_level), organizations:organization_id(org_type_code)')
     .eq('id', user.id)
     .single()
   const roleLevel = Number((profile?.roles as any)?.role_level ?? 999)

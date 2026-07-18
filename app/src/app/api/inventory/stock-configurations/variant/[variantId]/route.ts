@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getStockConfigAdminContext } from '@/lib/server/stock-config-admin'
+import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
 
 async function loadVariantConfiguration(admin: any, variantId: string) {
   const { data: variant, error: variantError } = await admin
@@ -10,11 +11,7 @@ async function loadVariantConfiguration(admin: any, variantId: string) {
   if (variantError || !variant) return { error: 'Variant not found', status: 404 }
 
   const product = Array.isArray(variant.products) ? variant.products[0] : variant.products
-  const relevant = Boolean(
-    product?.is_active && product?.is_vape &&
-    (/cellera/i.test(product?.product_name || '') || /^CEL/i.test(product?.product_code || ''))
-  )
-  if (!relevant) return { error: 'Stock configuration administration is limited to Cellera vape variants', status: 400 }
+  if (!isCelleraVapeVariant(product)) return { error: 'Stock configuration administration is limited to Cellera vape variants', status: 400 }
 
   const [{ data: configurations, error: configError }, { data: balances, error: balanceError }, eligibilityResult] = await Promise.all([
     admin.from('inventory_stock_configurations')
@@ -65,16 +62,23 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   return NextResponse.json(result.data || { error: result.error }, { status: result.status })
 }
 
-export async function POST(_request: NextRequest, { params }: { params: Promise<{ variantId: string }> }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ variantId: string }> }) {
   const context = await getStockConfigAdminContext()
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status })
   const { variantId } = await params
   const before = await loadVariantConfiguration(context.admin, variantId)
   if (!before.data) return NextResponse.json({ error: before.error }, { status: before.status })
 
-  const { data, error } = await (context.supabase as any).rpc('enable_variant_stock_configurations', {
-    p_variant_id: variantId,
-  })
+  const body = await request.json().catch(() => ({}))
+  const profile = body?.profile === 'new_standard' ? 'new_standard' : null
+
+  const { data, error } = profile
+    ? await (context.supabase as any).rpc('enable_variant_stock_configurations_with_profile', {
+        p_variant_id: variantId, p_profile: profile,
+      })
+    : await (context.supabase as any).rpc('enable_variant_stock_configurations', {
+        p_variant_id: variantId,
+      })
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
   const after = await loadVariantConfiguration(context.admin, variantId)
   return NextResponse.json({ result: data, ...after.data }, { status: after.status })

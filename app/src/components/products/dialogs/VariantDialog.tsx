@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   X,
   Loader2,
@@ -22,12 +23,16 @@ import {
 } from '@/lib/products/product-code'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
 import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
+import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
 
 // ── Types ────────────────────────────────────────────────────────
 
 interface Product {
   id: string
   product_name: string
+  is_active?: boolean
+  is_vape?: boolean
+  product_code?: string | null
 }
 
 export interface MediaItem {
@@ -202,12 +207,14 @@ export default function VariantDialog({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isValidatingProductCode, setIsValidatingProductCode] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
+  const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
     setFormData(mkInitial())
     setErrors({})
+    setConfigurationProfile('new_standard')
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -222,6 +229,9 @@ export default function VariantDialog({
     setMediaItems(items)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant, products])
+
+  const selectedProduct = products.find((p) => p.id === (formData.product_id || variant?.product_id)) || null
+  const isNewCelleraVariant = !variant && isCelleraVapeVariant(selectedProduct)
 
   const generateBarcode = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
@@ -365,6 +375,7 @@ export default function VariantDialog({
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
+      ...(isNewCelleraVariant ? { configurationProfile } : {}),
     } as any)
   }
 
@@ -481,6 +492,35 @@ export default function VariantDialog({
             <Input id="manual_sku" value={formData.manual_sku || ''} onChange={(e) => setFormData((p) => ({ ...p, manual_sku: e.target.value.toUpperCase().slice(0, 5) }))} maxLength={5} placeholder="Enter custom SKU" className="uppercase" />
           </div>
 
+          {variant?.id ? (
+            <VariantStockConfigurationsPanel
+              variantId={variant.id}
+              product={selectedProduct}
+              canManage={canManageStockConfigurations}
+            />
+          ) : null}
+
+          {isNewCelleraVariant ? (
+            <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+              <Label className="text-sm font-semibold">Stock Configuration Setup Profile</Label>
+              <p className="text-xs text-slate-600">Choose how this Cellera flavour's inventory stock configurations are set up once created.</p>
+              <RadioGroup value={configurationProfile} onValueChange={(value) => setConfigurationProfile(value as 'new_standard' | 'transition')} className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="new_standard" id="profile-new-standard" className="mt-1" />
+                  <Label htmlFor="profile-new-standard" className="font-normal cursor-pointer">
+                    <span className="font-medium">New Standard Product</span> — 20ml New Box only (default)
+                  </Label>
+                </div>
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="transition" id="profile-transition" className="mt-1" />
+                  <Label htmlFor="profile-transition" className="font-normal cursor-pointer">
+                    <span className="font-medium">Existing / Transition Product</span> — 20ml New Box, 50ml New Box, and 50ml Old Box
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="baseCost">Base Cost (RM)</Label>
@@ -514,14 +554,6 @@ export default function VariantDialog({
             <Checkbox id="is_active" checked={formData.is_active !== false} onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: Boolean(checked) }))} />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
-
-          {variant?.id ? (
-            <VariantStockConfigurationsPanel
-              variantId={variant.id}
-              productName={products.find(product => product.id === (formData.product_id || variant.product_id))?.product_name || ''}
-              canManage={canManageStockConfigurations}
-            />
-          ) : null}
         </div>
 
         <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">

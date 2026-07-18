@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
             const friendly = stockCountVerificationError('invalid_or_expired_code')
             return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
         }
-        const { data: accessibleSession } = await (supabase as any).from('stock_count_sessions').select('id,status').eq('id', sessionId).maybeSingle()
+        const { data: accessibleSession } = await (supabase as any).from('stock_count_sessions').select('id,status,count_type').eq('id', sessionId).maybeSingle()
         if (!accessibleSession) {
             const friendly = stockCountVerificationError('stock_count_access_denied')
             return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
@@ -33,7 +33,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
         }
         const codeHash = hashStockCountCode(String(code), permission.context.organization_id, sessionId, user.id)
-        const { data, error } = await (supabase as any).rpc('verify_and_post_stock_count', {
+        const postingFunction = accessibleSession.count_type === 'initial_configuration_classification'
+            ? 'verify_and_post_stock_classification'
+            : 'verify_and_post_stock_count'
+        const { data, error } = await (supabase as any).rpc(postingFunction, {
             p_request_id: requestId, p_code_hash: codeHash,
         })
         if (error) throw error
