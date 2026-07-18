@@ -55,6 +55,7 @@ interface ProductVariant {
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  inventory_classification?: 'classified' | 'unclassified'
 }
 
 interface OrderItem {
@@ -513,7 +514,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (!variant) return
 
     const newQty = Math.max(0, Math.trunc(requestedQty))
-    if (newQty > variant.available_qty) {
+    if (variant.inventory_classification !== 'unclassified' && newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
         description: `Only ${variant.available_qty} units of ${variant.variant_name} are available`,

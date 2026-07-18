@@ -7,11 +7,15 @@ export interface MatchableVariant {
   product_name: string
   product_code: string
   manufacturer_sku?: string | null
+  available_qty?: number
+  inventory_classification?: 'classified' | 'unclassified'
 }
 
 export type PasteMatchStatus = 'matched' | 'alternative_match' | 'smart_match' | 'suggestion' | 'ambiguous' | 'not_found' | 'invalid_quantity' | 'duplicate'
 
-export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'alternative_name' | 'keyword' | 'fuzzy'
+export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'bracket_flavour' | 'alternative_name' | 'keyword' | 'fuzzy'
+
+export type PasteInventoryOutcome = 'matched' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
 
 export interface PasteMatchResult {
   /** Running 1-based index across every parsed entry (a physical line may hold several). */
@@ -27,6 +31,7 @@ export interface PasteMatchResult {
   selectedVariantId?: string
   duplicateOfLine?: number
   matchMethod?: PasteMatchMethod
+  inventoryOutcome?: PasteInventoryOutcome
 }
 
 export const normalizeOrderText = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase()
@@ -139,24 +144,40 @@ const parsePhysicalLine = (original: string, sourceLine: number, codeSet: Set<st
   return segments
 }
 
-const exactNames = (variant: MatchableVariant) => [
-  variant.variant_name,
+const normalizeMatchName = (value: unknown) => normalizeAlternativeName(value)
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim()
+
+const exactOfficialName = (variant: MatchableVariant) => normalizeMatchName(variant.variant_name)
+
+const exactFallbackNames = (variant: MatchableVariant) => [
   variant.product_name,
-].map(normalizeOrderText).filter(Boolean)
+].map(normalizeMatchName).filter(Boolean)
 
 const exactIdentifiers = (variant: MatchableVariant) => [
   variant.product_code,
   variant.manufacturer_sku || '',
 ].map(normalizeOrderText).filter(Boolean)
 
-const exactAlternativeName = (variant: MatchableVariant) => normalizeAlternativeName(variant.alternative_name)
+const exactAlternativeName = (variant: MatchableVariant) => normalizeMatchName(variant.alternative_name)
 
-const words = (value: string) => normalizeOrderText(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+const bracketFlavours = (variant: MatchableVariant) =>
+  Array.from(variant.variant_name.matchAll(/\[([^\[\]]+)\]/g), match => normalizeMatchName(match[1])).filter(Boolean)
+
+const words = (value: string) => normalizeMatchName(value).split(/[^\p{L}\p{N}]+/u).filter(Boolean)
 
 const keywordScore = (query: string, variant: MatchableVariant) => {
   const queryWords = words(query)
   if (queryWords.length === 0) return 0
-  const fields = [variant.variant_name, variant.product_name].map(normalizeOrderText)
+  const normalizedQuery = normalizeMatchName(query)
+  const flavours = bracketFlavours(variant)
+  const isStrictBracketSubset = flavours.some(flavour => {
+    const flavourWords = words(flavour)
+    return normalizedQuery !== flavour && queryWords.every(queryWord => flavourWords.includes(queryWord))
+  })
+  if (isStrictBracketSubset) return 0
+  const fields = [variant.variant_name, variant.product_name].map(normalizeMatchName)
   const candidateWords = fields.flatMap(words)
   const allWordsMatch = queryWords.every(queryWord => candidateWords.some(candidateWord =>
     candidateWord === queryWord
@@ -164,7 +185,6 @@ const keywordScore = (query: string, variant: MatchableVariant) => {
   ))
   if (!allWordsMatch) return 0
 
-  const normalizedQuery = normalizeOrderText(query)
   if (fields.some(field => field.startsWith(`${normalizedQuery} `))) return 4
   if (candidateWords.includes(normalizedQuery)) return 3
   if (fields.some(field => field.includes(normalizedQuery))) return 2
@@ -188,9 +208,9 @@ const levenshteinDistance = (left: string, right: string) => {
 }
 
 const fuzzyScore = (query: string, variant: MatchableVariant) => {
-  const normalizedQuery = normalizeOrderText(query)
+  const normalizedQuery = normalizeMatchName(query)
   if (normalizedQuery.length < 4) return 0
-  return Math.max(...exactNames(variant).map(name => {
+  return Math.max(...[exactOfficialName(variant), ...bracketFlavours(variant), ...exactFallbackNames(variant)].filter(Boolean).map(name => {
     const distance = levenshteinDistance(normalizedQuery, name)
     const longest = Math.max(normalizedQuery.length, name.length)
     const similarity = longest === 0 ? 0 : 1 - (distance / longest)
@@ -204,15 +224,26 @@ export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) 
   const identifierMatches = variants.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 3), method: 'code_or_sku' as const }
 
-  const nameMatches = variants.filter(variant => exactNames(variant).includes(normalizedName))
+  const normalizedMatchName = normalizeMatchName(name)
+  const nameMatches = variants.filter(variant => exactOfficialName(variant) === normalizedMatchName)
   if (nameMatches.length > 0) return { candidates: nameMatches.slice(0, 3), method: 'exact_name' as const }
 
-  const normalizedAlternativeName = normalizeAlternativeName(name)
+  const bracketMatches = variants.filter(variant => bracketFlavours(variant).includes(normalizedMatchName))
+  if (bracketMatches.length > 0) {
+    return { candidates: bracketMatches.slice(0, 3), method: 'bracket_flavour' as const, totalMatches: bracketMatches.length }
+  }
+
+  const normalizedAlternativeName = normalizedMatchName
   const alternativeMatches = normalizedAlternativeName
     ? variants.filter(variant => exactAlternativeName(variant) === normalizedAlternativeName)
     : []
   if (alternativeMatches.length > 0) {
     return { candidates: alternativeMatches.slice(0, 3), method: 'alternative_name' as const, totalMatches: alternativeMatches.length }
+  }
+
+  const fallbackNameMatches = variants.filter(variant => exactFallbackNames(variant).includes(normalizedMatchName))
+  if (fallbackNameMatches.length > 0) {
+    return { candidates: fallbackNameMatches.slice(0, 3), method: 'exact_name' as const, totalMatches: fallbackNameMatches.length }
   }
 
   const keywordMatches = variants
@@ -229,6 +260,18 @@ export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) 
     .slice(0, 3)
     .map(result => result.variant)
   return { candidates: fuzzyMatches, method: fuzzyMatches.length > 0 ? 'fuzzy' as const : undefined }
+}
+
+export function resolvePasteInventoryOutcome(
+  quantity: number | null,
+  variant?: MatchableVariant,
+): PasteInventoryOutcome | undefined {
+  if (!variant || quantity === null || quantity <= 0) return undefined
+  if (variant.inventory_classification === 'unclassified') return 'inventory_unclassified'
+  if (variant.available_qty === undefined) return 'matched'
+  if (variant.available_qty <= 0) return 'no_available_stock'
+  if (quantity > variant.available_qty) return 'insufficient_stock'
+  return 'matched'
 }
 
 export function matchPastedOrder(text: string, variants: MatchableVariant[]): PasteMatchResult[] {
@@ -283,6 +326,9 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         selectedVariantId: (status === 'matched' || status === 'alternative_match' || status === 'smart_match' || status === 'duplicate') && exactVariantId ? exactVariantId : undefined,
         duplicateOfLine,
         matchMethod: resolved.method,
+        inventoryOutcome: duplicateOfLine === undefined
+          ? resolvePasteInventoryOutcome(quantity, exactVariantId ? candidates[0] : undefined)
+          : undefined,
       })
     }
   })

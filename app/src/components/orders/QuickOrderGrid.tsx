@@ -5,7 +5,7 @@ import { ClipboardPaste, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { matchPastedOrder, PasteMatchResult } from './quick-order-matcher'
+import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome } from './quick-order-matcher'
 
 interface QuickVariant {
   id: string
@@ -18,6 +18,7 @@ interface QuickVariant {
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  inventory_classification?: 'classified' | 'unclassified'
 }
 
 interface QuickItem {
@@ -45,6 +46,19 @@ const statusStyle = (status: PasteMatchResult['status']) => ({
 }[status])
 
 const statusLabel = (status: PasteMatchResult['status']) => status.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
+
+const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]) => {
+  if (result.status === 'invalid_quantity' || result.status === 'duplicate' || result.status === 'suggestion' || result.status === 'ambiguous') {
+    return { label: statusLabel(result.status), style: statusStyle(result.status) }
+  }
+  const selected = variants.find(variant => variant.id === result.selectedVariantId)
+  const outcome = resolvePasteInventoryOutcome(result.quantity, selected)
+  if (outcome === 'inventory_unclassified') return { label: 'Matched — Inventory Unclassified', style: 'bg-amber-100 text-amber-800' }
+  if (outcome === 'no_available_stock') return { label: 'Matched — No Available Stock', style: 'bg-red-100 text-red-700' }
+  if (outcome === 'insufficient_stock') return { label: 'Matched — Insufficient Stock', style: 'bg-red-100 text-red-700' }
+  if (outcome === 'matched') return { label: 'Matched', style: 'bg-green-100 text-green-700' }
+  return { label: 'Product Not Found', style: statusStyle('not_found') }
+}
 
 export default function QuickOrderGrid({ variants, items, formatCurrency, onQuantityChange, onClear }: QuickOrderGridProps) {
   const [search, setSearch] = useState('')
@@ -151,6 +165,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
             {visibleVariants.map((variant, index) => {
               const quantity = quantities.get(variant.id) || 0
               const insufficient = quantity > variant.available_qty
+              const unclassified = variant.inventory_classification === 'unclassified'
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
                   <td className="px-3 py-2 font-medium">{variant.variant_name}</td>
@@ -159,7 +174,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
                   <td className="px-3 py-2"><Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-28" aria-label={`Order quantity for ${variant.variant_name}`} /></td>
                   <td className="px-3 py-2 tabular-nums">{formatCurrency(variant.distributor_price)}</td>
                   <td className="px-3 py-2 font-medium tabular-nums">{formatCurrency(quantity * variant.distributor_price)}</td>
-                  <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${insufficient || variant.available_qty === 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{insufficient ? 'Insufficient stock' : variant.available_qty === 0 ? 'Unavailable' : 'Available'}</span></td>
+                  <td className="px-3 py-2"><span className={`rounded-full px-2 py-1 text-xs font-medium ${unclassified ? 'bg-amber-100 text-amber-800' : insufficient || variant.available_qty === 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{unclassified ? 'Inventory Unclassified' : insufficient ? 'Insufficient stock' : variant.available_qty === 0 ? 'No Available Stock' : 'Available'}</span></td>
                 </tr>
               )
             })}
@@ -181,10 +196,10 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
           ) : (
             <div className="space-y-3">
               <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2">Qty</th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
-                {pasteResults.map(result => <tr key={result.line} className="border-b align-top"><td className="p-2">{result.line}</td><td className="p-2"><div>{result.name}</div><div className="text-xs text-gray-500">Original: {result.raw}</div></td><td className="p-2">{result.quantity ?? 'Invalid'}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${statusStyle(result.status)}`}>{statusLabel(result.status)}</span>{result.duplicateOfLine && <div className="mt-1 text-xs text-gray-500">Duplicates line {result.duplicateOfLine}</div>}{result.status === 'suggestion' && <div className="mt-1 text-xs text-purple-700">Choose a suggestion to confirm this typo match.</div>}</td><td className="p-2">
+                {pasteResults.map(result => { const display = pasteResultDisplay(result, variants); return <tr key={result.line} className="border-b align-top"><td className="p-2">{result.line}</td><td className="p-2"><div>{result.name}</div><div className="text-xs text-gray-500">Original: {result.raw}</div></td><td className="p-2">{result.quantity ?? 'Invalid'}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${display.style}`}>{display.label}</span>{result.duplicateOfLine && <div className="mt-1 text-xs text-gray-500">Duplicates line {result.duplicateOfLine}</div>}{result.status === 'suggestion' && <div className="mt-1 text-xs text-purple-700">Choose a suggestion to confirm this typo match.</div>}</td><td className="p-2">
                   <select value={result.selectedVariantId || ''} onChange={event => updateResolution(result.line, event.target.value)} className="w-full rounded border p-2" disabled={result.status === 'invalid_quantity'}><option value="">Select manually…</option>{variants.map(variant => <option key={variant.id} value={variant.id}>{variant.variant_name} — {variant.product_name}</option>)}</select>
                   {result.candidates.length > 0 && !result.selectedVariantId && <div className="mt-2 space-y-1"><div className="text-xs font-medium text-gray-600">{result.status === 'suggestion' ? 'Suggested matches' : 'Possible matches'}</div>{result.candidates.slice(0, 3).map(candidate => <button key={candidate.id} type="button" onClick={() => updateResolution(result.line, candidate.id)} className="block w-full rounded border bg-white px-2 py-1 text-left text-xs hover:border-blue-400 hover:bg-blue-50"><strong>{candidate.variant_name}</strong> — {candidate.product_name}</button>)}</div>}
-                </td></tr>)}
+                </td></tr> })}
               </tbody></table></div>
               {hasResolvedDuplicates && <label className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><input type="checkbox" checked={combineDuplicates} onChange={event => setCombineDuplicates(event.target.checked)} className="mt-1" /><span><strong>Combine duplicate entries.</strong> I confirm quantities resolving to the same variant should be added together.</span></label>}
             </div>

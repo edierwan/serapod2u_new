@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { resolveQuickOrderCatalog, resolveSellableAvailability, validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
+import {
+  resolveQuickOrderCatalog,
+  resolveSellableAvailability,
+  resolveUnclassifiedVariantIds,
+  UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
+  validateQuickOrderCatalogItems,
+} from '@/lib/orders/quick-order-catalog'
 
 interface RequestedItem {
   variantId: string
@@ -99,11 +105,11 @@ export async function POST(request: Request) {
         .eq('products.is_active', true),
       supabase
         .from('product_inventory')
-        .select('variant_id, stock_config_id, quantity_available')
+        .select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
         .eq('organization_id', inventoryOrganizationId)
         .in('variant_id', variantIds),
       supabase.from('inventory_stock_configurations')
-        .select('id, volume_ml, packaging, status, allow_so, requires_repacking_before_sale')
+        .select('id, config_code, volume_ml, packaging, status, allow_so, requires_repacking_before_sale')
         .in('variant_id', variantIds),
       supabase.from('distributor_stock_config_eligibility').select('allow_50ml_new_box')
         .eq('distributor_org_id', body.distributorId).maybeSingle(),
@@ -118,6 +124,10 @@ export async function POST(request: Request) {
     }
 
     const variantsById = new Map((variants || []).map(variant => [variant.id, variant]))
+    const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+    if (items.some(item => unclassifiedVariantIds.has(item.variantId))) {
+      return NextResponse.json({ error: UNCLASSIFIED_INVENTORY_ORDER_MESSAGE }, { status: 409 })
+    }
     const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
     const validated = items.map(item => {
       const variant = variantsById.get(item.variantId)!

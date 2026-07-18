@@ -16,6 +16,56 @@ const variants = [
 ]
 
 describe('Quick Order paste matching', () => {
+  it('matches an exact bracket flavour from the official variant name before Alternative Name', () => {
+    const productMasterVariants = [
+      {
+        id: 'guava',
+        variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+        alternative_name: null,
+        product_name: 'Cellera Hero',
+        product_code: 'CELFR53922',
+        manufacturer_sku: 'SKU-GUAVA',
+        available_qty: 0,
+        inventory_classification: 'unclassified' as const,
+      },
+      {
+        id: 'guava-ice',
+        variant_name: 'Fruity Cellera Cartridge [ Guava Ice ]',
+        alternative_name: 'GUAVA',
+        product_name: 'Cellera Hero',
+        product_code: 'CEL-GUAVA-ICE',
+        manufacturer_sku: 'SKU-GUAVA-ICE',
+        available_qty: 20,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('GUAVA - 300', productMasterVariants)[0]).toMatchObject({
+      status: 'matched',
+      matchMethod: 'bracket_flavour',
+      selectedVariantId: 'guava',
+      inventoryOutcome: 'inventory_unclassified',
+    })
+    expect(matchPastedOrder('FRUITY CELLERA CARTRIDGE GUAVA - 1', productMasterVariants)[0])
+      .toMatchObject({ matchMethod: 'exact_name', selectedVariantId: 'guava' })
+    expect(matchPastedOrder('GUAVA - 300', [{ ...productMasterVariants[1], alternative_name: null }])[0]).toMatchObject({
+      status: 'not_found',
+      selectedVariantId: undefined,
+    })
+  })
+
+  it('reports stock outcomes without changing the successful product match', () => {
+    const stockVariants = [
+      { ...variants[3], id: 'none', available_qty: 0, inventory_classification: 'classified' as const },
+      { ...variants[4], id: 'low', available_qty: 2, inventory_classification: 'classified' as const },
+      { ...variants[5], id: 'enough', available_qty: 10, inventory_classification: 'classified' as const },
+    ]
+
+    expect(matchPastedOrder('TEH TARIK - 1', stockVariants)[0].inventoryOutcome).toBe('no_available_stock')
+    expect(matchPastedOrder('KELADI CHEESE - 3', stockVariants)[0].inventoryOutcome).toBe('insufficient_stock')
+    expect(matchPastedOrder('COFFEE HAZELNUT - 3', stockVariants)[0].inventoryOutcome).toBe('matched')
+  })
+
   it('normalizes case and spacing and accepts supported separators', () => {
     expect(normalizeOrderText('  lychee   blackcurrant ')).toBe('LYCHEE BLACKCURRANT')
     const results = matchPastedOrder('lychee   blackcurrant - 200\nSKU-001: 3\nCEL-H\t4\nLychee Blackcurrant  5', variants)
