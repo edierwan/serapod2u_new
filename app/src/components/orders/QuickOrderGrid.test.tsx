@@ -13,7 +13,7 @@ const variants = [
   },
   {
     id: 'mango', product_id: 'product-2', product_name: 'Cellera Zero', product_code: 'CEL-MANGO',
-    group_name: 'Cartridge', variant_name: 'Mango', manufacturer_sku: 'SKU-HIDDEN-MANGO',
+    group_name: 'Cartridge', variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]', manufacturer_sku: 'SKU-HIDDEN-MANGO',
     distributor_price: 30, available_qty: 50,
   },
   {
@@ -22,6 +22,29 @@ const variants = [
     manufacturer_sku: 'SKU-HIDDEN-GUAVA', distributor_price: 30, available_qty: 0,
     inventory_classification: 'unclassified' as const,
   },
+  {
+    id: 'double-mango', product_id: 'product-4', product_name: 'Cellera Hero', product_code: 'CEL-DOUBLE-MANGO',
+    group_name: 'Cartridge', variant_name: 'Fruity Cellera Cartridge [ Double Mango ]',
+    manufacturer_sku: 'SKU-DOUBLE-MANGO', distributor_price: 30, available_qty: 200,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'mango-smoothie', product_id: 'product-5', product_name: 'Cellera Hero', product_code: 'CEL-MANGO-SMOOTHIE',
+    group_name: 'Cartridge', variant_name: 'Fruity Cellera Cartridge [ Mango Smoothie ]',
+    manufacturer_sku: 'SKU-MANGO-SMOOTHIE', distributor_price: 30, available_qty: 120,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'strawberry', product_id: 'product-6', product_name: 'Cellera Hero', product_code: 'CEL-STRAWBERRY',
+    group_name: 'Cartridge', variant_name: 'Fruity Cellera Cartridge [ Strawberry ]',
+    manufacturer_sku: 'SKU-STRAWBERRY', distributor_price: 30, available_qty: 80,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'device', product_id: 'product-7', product_name: 'S.Box', product_code: 'DEVICE-BLACK',
+    group_name: 'Device', variant_name: 'Black Edition Device', manufacturer_sku: 'SKU-DEVICE-BLACK',
+    distributor_price: 100, available_qty: 20, inventory_classification: 'classified' as const,
+  },
 ]
 
 afterEach(cleanup)
@@ -29,7 +52,7 @@ afterEach(cleanup)
 describe('Quick Order product display and hidden identifier search', () => {
   it('shows clean product names without rendering Product Code or SKU in product rows', () => {
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
-    expect(screen.getAllByText('Cellera Hero')).toHaveLength(2)
+    expect(screen.getAllByText('Cellera Hero').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('Cellera Zero')).not.toBeNull()
     expect(screen.queryByText('CEL-TEH')).toBeNull()
     expect(screen.queryByText('SKU-HIDDEN-TEH')).toBeNull()
@@ -46,7 +69,8 @@ describe('Quick Order product display and hidden identifier search', () => {
 
     await user.clear(search)
     await user.type(search, 'CEL-MANGO')
-    expect(screen.getByText('Mango')).not.toBeNull()
+    expect(screen.getByText('Fruity Cellera Cartridge [ Mango Peach ]')).not.toBeNull()
+    expect(screen.getByText('Fruity Cellera Cartridge [ Mango Smoothie ]')).not.toBeNull()
     expect(screen.queryByText('Teh Tarik')).toBeNull()
   })
 
@@ -56,11 +80,75 @@ describe('Quick Order product display and hidden identifier search', () => {
 
     await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByRole('textbox'), 'GUAVA - 300\nMANGO - 100\nUNKNOWN FLAVOUR - 1')
+    await user.type(within(dialog).getByRole('textbox'), 'GUAVA - 300\nMANGO PEACH - 100\nUNKNOWN FLAVOUR - 1')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
 
     expect(screen.getByText('Matched — Inventory Unclassified')).not.toBeNull()
     expect(screen.getByText('Matched — Insufficient Stock')).not.toBeNull()
     expect(screen.getByText('Product Not Found')).not.toBeNull()
+    expect(within(dialog).getByText(/Legacy \/ Unclassified inventory/)).not.toBeNull()
+    expect(within(dialog).getByText('The requested quantity exceeds the 50 units available.')).not.toBeNull()
+    expect(within(dialog).getByText(/No relevant variant was found/)).not.toBeNull()
+    expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows ranked Mango suggestions, blocks unresolved rows, and recalculates after selection', async () => {
+    const user = userEvent.setup()
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'MANGO - 1000')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    expect(within(dialog).getByText('Multiple Matches — Selection Required')).not.toBeNull()
+    expect(within(dialog).getByText('Select the intended variant from the relevant matches.')).not.toBeNull()
+    expect(within(dialog).getByText('Fruity Cellera Cartridge [ Mango Smoothie ]')).not.toBeNull()
+    expect(within(dialog).getByText('Fruity Cellera Cartridge [ Double Mango ]')).not.toBeNull()
+    expect(within(dialog).getByText(/CEL-MANGO-SMOOTHIE · SKU-MANGO-SMOOTHIE · Classified · 120 available/)).not.toBeNull()
+    expect(within(dialog).queryByText('Fruity Cellera Cartridge [ Strawberry ]')).toBeNull()
+    expect(within(dialog).queryByText('Black Edition Device')).toBeNull()
+    expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
+
+    await user.click(within(dialog).getByRole('button', { name: /Mango Smoothie/ }))
+    expect(within(dialog).getByText('Matched — Insufficient Stock')).not.toBeNull()
+    expect(within(dialog).getByText('The requested quantity exceeds the 120 units available.')).not.toBeNull()
+  })
+
+  it('searches the full active Product Master and allows a sufficient manual resolution', async () => {
+    const user = userEvent.setup()
+    const onQuantityChange = vi.fn()
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={onQuantityChange} onClear={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'MANGO - 20')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    await user.type(within(dialog).getByLabelText('Search Product Master for line 1'), 'SKU-HIDDEN-TEH')
+    expect(within(dialog).getByText('Product Master search results (1)')).not.toBeNull()
+    await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
+
+    expect(within(dialog).getByText('Matched')).not.toBeNull()
+    const apply = within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement
+    expect(apply.disabled).toBe(false)
+    await user.click(apply)
+    expect(onQuantityChange).toHaveBeenCalledWith('teh', 20)
+  })
+
+  it('requires explicit confirmation for a single low-confidence possible match', async () => {
+    const user = userEvent.setup()
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'TEH - 20')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    expect(within(dialog).getByText('Possible Match — Review Required')).not.toBeNull()
+    expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
+    await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
+    expect(within(dialog).getByText('Matched')).not.toBeNull()
+    expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(false)
   })
 })

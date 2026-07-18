@@ -15,6 +15,34 @@ const variants = [
   { id: 'mint', variant_name: 'Mint', product_name: 'Cellera Zero', product_code: 'CEL-99', manufacturer_sku: 'SKU-77' },
 ]
 
+const productLineVariants = [
+  {
+    id: 'double-mango', variant_name: 'Fruity Cellera Cartridge [ Double Mango ]', product_name: 'Cellera Hero',
+    product_code: 'H-DM', manufacturer_sku: 'SKU-H-DM', group_name: 'Cartridge', available_qty: 200,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'mango-smoothie', variant_name: 'Fruity Cellera Cartridge [ Mango Smoothie ]', product_name: 'Cellera Hero',
+    product_code: 'H-MS', manufacturer_sku: 'SKU-H-MS', group_name: 'Cartridge', available_qty: 200,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'mango-peach', variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]', product_name: 'Cellera Zero',
+    product_code: 'Z-MP', manufacturer_sku: 'SKU-Z-MP', group_name: 'Cartridge', available_qty: 200,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'strawberry', variant_name: 'Fruity Cellera Cartridge [ Strawberry ]', product_name: 'Cellera Hero',
+    product_code: 'H-ST', manufacturer_sku: 'SKU-H-ST', group_name: 'Cartridge', available_qty: 200,
+    inventory_classification: 'classified' as const,
+  },
+  {
+    id: 'mango-device', variant_name: 'Mango Edition Device', product_name: 'S.Box',
+    product_code: 'DEV-MANGO', manufacturer_sku: 'SKU-DEV-MANGO', group_name: 'Device', available_qty: 10,
+    inventory_classification: 'classified' as const,
+  },
+]
+
 describe('Quick Order paste matching', () => {
   it('matches an exact bracket flavour from the official variant name before Alternative Name', () => {
     const productMasterVariants = [
@@ -49,9 +77,34 @@ describe('Quick Order paste matching', () => {
     expect(matchPastedOrder('FRUITY CELLERA CARTRIDGE GUAVA - 1', productMasterVariants)[0])
       .toMatchObject({ matchMethod: 'exact_name', selectedVariantId: 'guava' })
     expect(matchPastedOrder('GUAVA - 300', [{ ...productMasterVariants[1], alternative_name: null }])[0]).toMatchObject({
-      status: 'not_found',
+      status: 'suggestion',
       selectedVariantId: undefined,
     })
+  })
+
+  it('ranks generic Mango as ambiguous instead of Product Not Found', () => {
+    const result = matchPastedOrder('MANGO - 1000', productLineVariants)[0]
+    expect(result).toMatchObject({ status: 'ambiguous', selectedVariantId: undefined, matchMethod: 'keyword' })
+    expect(result.candidates.map(candidate => candidate.id)).toEqual(['mango-peach', 'mango-smoothie', 'double-mango'])
+  })
+
+  it('filters ranked candidates by an explicit product line', () => {
+    const hero = matchPastedOrder('SERAPOD HERO MANGO 4 PCS', productLineVariants)[0]
+    expect(hero).toMatchObject({ name: 'SERAPOD HERO MANGO', quantity: 4, status: 'ambiguous' })
+    expect(hero.candidates.map(candidate => candidate.id)).toEqual(['mango-smoothie', 'double-mango'])
+
+    const zero = matchPastedOrder('SERAPOD ZERO CELLERA MANGO PEACH - 3', productLineVariants)[0]
+    expect(zero).toMatchObject({
+      status: 'matched',
+      matchMethod: 'bracket_flavour',
+      selectedVariantId: 'mango-peach',
+    })
+  })
+
+  it('does not suggest unrelated flavours or devices for a partial flavour query', () => {
+    const result = matchPastedOrder('MANGO - 2', productLineVariants)[0]
+    expect(result.candidates.map(candidate => candidate.id)).not.toContain('strawberry')
+    expect(result.candidates.map(candidate => candidate.id)).not.toContain('mango-device')
   })
 
   it('reports stock outcomes without changing the successful product match', () => {
@@ -80,10 +133,10 @@ describe('Quick Order paste matching', () => {
     expect(results[1]).toMatchObject({ status: 'not_found', selectedVariantId: undefined })
   })
 
-  it('smart-matches unique full-word keywords deterministically', () => {
+  it('requires review for a unique partial keyword match', () => {
     const results = matchPastedOrder('TEH - 200\nKELADI - 30\nHAZELNUT - 4\nBANANA MILK - 5', variants)
-    expect(results.map(result => result.status)).toEqual(['smart_match', 'smart_match', 'smart_match', 'matched'])
-    expect(results.map(result => result.selectedVariantId)).toEqual(['teh', 'keladi', 'hazelnut', 'banana'])
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'suggestion', 'suggestion', 'matched'])
+    expect(results.map(result => result.selectedVariantId)).toEqual([undefined, undefined, undefined, 'banana'])
     expect(results[0]).toMatchObject({ raw: 'TEH - 200', quantity: 200, matchMethod: 'keyword' })
   })
 
@@ -231,7 +284,7 @@ describe('Quick Order multi-entry paste parsing', () => {
     const results = matchPastedOrder(text, variants)
     expect(results.map(result => result.quantity)).toEqual([5, 3, 4, 2, 1])
     // The ❌/✖️ next to entries do not reject them; they still resolve normally.
-    expect(results.map(result => result.selectedVariantId)).toEqual(['teh', 'keladi', 'hazelnut', 'banana', undefined])
+    expect(results.map(result => result.selectedVariantId)).toEqual([undefined, undefined, undefined, 'banana', undefined])
     expect(results[4]).toMatchObject({ name: 'MANGO', status: 'ambiguous' })
   })
 
@@ -239,14 +292,14 @@ describe('Quick Order multi-entry paste parsing', () => {
     const text = 'TEH – 5 ✅ KELADI — 3 ✅ HAZELNUT − 4 ✅ BANANA MILK ― 2'
     const results = matchPastedOrder(text, variants)
     expect(results.map(result => result.quantity)).toEqual([5, 3, 4, 2])
-    expect(results.map(result => result.selectedVariantId)).toEqual(['teh', 'keladi', 'hazelnut', 'banana'])
+    expect(results.map(result => result.selectedVariantId)).toEqual([undefined, undefined, undefined, 'banana'])
   })
 
   it('parses entries with a missing dash such as "TEH TARIK 500"', () => {
     const results = matchPastedOrder('TEH TARIK 500 ✅ KELADI 25', variants)
     expect(results.map(result => result.quantity)).toEqual([500, 25])
     expect(results.map(result => result.name)).toEqual(['TEH TARIK', 'KELADI'])
-    expect(results.map(result => result.selectedVariantId)).toEqual(['teh', 'keladi'])
+    expect(results.map(result => result.selectedVariantId)).toEqual(['teh', undefined])
   })
 
   it('accepts tabs, colons and multiple spaces as separators within one line', () => {
@@ -267,10 +320,10 @@ describe('Quick Order multi-entry paste parsing', () => {
   it('isolates one malformed segment without rejecting the valid ones around it', () => {
     const results = matchPastedOrder('TEH - 5 ✅ ??? ✅ KELADI - 3', variants)
     expect(results.map(result => result.name)).toEqual(['TEH', '???', 'KELADI'])
-    expect(results.map(result => result.status)).toEqual(['smart_match', 'invalid_quantity', 'smart_match'])
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'invalid_quantity', 'suggestion'])
     expect(results.map(result => result.quantity)).toEqual([5, null, 3])
     // The unparsable segment is preserved for review; the valid ones still resolve.
-    expect(results[0].selectedVariantId).toBe('teh')
-    expect(results[2].selectedVariantId).toBe('keladi')
+    expect(results[0].selectedVariantId).toBeUndefined()
+    expect(results[2].selectedVariantId).toBeUndefined()
   })
 })
