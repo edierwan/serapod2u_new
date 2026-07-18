@@ -674,6 +674,11 @@ export default function SpinWheelCampaignForm({ userProfile, campaignId, initial
                 for (const [variantId, change] of stockChanges.entries()) {
                     if (change === 0) continue
 
+                    const { data: standardConfig } = await supabase.from('inventory_stock_configurations')
+                        .select('id').eq('variant_id', variantId).eq('status', 'active')
+                        .is('volume_ml', null).is('packaging', null).maybeSingle()
+                    if (!standardConfig) throw new Error('Configured inventory rewards require an exact Stock SKU workflow and cannot be posted from this campaign screen.')
+
                     // Determine target organization
                     let targetOrgId = userProfile.organization_id
                     
@@ -681,6 +686,7 @@ export default function SpinWheelCampaignForm({ userProfile, campaignId, initial
                         .from('product_inventory')
                         .select('organization_id, quantity_available')
                         .eq('variant_id', variantId)
+                        .eq('stock_config_id', standardConfig.id)
                         .gt('quantity_available', 0)
                         .order('quantity_available', { ascending: false })
                     
@@ -731,12 +737,13 @@ export default function SpinWheelCampaignForm({ userProfile, campaignId, initial
                         p_reason: `Spin Wheel Campaign: ${formData.name}`,
                         p_reference_type: 'campaign',
                         p_reference_id: currentCampaignId,
-                        p_created_by: userProfile.id
+                        p_created_by: userProfile.id,
+                        p_stock_config_id: standardConfig.id,
                     })
 
                     if (stockMoveError) {
                         console.error('Stock movement RPC error:', JSON.stringify(stockMoveError, null, 2))
-                        // Don't throw, just warn
+                        throw new Error(`Stock movement failed: ${stockMoveError.message || JSON.stringify(stockMoveError)}`)
                     }
                 }
             } catch (stockError: any) {

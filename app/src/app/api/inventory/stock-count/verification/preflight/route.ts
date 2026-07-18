@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
             recipientCount: result.recipients.length,
             recipients: result.recipients.map((email) => email.replace(/^(.{1,2}).*(@.*)$/, '$1***$2')),
             authoritativeBaseCosts: result.authoritativeBaseCosts,
+            persistedSignature: result.persistedSignature,
             summary: result.summary,
             guidance: STOCK_COUNT_CONFIG_GUIDANCE,
         })

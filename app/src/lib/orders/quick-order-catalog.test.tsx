@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterQuickOrderCatalogRows, validateQuickOrderCatalogItems } from './quick-order-catalog'
+import { filterQuickOrderCatalogRows, resolveSellableAvailability, validateQuickOrderCatalogItems } from './quick-order-catalog'
 import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
 
 const row = (id: string, productName: string, groupName: string, options: Record<string, unknown> = {}) => ({
@@ -79,5 +79,21 @@ describe('D2H Quick Order Vape catalog', () => {
     expect(validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 10 }], catalog)[0])
       .toMatchObject({ availableQuantity: 10, distributorPrice: 32 })
     expect(() => validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 11 }], catalog)).toThrow('Insufficient stock')
+  })
+
+  it('uses one eligible configuration per line and never exposes old-box stock', () => {
+    const inventory = [
+      { variant_id: 'hero', stock_config_id: '20nb', quantity_available: 8 },
+      { variant_id: 'hero', stock_config_id: '50nb', quantity_available: 12 },
+      { variant_id: 'hero', stock_config_id: '50ob', quantity_available: 99 },
+    ]
+    const configurations = [
+      { id: '20nb', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+      { id: '50nb', volume_ml: 50, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+      { id: '50ob', volume_ml: 50, packaging: 'old_box', status: 'active', allow_so: false, requires_repacking_before_sale: true },
+    ]
+
+    expect(resolveSellableAvailability(inventory, configurations, false).get('hero')).toBe(8)
+    expect(resolveSellableAvailability(inventory, configurations, true).get('hero')).toBe(12)
   })
 })

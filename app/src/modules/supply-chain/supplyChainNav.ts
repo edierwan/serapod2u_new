@@ -127,6 +127,7 @@ export const supplyChainNavGroups: SupplyChainNavGroup[] = [
             { id: 'add-stock', label: 'Add Stock', icon: Plus },
             { id: 'stock-adjustment', label: 'Stock Adjustment', icon: SettingsIcon },
             { id: 'stock-transfer', label: 'Stock Transfer', icon: Truck },
+            { id: 'repack-stock', label: 'Repack Stock', icon: Package },
             { id: 'stock-movements', label: 'Movement Reports', icon: ListTree },
         ],
     },
@@ -241,17 +242,40 @@ export function isSupplyChainViewId(viewId: string): boolean {
 }
 
 export const supplyChainViewToPath: Record<string, string> = {
+    'products': 'products',
+    'product-management': 'products/master-data',
+    'orders': 'orders',
+    'distributor-order': 'orders/distributor',
+    'warehouse-receive-2': 'qr/receive',
+    'warehouse-ship-v2': 'qr/ship',
     'inventory': 'inventory',
     'inventory-list': 'inventory',
     'inventory-settings': 'inventory-settings',
+    'add-stock': 'inventory/add',
+    'stock-adjustment': 'inventory/count',
+    'stock-transfer': 'inventory/transfer',
+    'stock-movements': 'inventory/movements',
+    'repack-stock': 'inventory/repack',
 }
 
 export const supplyChainPathToView: Record<string, string> = {
     'inventory': 'inventory-list',
     'inventory/settings': 'inventory-settings',
+    'inventory/add': 'add-stock',
+    'inventory/count': 'stock-adjustment',
+    'inventory/transfer': 'stock-transfer',
+    'inventory/movements': 'stock-movements',
     'view-inventory': 'inventory-list',
     'inventory-settings': 'inventory-settings',
+    'inventory/repack': 'repack-stock',
+    'repack-stock': 'repack-stock',
     'settings': 'inventory-settings',
+    'products': 'products',
+    'products/master-data': 'product-management',
+    'orders': 'orders',
+    'orders/distributor': 'distributor-order',
+    'qr/receive': 'warehouse-receive-2',
+    'qr/ship': 'warehouse-ship-v2',
     'organizations': 'organizations',
     'organizations/new': 'add-organization',
 }

@@ -15819,6 +15819,115 @@ export type Database = {
           },
         ]
       }
+      inventory_stock_configurations: {
+        Row: {
+          allow_ord: boolean
+          allow_so: boolean
+          config_code: string
+          config_label: string
+          created_at: string
+          created_by: string | null
+          default_for_ord: boolean
+          id: string
+          is_variant_default: boolean
+          notes: string | null
+          packaging: string | null
+          requires_repacking_before_sale: boolean
+          sort_order: number
+          status: string
+          stock_sku: string
+          units_per_case: number | null
+          updated_at: string
+          variant_id: string
+          volume_ml: number | null
+        }
+        Insert: {
+          allow_ord?: boolean
+          allow_so?: boolean
+          config_code: string
+          config_label: string
+          created_at?: string
+          created_by?: string | null
+          default_for_ord?: boolean
+          id?: string
+          is_variant_default?: boolean
+          notes?: string | null
+          packaging?: string | null
+          requires_repacking_before_sale?: boolean
+          sort_order?: number
+          status?: string
+          stock_sku: string
+          units_per_case?: number | null
+          updated_at?: string
+          variant_id: string
+          volume_ml?: number | null
+        }
+        Update: {
+          allow_ord?: boolean
+          allow_so?: boolean
+          config_code?: string
+          config_label?: string
+          created_at?: string
+          created_by?: string | null
+          default_for_ord?: boolean
+          id?: string
+          is_variant_default?: boolean
+          notes?: string | null
+          packaging?: string | null
+          requires_repacking_before_sale?: boolean
+          sort_order?: number
+          status?: string
+          stock_sku?: string
+          units_per_case?: number | null
+          updated_at?: string
+          variant_id?: string
+          volume_ml?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_stock_configurations_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      distributor_stock_config_eligibility: {
+        Row: {
+          allow_50ml_new_box: boolean
+          created_at: string
+          created_by: string | null
+          distributor_org_id: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          allow_50ml_new_box?: boolean
+          created_at?: string
+          created_by?: string | null
+          distributor_org_id: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allow_50ml_new_box?: boolean
+          created_at?: string
+          created_by?: string | null
+          distributor_org_id?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distributor_stock_config_eligibility_distributor_org_id_fkey"
+            columns: ["distributor_org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       journey_configurations: {
         Row: {
           activation_mode: string | null
@@ -19205,6 +19314,9 @@ export type Database = {
           order_id: string
           product_id: string
           qty: number
+          stock_config_confirmed_at: string | null
+          stock_config_confirmed_by: string | null
+          stock_config_id: string | null
           unit_price: number
           units_per_case: number | null
           updated_at: string | null
@@ -19218,6 +19330,9 @@ export type Database = {
           order_id: string
           product_id: string
           qty: number
+          stock_config_confirmed_at?: string | null
+          stock_config_confirmed_by?: string | null
+          stock_config_id?: string | null
           unit_price: number
           units_per_case?: number | null
           updated_at?: string | null
@@ -19231,12 +19346,22 @@ export type Database = {
           order_id?: string
           product_id?: string
           qty?: number
+          stock_config_confirmed_at?: string | null
+          stock_config_confirmed_by?: string | null
+          stock_config_id?: string | null
           unit_price?: number
           units_per_case?: number | null
           updated_at?: string | null
           variant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "order_items_stock_config_variant_fkey"
+            columns: ["stock_config_id", "variant_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_stock_configurations"
+            referencedColumns: ["id", "variant_id"]
+          },
           {
             foreignKeyName: "order_items_order_id_fkey"
             columns: ["order_id"]
@@ -21998,6 +22123,7 @@ export type Database = {
           reorder_point: number | null
           reorder_quantity: number | null
           safety_stock: number | null
+          stock_config_id: string | null
           total_value: number | null
           units_on_hand: number | null
           updated_at: string | null
@@ -22021,6 +22147,7 @@ export type Database = {
           reorder_point?: number | null
           reorder_quantity?: number | null
           safety_stock?: number | null
+          stock_config_id?: string | null
           total_value?: number | null
           units_on_hand?: number | null
           updated_at?: string | null
@@ -22044,6 +22171,7 @@ export type Database = {
           reorder_point?: number | null
           reorder_quantity?: number | null
           safety_stock?: number | null
+          stock_config_id?: string | null
           total_value?: number | null
           units_on_hand?: number | null
           updated_at?: string | null
@@ -22051,6 +22179,13 @@ export type Database = {
           warehouse_location?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "product_inventory_stock_config_fk"
+            columns: ["stock_config_id", "variant_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_stock_configurations"
+            referencedColumns: ["id", "variant_id"]
+          },
           {
             foreignKeyName: "product_inventory_last_counted_by_fkey"
             columns: ["last_counted_by"]
@@ -22957,6 +23092,7 @@ export type Database = {
           product_id: string | null
           received_now: number
           receipt_id: string
+          stock_config_id: string | null
           stock_movement_id: string | null
           variant_id: string
         }
@@ -22973,6 +23109,7 @@ export type Database = {
           product_id?: string | null
           received_now?: number
           receipt_id: string
+          stock_config_id?: string | null
           stock_movement_id?: string | null
           variant_id: string
         }
@@ -22989,6 +23126,7 @@ export type Database = {
           product_id?: string | null
           received_now?: number
           receipt_id?: string
+          stock_config_id?: string | null
           stock_movement_id?: string | null
           variant_id?: string
         }
@@ -31600,6 +31738,7 @@ export type Database = {
           created_at: string | null
           id: string
           physical_quantity: number
+          stock_config_id: string | null
           system_quantity: number
           unit_cost: number | null
           variant_id: string
@@ -31610,6 +31749,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           physical_quantity: number
+          stock_config_id?: string | null
           system_quantity: number
           unit_cost?: number | null
           variant_id: string
@@ -31620,6 +31760,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           physical_quantity?: number
+          stock_config_id?: string | null
           system_quantity?: number
           unit_cost?: number | null
           variant_id?: string
@@ -31929,6 +32070,7 @@ export type Database = {
           reference_id: string | null
           reference_no: string | null
           reference_type: string | null
+          stock_config_id: string | null
           to_organization_id: string | null
           total_cost: number | null
           unit_cost: number | null
@@ -31952,6 +32094,7 @@ export type Database = {
           reference_id?: string | null
           reference_no?: string | null
           reference_type?: string | null
+          stock_config_id?: string | null
           to_organization_id?: string | null
           total_cost?: number | null
           unit_cost?: number | null
@@ -31975,6 +32118,7 @@ export type Database = {
           reference_id?: string | null
           reference_no?: string | null
           reference_type?: string | null
+          stock_config_id?: string | null
           to_organization_id?: string | null
           total_cost?: number | null
           unit_cost?: number | null
@@ -31982,6 +32126,13 @@ export type Database = {
           warehouse_location?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "stock_movements_stock_config_fk"
+            columns: ["stock_config_id", "variant_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_stock_configurations"
+            referencedColumns: ["id", "variant_id"]
+          },
           {
             foreignKeyName: "stock_movements_company_id_fkey"
             columns: ["company_id"]
@@ -32217,19 +32368,27 @@ export type Database = {
       }
       stock_transfers: {
         Row: {
+          approved_at: string | null
           approved_by: string | null
           cancelled_at: string | null
           company_id: string
           created_at: string
           created_by: string
+          dispatched_by: string | null
           from_organization_id: string
           id: string
           items: Json
           notes: string | null
           received_at: string | null
           received_by: string | null
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          required_date: string | null
           shipped_at: string | null
           status: string
+          submitted_at: string | null
+          submitted_by: string | null
           to_organization_id: string
           total_items: number | null
           total_value: number | null
@@ -32237,19 +32396,27 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
           approved_by?: string | null
           cancelled_at?: string | null
           company_id: string
           created_at?: string
           created_by: string
+          dispatched_by?: string | null
           from_organization_id: string
           id?: string
           items?: Json
           notes?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          required_date?: string | null
           shipped_at?: string | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_organization_id: string
           total_items?: number | null
           total_value?: number | null
@@ -32257,19 +32424,27 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
           approved_by?: string | null
           cancelled_at?: string | null
           company_id?: string
           created_at?: string
           created_by?: string
+          dispatched_by?: string | null
           from_organization_id?: string
           id?: string
           items?: Json
           notes?: string | null
           received_at?: string | null
           received_by?: string | null
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          required_date?: string | null
           shipped_at?: string | null
           status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
           to_organization_id?: string
           total_items?: number | null
           total_value?: number | null
@@ -37268,19 +37443,26 @@ export type Database = {
       }
       v_stock_movements_display: {
         Row: {
+          config_code: string | null
+          config_label: string | null
           created_at: string | null
           created_by: string | null
           from_organization_id: string | null
           id: string | null
+          is_legacy_configuration: boolean | null
           movement_type: string | null
           quantity_after: number | null
           quantity_before: number | null
           quantity_change: number | null
           reason: string | null
+          packaging: string | null
           reference_id: string | null
           to_organization_id: string | null
+          stock_config_id: string | null
+          stock_sku: string | null
           unit_cost: number | null
           variant_id: string | null
+          volume_ml: number | null
         }
         Insert: {
           created_at?: string | null
@@ -37593,16 +37775,22 @@ export type Database = {
       }
       v_wms_movements_recent: {
         Row: {
+          config_code: string | null
           created_at: string | null
           from_org_id: string | null
           movement_type: string | null
+          is_legacy_configuration: boolean | null
           order_id: string | null
           quantity_after: number | null
           quantity_before: number | null
           quantity_change: number | null
           reference_type: string | null
+          packaging: string | null
+          stock_config_id: string | null
+          stock_sku: string | null
           to_org_id: string | null
           variant_id: string | null
+          volume_ml: number | null
         }
         Relationships: [
           {
@@ -37715,7 +37903,11 @@ export type Database = {
       vw_inventory_on_hand: {
         Row: {
           average_cost: number | null
+          config_code: string | null
+          config_label: string | null
+          default_for_ord: boolean | null
           id: string | null
+          is_variant_default: boolean | null
           lead_time_days: number | null
           max_stock_level: number | null
           organization_code: string | null
@@ -37724,12 +37916,17 @@ export type Database = {
           product_code: string | null
           product_id: string | null
           product_name: string | null
+          packaging: string | null
           quantity_allocated: number | null
           quantity_available: number | null
           quantity_on_hand: number | null
           reorder_point: number | null
           reorder_quantity: number | null
           safety_stock: number | null
+          stock_config_id: string | null
+          stock_config_status: string | null
+          stock_sku: string | null
+          requires_repacking_before_sale: boolean | null
           total_value: number | null
           updated_at: string | null
           variant_code: string | null
@@ -37737,6 +37934,7 @@ export type Database = {
           variant_image_url: string | null
           variant_name: string | null
           warehouse_location: string | null
+          volume_ml: number | null
         }
         Relationships: [
           {
@@ -37806,9 +38004,16 @@ export type Database = {
       }
       vw_manual_stock_balance: {
         Row: {
+          config_code: string | null
+          config_label: string | null
+          is_legacy_configuration: boolean | null
           manual_balance_qty: number | null
+          packaging: string | null
+          stock_config_id: string | null
+          stock_sku: string | null
           variant_id: string | null
           warehouse_id: string | null
+          volume_ml: number | null
         }
         Relationships: [
           {
@@ -37837,13 +38042,20 @@ export type Database = {
       vw_stock_movements_ordered: {
         Row: {
           company_id: string | null
+          config_code: string | null
+          config_label: string | null
           created_at: string | null
           created_by: string | null
           from_organization_id: string | null
           id: string | null
+          is_legacy_configuration: boolean | null
           manufacturer_id: string | null
           movement_type: string | null
           notes: string | null
+          organization_code: string | null
+          organization_name: string | null
+          packaging: string | null
+          product_name: string | null
           quantity_after: number | null
           quantity_before: number | null
           quantity_change: number | null
@@ -37851,10 +38063,17 @@ export type Database = {
           reference_id: string | null
           reference_no: string | null
           reference_type: string | null
+          stock_config_id: string | null
+          stock_sku: string | null
           to_organization_id: string | null
           total_cost: number | null
           unit_cost: number | null
+          created_by_email: string | null
+          manufacturer_name: string | null
+          variant_code: string | null
           variant_id: string | null
+          variant_name: string | null
+          volume_ml: number | null
           warehouse_location: string | null
         }
         Insert: {
@@ -39803,11 +40022,88 @@ export type Database = {
           p_reference_id?: string
           p_reference_no?: string
           p_reference_type?: string
+          p_stock_config_id?: string
           p_unit_cost?: number
           p_variant_id: string
           p_warehouse_location?: string
         }
         Returns: string
+      }
+      manual_stock_addition_user_can_post: {
+        Args: {
+          p_user_id: string
+          p_warehouse_id: string
+        }
+        Returns: boolean
+      }
+      post_manual_stock_addition: {
+        Args: {
+          p_company_id?: string
+          p_created_by?: string
+          p_external_reference?: string
+          p_items: Json
+          p_manufacturer_id?: string
+          p_notes?: string
+          p_organization_id: string
+          p_reason: string
+          p_request_id: string
+          p_warehouse_location?: string
+        }
+        Returns: Json
+      }
+      repack_stock: {
+        Args: {
+          p_created_by?: string
+          p_from_config_id: string
+          p_notes?: string
+          p_quantity: number
+          p_to_config_id: string
+          p_variant_id: string
+          p_warehouse_org_id: string
+        }
+        Returns: Json
+      }
+      repack_stock_v2: {
+        Args: {
+          p_created_by?: string
+          p_from_config_id: string
+          p_notes?: string
+          p_quantity: number
+          p_request_id: string
+          p_to_config_id: string
+          p_variant_id: string
+          p_warehouse_org_id: string
+        }
+        Returns: Json
+      }
+      resolve_default_stock_config: {
+        Args: { p_variant_id: string }
+        Returns: string
+      }
+      distributor_can_receive_stock_config: {
+        Args: { p_distributor_org_id: string; p_stock_config_id: string }
+        Returns: boolean
+      }
+      order_inventory_organization: {
+        Args: { p_order_id: string }
+        Returns: string
+      }
+      resolve_so_stock_config: {
+        Args: {
+          p_distributor_org_id: string
+          p_inventory_org_id: string
+          p_quantity: number
+          p_variant_id: string
+        }
+        Returns: string
+      }
+      set_order_item_stock_config: {
+        Args: { p_order_item_id: string; p_stock_config_id: string }
+        Returns: Database["public"]["Tables"]["order_items"]["Row"]
+      }
+      enable_variant_stock_configurations: {
+        Args: { p_variant_id: string }
+        Returns: Json
       }
       recycle_doc_number: {
         Args: {
@@ -39836,6 +40132,75 @@ export type Database = {
           p_notes?: string
         }
         Returns: Json
+      }
+      post_stock_transfer_configured: {
+        Args: {
+          p_company_id: string
+          p_created_by?: string
+          p_from_organization_id: string
+          p_items: Json
+          p_notes?: string
+          p_to_organization_id: string
+          p_transfer_no: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      save_stock_transfer_draft: {
+        Args: {
+          p_company_id: string
+          p_created_by?: string
+          p_from_organization_id: string
+          p_items: Json
+          p_notes?: string
+          p_required_date?: string
+          p_to_organization_id: string
+          p_transfer_id?: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      submit_stock_transfer_for_approval: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      approve_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      dispatch_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      receive_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      cancel_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_reason?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
+      }
+      reject_stock_transfer: {
+        Args: {
+          p_actor_id?: string
+          p_reason?: string
+          p_transfer_id: string
+        }
+        Returns: Database["public"]["Tables"]["stock_transfers"]["Row"]
       }
       refresh_all_materialized_views: {
         Args: Record<PropertyKey, never>

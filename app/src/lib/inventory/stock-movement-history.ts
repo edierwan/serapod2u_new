@@ -6,6 +6,85 @@ export interface StockMovementHistoryValues {
   total_cost: number | null
 }
 
+export interface StockMovementConfigurationValues {
+  stock_config_id?: string | null
+  config_code?: string | null
+  config_label?: string | null
+  stock_sku?: string | null
+  volume_ml?: number | null
+  packaging?: string | null
+  stock_config_status?: string | null
+}
+
+export interface StockConfigurationMetadata {
+  id: string
+  config_code?: string | null
+  config_label?: string | null
+  stock_sku?: string | null
+  volume_ml?: number | null
+  packaging?: string | null
+  status?: string | null
+}
+
+const packagingLabel = (packaging: string | null | undefined): string | null => {
+  if (packaging === 'new_box') return 'New Box'
+  if (packaging === 'old_box') return 'Old Box'
+  return null
+}
+
+/**
+ * Resolve report metadata only through the movement's persisted configuration
+ * identity. Quantity, sign, row order, and product imagery are deliberately
+ * excluded from configuration labelling.
+ */
+export const resolveStockMovementConfiguration = <T extends StockMovementConfigurationValues>(
+  movement: T,
+  configuration: StockConfigurationMetadata | null = null,
+): T & StockMovementConfigurationValues & {
+  configuration_display_label: string
+  is_legacy_configuration: boolean
+} => {
+  const stockConfigId = movement.stock_config_id ?? null
+  const matchingConfiguration =
+    stockConfigId && configuration?.id === stockConfigId ? configuration : null
+
+  if (!stockConfigId) {
+    return {
+      ...movement,
+      stock_config_id: null,
+      configuration_display_label: 'Legacy / Unclassified',
+      is_legacy_configuration: true,
+    }
+  }
+
+  const configCode = matchingConfiguration?.config_code ?? movement.config_code ?? null
+  const configLabel = matchingConfiguration?.config_label ?? movement.config_label ?? null
+  const stockSku = matchingConfiguration?.stock_sku ?? movement.stock_sku ?? null
+  const volumeMl = matchingConfiguration?.volume_ml ?? movement.volume_ml ?? null
+  const packaging = matchingConfiguration?.packaging ?? movement.packaging ?? null
+  const stockConfigStatus =
+    matchingConfiguration?.status ?? movement.stock_config_status ?? null
+  const dimensions = [
+    volumeMl ? `${volumeMl}ml` : null,
+    packagingLabel(packaging),
+  ].filter((value): value is string => Boolean(value))
+
+  return {
+    ...movement,
+    config_code: configCode,
+    config_label: configLabel,
+    stock_sku: stockSku,
+    volume_ml: volumeMl,
+    packaging,
+    stock_config_status: stockConfigStatus,
+    configuration_display_label:
+      configCode === 'UNCLASSIFIED'
+        ? 'Legacy / Unclassified'
+        : configLabel?.trim() || dimensions.join(' · ') || stockSku || 'Unknown configuration',
+    is_legacy_configuration: configCode === 'UNCLASSIFIED',
+  }
+}
+
 const finiteNumber = (value: unknown): number | null => {
   if (typeof value !== 'number' && typeof value !== 'string') return null
   const parsed = Number(value)

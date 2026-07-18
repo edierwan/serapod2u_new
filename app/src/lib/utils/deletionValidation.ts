@@ -422,14 +422,12 @@ export async function cascadeDeleteOrder(supabase: SupabaseClient, orderId: stri
             .rpc('release_allocation_for_order', { p_order_id: orderId })
           
           if (releaseError) {
-            console.warn('⚠️ Warning: Could not release allocation:', releaseError)
-            // Continue anyway - deletion should still proceed
+            throw new Error(`Could not safely release configured allocation: ${releaseError.message}`)
           } else {
             console.log('✅ Allocation released successfully')
           }
         } catch (err) {
-          console.warn('⚠️ Warning: Error releasing allocation:', err)
-          // Continue anyway
+          throw err
         }
       } else if (status === 'cancelled') {
         console.log(`ℹ️ Order ${orderNo} was already cancelled. Deallocation already created by trigger.`)

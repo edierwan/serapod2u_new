@@ -5,6 +5,7 @@ import {
     type StockCountVerificationErrorCode,
 } from './stock-count-verification-errors'
 import { normalizeBaseCost, sumStockCountImpacts } from './stock-count-costing'
+import { stockCountRowsSignature } from './stock-count-snapshot'
 
 export interface StockCountPreflightSuccess {
     ok: true
@@ -14,6 +15,11 @@ export interface StockCountPreflightSuccess {
     recipients: string[]
     provider: any
     authoritativeBaseCosts: Record<string, number | null>
+    // Signature of the *persisted* counted rows. The client computes the same
+    // signature over the rows currently on screen; a mismatch means the draft
+    // was saved from a different (stale) state than what the user is reviewing,
+    // and posting must be blocked before a code is issued.
+    persistedSignature: string
     summary: {
         totalVariantsCounted: number
         varianceItems: number
@@ -25,10 +31,12 @@ export interface StockCountPreflightSuccess {
 export type StockCountPreflightResult = StockCountPreflightSuccess | { ok: false; code: StockCountVerificationErrorCode }
 
 interface StockCountSessionItem {
+    stock_config_id: string | null
     variant_id: string
     physical_quantity: number | null
     adjustment_quantity: number | null
     unit_cost: number | null
+    note?: string | null
 }
 
 export interface StockCountPreflightDependencies {
@@ -69,6 +77,7 @@ export async function evaluateStockCountPreflight(
         : []
     const counted = items.filter((item) => item.physical_quantity !== null)
     if (!counted.length) return { ok: false, code: 'invalid_count_data' }
+    if (counted.some((item) => !item.stock_config_id)) return { ok: false, code: 'configuration_identity_missing' }
     const varianceItems = counted.filter((item) => Number(item.adjustment_quantity || 0) !== 0)
     if (varianceItems.length && !isValidStockCountPostingNote(session.notes)) return { ok: false, code: 'posting_note_required' }
 
@@ -109,6 +118,14 @@ export async function evaluateStockCountPreflight(
         recipients,
         provider,
         authoritativeBaseCosts: Object.fromEntries(baseCosts),
+        persistedSignature: stockCountRowsSignature(items.map((item) => ({
+            stockConfigId: item.stock_config_id ?? null,
+            variantId: item.variant_id,
+            physicalCount: item.physical_quantity === null || item.physical_quantity === undefined
+                ? null
+                : Number(item.physical_quantity),
+            note: typeof item.note === 'string' ? item.note : '',
+        }))),
         summary: {
             totalVariantsCounted: counted.length,
             varianceItems: varianceItems.length,
@@ -126,7 +143,7 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
         loadAccessibleSession: async (sessionId) => {
             const { data } = await supabase.from('stock_count_sessions').select(`
                 id, warehouse_organization_id, count_date, count_type, reference_name, notes, status,
-                stock_count_session_items(variant_id, physical_quantity, adjustment_quantity, unit_cost)
+                stock_count_session_items(stock_config_id, variant_id, physical_quantity, adjustment_quantity, unit_cost, note)
             `).eq('id', sessionId).maybeSingle()
             return data || null
         },

@@ -27,6 +27,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
+import BulkEnableStockConfigurationsPanel from '@/components/products/BulkEnableStockConfigurationsPanel'
 import {
   buildIncomingMap,
   getIncomingBreakdown,
@@ -519,6 +520,13 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           </Button>
         </div>
       </div>
+
+      <BulkEnableStockConfigurationsPanel
+        canManage={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
+      />
 
       {/* Info Alert */}
       <Card className="border-blue-200 bg-blue-50">
