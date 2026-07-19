@@ -73,10 +73,20 @@ const pasteResultBlockReason = (
   const selected = variants.find(variant => variant.id === result.selectedVariantId)
   if (!selected) return 'The selected variant is no longer active. Search the active Product Master to resolve this row.'
   const outcome = resolvePasteInventoryOutcome(result.quantity, selected)
-  if (outcome === 'inventory_unclassified') return 'The selected product has Legacy / Unclassified inventory. Classify it before adding this order quantity.'
+  if (outcome === 'inventory_unclassified') return undefined
   if (outcome === 'no_available_stock') return 'The selected product has no available stock.'
   if (outcome === 'insufficient_stock') return `The requested quantity exceeds the ${selected?.available_qty.toLocaleString() || 0} units available.`
   return undefined
+}
+
+const isPasteResultBlocked = (
+  result: PasteMatchResult,
+  variants: QuickVariant[],
+  combineDuplicates: boolean,
+) => {
+  const selected = variants.find(variant => variant.id === result.selectedVariantId)
+  return resolvePasteInventoryOutcome(result.quantity, selected) === 'inventory_unclassified'
+    || Boolean(pasteResultBlockReason(result, variants, combineDuplicates))
 }
 
 const variantSearchResults = (query: string, variants: QuickVariant[]) => {
@@ -100,8 +110,7 @@ const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?
       <span className="block font-semibold text-gray-900">{variant.variant_name}</span>
       <span className="block text-gray-600">{variant.product_name}</span>
       <span className="block text-gray-500">
-        {[variant.product_code, variant.manufacturer_sku].filter(Boolean).join(' · ') || 'No Product Code / SKU'}
-        {' · '}{variant.inventory_classification === 'unclassified' ? 'Legacy / Unclassified' : 'Classified'}
+        {variant.inventory_classification === 'unclassified' ? 'Legacy / Unclassified' : 'Classified'}
         {' · '}{variant.available_qty.toLocaleString()} available
       </span>
     </>
@@ -163,7 +172,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const resolvedVariantIds = pasteResults.map(result => result.selectedVariantId).filter((id): id is string => Boolean(id))
   const hasResolvedDuplicates = new Set(resolvedVariantIds).size !== resolvedVariantIds.length
   const canApplyPaste = pasteResults.length > 0 && (!hasResolvedDuplicates || combineDuplicates) && pasteResults.every(result => {
-    return !pasteResultBlockReason(result, variants, combineDuplicates)
+    return !isPasteResultBlocked(result, variants, combineDuplicates)
   })
 
   const applyPaste = () => {

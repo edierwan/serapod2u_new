@@ -86,7 +86,8 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(screen.getByText('Matched — Inventory Unclassified')).not.toBeNull()
     expect(screen.getByText('Matched — Insufficient Stock')).not.toBeNull()
     expect(screen.getByText('Product Not Found')).not.toBeNull()
-    expect(within(dialog).getByText(/Legacy \/ Unclassified inventory/)).not.toBeNull()
+    expect(within(dialog).queryByText(/Classify it before adding this order quantity/)).toBeNull()
+    expect(within(dialog).getByText('Legacy / Unclassified · 0 available')).not.toBeNull()
     expect(within(dialog).getByText('The requested quantity exceeds the 50 units available.')).not.toBeNull()
     expect(within(dialog).getByText(/No relevant variant was found/)).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
@@ -105,7 +106,9 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(within(dialog).getByText('Select the intended variant from the relevant matches.')).not.toBeNull()
     expect(within(dialog).getByText('Fruity Cellera Cartridge [ Mango Smoothie ]')).not.toBeNull()
     expect(within(dialog).getByText('Fruity Cellera Cartridge [ Double Mango ]')).not.toBeNull()
-    expect(within(dialog).getByText(/CEL-MANGO-SMOOTHIE · SKU-MANGO-SMOOTHIE · Classified · 120 available/)).not.toBeNull()
+    expect(within(dialog).getByText('Classified · 120 available')).not.toBeNull()
+    expect(within(dialog).queryByText('CEL-MANGO-SMOOTHIE')).toBeNull()
+    expect(within(dialog).queryByText('SKU-MANGO-SMOOTHIE')).toBeNull()
     expect(within(dialog).queryByText('Fruity Cellera Cartridge [ Strawberry ]')).toBeNull()
     expect(within(dialog).queryByText('Black Edition Device')).toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
@@ -127,6 +130,7 @@ describe('Quick Order product display and hidden identifier search', () => {
 
     await user.type(within(dialog).getByLabelText('Search Product Master for line 1'), 'SKU-HIDDEN-TEH')
     expect(within(dialog).getByText('Product Master search results (1)')).not.toBeNull()
+    expect(within(dialog).queryByText('SKU-HIDDEN-TEH')).toBeNull()
     await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
 
     expect(within(dialog).getByText('Matched')).not.toBeNull()
