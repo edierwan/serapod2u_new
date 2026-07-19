@@ -40,6 +40,13 @@ interface SummaryItem {
   cumulative_received: number
   ordered_balance: number
   extra_received: number
+  destination_stock_config: {
+    id: string
+    config_label: string
+    stock_sku: string
+    volume_ml: number | null
+    packaging: string | null
+  } | null
 }
 
 interface Summary {
@@ -640,6 +647,9 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                             <td className="py-3 pr-3">
                               <div className="font-medium text-gray-900">{it.product_name}</div>
                               {it.variant_name && <div className="text-xs text-gray-500">[{it.variant_name}]</div>}
+                              {it.destination_stock_config ? <Badge variant="outline" className="mt-1 border-blue-200 bg-blue-50 text-blue-700">
+                                Inventory destination: {it.destination_stock_config.volume_ml ? `${it.destination_stock_config.volume_ml}ml · ${it.destination_stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'} · {it.destination_stock_config.stock_sku}
+                              </Badge> : null}
                             </td>
                             <td className="py-3 px-2 text-right">{it.ordered_qty.toLocaleString()}</td>
                             <td className="py-3 px-2 text-right">{it.previously_received.toLocaleString()}</td>
@@ -1077,6 +1087,7 @@ function GoodsReceivedHistoryModal({
                                     <thead>
                                       <tr className="text-left text-xs text-gray-500 border-b">
                                         <th className="py-1.5">Product</th>
+                                        <th className="py-1.5">Inventory Destination</th>
                                         <th className="py-1.5 text-right">Received Now</th>
                                         <th className="py-1.5 text-right">Cumulative</th>
                                         <th className="py-1.5 text-right">Balance</th>
@@ -1089,13 +1100,16 @@ function GoodsReceivedHistoryModal({
                                             {it.variant_code ? `${it.variant_code} ` : ''}{it.product_name}
                                             {it.variant_name ? <span className="text-gray-400"> [{it.variant_name}]</span> : ''}
                                           </td>
+                                          <td className="py-2 text-xs">
+                                            {it.stock_config ? <><span className="font-mono text-blue-700">{it.stock_config.stock_sku}</span><br />{it.stock_config.volume_ml ? `${it.stock_config.volume_ml}ml · ${it.stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'}</> : <span className="text-amber-700">Legacy / Unclassified</span>}
+                                          </td>
                                           <td className="py-2 text-right">{(it.received_now ?? 0).toLocaleString()}</td>
                                           <td className="py-2 text-right">{(it.cumulative_received ?? 0).toLocaleString()}</td>
                                           <td className="py-2 text-right">{(it.balance ?? 0).toLocaleString()}</td>
                                         </tr>
                                       ))}
                                       <tr className="font-semibold border-t-2">
-                                        <td className="py-2">Total</td>
+                                        <td className="py-2" colSpan={2}>Total</td>
                                         <td className="py-2 text-right">{totals.now.toLocaleString()}</td>
                                         <td className="py-2 text-right">{totals.cum.toLocaleString()}</td>
                                         <td className="py-2 text-right">{totals.bal.toLocaleString()}</td>

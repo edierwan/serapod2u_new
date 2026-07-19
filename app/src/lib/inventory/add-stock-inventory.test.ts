@@ -2,7 +2,19 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   buildAddStockMovementParams,
+  buildManualStockRpcItems,
+  buildPostManualStockAdditionParams,
+  catalogRowKey,
+  defaultConfigurationFilterKey,
   fetchExistingStockForWarehouse,
+  filterManualStockCatalogRows,
+  isSelectableManualStockConfiguration,
+  newBalance,
+  paginateRows,
+  parseAddQuantity,
+  summarizeManualStockSelection,
+  weightedAverageCost,
+  type ManualStockCatalogRow,
 } from './add-stock-inventory'
 
 type InventoryRow = {
@@ -15,6 +27,7 @@ type InventoryRow = {
   warehouse_location: string | null
   average_cost: number | null
   organization: { org_name: string }
+  stock_config_id?: string
 }
 
 function inventoryRow(
@@ -80,6 +93,32 @@ const addStockComponent = readFileSync(
   'utf8'
 )
 
+function catalogRow(overrides: Partial<ManualStockCatalogRow> = {}): ManualStockCatalogRow {
+  return {
+    rowKey: catalogRowKey('v-1', 'c-20nb'),
+    stockConfigId: 'c-20nb',
+    variantId: 'v-1',
+    productId: 'p-1',
+    productCode: 'CEL-001',
+    productName: 'Cellera Hazelnut',
+    variantName: 'Cellera Hazelnut [Hazelnut]',
+    flavour: '[Hazelnut]',
+    productLine: 'Cellera',
+    manufacturerId: 'mfg-1',
+    manufacturerName: 'Cellera Mfg',
+    configCode: '20NB',
+    configLabel: '20ml · New Box',
+    stockSku: 'HAZ-20NB',
+    volumeMl: 20,
+    packaging: 'new_box',
+    status: 'active',
+    isCellera: true,
+    currentOnHand: 10,
+    averageCost: 12,
+    ...overrides,
+  }
+}
+
 describe('Add Stock existing inventory balance', () => {
   it('keeps the same variant in two warehouses as separate balances', async () => {
     const database = fakeSupabase([
@@ -105,40 +144,6 @@ describe('Add Stock existing inventory balance', () => {
     expect(database.queries).toHaveLength(0)
   })
 
-  it('refetches by organization and variant when switching warehouses', async () => {
-    const database = fakeSupabase([
-      inventoryRow(BALAKONG, BANANA_MILK, 100, 'Serapod Warehouse Balakong'),
-      inventoryRow(SAHABAT, BANANA_MILK, 3_500, 'Sahabat Vape'),
-    ])
-
-    await fetchExistingStockForWarehouse(database.client, BALAKONG, BANANA_MILK)
-    await fetchExistingStockForWarehouse(database.client, SAHABAT, BANANA_MILK)
-
-    expect(database.queries.map(query => query.filters)).toEqual([
-      { organization_id: BALAKONG, variant_id: BANANA_MILK, is_active: true },
-      { organization_id: SAHABAT, variant_id: BANANA_MILK, is_active: true },
-    ])
-    expect(database.queries.flatMap(query => query.methods)).not.toContain('order')
-  })
-
-  it('clears the old result when switching variants or organizations', async () => {
-    const otherVariant = 'variant-other'
-    const otherOrganization = 'warehouse-other'
-    const database = fakeSupabase([
-      inventoryRow(BALAKONG, BANANA_MILK, 100, 'Serapod Warehouse Balakong'),
-    ])
-
-    expect(await fetchExistingStockForWarehouse(database.client, BALAKONG, otherVariant)).toBeNull()
-    expect(await fetchExistingStockForWarehouse(database.client, otherOrganization, BANANA_MILK)).toBeNull()
-  })
-
-  it('reports no existing stock only after the exact lookup finds no record', async () => {
-    const database = fakeSupabase([])
-
-    expect(await fetchExistingStockForWarehouse(database.client, BALAKONG, BANANA_MILK)).toBeNull()
-    expect(database.queries[0].methods).toContain('maybeSingle')
-  })
-
   it('builds a manual movement for only the selected warehouse', () => {
     const params = buildAddStockMovementParams({
       variantId: BANANA_MILK,
@@ -157,61 +162,200 @@ describe('Add Stock existing inventory balance', () => {
     expect(params.p_quantity_change).toBe(25)
     expect(JSON.stringify(params)).not.toContain(SAHABAT)
   })
+})
 
-  it('keeps Inventory View and Add Stock aligned after a genuine selected-warehouse movement', async () => {
+describe('Manual Stock Addition bulk helpers', () => {
+  it('rejects Legacy/Unclassified and inactive configurations', () => {
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'legacy',
+      configCode: 'UNCLASSIFIED',
+      status: 'active',
+    })).toBe(false)
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'c1',
+      configCode: '20NB',
+      status: 'phase_out',
+    })).toBe(false)
+    expect(isSelectableManualStockConfiguration({
+      stockConfigId: 'c1',
+      configCode: '20NB',
+      status: 'active',
+    })).toBe(true)
+  })
+
+  it('requires positive whole add quantities', () => {
+    expect(parseAddQuantity('0').ok).toBe(false)
+    expect(parseAddQuantity('-3').ok).toBe(false)
+    expect(parseAddQuantity('1.5').ok).toBe(false)
+    expect(parseAddQuantity('12')).toEqual({ ok: true, value: 12 })
+  })
+
+  it('preserves exact 20NB/50NB/50OB identity through filters and RPC items', () => {
     const rows = [
-      inventoryRow(BALAKONG, BANANA_MILK, 100, 'Serapod Warehouse Balakong'),
-      inventoryRow(SAHABAT, BANANA_MILK, 3_500, 'Sahabat Vape'),
+      catalogRow(),
+      catalogRow({
+        rowKey: catalogRowKey('v-1', 'c-50nb'),
+        stockConfigId: 'c-50nb',
+        configCode: '50NB',
+        configLabel: '50ml · New Box',
+        stockSku: 'HAZ-50NB',
+        volumeMl: 50,
+        packaging: 'new_box',
+        currentOnHand: 4,
+      }),
+      catalogRow({
+        rowKey: catalogRowKey('v-1', 'c-50ob'),
+        stockConfigId: 'c-50ob',
+        configCode: '50OB',
+        configLabel: '50ml · Old Box',
+        stockSku: 'HAZ-50OB',
+        volumeMl: 50,
+        packaging: 'old_box',
+        currentOnHand: 2,
+      }),
+      catalogRow({
+        rowKey: catalogRowKey('v-1', 'c-legacy'),
+        stockConfigId: 'c-legacy',
+        configCode: 'UNCLASSIFIED',
+        configLabel: 'Legacy / Unclassified',
+        stockSku: 'HAZ-LEGACY',
+        volumeMl: null,
+        packaging: null,
+      }),
     ]
-    const movement = buildAddStockMovementParams({
-      variantId: BANANA_MILK,
+
+    expect(defaultConfigurationFilterKey(rows)).toContain('20')
+    const filtered = filterManualStockCatalogRows(rows, {
+      configurationKey: '20|new_box|20ml · New Box',
+    })
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].stockConfigId).toBe('c-20nb')
+
+    const selected = new Set([rows[0].rowKey, rows[1].rowKey])
+    const items = buildManualStockRpcItems(
+      rows,
+      selected,
+      { [rows[0].rowKey]: '5', [rows[1].rowKey]: '3' },
+      { [rows[0].rowKey]: '10', [rows[1].rowKey]: '11' },
+      {},
+    )
+    expect(items.map((item) => item.stockConfigId)).toEqual(['c-20nb', 'c-50nb'])
+    expect(items.every((item) => item.variantId === 'v-1')).toBe(true)
+  })
+
+  it('preserves entered quantities across pagination and filtering', () => {
+    const rows = Array.from({ length: 30 }, (_, index) => catalogRow({
+      rowKey: catalogRowKey(`v-${index}`, `c-${index}`),
+      stockConfigId: `c-${index}`,
+      variantId: `v-${index}`,
+      stockSku: `SKU-${index}`,
+      productName: `Product ${index}`,
+    }))
+    const quantities = Object.fromEntries(rows.map((row) => [row.rowKey, '2']))
+    const page1 = paginateRows(rows, 1, 25)
+    const page2 = paginateRows(rows, 2, 25)
+    expect(page1).toHaveLength(25)
+    expect(page2).toHaveLength(5)
+    expect(quantities[page2[0].rowKey]).toBe('2')
+
+    const qtyOnly = filterManualStockCatalogRows(rows, {
+      quantityOnly: true,
+      quantities: { [rows[0].rowKey]: '4' },
+    })
+    expect(qtyOnly.map((row) => row.rowKey)).toEqual([rows[0].rowKey])
+  })
+
+  it('summarizes selected flavours, configurations, units and value', () => {
+    const rows = [
+      catalogRow(),
+      catalogRow({
+        rowKey: catalogRowKey('v-2', 'c-20nb-b'),
+        stockConfigId: 'c-20nb-b',
+        variantId: 'v-2',
+        stockSku: 'BNN-20NB',
+      }),
+    ]
+    const summary = summarizeManualStockSelection(
+      rows,
+      new Set(rows.map((row) => row.rowKey)),
+      { [rows[0].rowKey]: '10', [rows[1].rowKey]: '5' },
+      { [rows[0].rowKey]: '2', [rows[1].rowKey]: '3' },
+    )
+    expect(summary).toMatchObject({
+      selectedFlavours: 2,
+      selectedConfigurations: 2,
+      totalUnits: 15,
+      totalValue: 35,
+      ready: true,
+    })
+  })
+
+  it('builds an atomic bulk RPC payload with exact stock_config_id per line', () => {
+    const params = buildPostManualStockAdditionParams({
+      requestId: 'req-1',
       warehouseId: BALAKONG,
-      quantity: 25,
-      unitCost: 14,
-      manufacturerId: null,
-      warehouseLocation: null,
-      notes: null,
       companyId: 'company-1',
       createdBy: 'user-1',
+      reason: 'Non-PO Receipt',
+      externalReference: 'EMAIL-9',
+      items: [
+        { stockConfigId: 'c-20nb', variantId: 'v-1', quantity: 4, unitCost: 12, rowNote: 'shelf A' },
+        { stockConfigId: 'c-50nb', variantId: 'v-1', quantity: 2, unitCost: 15 },
+      ],
     })
-    const selectedRow = rows.find(row =>
-      row.organization_id === movement.p_organization_id && row.variant_id === movement.p_variant_id
-    )!
-    selectedRow.quantity_on_hand += movement.p_quantity_change
-    selectedRow.quantity_available += movement.p_quantity_change
 
-    const database = fakeSupabase(rows)
-    const addStockBalance = await fetchExistingStockForWarehouse(database.client, BALAKONG, BANANA_MILK)
-    const inventoryViewBalance = rows.find(row =>
-      row.organization_id === BALAKONG && row.variant_id === BANANA_MILK
-    )?.quantity_available
-
-    expect(addStockBalance?.quantity_available).toBe(125)
-    expect(addStockBalance?.quantity_available).toBe(inventoryViewBalance)
-    expect(rows.find(row => row.organization_id === SAHABAT)?.quantity_available).toBe(3_500)
+    expect(params.p_request_id).toBe('req-1')
+    expect(params.p_organization_id).toBe(BALAKONG)
+    expect(params.p_reason).toBe('Non-PO Receipt')
+    expect(params.p_items).toEqual([
+      { stock_config_id: 'c-20nb', variant_id: 'v-1', quantity: 4, unit_cost: 12, row_note: 'shelf A' },
+      { stock_config_id: 'c-50nb', variant_id: 'v-1', quantity: 2, unit_cost: 15, row_note: null },
+    ])
+    expect(JSON.stringify(params.p_items)).not.toContain('UNCLASSIFIED')
   })
 
-  it('does not change Stock Count balances during read-only lookups', async () => {
-    const rows = [inventoryRow(BALAKONG, BANANA_MILK, 100, 'Serapod Warehouse Balakong')]
-    const database = fakeSupabase(rows)
-
-    await fetchExistingStockForWarehouse(database.client, BALAKONG, BANANA_MILK)
-    await fetchExistingStockForWarehouse(database.client, BALAKONG, BANANA_MILK)
-
-    expect(rows[0].quantity_on_hand).toBe(100)
-    expect(rows[0].quantity_available).toBe(100)
+  it('keeps weighted average cost mathematically correct and non-negative', () => {
+    expect(weightedAverageCost(100, 10, 100, 20)).toBe(15)
+    expect(weightedAverageCost(0, null, 10, 8)).toBe(8)
+    expect(weightedAverageCost(50, 12, 10, null)).toBe(12)
+    expect(newBalance(10, 5)).toBe(15)
   })
 
-  it('renders explicit unselected, loading, and not-found states without a default warehouse', () => {
-    expect(addStockComponent).toContain('Select a warehouse to view existing stock.')
-    expect(addStockComponent).toContain('Loading existing stock...')
-    expect(addStockComponent).toContain('No existing stock at this warehouse.')
-    expect(addStockComponent).toContain('Selected Warehouse:')
-    expect(addStockComponent).not.toContain('const hqLocation')
+  it('blocks Legacy rows from RPC item construction', () => {
+    const rows = [catalogRow({
+      rowKey: catalogRowKey('v-1', 'c-legacy'),
+      stockConfigId: 'c-legacy',
+      configCode: 'UNCLASSIFIED',
+      configLabel: 'Legacy / Unclassified',
+      stockSku: 'HAZ-LEGACY',
+    })]
+    expect(() => buildManualStockRpcItems(
+      rows,
+      new Set([rows[0].rowKey]),
+      { [rows[0].rowKey]: '3' },
+      {},
+      {},
+    )).toThrow(/Legacy\/Unclassified/)
+  })
+})
+
+describe('Manual Stock Addition UI contracts', () => {
+  it('renders the bulk manual addition page structure and ORD receiving warning', () => {
+    expect(addStockComponent).toContain('Manual Stock Addition')
+    expect(addStockComponent).toContain('Use ORD Receiving for stock linked to a manufacturer order')
+    expect(addStockComponent).toContain('Review & Add Stock')
+    expect(addStockComponent).toContain('Ready to Post')
+    expect(addStockComponent).toContain('Select all visible')
+    expect(addStockComponent).toContain('Export Excel Template')
+    expect(addStockComponent).toContain('Import Updated Excel')
+    expect(addStockComponent).toContain("rpc('post_manual_stock_addition'")
+    expect(addStockComponent).toContain('postingLockRef')
+    expect(addStockComponent).toContain('inventory will increase immediately')
   })
 
-  it('cancels stale lookups and keys the effect by both warehouse and variant', () => {
-    expect(addStockComponent).toContain('if (cancelled) return')
-    expect(addStockComponent).toContain('[selectedVariant, selectedWarehouse, supabase]')
+  it('does not introduce a draft or OTP approval lifecycle for Add Stock', () => {
+    expect(addStockComponent).not.toContain('verify_and_post_stock_count')
+    expect(addStockComponent).not.toContain('pending_approval')
+    expect(addStockComponent).not.toContain('OTP')
   })
 })

@@ -30,6 +30,13 @@ describe('Distributor D2H Quick Order integration', () => {
     expect(preflight).toContain('distributorPrice: Number(variant.distributor_price || 0)')
   })
 
+  it('blocks both Quick and Standard D2H submission for unclassified inventory', () => {
+    expect(preflight).toContain('resolveUnclassifiedVariantIds')
+    expect(preflight).toContain('UNCLASSIFIED_INVENTORY_ORDER_MESSAGE')
+    expect(catalogResolver).toContain('inventory_classification')
+    expect(catalogResolver).toContain('throw new Error(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)')
+  })
+
   it('uses a separate canonical Vape catalog only for Quick Order', () => {
     expect(source).toContain('variants={quickOrderVariants}')
     expect(source).toContain('const standardAvailableVariants = availableVariants.filter')

@@ -93,6 +93,22 @@ export async function GET(request: NextRequest) {
     .select('product_id, variant_id, unit_price, products(product_name), product_variants(variant_name)')
     .eq('order_id', orderId)
 
+  const variantIds = Array.from(new Set((orderItems || []).map((item: any) => item.variant_id).filter(Boolean)))
+  const { data: destinationConfigs } = variantIds.length
+    ? await supabase.from('inventory_stock_configurations')
+      .select('id, variant_id, config_label, stock_sku, volume_ml, packaging, default_for_ord, allow_ord, status, is_variant_default')
+      .in('variant_id', variantIds)
+      .order('sort_order')
+    : { data: [] }
+  const destinationByVariant = new Map<string, any>()
+  for (const config of destinationConfigs || []) {
+    const current = destinationByVariant.get(config.variant_id)
+    const isOrdDestination = config.default_for_ord && config.allow_ord && config.status === 'active'
+    if (!current || isOrdDestination || (!current.default_for_ord && config.is_variant_default)) {
+      destinationByVariant.set(config.variant_id, config)
+    }
+  }
+
   // 5. Previously received per variant (decoupled inventory source of truth).
   //    Degrade gracefully if the receipt tables don't exist yet.
   const receivedByVariant = new Map<string, number>()
@@ -151,6 +167,7 @@ export async function GET(request: NextRequest) {
       cumulative_received: previously,
       ordered_balance: balance,
       extra_received: extra,
+      destination_stock_config: destinationByVariant.get(variantId) || null,
     })
   }
 

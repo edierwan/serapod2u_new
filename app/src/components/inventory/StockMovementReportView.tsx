@@ -10,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
-import { formatSignedMovementImpact, resolveStockMovementHistoryValues } from '@/lib/inventory/stock-movement-history'
+import {
+  formatSignedMovementImpact,
+  resolveStockMovementConfiguration,
+  resolveStockMovementHistoryValues,
+} from '@/lib/inventory/stock-movement-history'
 import {
   BarChart3,
   Search,
@@ -48,6 +52,15 @@ interface StockMovement {
   organization_code?: string | null
   manufacturer_name?: string | null
   created_by_email?: string | null
+  stock_config_id?: string | null
+  config_code?: string | null
+  config_label?: string | null
+  stock_sku?: string | null
+  volume_ml?: number | null
+  packaging?: string | null
+  stock_config_status?: string | null
+  configuration_display_label?: string
+  is_legacy_configuration?: boolean
   product_variants?: {
     variant_code: string
     variant_name: string
@@ -86,6 +99,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
   const [variantFilter, setVariantFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [quantityRangeFilter, setQuantityRangeFilter] = useState('all')
+  const [stockConfigFilter, setStockConfigFilter] = useState('all')
+  const [volumeFilter, setVolumeFilter] = useState('all')
+  const [packagingFilter, setPackagingFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -94,6 +110,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
   const [products, setProducts] = useState<any[]>([])
   const [variants, setVariants] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
+  const [stockConfigurations, setStockConfigurations] = useState<any[]>([])
 
   const { isReady, supabase } = useSupabaseAuth()
   const itemsPerPage = 20
@@ -136,13 +153,14 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       loadMovements()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, dateFrom, dateTo, currentPage])
+  }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, stockConfigFilter, volumeFilter, packagingFilter, dateFrom, dateTo, currentPage])
 
   useEffect(() => {
     if (isReady) {
       fetchProducts()
       fetchVariants()
       fetchLocations()
+      supabase.from('inventory_stock_configurations').select('id, config_code, stock_sku, config_label, volume_ml, packaging, status').order('stock_sku').then(({ data }) => setStockConfigurations(data || []))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
@@ -280,7 +298,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
       // Try using the optimized ordered view first, fallback to base table if unavailable
       let tableName = 'vw_stock_movements_ordered'
-      let query = supabase
+      let query = (supabase as any)
         .from(tableName)
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false })
@@ -337,7 +355,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       if (error && (error.message?.includes('does not exist') || error.code === '42P01')) {
         console.log('View not found, using stock_movements table as fallback')
         tableName = 'stock_movements'
-        query = supabase
+        query = (supabase as any)
           .from(tableName)
           .select(`
             id,
@@ -358,7 +376,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             from_organization_id,
             to_organization_id,
             manufacturer_id,
-            created_by
+            created_by,
+            stock_config_id,
+            inventory_stock_configurations!stock_movements_stock_config_fk(id, config_code, config_label, stock_sku, volume_ml, packaging, status)
           `)
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
@@ -412,14 +432,17 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
       }
 
       // Fetch related data separately when not already provided by the view
-      const variantIds = Array.from(new Set(data.map((item: any) => item.variant_id).filter(Boolean)))
-      const orgIds = Array.from(new Set([
+      const variantIds: string[] = Array.from(new Set<string>(data.map((item: any) => item.variant_id).filter((id: unknown): id is string => typeof id === 'string')))
+      const orgIds: string[] = Array.from(new Set<string>([
         ...data.map((item: any) => item.from_organization_id),
         ...data.map((item: any) => item.to_organization_id),
         ...data.map((item: any) => item.manufacturer_id)
-      ].filter(Boolean)))
-      const userIds = Array.from(new Set(data.map((item: any) => item.created_by).filter(Boolean)))
-      const orderIds = Array.from(new Set(
+      ].filter((id: unknown): id is string => typeof id === 'string')))
+      const userIds: string[] = Array.from(new Set<string>(data.map((item: any) => item.created_by).filter((id: unknown): id is string => typeof id === 'string')))
+      const stockConfigIds: string[] = Array.from(new Set<string>(
+        data.map((item: any) => item.stock_config_id).filter((id: unknown): id is string => typeof id === 'string')
+      ))
+      const orderIds: string[] = Array.from(new Set<string>(
         data
           .filter((item: any) => item.movement_type === 'order_fulfillment' && item.reference_id)
           .map((item: any) => item.reference_id)
@@ -487,6 +510,22 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
         orders?.forEach((order: any) => {
           ordersMap.set(order.id, order)
+        })
+      }
+
+      // Resolve each row through its persisted stock_config_id. This also
+      // protects the report from stale/missing denormalized metadata on the
+      // movement view without guessing from quantity, sign, or display order.
+      const stockConfigurationsMap = new Map()
+      if (stockConfigIds.length > 0) {
+        const { data: configurations, error: configurationsError } = await supabase
+          .from('inventory_stock_configurations')
+          .select('id, config_code, config_label, stock_sku, volume_ml, packaging, status')
+          .in('id', stockConfigIds)
+
+        if (configurationsError) throw configurationsError
+        configurations?.forEach((configuration: any) => {
+          stockConfigurationsMap.set(configuration.id, configuration)
         })
       }
 
@@ -638,8 +677,20 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           return directTotal
         })()
 
-        return resolveStockMovementHistoryValues({
+        const joinedConfiguration = Array.isArray(item.inventory_stock_configurations)
+          ? item.inventory_stock_configurations[0] ?? null
+          : item.inventory_stock_configurations ?? null
+        const configuration = item.stock_config_id
+          ? stockConfigurationsMap.get(item.stock_config_id) ?? joinedConfiguration
+          : null
+        const configuredMovement = resolveStockMovementConfiguration({
           ...item,
+          config_code: item.config_code ?? joinedConfiguration?.config_code ?? null,
+          config_label: item.config_label ?? joinedConfiguration?.config_label ?? null,
+          stock_sku: item.stock_sku ?? joinedConfiguration?.stock_sku ?? null,
+          volume_ml: item.volume_ml ?? joinedConfiguration?.volume_ml ?? null,
+          packaging: item.packaging ?? joinedConfiguration?.packaging ?? null,
+          stock_config_status: item.stock_config_status ?? joinedConfiguration?.status ?? null,
           unit_cost: resolvedUnitCost,
           total_cost: resolvedTotalCost,
           reference_no: isShipment && order ? (order.display_doc_no || order.order_no) : item.reference_no,
@@ -648,7 +699,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           organizations,
           manufacturers,
           users
-        })
+        }, configuration)
+
+        return resolveStockMovementHistoryValues(configuredMovement)
       })
 
       // Apply client-side filtering for product and variant (needed when using stock_movements fallback table)
@@ -685,6 +738,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           }
         })
       }
+
+      if (stockConfigFilter !== 'all') filteredData = filteredData.filter(item => item.stock_config_id === stockConfigFilter)
+      if (volumeFilter !== 'all') filteredData = filteredData.filter(item => String(item.volume_ml ?? 'legacy') === volumeFilter)
+      if (packagingFilter !== 'all') filteredData = filteredData.filter(item => String(item.packaging ?? 'legacy') === packagingFilter)
 
       setMovements(filteredData)
     } catch (error: any) {
@@ -970,6 +1027,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     <SelectItem value="scratch_game_out">Scratch Game Out</SelectItem>
                     <SelectItem value="scratch_game_in">Scratch Game In</SelectItem>
                     <SelectItem value="warranty_bonus">Warranty Bonus</SelectItem>
+                    <SelectItem value="repack_out">Repack Out</SelectItem>
+                    <SelectItem value="repack_in">Repack In</SelectItem>
+                    <SelectItem value="spin_wheel_out">Spin Wheel Out</SelectItem>
+                    <SelectItem value="spin_wheel_in">Spin Wheel In</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -986,6 +1047,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     <SelectItem value="transfer">Transfer</SelectItem>
                     <SelectItem value="adjustment">Adjustment</SelectItem>
                     <SelectItem value="manual">Manual</SelectItem>
+                    <SelectItem value="repack">Repack (RPK)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1049,6 +1111,18 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             {/* Filter Grid Row 2 - Date Range & Quantity */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Stock SKU / Configuration</label>
+                <Select value={stockConfigFilter} onValueChange={setStockConfigFilter}><SelectTrigger><SelectValue placeholder="All configurations" /></SelectTrigger><SelectContent><SelectItem value="all">All configurations</SelectItem>{stockConfigurations.map(config => <SelectItem key={config.id} value={config.id}>{config.stock_sku} · {config.config_label}</SelectItem>)}</SelectContent></Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Volume</label>
+                <Select value={volumeFilter} onValueChange={setVolumeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All volumes</SelectItem><SelectItem value="20">20ml</SelectItem><SelectItem value="50">50ml</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Packaging</label>
+                <Select value={packagingFilter} onValueChange={setPackagingFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All packaging</SelectItem><SelectItem value="new_box">New Box</SelectItem><SelectItem value="old_box">Old Box</SelectItem><SelectItem value="legacy">Standard / Legacy</SelectItem></SelectContent></Select>
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-700 mb-1.5 block">
                   <Calendar className="w-3 h-3 inline mr-1" />
                   Date From
@@ -1099,6 +1173,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     setVariantFilter('all')
                     setLocationFilter('all')
                     setQuantityRangeFilter('all')
+                    setStockConfigFilter('all')
+                    setVolumeFilter('all')
+                    setPackagingFilter('all')
                     setDateFrom('')
                     setDateTo('')
                     setCurrentPage(1)
@@ -1112,7 +1189,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             </div>
 
             {/* Active Filters Display */}
-            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
+            {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || stockConfigFilter !== 'all' || volumeFilter !== 'all' || packagingFilter !== 'all' || dateFrom || dateTo) && (
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
                 <span className="text-sm text-gray-600 font-medium">Active:</span>
                 {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
@@ -1122,6 +1199,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                 {variantFilter !== 'all' && <Badge variant="secondary">Variant</Badge>}
                 {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
                 {quantityRangeFilter !== 'all' && <Badge variant="secondary">Quantity Range</Badge>}
+                {stockConfigFilter !== 'all' && <Badge variant="secondary">Stock SKU</Badge>}
+                {volumeFilter !== 'all' && <Badge variant="secondary">Volume</Badge>}
+                {packagingFilter !== 'all' && <Badge variant="secondary">Packaging</Badge>}
                 {dateFrom && <Badge variant="secondary">From: {dateFrom}</Badge>}
                 {dateTo && <Badge variant="secondary">To: {dateTo}</Badge>}
               </div>
@@ -1278,6 +1358,11 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                                 return match ? `[ ${match[1]} ]` : variantName
                               })()}
                             </p>
+                            {movement.configuration_display_label && (
+                              <p className={`text-xs font-medium ${movement.is_legacy_configuration ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {movement.configuration_display_label}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </TableCell>

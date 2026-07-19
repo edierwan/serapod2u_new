@@ -268,12 +268,29 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         })
       } else {
         // Create new variant
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('product_variants')
           .insert(variantPayload)
-        
+          .select('id')
+          .single()
+
         if (error) throw error
-        
+
+        if (variantData.configurationProfile && inserted?.id) {
+          try {
+            const response = await fetch(`/api/inventory/stock-configurations/variant/${inserted.id}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ profile: variantData.configurationProfile }),
+            })
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}))
+              toast({ title: 'Stock configuration setup warning', description: body.error || 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+            }
+          } catch {
+            toast({ title: 'Stock configuration setup warning', description: 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+          }
+        }
+
         toast({
           title: 'Variant Created',
           description: `"${variantData.variant_name}" has been created successfully.`
@@ -1059,9 +1076,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         open={showVariantDialog}
         onOpenChange={setShowVariantDialog}
         variant={editingVariant}
-        products={product ? [{ id: product.id, product_name: product.product_name }] : []}
+        products={product ? [{ id: product.id, product_name: product.product_name, is_active: product.is_active, is_vape: product.is_vape, product_code: product.product_code }] : []}
         onSave={handleSaveVariant}
         isSaving={savingVariant}
+        canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
       />
     </div>
   )

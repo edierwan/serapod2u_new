@@ -602,6 +602,13 @@ const receiveSingleMaster = async (
     const inventorySnapshots: InventorySnapshot[] = []
 
     for (const [variantId, quantity] of variantEntries) {
+      const { data: ordConfig } = await supabase.from('inventory_stock_configurations')
+        .select('id').eq('variant_id', variantId).eq('default_for_ord', true).eq('allow_ord', true).eq('status', 'active').maybeSingle()
+      const resolvedConfig = ordConfig || (await supabase.from('inventory_stock_configurations')
+        .select('id').eq('variant_id', variantId).eq('is_variant_default', true).single()).data
+      if (!resolvedConfig?.id) {
+        return { master_code: masterRecord.master_code, normalized_code: normalizedMasterCode, outcome: 'error', message: 'No ORD stock configuration is available for this variant' }
+      }
       const { data: movementId, error: movementError } = await supabase.rpc('record_stock_movement', {
         p_movement_type: 'addition',
         p_variant_id: variantId,
@@ -616,7 +623,8 @@ const receiveSingleMaster = async (
         p_reference_id: resolvedOrderId,
         p_reference_no: resolvedOrderNo,
         p_company_id: resolvedCompanyId,
-        p_created_by: requestingUserId
+        p_created_by: requestingUserId,
+        p_stock_config_id: resolvedConfig.id,
       })
 
       if (movementError) {

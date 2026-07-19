@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2, Upload, ImageIcon } from 'lucide-react'
+import { X, Loader2, Upload } from 'lucide-react'
+import SafeImage from '@/components/shared/SafeImage'
 
 interface Category {
   id?: string
@@ -189,10 +190,12 @@ export default function CategoryDialog({
             {formData.image_url ? (
               <div className="relative group">
                 <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                  <img
+                  <SafeImage
                     src={formData.image_url}
                     alt="Category"
                     className="w-full h-full object-contain p-1"
+                    fallbackClassName="bg-gray-50"
+                    fallbackIconClassName="w-6 h-6 text-gray-300"
                   />
                 </div>
                 <div className="flex items-center gap-2 mt-2">
@@ -205,7 +208,11 @@ export default function CategoryDialog({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, image_url: '' }))}
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to remove this category image? This action will be applied when you save.')) {
+                        setFormData(prev => ({ ...prev, image_url: '' }))
+                      }
+                    }}
                     className="text-xs text-red-500 hover:text-red-600 font-medium"
                   >
                     Remove

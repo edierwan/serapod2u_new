@@ -11,12 +11,16 @@ export interface QuickOrderCatalogVariant {
   manufacturer_sku: string | null
   distributor_price: number
   available_qty: number
+  inventory_classification: 'classified' | 'unclassified'
 }
 
 export interface QuickOrderCatalogRequestItem {
   variantId: string
   quantity: number
 }
+
+export const UNCLASSIFIED_INVENTORY_ORDER_MESSAGE =
+  'Product matched, but its inventory configuration is still unclassified. Please classify the stock before submitting the order.'
 
 export function validateQuickOrderCatalogItems(
   items: QuickOrderCatalogRequestItem[],
@@ -29,6 +33,9 @@ export function validateQuickOrderCatalogItems(
 
   return items.map(item => {
     const variant = catalogByVariant.get(item.variantId)!
+    if (variant.inventory_classification === 'unclassified') {
+      throw new Error(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)
+    }
     if (item.quantity > variant.available_qty) {
       throw new Error(`Insufficient stock: ${variant.available_qty} units are currently available for a selected variant.`)
     }
@@ -54,6 +61,60 @@ interface QuickOrderCatalogRow {
   products: any
 }
 
+interface SellableInventoryRow {
+  variant_id: string
+  stock_config_id: string | null
+  quantity_on_hand?: number | null
+  quantity_available: number | null
+}
+
+interface SellableConfigurationRow {
+  id: string
+  config_code?: string | null
+  volume_ml: number | null
+  packaging: string | null
+  status: string
+  allow_so: boolean
+  requires_repacking_before_sale: boolean
+}
+
+// A sales-order line is fulfilled from one configuration. Availability is
+// therefore the largest eligible single balance, never the sum of 20NB+50NB.
+export function resolveSellableAvailability(
+  inventory: SellableInventoryRow[],
+  configurations: SellableConfigurationRow[],
+  allow50mlNewBox: boolean,
+): Map<string, number> {
+  const configs = new Map(configurations.map(config => [config.id, config]))
+  const result = new Map<string, number>()
+
+  for (const stock of inventory) {
+    if (!stock.stock_config_id) continue
+    const config = configs.get(stock.stock_config_id)
+    if (!config || config.status !== 'active' || !config.allow_so || config.requires_repacking_before_sale) continue
+    const isGeneric = config.volume_ml == null && config.packaging == null
+    const is20nb = config.volume_ml === 20 && config.packaging === 'new_box'
+    const is50nb = config.volume_ml === 50 && config.packaging === 'new_box' && allow50mlNewBox
+    if (!isGeneric && !is20nb && !is50nb) continue
+    result.set(stock.variant_id, Math.max(result.get(stock.variant_id) || 0, Number(stock.quantity_available || 0)))
+  }
+
+  return result
+}
+
+export function resolveUnclassifiedVariantIds(
+  inventory: SellableInventoryRow[],
+  configurations: SellableConfigurationRow[],
+): Set<string> {
+  const configs = new Map(configurations.map(config => [config.id, config]))
+  return new Set(inventory.flatMap(stock => {
+    const balance = Number(stock.quantity_on_hand ?? stock.quantity_available ?? 0)
+    if (balance <= 0) return []
+    const configCode = stock.stock_config_id ? configs.get(stock.stock_config_id)?.config_code || '' : 'UNCLASSIFIED'
+    return /UNCLASSIFIED|LEGACY/i.test(configCode) ? [stock.variant_id] : []
+  }))
+}
+
 const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? (value[0] || null) : (value || null)
 
 /**
@@ -64,6 +125,7 @@ const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArr
 export function filterQuickOrderCatalogRows(
   rows: QuickOrderCatalogRow[],
   availableByVariant: Map<string, number>,
+  unclassifiedVariantIds: Set<string> = new Set(),
 ): QuickOrderCatalogVariant[] {
   return rows.flatMap(row => {
     const product = asSingle<any>(row.products)
@@ -78,7 +140,6 @@ export function filterQuickOrderCatalogRows(
       || product?.is_discontinued === true
       || category?.is_active === false
       || category?.is_vape !== true
-      || availableQty <= 0
       || distributorPrice <= 0
     ) return []
 
@@ -95,6 +156,7 @@ export function filterQuickOrderCatalogRows(
       manufacturer_sku: row.manufacturer_sku || null,
       distributor_price: distributorPrice,
       available_qty: availableQty,
+      inventory_classification: unclassifiedVariantIds.has(row.id) ? 'unclassified' : 'classified',
     }]
   })
 }
@@ -173,13 +235,17 @@ export async function resolveQuickOrderCatalog(
   const variantIds = (rows || []).map((row: QuickOrderCatalogRow) => row.id)
   if (variantIds.length === 0) return { variants: [], inventoryOrganizationId }
 
-  const { data: inventory, error: inventoryError } = await supabase
-    .from('product_inventory')
-    .select('variant_id, quantity_available')
-    .eq('organization_id', inventoryOrganizationId)
-    .in('variant_id', variantIds)
-  if (inventoryError) throw new Error('Unable to load current Quick Order inventory.')
+  const [{ data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
+    supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
+      .eq('organization_id', inventoryOrganizationId).in('variant_id', variantIds),
+    supabase.from('inventory_stock_configurations')
+      .select('id, config_code, volume_ml, packaging, status, allow_so, requires_repacking_before_sale').in('variant_id', variantIds),
+    supabase.from('distributor_stock_config_eligibility').select('allow_50ml_new_box')
+      .eq('distributor_org_id', distributorId).maybeSingle(),
+  ])
+  if (inventoryError || configurationsError) throw new Error('Unable to load current Quick Order inventory.')
 
-  const availableByVariant = new Map<string, number>((inventory || []).map((stock: any) => [stock.variant_id, Number(stock.quantity_available || 0)]))
-  return { variants: filterQuickOrderCatalogRows(rows || [], availableByVariant), inventoryOrganizationId }
+  const availableByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
+  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+  return { variants: filterQuickOrderCatalogRows(rows || [], availableByVariant, unclassifiedVariantIds), inventoryOrganizationId }
 }

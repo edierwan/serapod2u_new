@@ -826,9 +826,21 @@ async function recordInventoryMovements(
 ) {
   for (const [variantId, quantity] of Array.from(variantCounts.entries())) {
     const unitCost = variantPriceMap.get(variantId) || 0
+    const { data: ordConfig } = await supabase.from('inventory_stock_configurations')
+      .select('id')
+      .eq('variant_id', variantId)
+      .eq('default_for_ord', true)
+      .eq('allow_ord', true)
+      .eq('status', 'active')
+      .maybeSingle()
+    const resolvedConfig = ordConfig || (await supabase.from('inventory_stock_configurations')
+      .select('id')
+      .eq('variant_id', variantId)
+      .eq('is_variant_default', true)
+      .single()).data
+    if (!resolvedConfig?.id) throw new Error(`No ORD stock configuration for variant ${variantId}`)
 
-    try {
-      await supabase.rpc('record_stock_movement', {
+    const { error: movementError } = await supabase.rpc('record_stock_movement', {
         p_movement_type: 'addition',
         p_variant_id: variantId,
         p_organization_id: warehouseOrgId,
@@ -842,17 +854,15 @@ async function recordInventoryMovements(
         p_reference_id: orderId,
         p_reference_no: orderNo,
         p_company_id: companyId,
-        p_created_by: receivedBy
+        p_created_by: receivedBy,
+        p_stock_config_id: resolvedConfig.id,
       })
-    } catch (e) {
-      console.error(`Error recording stock movement for variant ${variantId}:`, e)
-    }
+    if (movementError) throw new Error(`Inventory posting failed for variant ${variantId}: ${movementError.message}`)
 
     // Warranty-bonus inventory for the buffer codes already marked eligible.
     const bonusQuantity = bufferMarked.get(variantId) || 0
     if (bonusQuantity > 0) {
-      try {
-        await supabase.rpc('record_stock_movement', {
+      const { error: warrantyError } = await supabase.rpc('record_stock_movement', {
           p_movement_type: 'warranty_bonus',
           p_variant_id: variantId,
           p_organization_id: warehouseOrgId,
@@ -866,11 +876,10 @@ async function recordInventoryMovements(
           p_reference_id: orderId,
           p_reference_no: orderNo,
           p_company_id: companyId,
-          p_created_by: receivedBy
+          p_created_by: receivedBy,
+          p_stock_config_id: resolvedConfig.id,
         })
-      } catch (e) {
-        console.error(`Error recording warranty bonus for variant ${variantId}:`, e)
-      }
+      if (warrantyError) throw new Error(`Warranty inventory posting failed for variant ${variantId}: ${warrantyError.message}`)
     }
   }
 }
