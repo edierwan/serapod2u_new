@@ -22,6 +22,7 @@ import {
   CLASSIFICATION_TARGET_CONFIG_CODES as TARGET_CONFIG_CODES,
   buildInitialClassificationGroups,
   computeClassificationEntry,
+  evaluateClassificationPostable,
   getClassificationCardDisplay,
   summarizeClassificationRound,
 } from '@/lib/inventory/stock-count-classification'
@@ -92,6 +93,8 @@ interface CountRow {
   manualSku: string | null
   imageUrl: string | null
   systemQuantity: number
+  /** Live allocated qty on this configuration — classification never auto-clears it. */
+  quantityAllocated: number
   physicalCount: string
   note: string
   unitCost: number | null
@@ -330,6 +333,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           stock_config_id,
           organization_id,
           quantity_on_hand,
+          quantity_allocated,
           warehouse_location,
           inventory_stock_configurations!product_inventory_stock_config_fk (
             id, config_code, config_label, stock_sku, volume_ml, packaging, status
@@ -419,6 +423,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           variantId: item.variant_id,
           ...meta,
           systemQuantity: Number(item.quantity_on_hand || 0),
+          quantityAllocated: Number(item.quantity_allocated || 0),
           physicalCount: '',
           note: '',
           warehouseLocation: item.warehouse_location || null,
@@ -455,6 +460,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             variantId: config.variant_id,
             ...meta,
             systemQuantity: 0,
+            quantityAllocated: 0,
             physicalCount: '',
             note: '',
             warehouseLocation: null,
@@ -1066,6 +1072,35 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       })
       return
     }
+    // Live Legacy revalidation (allocation / already-classified / exceeds remaining).
+    // Server prepare + post re-check under row locks; this is the friendly early block.
+    if (isClassificationMode) {
+      const liveLegacyByVariant = new Map(
+        classificationGroups.map((group) => [group.variantId, {
+          variantId: group.variantId,
+          productName: group.productName,
+          variantName: group.variantName,
+          liveOnHand: group.legacyRow.systemQuantity,
+          liveAllocated: group.legacyRow.quantityAllocated,
+        }]),
+      )
+      const flavours = classificationSummary.perGroup.map((entry) => ({
+        variantId: entry.group.variantId,
+        productName: entry.group.productName,
+        variantName: entry.group.variantName,
+        requestedTotal: entry.classifiedTotal,
+        selected: entry.selected,
+      }))
+      const classificationGate = evaluateClassificationPostable(flavours, liveLegacyByVariant)
+      if (!classificationGate.ok) {
+        setPreflight({
+          status: 'error',
+          code: classificationGate.code,
+          message: classificationGate.message,
+        })
+        return
+      }
+    }
     try {
       const response = await fetch(`/api/inventory/stock-count/verification/preflight?sessionId=${encodeURIComponent(sessionId)}`)
       const result = await response.json()
@@ -1477,6 +1512,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 {!selected && (
                   <div className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
                     <span>All three target counts are blank, so this flavour is deferred to a later round. Its Legacy balance is left untouched. Enter counts to include it now.</span>
+                  </div>
+                )}
+
+                {group.legacyRow.quantityAllocated > 0 && (
+                  <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      This Legacy inventory still has {group.legacyRow.quantityAllocated} allocated{' '}
+                      {group.legacyRow.quantityAllocated === 1 ? 'unit' : 'units'} and cannot be fully classified.
+                      Release or resolve the allocation before posting.
+                    </span>
                   </div>
                 )}
 

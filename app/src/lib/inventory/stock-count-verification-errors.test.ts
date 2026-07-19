@@ -78,4 +78,37 @@ describe('stock count verification errors', () => {
     it('does not misclassify a normal error string that merely contains a SQLSTATE-like number', () => {
         expect(mapStockCountDatabaseError('invalid_verification_code', 'post', '22P02').code).toBe('invalid_code')
     })
+
+    it('surfaces Postgres DETAIL for allocation / already-classified / exceeds-legacy raises', () => {
+        const allocated = mapStockCountDatabaseError(
+            'stock_count_allocated_blocks_post: This Legacy inventory for Cellera Zero [Buttercake] still has 1 allocated unit and cannot be fully classified. Release or resolve the allocation before posting.',
+            'post',
+        )
+        expect(allocated.code).toBe('classification_allocated_blocks_post')
+        expect(allocated.message).toContain('Cellera Zero [Buttercake]')
+        expect(allocated.message).toContain('1 allocated unit')
+
+        const fully = mapStockCountDatabaseError(
+            'stock_count_already_fully_classified: This product has already been fully classified (P [V]). Download a new Initial Classification template or use Full Count to update its quantity.',
+            'preflight',
+        )
+        expect(fully.code).toBe('classification_already_fully_classified')
+        expect(fully.message).toContain('Download a new Initial Classification template')
+
+        const exceeds = mapStockCountDatabaseError(
+            'stock_count_classification_exceeds_legacy: Classification for P [V] requests 150 units but only 100 remain in Legacy/Unclassified. Reduce the target counts or refresh the template.',
+            'post',
+        )
+        expect(exceeds.code).toBe('classification_exceeds_legacy')
+        expect(exceeds.message).toContain('requests 150')
+    })
+
+    it('maps the pre-migration valid_quantities failure to the allocation block message', () => {
+        const mapped = mapStockCountDatabaseError(
+            'new row for relation "product_inventory" violates check constraint "valid_quantities"',
+            'post',
+            '23514',
+        )
+        expect(mapped.code).toBe('classification_allocated_blocks_post')
+    })
 })

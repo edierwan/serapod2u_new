@@ -26,7 +26,10 @@ export async function GET(request: NextRequest) {
         const admin = createAdminClient() as any
         const result = await evaluateStockCountPreflight(createStockCountPreflightDependencies(supabase, admin), user.id, sessionId)
         if (!result.ok) {
-            const friendly = stockCountVerificationError(result.code, { stage: 'preflight' })
+            const friendly = stockCountVerificationError(result.code, {
+                stage: 'preflight',
+                message: result.message,
+            })
             return NextResponse.json({
                 ok: false, error: friendly.message, code: friendly.code, guidance: friendly.guidance, stage: 'preflight',
             }, { status: friendly.status })

@@ -40,7 +40,10 @@ export async function POST(request: NextRequest) {
         const admin = createAdminClient(20_000) as any
         const preflight = await evaluateStockCountPreflight(createStockCountPreflightDependencies(supabase, admin), user.id, sessionId)
         if (!preflight.ok) {
-            return jsonError(stockCountVerificationError(preflight.code, { stage: 'request' }))
+            return jsonError(stockCountVerificationError(preflight.code, {
+                stage: 'request',
+                message: preflight.message,
+            }))
         }
         const { organizationId: orgId, recipients, session } = preflight
         const [warehouseResult, organizationResult, requestedByResult] = await Promise.all([

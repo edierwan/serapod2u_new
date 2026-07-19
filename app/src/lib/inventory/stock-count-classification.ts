@@ -1,4 +1,5 @@
 import { sumStockCountImpacts } from './stock-count-costing'
+import type { StockCountVerificationErrorCode } from './stock-count-verification-errors'
 
 export const CLASSIFICATION_TARGET_CONFIG_CODES = ['20NB', '50NB', '50OB'] as const
 export const CLASSIFICATION_LEGACY_CONFIG_CODE = 'UNCLASSIFIED'
@@ -202,4 +203,77 @@ export function summarizeClassificationRound(
       quantityChange: entry.variance, baseCost: entry.group.unitCost,
     }))),
   }
+}
+
+export interface ClassificationLiveLegacyBalance {
+  variantId: string
+  productName: string
+  variantName: string
+  /** Live Legacy/Unclassified on_hand at the warehouse. */
+  liveOnHand: number
+  /** Live quantity_allocated on that UNC row — never auto-cleared. */
+  liveAllocated: number
+}
+
+export interface ClassificationPostableFlavourInput {
+  variantId: string
+  productName: string
+  variantName: string
+  /** Sum of the three target physical counts for this round. */
+  requestedTotal: number
+  /** True when this flavour is selected for the current round. */
+  selected: boolean
+}
+
+export type ClassificationPostableFailure = {
+  ok: false
+  code: Extract<
+    StockCountVerificationErrorCode,
+    | 'classification_already_fully_classified'
+    | 'classification_allocated_blocks_post'
+    | 'classification_exceeds_legacy'
+  >
+  message: string
+}
+
+/**
+ * Client/preflight mirror of stock_count_assert_classification_postable.
+ * Uses live UNC balances (not the stale Excel/draft system qty) and never
+ * mutates allocations.
+ */
+export function evaluateClassificationPostable(
+  flavours: ClassificationPostableFlavourInput[],
+  liveLegacyByVariant: Map<string, ClassificationLiveLegacyBalance>,
+): { ok: true } | ClassificationPostableFailure {
+  for (const flavour of flavours) {
+    if (!flavour.selected) continue
+    const label = `${flavour.productName} [${flavour.variantName}]`
+    const live = liveLegacyByVariant.get(flavour.variantId)
+    const liveOnHand = live?.liveOnHand ?? 0
+    const liveAllocated = live?.liveAllocated ?? 0
+
+    if (liveOnHand <= 0) {
+      return {
+        ok: false,
+        code: 'classification_already_fully_classified',
+        message: `This product has already been fully classified (${label}). Download a new Initial Classification template or use Full Count to update its quantity.`,
+      }
+    }
+    if (liveAllocated > 0) {
+      const unitLabel = liveAllocated === 1 ? 'unit' : 'units'
+      return {
+        ok: false,
+        code: 'classification_allocated_blocks_post',
+        message: `This Legacy inventory for ${label} still has ${liveAllocated} allocated ${unitLabel} and cannot be fully classified. Release or resolve the allocation before posting.`,
+      }
+    }
+    if (flavour.requestedTotal > liveOnHand) {
+      return {
+        ok: false,
+        code: 'classification_exceeds_legacy',
+        message: `Classification for ${label} requests ${flavour.requestedTotal} units but only ${liveOnHand} remain in Legacy/Unclassified. Reduce the target counts or refresh the template.`,
+      }
+    }
+  }
+  return { ok: true }
 }

@@ -17,6 +17,8 @@ function dependencies(overrides: Partial<StockCountPreflightDependencies> = {}):
     return {
         loadAccessibleSession: async () => session,
         loadVariantBaseCosts: async () => [{ id: 'variant-1', base_cost: '14.00' }],
+        loadClassificationLiveLegacy: async () => [],
+        loadVariantLabels: async () => [],
         checkPermission: async () => ({ allowed: true, context: { organization_id: 'org-1' } }),
         loadEvent: async () => ({ event_code: 'stock_count_posting_verification', available_channels: ['email'] }),
         loadSetting: async () => ({
@@ -165,6 +167,74 @@ describe('Stock Count verification preflight', () => {
                 { stockConfigId: '50NB', variantId: 'v1', physicalCount: 40, note: '' },
                 { stockConfigId: '50OB', variantId: 'v1', physicalCount: 20, note: '' },
             ]))
+        })
+    })
+
+    describe('Initial Classification live Legacy guards', () => {
+        const classificationSession = {
+            id: 'session-cls',
+            status: 'draft',
+            notes: 'Initial classification',
+            count_type: 'initial_configuration_classification',
+            warehouse_organization_id: 'wh-1',
+            stock_count_session_items: [
+                {
+                    stock_config_id: 'unc',
+                    variant_id: 'v1',
+                    physical_quantity: 0,
+                    adjustment_quantity: -100,
+                    unit_cost: 14,
+                    note: '',
+                    inventory_stock_configurations: { config_code: 'UNCLASSIFIED' },
+                },
+                {
+                    stock_config_id: '20nb',
+                    variant_id: 'v1',
+                    physical_quantity: 40,
+                    adjustment_quantity: 40,
+                    unit_cost: 14,
+                    note: '',
+                    inventory_stock_configurations: { config_code: '20NB' },
+                },
+                {
+                    stock_config_id: '50nb',
+                    variant_id: 'v1',
+                    physical_quantity: 35,
+                    adjustment_quantity: 35,
+                    unit_cost: 14,
+                    note: '',
+                    inventory_stock_configurations: { config_code: '50NB' },
+                },
+                {
+                    stock_config_id: '50ob',
+                    variant_id: 'v1',
+                    physical_quantity: 25,
+                    adjustment_quantity: 25,
+                    unit_cost: 14,
+                    note: '',
+                    inventory_stock_configurations: { config_code: '50OB' },
+                },
+            ],
+        }
+
+        it('blocks when live Legacy still has allocated units', async () => {
+            const result = await evaluateStockCountPreflight(dependencies({
+                loadAccessibleSession: async () => classificationSession,
+                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
+                loadVariantLabels: async () => [{ id: 'v1', variant_name: 'Buttercake', product_name: 'Cellera Zero' }],
+                loadClassificationLiveLegacy: async () => [{
+                    variantId: 'v1',
+                    productName: 'Cellera Zero',
+                    variantName: 'Buttercake',
+                    liveOnHand: 100,
+                    liveAllocated: 1,
+                }],
+            }), 'user-1', 'session-cls')
+            expect(result.ok).toBe(false)
+            if (result.ok) return
+            expect(result.code).toBe('classification_allocated_blocks_post')
+            expect(result.message).toContain('Cellera Zero [Buttercake]')
+            expect(result.message).toContain('1 allocated unit')
         })
     })
 })

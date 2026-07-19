@@ -30,6 +30,9 @@ export type StockCountVerificationErrorCode =
     | 'invalid_or_expired_code'
     | 'classification_incomplete'
     | 'classification_legacy_not_cleared'
+    | 'classification_already_fully_classified'
+    | 'classification_allocated_blocks_post'
+    | 'classification_exceeds_legacy'
     | 'full_count_on_unclassified'
     | 'wrong_posting_function'
     | 'posting_function_unavailable'
@@ -76,6 +79,9 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     invalid_or_expired_code: { message: 'The verification code is incorrect. Please check the code and try again.', status: 400, recoverable: true },
     classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Configuration Classification.', status: 409, recoverable: true },
     classification_legacy_not_cleared: { message: 'The Legacy/Unclassified balance must be fully cleared (counted at 0) before this classification can post.', status: 409, recoverable: true },
+    classification_already_fully_classified: { message: 'This product has already been fully classified. Download a new Initial Classification template or use Full Count to update its quantity.', status: 409, recoverable: true },
+    classification_allocated_blocks_post: { message: 'This Legacy inventory still has allocated units and cannot be fully classified. Release or resolve the allocation before posting.', status: 409, recoverable: true },
+    classification_exceeds_legacy: { message: 'The requested classification quantity exceeds the remaining Legacy/Unclassified balance. Reduce the target counts or refresh the template.', status: 409, recoverable: true },
     full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use the “Initial Configuration Classification” count type to move it into 20ml/50ml boxes — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
     wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
     posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
@@ -99,11 +105,16 @@ export function createStockCountErrorReference(): string {
 
 export function stockCountVerificationError(
     code: StockCountVerificationErrorCode,
-    options: { stage?: StockCountVerificationErrorStage; reference?: string } = {},
+    options: { stage?: StockCountVerificationErrorStage; reference?: string; message?: string } = {},
 ): StockCountVerificationFriendlyError {
     const base = { code, ...ERRORS[code] }
     if (code !== 'unexpected_error') {
-        return { ...base, stage: options.stage, reference: options.reference }
+        return {
+            ...base,
+            stage: options.stage,
+            reference: options.reference,
+            message: options.message || base.message,
+        }
     }
     const stage = options.stage || 'request'
     const reference = options.reference || createStockCountErrorReference()
@@ -114,6 +125,16 @@ export function stockCountVerificationError(
         reference,
         message: `${stageMessage} Reference: ${reference}.`,
     }
+}
+
+/** Prefer the DETAIL / trailing text after `error_code: …` from Postgres RAISE. */
+export function extractStockCountDatabaseDetail(message: string, prefix: string): string | null {
+    const normalized = String(message || '')
+    const needle = `${prefix}:`
+    const idx = normalized.indexOf(needle)
+    if (idx < 0) return null
+    const detail = normalized.slice(idx + needle.length).trim()
+    return detail || null
 }
 
 export function stockCountPermissionGate(loading: boolean, allowed: boolean): 'checking' | 'allowed' | 'denied' {
@@ -147,6 +168,18 @@ export function mapStockCountDatabaseError(
         return stockCountVerificationError('posting_conflict', { stage })
     }
 
+    const detailed: Array<[string, StockCountVerificationErrorCode]> = [
+        ['stock_count_already_fully_classified', 'classification_already_fully_classified'],
+        ['stock_count_allocated_blocks_post', 'classification_allocated_blocks_post'],
+        ['stock_count_classification_exceeds_legacy', 'classification_exceeds_legacy'],
+    ]
+    for (const [prefix, code] of detailed) {
+        if (normalized.includes(prefix)) {
+            const detail = extractStockCountDatabaseDetail(normalized, prefix)
+            return stockCountVerificationError(code, { stage, message: detail || undefined })
+        }
+    }
+
     const mappings: Array<[string | RegExp, StockCountVerificationErrorCode]> = [
         [/canceling statement due to statement timeout/i, 'posting_timeout'],
         [/canceling statement due to lock timeout/i, 'posting_conflict'],
@@ -170,6 +203,8 @@ export function mapStockCountDatabaseError(
         [/permission denied for function.*verify_and_post_stock_classification/i, 'posting_function_unavailable'],
         [/could not find the function.*verify_and_post_stock_classification/i, 'posting_function_unavailable'],
         [/stock_movements_reference_type_check/i, 'wrong_posting_function'],
+        // Fallback for the pre-migration-16 failure mode (SC-MRR56NMA-1TDQ).
+        [/valid_quantities/i, 'classification_allocated_blocks_post'],
     ]
     const match = mappings.find(([needle]) => (
         typeof needle === 'string' ? normalized.includes(needle) : needle.test(normalized)
