@@ -189,6 +189,15 @@ const adjustmentValueForRow = (row: CountRow) => {
   const variance = varianceForRow(row)
   return variance === null ? null : stockCountImpact(variance, row.unitCost)
 }
+const formatVerificationApiError = (
+  result: { error?: string; reference?: string },
+  stage: 'request' | 'post',
+) => {
+  const fallback = stockCountVerificationError('unexpected_error', { stage }).message
+  const base = String(result.error || '').trim() || fallback
+  if (!result.reference || base.includes(result.reference)) return base
+  return `${base} Reference: ${result.reference}.`
+}
 
 export default function StockAdjustmentView({ userProfile, onViewChange }: StockAdjustmentViewProps) {
   const { isReady, supabase } = useSupabaseAuth()
@@ -971,7 +980,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const requestVerificationCode = async () => {
-    if (!canPost || currentStatus === 'posted') return
+    if (!canPost || currentStatus === 'posted' || posting) return
     if (reviewVarianceItems > 0 && !isValidStockCountPostingNote(notes)) {
       setVerificationError('A Posting Note is required when the Stock Count contains variance.')
       return
@@ -985,16 +994,27 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         const savedSessionId = await saveDraft()
         if (!savedSessionId) throw new Error('The latest Stock Count changes could not be saved.')
       }
-      setPreflight({ status: 'loading' })
+      // Only show the review-step preflight spinner when a code has not been
+      // issued yet. Resend failures must not bury the verify UI behind the
+      // review-step error panel.
+      if (!verification) setPreflight({ status: 'loading' })
       const response = await fetch('/api/inventory/stock-count/verification/request', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
       })
       const result = await response.json()
       if (!response.ok) {
-        setPreflight({ status: 'error', code: result.code, message: result.error, guidance: result.guidance })
+        const message = formatVerificationApiError(result, 'request')
+        if (verification) {
+          // Keep the issued-code UI; show the actionable failure inline.
+          setVerificationError(message)
+        } else {
+          setPreflight({ status: 'error', code: result.code, message, guidance: result.guidance })
+        }
         return
       }
-      setPreflight({ status: 'ready', recipientCount: result.recipients.length })
+      // Successful generation+delivery must always clear stale request/verify errors.
+      setVerificationError(null)
+      setPreflight({ status: 'ready', recipientCount: Array.isArray(result.recipients) ? result.recipients.length : 0 })
       setVerification({ ...result, sessionId })
       // Bind the issued code to the exact counts on screen. Any later edit/import
       // makes verificationStale true and blocks Verify & Post.
@@ -1003,7 +1023,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setVerificationNow(Date.now())
       toast({ title: 'Verification code sent', description: `Sent to ${result.recipients.length} authorized recipient(s).` })
     } catch (error: any) {
-      setVerificationError(error.message)
+      const friendly = stockCountVerificationError('unexpected_error', { stage: 'request' })
+      setVerificationError(error?.message || friendly.message)
+      if (!verification) setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
     } finally {
       setPosting(false)
     }
@@ -1065,7 +1087,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       }
       setPreflight({ status: 'ready', recipientCount: result.recipientCount, guidance: result.guidance })
     } catch {
-      const friendly = stockCountVerificationError('unexpected_error')
+      const friendly = stockCountVerificationError('unexpected_error', { stage: 'preflight' })
       setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
     }
   }
@@ -1146,7 +1168,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [permissionLoading])
 
   const verifyAndPostCount = async () => {
-    if (!verification || verificationCode.length !== 8) return
+    if (!verification || verificationCode.length !== 8 || posting) return
     // Defence in depth on top of the server snapshot-hash check: never submit a
     // code once the on-screen counts have moved away from what it was issued for.
     if (verificationStale) {
@@ -1162,19 +1184,27 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         body: JSON.stringify({ requestId: verification.requestId, sessionId: verification.sessionId, code: verificationCode }),
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Unable to verify and post the Stock Count.')
+      if (!response.ok) {
+        const message = formatVerificationApiError(result, 'post')
+        setVerificationError(message)
+        // Clear the code only when it can never succeed again; keep typos editable.
+        if (result.code === 'expired_code' || result.code === 'code_already_used' || result.code === 'already_posted' || result.code === 'invalid_or_expired_code') {
+          setVerificationCode('')
+        }
+        return
+      }
       setCurrentStatus('posted')
       setVerification(null)
       setVerifiedSignature(null)
       setVerificationCode('')
+      setVerificationError(null)
       setConfirmPostOpen(false)
       setLastSavedSignature(EMPTY_SIGNATURE)
       toast({ title: 'Stock count posted', description: `${result.movement_count || 0} variance movement(s) recorded.` })
       await loadCountRows(selectedWarehouse)
       await loadDrafts(selectedWarehouse)
     } catch (error: any) {
-      setVerificationError(error.message)
-      setVerificationCode('')
+      setVerificationError(error?.message || stockCountVerificationError('unexpected_error', { stage: 'post' }).message)
     } finally {
       setPosting(false)
     }

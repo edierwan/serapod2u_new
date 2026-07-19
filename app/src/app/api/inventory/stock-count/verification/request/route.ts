@@ -7,28 +7,40 @@ import {
 } from '@/lib/inventory/stock-count-verification-server'
 import { buildStockCountEmail } from '@/lib/inventory/stock-count-verification-email'
 import { createStockCountPreflightDependencies, evaluateStockCountPreflight } from '@/lib/inventory/stock-count-verification-preflight'
-import { mapStockCountDatabaseError, stockCountVerificationError } from '@/lib/inventory/stock-count-verification-errors'
+import {
+    createStockCountErrorReference,
+    mapStockCountDatabaseError,
+    stockCountVerificationError,
+} from '@/lib/inventory/stock-count-verification-errors'
 
 export const dynamic = 'force-dynamic'
+
+function jsonError(friendly: ReturnType<typeof stockCountVerificationError>) {
+    return NextResponse.json({
+        error: friendly.message,
+        code: friendly.code,
+        guidance: friendly.guidance,
+        reference: friendly.reference,
+        stage: friendly.stage || 'request',
+    }, { status: friendly.status })
+}
 
 export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-        const friendly = stockCountVerificationError('authentication_required')
-        return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
+        return jsonError(stockCountVerificationError('authentication_required', { stage: 'request' }))
     }
+    let preparedRequestId: string | null = null
     try {
         const { sessionId } = await request.json()
         if (!sessionId) {
-            const friendly = stockCountVerificationError('stock_count_not_found')
-            return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
+            return jsonError(stockCountVerificationError('stock_count_not_found', { stage: 'request' }))
         }
         const admin = createAdminClient(20_000) as any
         const preflight = await evaluateStockCountPreflight(createStockCountPreflightDependencies(supabase, admin), user.id, sessionId)
         if (!preflight.ok) {
-            const friendly = stockCountVerificationError(preflight.code)
-            return NextResponse.json({ error: friendly.message, code: friendly.code, guidance: friendly.guidance }, { status: friendly.status })
+            return jsonError(stockCountVerificationError(preflight.code, { stage: 'request' }))
         }
         const { organizationId: orgId, recipients, session } = preflight
         const [warehouseResult, organizationResult, requestedByResult] = await Promise.all([
@@ -61,22 +73,54 @@ export async function POST(request: NextRequest) {
             p_recipient_summary: maskedRecipients, p_request_metadata: metadata,
         })
         if (prepareError) throw prepareError
+        preparedRequestId = prepared?.request_id || null
 
         const deliveries = await Promise.all(recipients.map((to) => sendTransactionalHtmlEmail(admin, orgId, {
             to, subject: email.subject, text: email.text, html: email.html, fromName: 'Serapod2U Notifications',
         })))
         const delivered = deliveries.every((result) => result.success)
-        await finalizeStockCountVerificationDelivery(supabase, prepared.request_id, delivered)
+
+        try {
+            await finalizeStockCountVerificationDelivery(supabase, prepared.request_id, delivered)
+        } catch (finalizeError: any) {
+            // The provider may already have accepted the message. Never claim a
+            // generic "request failed" without distinguishing delivery vs activate.
+            const reference = createStockCountErrorReference()
+            console.error('[stock-count-verification/request] finalize failed', {
+                reference,
+                requestId: prepared.request_id,
+                delivered,
+                message: finalizeError?.message,
+            })
+            if (delivered) {
+                return NextResponse.json({
+                    error: 'Verification code was generated and emailed, but activation failed. Please resend the code or contact your administrator.',
+                    code: 'unexpected_error',
+                    reference,
+                    stage: 'request',
+                }, { status: 500 })
+            }
+            return jsonError(stockCountVerificationError('email_delivery_failed', { stage: 'request' }))
+        }
+
         if (!delivered) {
-            const friendly = stockCountVerificationError('email_delivery_failed')
-            return NextResponse.json({ error: friendly.message, code: friendly.code }, { status: friendly.status })
+            return jsonError(stockCountVerificationError('email_delivery_failed', { stage: 'request' }))
         }
         return NextResponse.json({
             requestId: prepared.request_id, recipients: maskedRecipients, expiresAt: prepared.expires_at,
             resendAvailableAt: new Date(Date.now() + 60_000).toISOString(),
         })
     } catch (error: any) {
-        const mapped = mapStockCountDatabaseError(error?.message || '')
-        return NextResponse.json({ error: mapped.message, code: mapped.code }, { status: mapped.status })
+        const reference = createStockCountErrorReference()
+        console.error('[stock-count-verification/request] failed', {
+            reference,
+            requestId: preparedRequestId,
+            message: error?.message,
+            code: error?.code,
+        })
+        const mapped = mapStockCountDatabaseError(error?.message || '', 'request')
+        return jsonError(mapped.code === 'unexpected_error'
+            ? stockCountVerificationError('unexpected_error', { stage: 'request', reference })
+            : { ...mapped, stage: 'request' })
     }
 }

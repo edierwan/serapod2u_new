@@ -23,12 +23,19 @@ export type StockCountVerificationErrorCode =
     | 'request_rate_limited'
     | 'resend_cooldown'
     | 'snapshot_changed'
+    | 'invalid_code'
+    | 'expired_code'
+    | 'code_already_used'
+    /** @deprecated Prefer invalid_code / expired_code / code_already_used */
     | 'invalid_or_expired_code'
     | 'classification_incomplete'
     | 'classification_legacy_not_cleared'
     | 'full_count_on_unclassified'
     | 'wrong_posting_function'
+    | 'posting_function_unavailable'
     | 'unexpected_error'
+
+export type StockCountVerificationErrorStage = 'preflight' | 'request' | 'verify' | 'post'
 
 export interface StockCountVerificationFriendlyError {
     code: StockCountVerificationErrorCode
@@ -36,6 +43,8 @@ export interface StockCountVerificationFriendlyError {
     status: number
     guidance?: string
     recoverable: boolean
+    reference?: string
+    stage?: StockCountVerificationErrorStage
 }
 
 const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificationFriendlyError, 'code'>> = {
@@ -55,20 +64,52 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     recipient_emails_invalid: { message: 'The configured recipients do not have valid email addresses. Update their email details or add a Manual Email Address.', status: 409, guidance: STOCK_COUNT_CONFIG_GUIDANCE, recoverable: true },
     email_provider_missing: { message: 'No active email provider is configured. Configure and enable an email provider before requesting a verification code.', status: 409, recoverable: true },
     email_provider_unavailable: { message: 'The configured email provider is unavailable. Check its configuration and try again.', status: 409, recoverable: true },
-    email_delivery_failed: { message: 'The verification email could not be sent. Please check the email provider configuration and try again.', status: 502, recoverable: true },
+    email_delivery_failed: { message: 'Verification code was generated, but the email could not be sent. Please resend or contact your administrator.', status: 502, recoverable: true },
     request_rate_limited: { message: 'Too many verification requests. Please try again later.', status: 429, recoverable: true },
     resend_cooldown: { message: 'Please wait 60 seconds before requesting another code.', status: 429, recoverable: true },
     snapshot_changed: { message: 'This Stock Count changed after the verification code was requested. Review it and request a new code.', status: 409, recoverable: true },
-    invalid_or_expired_code: { message: 'The verification code is invalid or has expired. Request a new code.', status: 400, recoverable: true },
+    invalid_code: { message: 'The verification code is incorrect. Please check the code and try again.', status: 400, recoverable: true },
+    expired_code: { message: 'The verification code has expired. Please request a new code.', status: 400, recoverable: true },
+    code_already_used: { message: 'This verification code has already been used. Please request a new code.', status: 409, recoverable: true },
+    invalid_or_expired_code: { message: 'The verification code is incorrect. Please check the code and try again.', status: 400, recoverable: true },
     classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Configuration Classification.', status: 409, recoverable: true },
     classification_legacy_not_cleared: { message: 'The Legacy/Unclassified balance must be fully cleared (counted at 0) before this classification can post.', status: 409, recoverable: true },
     full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use the “Initial Configuration Classification” count type to move it into 20ml/50ml boxes — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
     wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
-    unexpected_error: { message: 'We couldn’t request the verification code due to an unexpected error. Please try again or contact your administrator.', status: 500, recoverable: true },
+    posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
+    unexpected_error: { message: 'We couldn’t complete this Stock Count verification step due to an unexpected error. Please try again or contact your administrator.', status: 500, recoverable: true },
 }
 
-export function stockCountVerificationError(code: StockCountVerificationErrorCode): StockCountVerificationFriendlyError {
-    return { code, ...ERRORS[code] }
+const STAGE_UNEXPECTED_MESSAGES: Record<StockCountVerificationErrorStage, string> = {
+    preflight: 'We couldn’t check Stock Count verification readiness due to an unexpected error. Please try again or contact your administrator.',
+    request: 'We couldn’t request the verification code due to an unexpected error. Please try again or contact your administrator.',
+    verify: 'We couldn’t verify the code due to an unexpected error. Please try again or contact your administrator.',
+    post: 'We couldn’t post the Stock Count due to an unexpected error. Inventory was not changed. Please try again or contact your administrator.',
+}
+
+export function createStockCountErrorReference(): string {
+    const stamp = Date.now().toString(36).toUpperCase()
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
+    return `SC-${stamp}-${rand}`
+}
+
+export function stockCountVerificationError(
+    code: StockCountVerificationErrorCode,
+    options: { stage?: StockCountVerificationErrorStage; reference?: string } = {},
+): StockCountVerificationFriendlyError {
+    const base = { code, ...ERRORS[code] }
+    if (code !== 'unexpected_error') {
+        return { ...base, stage: options.stage, reference: options.reference }
+    }
+    const stage = options.stage || 'request'
+    const reference = options.reference || createStockCountErrorReference()
+    const stageMessage = STAGE_UNEXPECTED_MESSAGES[stage]
+    return {
+        ...base,
+        stage,
+        reference,
+        message: `${stageMessage} Reference: ${reference}.`,
+    }
 }
 
 export function stockCountPermissionGate(loading: boolean, allowed: boolean): 'checking' | 'allowed' | 'denied' {
@@ -84,13 +125,18 @@ export function isValidStockCountPostingNote(value: unknown): boolean {
     return normalizeStockCountPostingNote(value).length > 0
 }
 
-export function mapStockCountDatabaseError(message: string): StockCountVerificationFriendlyError {
-    const mappings: Array<[string, StockCountVerificationErrorCode]> = [
+export function mapStockCountDatabaseError(
+    message: string,
+    stage: StockCountVerificationErrorStage = 'post',
+): StockCountVerificationFriendlyError {
+    const normalized = String(message || '')
+    const mappings: Array<[string | RegExp, StockCountVerificationErrorCode]> = [
         ['permission_lost', 'permission_denied'],
         ['stock_count_already_posted', 'already_posted'],
         ['stock_count_snapshot_changed', 'snapshot_changed'],
-        ['verification_code_expired', 'invalid_or_expired_code'],
-        ['invalid_verification_code', 'invalid_or_expired_code'],
+        ['verification_code_expired', 'expired_code'],
+        ['verification_code_already_used', 'code_already_used'],
+        ['invalid_verification_code', 'invalid_code'],
         ['resend_cooldown', 'resend_cooldown'],
         ['request_rate_limited', 'request_rate_limited'],
         ['posting_note_required', 'posting_note_required'],
@@ -101,7 +147,21 @@ export function mapStockCountDatabaseError(message: string): StockCountVerificat
         ['stock_count_classification_legacy_not_cleared', 'classification_legacy_not_cleared'],
         ['stock_count_full_count_on_unclassified', 'full_count_on_unclassified'],
         ['stock_count_wrong_posting_function', 'wrong_posting_function'],
+        [/permission denied for function.*verify_and_post_stock_classification/i, 'posting_function_unavailable'],
+        [/could not find the function.*verify_and_post_stock_classification/i, 'posting_function_unavailable'],
+        [/stock_movements_reference_type_check/i, 'wrong_posting_function'],
     ]
-    const match = mappings.find(([needle]) => message.includes(needle))
-    return stockCountVerificationError(match?.[1] || 'unexpected_error')
+    const match = mappings.find(([needle]) => (
+        typeof needle === 'string' ? normalized.includes(needle) : needle.test(normalized)
+    ))
+    if (!match) return stockCountVerificationError('unexpected_error', { stage })
+    return stockCountVerificationError(match[1], { stage })
+}
+
+export function formatStockCountClientError(
+    error: Pick<StockCountVerificationFriendlyError, 'message' | 'guidance' | 'reference'>,
+): string {
+    const parts = [error.message]
+    if (error.guidance) parts.push(error.guidance)
+    return parts.join(' ')
 }
