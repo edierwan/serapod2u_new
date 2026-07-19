@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
             message: error?.message,
             code: error?.code,
         })
-        const mapped = mapStockCountDatabaseError(error?.message || '', 'request')
+        const mapped = mapStockCountDatabaseError(error?.message || '', 'request', error?.code)
         return jsonError(mapped.code === 'unexpected_error'
             ? stockCountVerificationError('unexpected_error', { stage: 'request', reference })
             : { ...mapped, stage: 'request' })

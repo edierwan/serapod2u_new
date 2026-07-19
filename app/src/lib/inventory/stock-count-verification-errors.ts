@@ -33,6 +33,8 @@ export type StockCountVerificationErrorCode =
     | 'full_count_on_unclassified'
     | 'wrong_posting_function'
     | 'posting_function_unavailable'
+    | 'posting_timeout'
+    | 'posting_conflict'
     | 'unexpected_error'
 
 export type StockCountVerificationErrorStage = 'preflight' | 'request' | 'verify' | 'post'
@@ -77,6 +79,8 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use the “Initial Configuration Classification” count type to move it into 20ml/50ml boxes — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
     wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
     posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
+    posting_timeout: { message: 'Posting took too long and was safely cancelled — no inventory was changed and your verification code is still valid. Please try posting again. If this keeps happening on a very large count, contact your administrator.', status: 503, recoverable: true },
+    posting_conflict: { message: 'This Stock Count could not be posted because its inventory rows are being updated by another operation. No inventory was changed and your verification code is still valid. Please try again in a moment.', status: 409, recoverable: true },
     unexpected_error: { message: 'We couldn’t complete this Stock Count verification step due to an unexpected error. Please try again or contact your administrator.', status: 500, recoverable: true },
 }
 
@@ -128,9 +132,25 @@ export function isValidStockCountPostingNote(value: unknown): boolean {
 export function mapStockCountDatabaseError(
     message: string,
     stage: StockCountVerificationErrorStage = 'post',
+    sqlState?: string | null,
 ): StockCountVerificationFriendlyError {
     const normalized = String(message || '')
+    const state = String(sqlState || '').trim()
+
+    // SQLSTATE-first: transient cancellations are safe to retry with the same
+    // code (the whole post is one transaction, so it rolled back cleanly).
+    //   57014 = query_canceled (statement_timeout)
+    //   55P03 = lock_not_available (lock_timeout)
+    //   40001 = serialization_failure, 40P01 = deadlock_detected
+    if (state === '57014') return stockCountVerificationError('posting_timeout', { stage })
+    if (state === '55P03' || state === '40001' || state === '40P01') {
+        return stockCountVerificationError('posting_conflict', { stage })
+    }
+
     const mappings: Array<[string | RegExp, StockCountVerificationErrorCode]> = [
+        [/canceling statement due to statement timeout/i, 'posting_timeout'],
+        [/canceling statement due to lock timeout/i, 'posting_conflict'],
+        [/deadlock detected/i, 'posting_conflict'],
         ['permission_lost', 'permission_denied'],
         ['stock_count_already_posted', 'already_posted'],
         ['stock_count_snapshot_changed', 'snapshot_changed'],

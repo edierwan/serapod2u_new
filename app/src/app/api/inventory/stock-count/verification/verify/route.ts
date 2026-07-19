@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(data)
     } catch (error: any) {
         const reference = createStockCountErrorReference()
-        const mapped = mapStockCountDatabaseError(error?.message || '', 'post')
+        const mapped = mapStockCountDatabaseError(error?.message || '', 'post', error?.code)
         const friendly = mapped.code === 'unexpected_error'
             ? stockCountVerificationError('unexpected_error', { stage: 'post', reference })
             : { ...mapped, stage: mapped.stage || 'post' }
@@ -66,7 +66,11 @@ export async function POST(request: NextRequest) {
             reference: friendly.reference || reference,
             requestId: requestIdForAudit,
             code: friendly.code,
-            message: error?.message,
+            // Full Postgres/PostgREST diagnostics stay server-side only.
+            sqlState: error?.code ?? null,
+            message: error?.message ?? null,
+            detail: error?.details ?? error?.detail ?? null,
+            hint: error?.hint ?? null,
             // Never log secrets / plaintext codes / stack traces to clients; server log only.
         })
         if (requestIdForAudit) {
@@ -76,6 +80,7 @@ export async function POST(request: NextRequest) {
                     posting_result: {
                         status: 'failed',
                         error_code: friendly.code,
+                        sql_state: error?.code ?? null,
                         reference: friendly.reference || reference,
                         recorded_at: new Date().toISOString(),
                     },

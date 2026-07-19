@@ -57,4 +57,25 @@ describe('stock count verification errors', () => {
         expect(mapStockCountDatabaseError('stock_count_classification_incomplete', 'post').code).toBe('classification_incomplete')
         expect(mapStockCountDatabaseError('stock_count_already_posted', 'post').code).toBe('already_posted')
     })
+
+    it('maps a statement-timeout cancellation (SQLSTATE 57014) to a retry-safe posting_timeout', () => {
+        const byState = mapStockCountDatabaseError('canceling statement due to statement timeout', 'post', '57014')
+        expect(byState.code).toBe('posting_timeout')
+        expect(byState.recoverable).toBe(true)
+        expect(byState.message).toContain('no inventory was changed')
+        expect(byState.message).toContain('code is still valid')
+        // Falls back to message text when the driver does not surface a SQLSTATE.
+        expect(mapStockCountDatabaseError('canceling statement due to statement timeout', 'post').code).toBe('posting_timeout')
+    })
+
+    it('maps lock timeout / deadlock / serialization to a retry-safe posting_conflict', () => {
+        expect(mapStockCountDatabaseError('canceling statement due to lock timeout', 'post', '55P03').code).toBe('posting_conflict')
+        expect(mapStockCountDatabaseError('deadlock detected', 'post', '40P01').code).toBe('posting_conflict')
+        expect(mapStockCountDatabaseError('could not serialize access', 'post', '40001').code).toBe('posting_conflict')
+        expect(mapStockCountDatabaseError('canceling statement due to lock timeout', 'post').code).toBe('posting_conflict')
+    })
+
+    it('does not misclassify a normal error string that merely contains a SQLSTATE-like number', () => {
+        expect(mapStockCountDatabaseError('invalid_verification_code', 'post', '22P02').code).toBe('invalid_code')
+    })
 })
