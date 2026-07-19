@@ -8,6 +8,7 @@ const migration = (name: string) => readFileSync(
 
 const groundwork = migration('20260717_stock_config_01_groundwork.sql')
 const phase8 = migration('20260717_stock_config_08_initial_classification.sql')
+const forwardFix = migration('20260719_stock_config_19_collision_safe_stock_sku_generator.sql')
 const preflight = readFileSync(
   new URL('../../../../supabase/diagnostics/20260719_stock_config_production_preflight.sql', import.meta.url),
   'utf8',
@@ -35,6 +36,12 @@ const laterMigrations = [
 
 const generatedSku = (productCode: string, configCode: string, variantId: string) =>
   `${productCode}-${configCode}-${variantId.replaceAll('-', '')}`.toUpperCase()
+
+const functionDefinition = (sql: string, signature: string) => {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION ${signature}`)
+  const end = sql.indexOf('$$;', start)
+  return sql.slice(start, end + 3)
+}
 
 describe('Migration 01 duplicate Product Code production safety', () => {
   it('generates different stable SKUs for several TE variants in one seed set', () => {
@@ -96,5 +103,50 @@ describe('Migration 01 duplicate Product Code production safety', () => {
     expect(preflight).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE|CREATE|GRANT|REVOKE)\b/i)
     expect(preflight).toContain('variants_that_legacy_generator_maps_to_te_std')
     expect(preflight).toContain('phase_01_application_assessment')
+  })
+})
+
+describe('Migration 19 forward correction for already-migrated databases', () => {
+  it('installs the exact patched generator and refreshes its dependent trigger function idempotently', () => {
+    expect(functionDefinition(forwardFix, 'public.generate_stock_sku'))
+      .toBe(functionDefinition(groundwork, 'public.generate_stock_sku'))
+    expect(functionDefinition(forwardFix, 'public.create_default_stock_config_for_variant'))
+      .toBe(functionDefinition(groundwork, 'public.create_default_stock_config_for_variant'))
+    expect(forwardFix.match(/CREATE OR REPLACE FUNCTION/g)).toHaveLength(2)
+  })
+
+  it('can be applied over legacy TE-STD rows without rewriting existing SKUs', () => {
+    const definitionBodiesRemoved = forwardFix.replace(/AS \$\$[\s\S]*?\$\$;/g, '')
+
+    expect(definitionBodiesRemoved).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)\b/i)
+    expect(forwardFix).not.toMatch(/UPDATE\s+public\.inventory_stock_configurations/i)
+    expect(forwardFix).not.toMatch(/\bTE-STD\b/)
+    expect(forwardFix).not.toMatch(/CREATE\s+(?:UNIQUE\s+)?INDEX/i)
+  })
+
+  it('keeps new duplicate-TE variants unique for every supported generated configuration', () => {
+    const variants = [
+      '00000000-0000-0000-0000-000000000501',
+      '00000000-0000-0000-0000-000000000502',
+    ]
+
+    for (const configCode of ['STD', 'UNC', '20NB', '50NB', '50OB']) {
+      const generated = variants.map(variantId => generatedSku('TE', configCode, variantId))
+      expect(new Set(generated).size).toBe(variants.length)
+      expect(generated.every(sku => sku.startsWith(`TE-${configCode}-`))).toBe(true)
+    }
+  })
+
+  it('cannot change inventory balances or movements', () => {
+    expect(forwardFix).not.toMatch(/\bpublic\.product_inventory\b/i)
+    expect(forwardFix).not.toMatch(/\bpublic\.stock_movements\b/i)
+    expect(forwardFix).not.toMatch(/\brecord_stock_movement\b/i)
+  })
+
+  it('lets the production preflight distinguish legacy and collision-safe installed definitions', () => {
+    expect(preflight).toContain('installed_stock_sku_generator_version')
+    expect(preflight).toContain('COLLISION_SAFE_VARIANT_UUID_V2')
+    expect(preflight).toContain('LEGACY_STATEMENT_SNAPSHOT_SUFFIX_V1')
+    expect(preflight).toContain('installed_default_configuration_trigger_function')
   })
 })

@@ -136,6 +136,55 @@ WHERE contype = 'f'
   )
 ORDER BY source_table, constraint_name;
 
+WITH installed AS (
+  SELECT
+    to_regprocedure('public.generate_stock_sku(uuid,text)') AS function_oid
+), definition AS (
+  SELECT
+    function_oid,
+    CASE WHEN function_oid IS NULL THEN NULL
+         ELSE pg_get_functiondef(function_oid)
+    END AS function_definition
+  FROM installed
+)
+SELECT
+  'A07_MIGRATION_STATE' AS section,
+  'installed_stock_sku_generator_version' AS result_label,
+  CASE
+    WHEN function_oid IS NULL THEN 'MISSING'
+    WHEN position('replace(p_variant_id::text, ''-'', '''')' IN function_definition) > 0
+      AND position('WHILE EXISTS' IN upper(function_definition)) = 0
+      THEN 'COLLISION_SAFE_VARIANT_UUID_V2'
+    WHEN position('WHILE EXISTS' IN upper(function_definition)) > 0
+      THEN 'LEGACY_STATEMENT_SNAPSHOT_SUFFIX_V1'
+    ELSE 'UNKNOWN_REVIEW_DEFINITION'
+  END AS installed_version,
+  function_definition
+FROM definition;
+
+WITH installed AS (
+  SELECT
+    to_regprocedure('public.create_default_stock_config_for_variant()') AS function_oid
+), definition AS (
+  SELECT
+    function_oid,
+    CASE WHEN function_oid IS NULL THEN NULL
+         ELSE pg_get_functiondef(function_oid)
+    END AS function_definition
+  FROM installed
+)
+SELECT
+  'A08_MIGRATION_STATE' AS section,
+  'installed_default_configuration_trigger_function' AS result_label,
+  CASE
+    WHEN function_oid IS NULL THEN 'MISSING'
+    WHEN position('generate_stock_sku(NEW.id, ''STD'')' IN function_definition) > 0
+      THEN 'CALLS_INSTALLED_GENERATOR'
+    ELSE 'UNKNOWN_REVIEW_DEFINITION'
+  END AS installed_version,
+  function_definition
+FROM definition;
+
 -- B. EXISTING CONFIGURATION DATA --------------------------------------------
 
 SELECT
@@ -505,11 +554,13 @@ WITH required(migration_range, object_kind, object_name, present) AS (
     ('11-12', 'table', 'stock_transfers', to_regclass('public.stock_transfers') IS NOT NULL),
     ('13', 'function', 'record_stock_movement', EXISTS (SELECT 1 FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname='record_stock_movement')),
     ('14-18', 'table', 'stock_count_verification_requests', to_regclass('public.stock_count_verification_requests') IS NOT NULL),
-    ('14-18', 'function', 'verify_and_post_stock_count(uuid,text)', to_regprocedure('public.verify_and_post_stock_count(uuid,text)') IS NOT NULL)
+    ('14-18', 'function', 'verify_and_post_stock_count(uuid,text)', to_regprocedure('public.verify_and_post_stock_count(uuid,text)') IS NOT NULL),
+    ('19', 'function', 'generate_stock_sku(uuid,text)', to_regprocedure('public.generate_stock_sku(uuid,text)') IS NOT NULL),
+    ('19', 'function', 'create_default_stock_config_for_variant()', to_regprocedure('public.create_default_stock_config_for_variant()') IS NOT NULL)
 )
 SELECT
   'E01_LATER_MIGRATION_READINESS' AS section,
-  'required_objects_for_migrations_02_to_18' AS result_label,
+  'required_objects_for_migrations_02_to_19' AS result_label,
   migration_range,
   object_kind,
   object_name,
@@ -584,12 +635,12 @@ ORDER BY table_name, constraint_name;
 
 SELECT
   'E05_LATER_MIGRATION_READINESS' AS section,
-  'migration_history_rows_for_stock_config_01_to_18' AS result_label,
+  'migration_history_rows_for_stock_config_01_to_19' AS result_label,
   CASE WHEN to_regclass('supabase_migrations.schema_migrations') IS NULL
     THEN '<supabase_migrations.schema_migrations is not visible>'
     ELSE query_to_xml($q$
       SELECT 'E05_LATER_MIGRATION_READINESS' AS section,
-             'migration_history_rows_for_stock_config_01_to_18' AS result_label,
+             'migration_history_rows_for_stock_config_01_to_19' AS result_label,
              to_jsonb(m) ->> 'version' AS version,
              to_jsonb(m) ->> 'name' AS name,
              to_jsonb(m) AS migration_row
