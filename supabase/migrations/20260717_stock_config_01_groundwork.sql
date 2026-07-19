@@ -136,8 +136,15 @@ CREATE POLICY isc_admin_manage ON public.inventory_stock_configurations
 -- ----------------------------------------------------------------------------
 -- Base = product_variants.product_code when the optional 20260715 migration is
 -- applied (read via to_jsonb so this function works either way), otherwise
--- variant_code. Uniqueness is enforced by isc_stock_sku_key; collisions get a
--- numeric suffix.
+-- variant_code. The variant UUID is part of every generated SKU. This makes a
+-- SKU stable for a (variant, config_code) pair and collision-free even when:
+--   * several source rows with the same Product Code are seeded by one INSERT;
+--   * two variants are created concurrently; or
+--   * the same migration/function is retried.
+--
+-- Do not replace this with a "look for the next free suffix" loop. PostgreSQL
+-- evaluates every expression in an INSERT ... SELECT against one statement
+-- snapshot, so sibling source rows cannot see one another's pending SKUs.
 
 CREATE OR REPLACE FUNCTION public.generate_stock_sku(p_variant_id uuid, p_config_code text)
 RETURNS text
@@ -146,8 +153,6 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_base text;
-  v_candidate text;
-  v_suffix integer := 1;
 BEGIN
   SELECT COALESCE(NULLIF(trim(to_jsonb(pv) ->> 'product_code'), ''), pv.variant_code)
     INTO v_base
@@ -163,16 +168,9 @@ BEGIN
     v_base := 'VAR';
   END IF;
 
-  v_candidate := v_base || '-' || upper(p_config_code);
-  WHILE EXISTS (
-    SELECT 1 FROM public.inventory_stock_configurations c
-    WHERE upper(c.stock_sku) = upper(v_candidate)
-  ) LOOP
-    v_suffix := v_suffix + 1;
-    v_candidate := v_base || '-' || upper(p_config_code) || '-' || v_suffix::text;
-  END LOOP;
-
-  RETURN v_candidate;
+  RETURN v_base
+    || '-' || upper(p_config_code)
+    || '-' || replace(p_variant_id::text, '-', '');
 END;
 $$;
 
@@ -207,8 +205,12 @@ SELECT pv.id, 'STD', 'Standard', public.generate_stock_sku(pv.id, 'STD'),
        true, true, true, true, 'active', 0
 FROM public.product_variants pv
 WHERE NOT EXISTS (
-  SELECT 1 FROM public.inventory_stock_configurations c WHERE c.variant_id = pv.id
-);
+  SELECT 1
+  FROM public.inventory_stock_configurations c
+  WHERE c.variant_id = pv.id
+    AND c.is_variant_default
+)
+ON CONFLICT (variant_id, config_code) DO NOTHING;
 
 -- Auto-create the generic default for variants created after this migration
 -- (Phase 1 makes product_inventory.stock_config_id NOT NULL, so every variant
