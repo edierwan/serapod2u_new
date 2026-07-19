@@ -13,6 +13,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/use-toast'
 import { getStorageUrl } from '@/lib/utils'
@@ -22,6 +32,7 @@ import {
   CLASSIFICATION_TARGET_CONFIG_CODES as TARGET_CONFIG_CODES,
   buildInitialClassificationGroups,
   computeClassificationEntry,
+  evaluateClassificationPostable,
   getClassificationCardDisplay,
   summarizeClassificationRound,
 } from '@/lib/inventory/stock-count-classification'
@@ -53,6 +64,7 @@ import {
   FileSpreadsheet,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
   Package,
   RotateCcw,
   Save,
@@ -92,6 +104,8 @@ interface CountRow {
   manualSku: string | null
   imageUrl: string | null
   systemQuantity: number
+  /** Live allocated qty on this configuration — classification never auto-clears it. */
+  quantityAllocated: number
   physicalCount: string
   note: string
   unitCost: number | null
@@ -177,7 +191,16 @@ const countTypeOptions: Array<{ value: CountType; label: string }> = [
 // session starts here so it is never falsely flagged as having unsaved changes.
 const EMPTY_SIGNATURE = stockCountRowsSignature([])
 const UNSAVED_CHANGES_MESSAGE = 'Imported or edited counts have not been saved yet. Save the draft, then reopen Review & Post.'
+const DISCARD_DRAFT_CONFIRMATION =
+  'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.'
+const DISCARD_SUCCESS_TOAST = 'Draft discarded successfully. Inventory was not changed.'
+const DISCARD_INELIGIBLE_MESSAGE =
+  'This Stock Count can no longer be discarded because it is no longer a draft.'
 const formatNumber = (value: number) => value.toLocaleString('en-MY')
+const draftLabel = (draft: DraftSession) =>
+  `${draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · ${draft.count_date}`
+const isDiscardNotEligibleError = (message: string) =>
+  /stock_count_not_discardable|stock_count_already_posted|not a draft/i.test(message)
 const formatMoney = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const parseCount = (value: string) => (value.trim() === '' ? null : Number(value))
 const skuForRow = (row: CountRow) => row.stockSku
@@ -188,6 +211,15 @@ const varianceForRow = (row: CountRow) => {
 const adjustmentValueForRow = (row: CountRow) => {
   const variance = varianceForRow(row)
   return variance === null ? null : stockCountImpact(variance, row.unitCost)
+}
+const formatVerificationApiError = (
+  result: { error?: string; reference?: string },
+  stage: 'request' | 'post',
+) => {
+  const fallback = stockCountVerificationError('unexpected_error', { stage }).message
+  const base = String(result.error || '').trim() || fallback
+  if (!result.reference || base.includes(result.reference)) return base
+  return `${base} Reference: ${result.reference}.`
 }
 
 export default function StockAdjustmentView({ userProfile, onViewChange }: StockAdjustmentViewProps) {
@@ -211,7 +243,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [rows, setRows] = useState<CountRow[]>([])
   const [drafts, setDrafts] = useState<DraftSession[]>([])
   const [staleDraftIds, setStaleDraftIds] = useState<Set<string>>(new Set())
-  const [archivingDraftId, setArchivingDraftId] = useState<string | null>(null)
+  const [managingDrafts, setManagingDrafts] = useState(false)
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
+  const [discardConfirmIds, setDiscardConfirmIds] = useState<string[] | null>(null)
+  const [discardingDrafts, setDiscardingDrafts] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [currentStatus, setCurrentStatus] = useState<SessionStatus>('draft')
   const [selectedGroupId, setSelectedGroupId] = useState(ALL_GROUP_ID)
@@ -258,6 +293,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (!selectedWarehouse) {
       setRows([])
       setDrafts([])
+      setManagingDrafts(false)
+      setSelectedDraftIds(new Set())
+      setDiscardConfirmIds(null)
       return
     }
     loadCountRows(selectedWarehouse)
@@ -270,6 +308,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setVerification(null)
     setVerifiedSignature(null)
     setImportSummary(null)
+    setManagingDrafts(false)
+    setSelectedDraftIds(new Set())
+    setDiscardConfirmIds(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWarehouse])
 
@@ -299,13 +340,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       .eq('warehouse_organization_id', warehouseId)
       .eq('status', 'draft')
       .order('updated_at', { ascending: false })
-      .limit(12)
+      .limit(50)
 
     if (error) {
       if (error.code !== '42P01') toast({ title: 'Draft load failed', description: error.message, variant: 'destructive' })
       return
     }
-    setDrafts((data || []) as unknown as DraftSession[])
+    const nextDrafts = (data || []) as unknown as DraftSession[]
+    setDrafts(nextDrafts)
+    const eligibleIds = new Set(nextDrafts.map(draft => draft.id))
+    setSelectedDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
+    setStaleDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
   }
 
   const loadCountRows = async (warehouseId: string) => {
@@ -321,6 +366,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           stock_config_id,
           organization_id,
           quantity_on_hand,
+          quantity_allocated,
           warehouse_location,
           inventory_stock_configurations!product_inventory_stock_config_fk (
             id, config_code, config_label, stock_sku, volume_ml, packaging, status
@@ -410,6 +456,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           variantId: item.variant_id,
           ...meta,
           systemQuantity: Number(item.quantity_on_hand || 0),
+          quantityAllocated: Number(item.quantity_allocated || 0),
           physicalCount: '',
           note: '',
           warehouseLocation: item.warehouse_location || null,
@@ -446,6 +493,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             variantId: config.variant_id,
             ...meta,
             systemQuantity: 0,
+            quantityAllocated: 0,
             physicalCount: '',
             note: '',
             warehouseLocation: null,
@@ -782,20 +830,110 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     toast({ title: 'Draft opened', description: 'Saved counts are loaded for review.' })
   }
 
-  const archiveDraft = async (sessionId: string) => {
-    if (!window.confirm('Archive this draft? It cannot post against the current Stock Count model and will be retired permanently.')) return
-    setArchivingDraftId(sessionId)
+  const exitManageDrafts = () => {
+    setManagingDrafts(false)
+    setSelectedDraftIds(new Set())
+    setDiscardConfirmIds(null)
+  }
+
+  const selectAllDrafts = () => {
+    setSelectedDraftIds(new Set(drafts.map(draft => draft.id)))
+  }
+
+  const deselectAllDrafts = () => {
+    setSelectedDraftIds(new Set())
+  }
+
+  const toggleDraftSelection = (sessionId: string, checked: boolean) => {
+    setSelectedDraftIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(sessionId)
+      else next.delete(sessionId)
+      return next
+    })
+  }
+
+  const requestDiscardDrafts = (sessionIds: string[]) => {
+    const uniqueIds = [...new Set(sessionIds.filter(Boolean))]
+    if (uniqueIds.length === 0 || discardingDrafts) return
+    setDiscardConfirmIds(uniqueIds)
+  }
+
+  const discardDrafts = async (sessionIds: string[]) => {
+    if (discardingDrafts) return
+    const uniqueIds = [...new Set(sessionIds.filter(Boolean))]
+    if (uniqueIds.length === 0) return
+
+    setDiscardingDrafts(true)
     try {
-      const { error } = await supabase.rpc('archive_stock_count_draft' as any, { p_session_id: sessionId })
+      const { data, error } = await supabase.rpc('discard_stock_count_drafts' as any, {
+        p_session_ids: uniqueIds,
+      })
       if (error) throw error
-      setStaleDraftIds(prev => { const next = new Set(prev); next.delete(sessionId); return next })
-      toast({ title: 'Draft archived', description: 'The stale draft has been retired.' })
-      if (currentSessionId === sessionId) resetSession()
-      await loadDrafts(selectedWarehouse)
+
+      const result = (data || {}) as {
+        discarded_ids?: string[]
+        already_archived_ids?: string[]
+        failed?: Array<{ session_id?: string; error?: string }>
+      }
+      const discardedIds = [
+        ...(Array.isArray(result.discarded_ids) ? result.discarded_ids : []),
+        ...(Array.isArray(result.already_archived_ids) ? result.already_archived_ids : []),
+      ]
+      const failed = Array.isArray(result.failed) ? result.failed : []
+      const removedIds = new Set(discardedIds)
+
+      if (removedIds.size > 0) {
+        setDrafts(prev => prev.filter(draft => !removedIds.has(draft.id)))
+        setStaleDraftIds(prev => {
+          const next = new Set(prev)
+          removedIds.forEach(id => next.delete(id))
+          return next
+        })
+        setSelectedDraftIds(prev => {
+          const next = new Set(prev)
+          removedIds.forEach(id => next.delete(id))
+          return next
+        })
+        if (currentSessionId && removedIds.has(currentSessionId)) {
+          resetSession()
+        }
+        toast({
+          title: discardedIds.length === 1 ? 'Draft discarded' : 'Drafts discarded',
+          description: DISCARD_SUCCESS_TOAST,
+        })
+      }
+
+      if (failed.length > 0) {
+        const firstError = String(failed[0]?.error || '')
+        toast({
+          title: removedIds.size > 0 ? 'Some drafts could not be discarded' : 'Discard draft failed',
+          description: isDiscardNotEligibleError(firstError) ? DISCARD_INELIGIBLE_MESSAGE : (firstError || DISCARD_INELIGIBLE_MESSAGE),
+          variant: 'destructive',
+        })
+        if (selectedWarehouse) await loadDrafts(selectedWarehouse)
+      } else if (removedIds.size === 0) {
+        toast({
+          title: 'Discard draft failed',
+          description: DISCARD_INELIGIBLE_MESSAGE,
+          variant: 'destructive',
+        })
+      }
+
+      if (managingDrafts && drafts.filter(draft => !removedIds.has(draft.id)).length === 0) {
+        exitManageDrafts()
+      }
     } catch (error: any) {
-      toast({ title: 'Archive draft failed', description: error.message, variant: 'destructive' })
+      const message = String(error?.message || '')
+      toast({
+        title: 'Discard draft failed',
+        description: isDiscardNotEligibleError(message) ? DISCARD_INELIGIBLE_MESSAGE : (message || DISCARD_INELIGIBLE_MESSAGE),
+        variant: 'destructive',
+      })
+      if (selectedWarehouse) await loadDrafts(selectedWarehouse)
     } finally {
-      setArchivingDraftId(null)
+      setDiscardingDrafts(false)
+      setDiscardConfirmIds(null)
     }
   }
 
@@ -971,7 +1109,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const requestVerificationCode = async () => {
-    if (!canPost || currentStatus === 'posted') return
+    if (!canPost || currentStatus === 'posted' || posting) return
     if (reviewVarianceItems > 0 && !isValidStockCountPostingNote(notes)) {
       setVerificationError('A Posting Note is required when the Stock Count contains variance.')
       return
@@ -985,16 +1123,27 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         const savedSessionId = await saveDraft()
         if (!savedSessionId) throw new Error('The latest Stock Count changes could not be saved.')
       }
-      setPreflight({ status: 'loading' })
+      // Only show the review-step preflight spinner when a code has not been
+      // issued yet. Resend failures must not bury the verify UI behind the
+      // review-step error panel.
+      if (!verification) setPreflight({ status: 'loading' })
       const response = await fetch('/api/inventory/stock-count/verification/request', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
       })
       const result = await response.json()
       if (!response.ok) {
-        setPreflight({ status: 'error', code: result.code, message: result.error, guidance: result.guidance })
+        const message = formatVerificationApiError(result, 'request')
+        if (verification) {
+          // Keep the issued-code UI; show the actionable failure inline.
+          setVerificationError(message)
+        } else {
+          setPreflight({ status: 'error', code: result.code, message, guidance: result.guidance })
+        }
         return
       }
-      setPreflight({ status: 'ready', recipientCount: result.recipients.length })
+      // Successful generation+delivery must always clear stale request/verify errors.
+      setVerificationError(null)
+      setPreflight({ status: 'ready', recipientCount: Array.isArray(result.recipients) ? result.recipients.length : 0 })
       setVerification({ ...result, sessionId })
       // Bind the issued code to the exact counts on screen. Any later edit/import
       // makes verificationStale true and blocks Verify & Post.
@@ -1003,7 +1152,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setVerificationNow(Date.now())
       toast({ title: 'Verification code sent', description: `Sent to ${result.recipients.length} authorized recipient(s).` })
     } catch (error: any) {
-      setVerificationError(error.message)
+      const friendly = stockCountVerificationError('unexpected_error', { stage: 'request' })
+      setVerificationError(error?.message || friendly.message)
+      if (!verification) setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
     } finally {
       setPosting(false)
     }
@@ -1044,6 +1195,36 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       })
       return
     }
+    // Live Legacy revalidation (allocation / already-classified). Target totals
+    // above or below Legacy are genuine physical-count variance, not errors.
+    // Server prepare + post re-check under row locks; this is the friendly early block.
+    if (isClassificationMode) {
+      const liveLegacyByVariant = new Map(
+        classificationGroups.map((group) => [group.variantId, {
+          variantId: group.variantId,
+          productName: group.productName,
+          variantName: group.variantName,
+          liveOnHand: group.legacyRow.systemQuantity,
+          liveAllocated: group.legacyRow.quantityAllocated,
+        }]),
+      )
+      const flavours = classificationSummary.perGroup.map((entry) => ({
+        variantId: entry.group.variantId,
+        productName: entry.group.productName,
+        variantName: entry.group.variantName,
+        requestedTotal: entry.classifiedTotal,
+        selected: entry.selected,
+      }))
+      const classificationGate = evaluateClassificationPostable(flavours, liveLegacyByVariant)
+      if (!classificationGate.ok) {
+        setPreflight({
+          status: 'error',
+          code: classificationGate.code,
+          message: classificationGate.message,
+        })
+        return
+      }
+    }
     try {
       const response = await fetch(`/api/inventory/stock-count/verification/preflight?sessionId=${encodeURIComponent(sessionId)}`)
       const result = await response.json()
@@ -1065,7 +1246,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       }
       setPreflight({ status: 'ready', recipientCount: result.recipientCount, guidance: result.guidance })
     } catch {
-      const friendly = stockCountVerificationError('unexpected_error')
+      const friendly = stockCountVerificationError('unexpected_error', { stage: 'preflight' })
       setPreflight({ status: 'error', code: friendly.code, message: friendly.message })
     }
   }
@@ -1146,7 +1327,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [permissionLoading])
 
   const verifyAndPostCount = async () => {
-    if (!verification || verificationCode.length !== 8) return
+    if (!verification || verificationCode.length !== 8 || posting) return
     // Defence in depth on top of the server snapshot-hash check: never submit a
     // code once the on-screen counts have moved away from what it was issued for.
     if (verificationStale) {
@@ -1162,19 +1343,27 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         body: JSON.stringify({ requestId: verification.requestId, sessionId: verification.sessionId, code: verificationCode }),
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Unable to verify and post the Stock Count.')
+      if (!response.ok) {
+        const message = formatVerificationApiError(result, 'post')
+        setVerificationError(message)
+        // Clear the code only when it can never succeed again; keep typos editable.
+        if (result.code === 'expired_code' || result.code === 'code_already_used' || result.code === 'already_posted' || result.code === 'invalid_or_expired_code') {
+          setVerificationCode('')
+        }
+        return
+      }
       setCurrentStatus('posted')
       setVerification(null)
       setVerifiedSignature(null)
       setVerificationCode('')
+      setVerificationError(null)
       setConfirmPostOpen(false)
       setLastSavedSignature(EMPTY_SIGNATURE)
       toast({ title: 'Stock count posted', description: `${result.movement_count || 0} variance movement(s) recorded.` })
       await loadCountRows(selectedWarehouse)
       await loadDrafts(selectedWarehouse)
     } catch (error: any) {
-      setVerificationError(error.message)
-      setVerificationCode('')
+      setVerificationError(error?.message || stockCountVerificationError('unexpected_error', { stage: 'post' }).message)
     } finally {
       setPosting(false)
     }
@@ -1311,21 +1500,82 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
       {drafts.length > 0 && (
         <Card className="border-blue-100 bg-blue-50/50">
-          <CardContent className="flex flex-wrap items-center gap-3 p-3">
-            <span className="text-sm font-semibold text-blue-950">Open draft:</span>
-            {drafts.map(draft => (
-              <div key={draft.id} className="flex items-center gap-1">
-                <Button variant={currentSessionId === draft.id ? 'default' : staleDraftIds.has(draft.id) ? 'destructive' : 'outline'} size="sm" onClick={() => loadDraft(draft.id)}>
-                  {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · {draft.count_date}
+          <CardContent className="space-y-3 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-blue-950">Open draft:</span>
+              {!managingDrafts ? (
+                <Button variant="outline" size="sm" onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
+                  Manage Drafts
                 </Button>
-                {staleDraftIds.has(draft.id) && (
-                  <Button variant="outline" size="sm" disabled={archivingDraftId === draft.id} onClick={() => archiveDraft(draft.id)}>
-                    {archivingDraftId === draft.id ? 'Archiving...' : 'Archive'}
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || drafts.length === 0}>
+                    Select All
                   </Button>
-                )}
-              </div>
-            ))}
-            <Button variant="ghost" size="sm" onClick={resetSession}>New count</Button>
+                  <Button variant="outline" size="sm" onClick={deselectAllDrafts} disabled={discardingDrafts || selectedDraftIds.size === 0}>
+                    Deselect All
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => requestDiscardDrafts([...selectedDraftIds])}
+                    disabled={discardingDrafts || selectedDraftIds.size === 0}
+                  >
+                    {discardingDrafts ? 'Discarding...' : 'Discard Selected Drafts'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={exitManageDrafts} disabled={discardingDrafts}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {drafts.map(draft => (
+                <div key={draft.id} className="flex items-center gap-1">
+                  {managingDrafts && (
+                    <Checkbox
+                      checked={selectedDraftIds.has(draft.id)}
+                      disabled={discardingDrafts}
+                      onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)}
+                      aria-label={`Select ${draftLabel(draft)}`}
+                    />
+                  )}
+                  <Button
+                    variant={currentSessionId === draft.id ? 'default' : staleDraftIds.has(draft.id) ? 'destructive' : 'outline'}
+                    size="sm"
+                    disabled={discardingDrafts}
+                    onClick={() => {
+                      if (managingDrafts) {
+                        toggleDraftSelection(draft.id, !selectedDraftIds.has(draft.id))
+                        return
+                      }
+                      void loadDraft(draft.id)
+                    }}
+                  >
+                    {draftLabel(draft)}
+                  </Button>
+                  {!managingDrafts && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 px-0" aria-label={`Draft actions for ${draftLabel(draft)}`}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={() => void loadDraft(draft.id)}>Open Draft</DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-red-700 focus:text-red-700"
+                          onClick={() => requestDiscardDrafts([draft.id])}
+                        >
+                          Discard Draft
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              ))}
+              <Button variant="ghost" size="sm" onClick={resetSession} disabled={discardingDrafts}>New count</Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1450,6 +1700,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                   </div>
                 )}
 
+                {group.legacyRow.quantityAllocated > 0 && (
+                  <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      This Legacy inventory still has {group.legacyRow.quantityAllocated} allocated{' '}
+                      {group.legacyRow.quantityAllocated === 1 ? 'unit' : 'units'} and cannot be fully classified.
+                      Release or resolve the allocation before posting.
+                    </span>
+                  </div>
+                )}
+
                 {selected && !complete && (
                   <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -1497,6 +1758,35 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       )}
 
       {importSummary && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
+
+      <AlertDialog
+        open={discardConfirmIds !== null}
+        onOpenChange={(open) => {
+          if (!discardingDrafts && !open) setDiscardConfirmIds(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {(discardConfirmIds?.length || 0) > 1 ? 'Discard selected drafts?' : 'Discard Draft?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>{DISCARD_DRAFT_CONFIRMATION}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discardingDrafts}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={discardingDrafts || !discardConfirmIds?.length}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={(event) => {
+                event.preventDefault()
+                if (discardConfirmIds?.length) void discardDrafts(discardConfirmIds)
+              }}
+            >
+              {discardingDrafts ? 'Discarding...' : 'Discard Drafts'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={confirmPostOpen} onOpenChange={(open) => open ? setConfirmPostOpen(true) : closePostDialog()}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">

@@ -1,4 +1,5 @@
 import { sumStockCountImpacts } from './stock-count-costing'
+import type { StockCountVerificationErrorCode } from './stock-count-verification-errors'
 
 export const CLASSIFICATION_TARGET_CONFIG_CODES = ['20NB', '50NB', '50OB'] as const
 export const CLASSIFICATION_LEGACY_CONFIG_CODE = 'UNCLASSIFIED'
@@ -76,21 +77,17 @@ export interface ClassificationEntryResult {
    *  charged the gross removal of every other flavour's Legacy stock. */
   selected: boolean
   countedTargets: number
-  /** Total inventory = legacy system quantity (the source balance being
-   *  classified). This deliberately never adds the legacy system quantity to
-   *  the target physical counts — the legacy balance is the source, not an
-   *  additional stock layer. When the classification is complete, the legacy
-   *  row is cleared to zero and its entire balance has moved to the target
-   *  configurations, so total inventory = classifiedTotal (= the sum of the
-   *  three target physical counts) + any remaining legacy balance (which is
-   *  zero after a complete classification).
+  /** After a complete classification posts, Legacy is cleared to 0 and the
+   *  three target configs hold the physical counts, so warehouse inventory for
+   *  the flavour equals classifiedTotal (sum of target physical counts).
+   *  Genuine net variance = classifiedTotal − legacySystemQuantity — this may
+   *  be positive (physical overage) or negative (physical shortage).
    *
-   *  Example: legacy = 100, targets 40+35+25 → total = 100, not 200.
+   *  Example: legacy = 100, targets 500+400+200 → totalInventory = 1,100,
+   *  variance = +1,000.
    *
-   *  For an incomplete classification, totalInventory = legacy system qty
-   *  (the source balance stays on legacy until cleared). A complete
-   *  classification clears legacy to zero and moves everything to targets,
-   *  so totalInventory = classifiedTotal. */
+   *  While incomplete, totalInventory stays at the legacy system qty (nothing
+   *  has posted yet). */
   totalInventory: number
 }
 
@@ -132,12 +129,9 @@ export function computeClassificationEntry(
   const counted = targets.filter((target) => parseCount(target.physicalCount) !== null)
   const classifiedTotal = counted.reduce((sum, target) => sum + (parseCount(target.physicalCount) || 0), 0)
   const complete = targets.length > 0 && counted.length === targets.length
-  // Total inventory is the legacy source balance. When complete, that balance
-  // has moved entirely to the target configurations (the legacy row will be
-  // cleared to zero). When incomplete, the legacy source is unchanged so
-  // totalInventory = legacySystemQuantity (the targets have been partially
-  // entered but the legacy balance hasn't been touched yet because nothing
-  // has been posted).
+  // When complete, inventory will equal the physical target total after Legacy
+  // is cleared (variance may be +/− vs the previous Legacy balance). When
+  // incomplete, nothing has posted so totalInventory stays on Legacy.
   const totalInventory = complete ? classifiedTotal : legacySystemQuantity
   return {
     classifiedTotal,
@@ -202,4 +196,71 @@ export function summarizeClassificationRound(
       quantityChange: entry.variance, baseCost: entry.group.unitCost,
     }))),
   }
+}
+
+export interface ClassificationLiveLegacyBalance {
+  variantId: string
+  productName: string
+  variantName: string
+  /** Live Legacy/Unclassified on_hand at the warehouse. */
+  liveOnHand: number
+  /** Live quantity_allocated on that UNC row — never auto-cleared. */
+  liveAllocated: number
+}
+
+export interface ClassificationPostableFlavourInput {
+  variantId: string
+  productName: string
+  variantName: string
+  /** Sum of the three target physical counts for this round. */
+  requestedTotal: number
+  /** True when this flavour is selected for the current round. */
+  selected: boolean
+}
+
+export type ClassificationPostableFailure = {
+  ok: false
+  code: Extract<
+    StockCountVerificationErrorCode,
+    | 'classification_already_fully_classified'
+    | 'classification_allocated_blocks_post'
+  >
+  message: string
+}
+
+/**
+ * Client/preflight mirror of stock_count_assert_classification_postable.
+ * Uses live UNC balances (not the stale Excel/draft system qty) and never
+ * mutates allocations. Target totals above or below Legacy are allowed as
+ * genuine physical-count variance.
+ */
+export function evaluateClassificationPostable(
+  flavours: ClassificationPostableFlavourInput[],
+  liveLegacyByVariant: Map<string, ClassificationLiveLegacyBalance>,
+): { ok: true } | ClassificationPostableFailure {
+  for (const flavour of flavours) {
+    if (!flavour.selected) continue
+    const label = `${flavour.productName} [${flavour.variantName}]`
+    const live = liveLegacyByVariant.get(flavour.variantId)
+    const liveOnHand = live?.liveOnHand ?? 0
+    const liveAllocated = live?.liveAllocated ?? 0
+
+    if (liveOnHand <= 0) {
+      return {
+        ok: false,
+        code: 'classification_already_fully_classified',
+        message: `This product has already been fully classified (${label}). Download a new Initial Classification template or use Full Count to update its quantity.`,
+      }
+    }
+    if (liveAllocated > 0) {
+      const unitLabel = liveAllocated === 1 ? 'unit' : 'units'
+      return {
+        ok: false,
+        code: 'classification_allocated_blocks_post',
+        message: `This Legacy inventory for ${label} still has ${liveAllocated} allocated ${unitLabel} and cannot be fully classified. Release or resolve the allocation before posting.`,
+      }
+    }
+    // flavour.requestedTotal vs liveOnHand is variance, not a hard error.
+  }
+  return { ok: true }
 }
