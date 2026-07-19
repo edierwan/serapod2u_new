@@ -1195,7 +1195,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       })
       return
     }
-    // Live Legacy revalidation (allocation / already-classified / exceeds remaining).
+    // Live Legacy revalidation (allocation / already-classified). Target totals
+    // above or below Legacy are genuine physical-count variance, not errors.
     // Server prepare + post re-check under row locks; this is the friendly early block.
     if (isClassificationMode) {
       const liveLegacyByVariant = new Map(

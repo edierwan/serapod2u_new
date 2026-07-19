@@ -103,7 +103,8 @@ export async function evaluateStockCountPreflight(
     if (varianceItems.length && !isValidStockCountPostingNote(session.notes)) return { ok: false, code: 'posting_note_required' }
 
     // Initial Configuration Classification: revalidate live Legacy balances and
-    // refuse allocated>0 / exceed-remaining before a code is even requested.
+    // refuse allocated>0 / already-fully-classified before a code is requested.
+    // Target totals above/below Legacy are genuine physical-count variance.
     if (session.count_type === 'initial_configuration_classification') {
         const variantIds = Array.from(new Set(counted.map((item) => item.variant_id)))
         const [liveRows, labels] = await Promise.all([

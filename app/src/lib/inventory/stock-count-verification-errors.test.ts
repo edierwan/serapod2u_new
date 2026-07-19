@@ -79,7 +79,7 @@ describe('stock count verification errors', () => {
         expect(mapStockCountDatabaseError('invalid_verification_code', 'post', '22P02').code).toBe('invalid_code')
     })
 
-    it('surfaces Postgres DETAIL for allocation / already-classified / exceeds-legacy raises', () => {
+    it('surfaces Postgres DETAIL for allocation / already-classified raises', () => {
         const allocated = mapStockCountDatabaseError(
             'stock_count_allocated_blocks_post: This Legacy inventory for Cellera Zero [Buttercake] still has 1 allocated unit and cannot be fully classified. Release or resolve the allocation before posting.',
             'post',
@@ -94,7 +94,9 @@ describe('stock count verification errors', () => {
         )
         expect(fully.code).toBe('classification_already_fully_classified')
         expect(fully.message).toContain('Download a new Initial Classification template')
+    })
 
+    it('still maps historical exceeds-legacy SQL from pre-phase-18 databases', () => {
         const exceeds = mapStockCountDatabaseError(
             'stock_count_classification_exceeds_legacy: Classification for P [V] requests 150 units but only 100 remain in Legacy/Unclassified. Reduce the target counts or refresh the template.',
             'post',
