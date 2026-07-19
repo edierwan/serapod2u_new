@@ -48,6 +48,8 @@ describe('stock movement writer audit contract', () => {
       .sort()
 
     expect(directWriters).toEqual([
+      '_stock_transfer_release_reservations',
+      '_stock_transfer_reserve_items',
       'allocate_inventory_for_order',
       'fn_test_balance_request_flow',
       'fulfill_order_inventory',
@@ -68,8 +70,12 @@ describe('stock movement writer audit contract', () => {
 
     expect(rpcWriters).toEqual([
       'delete_scratch_campaign',
+      'dispatch_stock_transfer',
+      'post_manual_stock_addition',
       'post_warehouse_receipt',
-      'repack_stock',
+      'receive_stock_transfer',
+      'repack_stock_v2',
+      'verify_and_post_stock_classification',
       'verify_and_post_stock_count',
       'wms_reverse_manual_movement',
       'wms_ship_mixed',
