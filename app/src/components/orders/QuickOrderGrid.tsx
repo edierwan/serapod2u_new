@@ -79,8 +79,7 @@ const displayVariantName = (variantName: string) => {
 const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?: () => void }) => {
   const content = (
     <>
-      <span className="block font-semibold text-gray-900">{displayVariantName(variant.variant_name)}</span>
-      <span className="block text-gray-600">{variant.product_name}</span>
+      <span className="block font-semibold text-gray-900">{variant.product_name} - {displayVariantName(variant.variant_name)}</span>
       <span className="block text-gray-500">{variant.available_qty.toLocaleString()} available</span>
     </>
   )
