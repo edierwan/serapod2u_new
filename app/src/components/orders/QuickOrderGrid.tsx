@@ -59,49 +59,16 @@ const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]) 
   return { label: 'Product Not Found', style: statusStyle('not_found') }
 }
 
-const pasteResultBlockReason = (
-  result: PasteMatchResult,
-  variants: QuickVariant[],
-  combineDuplicates: boolean,
-) => {
-  if (result.status === 'invalid_quantity') return 'Enter a positive whole-number quantity.'
-  if (result.status === 'duplicate' && !combineDuplicates) return 'Confirm that duplicate quantities should be combined.'
-  if (!result.selectedVariantId && result.candidates.length > 1) return 'Select the intended variant from the relevant matches.'
-  if (!result.selectedVariantId && result.candidates.length === 1) return 'Confirm the possible match or search for another variant.'
-  if (!result.selectedVariantId) return 'No relevant variant was found. Search the active Product Master to resolve this row.'
-
-  const selected = variants.find(variant => variant.id === result.selectedVariantId)
-  if (!selected) return 'The selected variant is no longer active. Search the active Product Master to resolve this row.'
-  const outcome = resolvePasteInventoryOutcome(result.quantity, selected)
-  if (outcome === 'inventory_unclassified') return undefined
-  if (outcome === 'no_available_stock') return 'The selected product has no available stock.'
-  if (outcome === 'insufficient_stock') return `The requested quantity exceeds the ${selected?.available_qty.toLocaleString() || 0} units available.`
-  return undefined
-}
-
 const isPasteResultBlocked = (
   result: PasteMatchResult,
   variants: QuickVariant[],
   combineDuplicates: boolean,
 ) => {
+  if (result.status === 'invalid_quantity') return true
+  if (result.status === 'duplicate' && !combineDuplicates) return true
   const selected = variants.find(variant => variant.id === result.selectedVariantId)
-  return resolvePasteInventoryOutcome(result.quantity, selected) === 'inventory_unclassified'
-    || Boolean(pasteResultBlockReason(result, variants, combineDuplicates))
-}
-
-const variantSearchResults = (query: string, variants: QuickVariant[]) => {
-  const terms = query.trim().toLocaleUpperCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
-  if (terms.length === 0) return []
-  return variants.filter(variant => {
-    const haystack = [
-      variant.variant_name,
-      variant.product_name,
-      variant.product_code,
-      variant.manufacturer_sku,
-      variant.alternative_name,
-    ].filter(Boolean).join(' ').toLocaleUpperCase()
-    return terms.every(term => haystack.includes(term))
-  }).slice(0, 10)
+  if (!selected) return true
+  return resolvePasteInventoryOutcome(result.quantity, selected) !== 'matched'
 }
 
 const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?: () => void }) => {
@@ -109,10 +76,7 @@ const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?
     <>
       <span className="block font-semibold text-gray-900">{variant.variant_name}</span>
       <span className="block text-gray-600">{variant.product_name}</span>
-      <span className="block text-gray-500">
-        {variant.inventory_classification === 'unclassified' ? 'Legacy / Unclassified' : 'Classified'}
-        {' · '}{variant.available_qty.toLocaleString()} available
-      </span>
+      <span className="block text-gray-500">{variant.available_qty.toLocaleString()} available</span>
     </>
   )
   return onSelect ? (
@@ -131,7 +95,6 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState<PasteMatchResult[]>([])
   const [combineDuplicates, setCombineDuplicates] = useState(false)
-  const [manualSearches, setManualSearches] = useState<Record<number, string>>({})
 
   const quantities = useMemo(() => new Map(items.map(item => [item.variant_id, item.qty])), [items])
   const groups = useMemo(() => {
@@ -162,7 +125,6 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const reviewPaste = () => {
     setPasteResults(matchPastedOrder(pasteText, variants))
     setCombineDuplicates(false)
-    setManualSearches({})
   }
 
   const updateResolution = (line: number, variantId: string) => {
@@ -260,10 +222,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
               <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2">Qty</th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
                 {pasteResults.map(result => {
                   const display = pasteResultDisplay(result, variants)
-                  const blockReason = pasteResultBlockReason(result, variants, combineDuplicates)
                   const selectedVariant = variants.find(variant => variant.id === result.selectedVariantId)
-                  const manualSearch = manualSearches[result.line] || ''
-                  const searchResults = variantSearchResults(manualSearch, variants)
                   return (
                     <tr key={result.line} className="border-b align-top">
                       <td className="p-2">{result.line}</td>
@@ -272,41 +231,15 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
                       <td className="p-2">
                         <span className={`rounded-full px-2 py-1 text-xs ${display.style}`}>{display.label}</span>
                         {result.duplicateOfLine && <div className="mt-1 text-xs text-gray-500">Duplicates line {result.duplicateOfLine}</div>}
-                        {blockReason && <div className="mt-2 text-xs text-red-700">{blockReason}</div>}
                       </td>
                       <td className="min-w-[320px] p-2">
-                        {selectedVariant && (
-                          <div className="mb-2 space-y-1">
-                            <div className="flex items-center justify-between text-xs font-medium text-gray-600">
-                              <span>Selected variant</span>
-                              <button type="button" className="text-blue-600 underline" onClick={() => updateResolution(result.line, '')}>Clear selection</button>
-                            </div>
-                            <CandidateCard variant={selectedVariant} />
-                          </div>
-                        )}
+                        {selectedVariant && <CandidateCard variant={selectedVariant} />}
                         {!selectedVariant && result.candidates.length > 0 && (
-                          <div className="mb-3 space-y-1">
+                          <div className="space-y-1">
                             <div className="text-xs font-medium text-gray-600">Relevant suggested matches ({Math.min(result.candidates.length, 8)})</div>
                             {result.candidates.slice(0, 8).map(candidate => (
                               <CandidateCard key={candidate.id} variant={candidate as QuickVariant} onSelect={() => updateResolution(result.line, candidate.id)} />
                             ))}
-                          </div>
-                        )}
-                        <Input
-                          value={manualSearch}
-                          onChange={event => setManualSearches(searches => ({ ...searches, [result.line]: event.target.value }))}
-                          placeholder="Search full active Product Master"
-                          disabled={result.status === 'invalid_quantity'}
-                          aria-label={`Search Product Master for line ${result.line}`}
-                          className="h-9"
-                        />
-                        {manualSearch.trim() && (
-                          <div className="mt-2 space-y-1">
-                            <div className="text-xs font-medium text-gray-600">Product Master search results ({searchResults.length})</div>
-                            {searchResults.map(candidate => (
-                              <CandidateCard key={candidate.id} variant={candidate} onSelect={() => updateResolution(result.line, candidate.id)} />
-                            ))}
-                            {searchResults.length === 0 && <div className="rounded border border-dashed p-2 text-xs text-gray-500">No active Product Master variants match this search.</div>}
                           </div>
                         )}
                       </td>

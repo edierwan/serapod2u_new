@@ -86,10 +86,11 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(screen.getByText('Matched — Inventory Unclassified')).not.toBeNull()
     expect(screen.getByText('Matched — Insufficient Stock')).not.toBeNull()
     expect(screen.getByText('Product Not Found')).not.toBeNull()
-    expect(within(dialog).queryByText(/Classify it before adding this order quantity/)).toBeNull()
-    expect(within(dialog).getByText('Legacy / Unclassified · 0 available')).not.toBeNull()
-    expect(within(dialog).getByText('The requested quantity exceeds the 50 units available.')).not.toBeNull()
-    expect(within(dialog).getByText(/No relevant variant was found/)).not.toBeNull()
+    expect(within(dialog).getByText('Fruity Cellera Cartridge [ Guava ]')).not.toBeNull()
+    expect(within(dialog).getByText('0 available')).not.toBeNull()
+    expect(within(dialog).queryByText(/Legacy \/ Unclassified/)).toBeNull()
+    expect(within(dialog).queryByText('Clear selection')).toBeNull()
+    expect(within(dialog).queryByPlaceholderText('Search full active Product Master')).toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
@@ -103,10 +104,9 @@ describe('Quick Order product display and hidden identifier search', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
 
     expect(within(dialog).getByText('Multiple Matches — Selection Required')).not.toBeNull()
-    expect(within(dialog).getByText('Select the intended variant from the relevant matches.')).not.toBeNull()
     expect(within(dialog).getByText('Fruity Cellera Cartridge [ Mango Smoothie ]')).not.toBeNull()
     expect(within(dialog).getByText('Fruity Cellera Cartridge [ Double Mango ]')).not.toBeNull()
-    expect(within(dialog).getByText('Classified · 120 available')).not.toBeNull()
+    expect(within(dialog).getByText('120 available')).not.toBeNull()
     expect(within(dialog).queryByText('CEL-MANGO-SMOOTHIE')).toBeNull()
     expect(within(dialog).queryByText('SKU-MANGO-SMOOTHIE')).toBeNull()
     expect(within(dialog).queryByText('Fruity Cellera Cartridge [ Strawberry ]')).toBeNull()
@@ -115,10 +115,10 @@ describe('Quick Order product display and hidden identifier search', () => {
 
     await user.click(within(dialog).getByRole('button', { name: /Mango Smoothie/ }))
     expect(within(dialog).getByText('Matched — Insufficient Stock')).not.toBeNull()
-    expect(within(dialog).getByText('The requested quantity exceeds the 120 units available.')).not.toBeNull()
+    expect(within(dialog).queryByText('Clear selection')).toBeNull()
   })
 
-  it('searches the full active Product Master and allows a sufficient manual resolution', async () => {
+  it('allows a sufficient resolution only from relevant suggestions', async () => {
     const user = userEvent.setup()
     const onQuantityChange = vi.fn()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={onQuantityChange} onClear={vi.fn()} />)
@@ -128,16 +128,14 @@ describe('Quick Order product display and hidden identifier search', () => {
     await user.type(within(dialog).getByRole('textbox'), 'MANGO - 20')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
 
-    await user.type(within(dialog).getByLabelText('Search Product Master for line 1'), 'SKU-HIDDEN-TEH')
-    expect(within(dialog).getByText('Product Master search results (1)')).not.toBeNull()
-    expect(within(dialog).queryByText('SKU-HIDDEN-TEH')).toBeNull()
-    await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
+    expect(within(dialog).queryByPlaceholderText('Search full active Product Master')).toBeNull()
+    await user.click(within(dialog).getByRole('button', { name: /Mango Smoothie/ }))
 
     expect(within(dialog).getByText('Matched')).not.toBeNull()
     const apply = within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement
     expect(apply.disabled).toBe(false)
     await user.click(apply)
-    expect(onQuantityChange).toHaveBeenCalledWith('teh', 20)
+    expect(onQuantityChange).toHaveBeenCalledWith('mango-smoothie', 20)
   })
 
   it('requires explicit confirmation for a single low-confidence possible match', async () => {
