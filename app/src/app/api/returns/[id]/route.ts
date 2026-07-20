@@ -89,6 +89,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if ('notes' in body) patch.notes = body.notes || null
     if ('return_warehouse_id' in body) {
         const warehouseId = body.return_warehouse_id || null
+        if (
+            warehouseId !== rc.return_warehouse_id
+            && rc.status !== 'return_draft'
+            && rc.status !== 'return_submitted'
+        ) {
+            return NextResponse.json(
+                { error: 'Return warehouse cannot be changed after inventory receipt/posting has started.' },
+                { status: 409 },
+            )
+        }
         // Revalidate only a changed selection. This keeps historical returns
         // editable/displayable when their original warehouse was later made
         // inactive or moved, without allowing that warehouse on new returns.

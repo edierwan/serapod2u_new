@@ -455,6 +455,7 @@ function ReturnCaseEditor({
 
     const status: ReturnStatus = rc?.status || 'return_draft'
     const readOnly = isTerminalStatus(status)
+    const warehouseLocked = status !== 'return_draft' && status !== 'return_submitted'
     const isDraft = status === 'return_draft'
     const savedItemsRef = useRef<ReturnCaseItem[]>([])
     const categorySelector = getCategorySelectorState(meta, metaLoading, categoryResolved)
@@ -1171,7 +1172,7 @@ function ReturnCaseEditor({
                         )}
                     </Field>
                     <Field label="Return Warehouse" required>
-                        <Select value={warehouseId} onValueChange={setWarehouseId} disabled={readOnly || warehouseOptions.length === 0}>
+                        <Select value={warehouseId} onValueChange={setWarehouseId} disabled={readOnly || warehouseLocked || warehouseOptions.length === 0}>
                             <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
                             <SelectContent>
                                 {warehouseOptions.map((w) => (
@@ -1184,6 +1185,11 @@ function ReturnCaseEditor({
                         {warehouseOptions.length === 0 && (
                             <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
                                 No active Serapod HQ warehouse available
+                            </span>
+                        )}
+                        {warehouseLocked && (
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                                Return warehouse is locked after inventory receipt/posting.
                             </span>
                         )}
                         {selectedWarehouse?.inactive && (
