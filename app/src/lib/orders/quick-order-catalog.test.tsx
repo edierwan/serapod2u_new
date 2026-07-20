@@ -88,7 +88,8 @@ describe('D2H Quick Order Vape catalog', () => {
   it('preserves authoritative Quick catalog stock and price validation', () => {
     expect(validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 10 }], catalog)[0])
       .toMatchObject({ availableQuantity: 10, distributorPrice: 32 })
-    expect(() => validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 11 }], catalog)).toThrow('Insufficient stock')
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 11 }], catalog, 'Serapod Warehouse Alma'))
+      .toThrow('Insufficient available stock at Serapod Warehouse Alma')
   })
 
   it('keeps an unclassified variant matchable but blocks D2H submission', () => {

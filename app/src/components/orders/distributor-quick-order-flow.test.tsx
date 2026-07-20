@@ -14,15 +14,16 @@ describe('Distributor D2H Quick Order integration', () => {
     expect(source).toContain('items={orderItems}')
   })
 
-  it('excludes zero quantities and preserves the existing D2H payload and allocation flow', () => {
+  it('excludes zero quantities and submits through the atomic D2H allocate RPC', () => {
     expect(source).toContain('orderItems.filter(item => item.qty > 0)')
-    expect(source).toContain("order_type: 'D2H'")
-    expect(source).toContain(".from('order_items')")
-    expect(source).toContain(".rpc('allocate_inventory_for_order'")
+    expect(source).toContain("rpc('submit_and_allocate_d2h_order'")
+    expect(source).toContain('p_fulfillment_warehouse_id: fulfillmentWarehouseId')
+    expect(source).toContain('Fulfillment Warehouse')
   })
 
   it('uses server-authoritative active variants, stock, and distributor pricing', () => {
     expect(source).toContain("fetch('/api/orders/d2h/preflight'")
+    expect(source).toContain('fulfillmentWarehouseId')
     expect(source).toContain('authoritativeItems.get(item.variant_id)!.distributorPrice')
     expect(preflight).toContain(".from('organizations')")
     expect(preflight).toContain(".eq('products.is_active', true)")
@@ -42,7 +43,7 @@ describe('Distributor D2H Quick Order integration', () => {
     expect(source).toContain('const standardAvailableVariants = availableVariants.filter')
     expect(catalogResolver).toContain(".eq('products.product_categories.is_vape', true)")
     expect(catalogResolver).toContain("product_categories!inner (id, is_active, is_vape)")
-    expect(preflight).toContain('validateQuickOrderCatalogItems(items, catalog.variants)')
+    expect(preflight).toContain('validateQuickOrderCatalogItems(')
     expect(catalogResolver).toContain('This product is not available in the distributor Quick Order catalog.')
   })
 
