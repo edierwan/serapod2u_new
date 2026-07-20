@@ -58,6 +58,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         notes: body.notes || null,
     })
 
+    let inventoryPosting: { posted_lines?: number; skipped_lines?: number } | null = null
+    // Inventory is posted only when entering Return Received. Retries are
+    // idempotent inside post_return_case_inventory.
+    if (next === 'return_received') {
+        const { data: posting, error: postingError } = await (ctx.admin as any).rpc(
+            'post_return_case_inventory',
+            { p_return_case_id: id },
+        )
+        if (postingError) {
+            // Roll the status transition back so Draft/Submitted never appear posted
+            // and Received never sticks without a successful inventory attempt.
+            await ctx.admin.from('return_cases').update({
+                status: current,
+                received_at: rc.received_at,
+                received_by: rc.received_by,
+                received_date: rc.received_date,
+            }).eq('id', id)
+            await ctx.admin.from('return_case_status_history').delete()
+                .eq('return_case_id', id)
+                .eq('from_status', current)
+                .eq('to_status', next)
+                .eq('changed_by', ctx.userId)
+            return NextResponse.json(
+                { error: postingError.message || 'Return inventory posting failed; status was not advanced.' },
+                { status: 500 },
+            )
+        }
+        inventoryPosting = posting
+    }
+
     // Fire the matching Return Product notification for the new status. Idempotent
     // and non-blocking — a failure here never rolls back the transition above.
     const notify = await triggerReturnNotification(ctx.admin, request.nextUrl.origin, {
@@ -65,5 +95,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         status: next,
     })
 
-    return NextResponse.json({ ok: true, status: next, notificationWarnings: notify.warnings })
+    return NextResponse.json({
+        ok: true,
+        status: next,
+        inventoryPosting,
+        notificationWarnings: notify.warnings,
+    })
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getReturnContext, loadAccessibleCase, buildReturnItemRows, validateReturnSource, RETURN_ORG_SELECT } from '@/lib/returns/server'
+import { getReturnContext, loadAccessibleCase, buildReturnItemRows, validateReturnSource, validateReturnWarehouse, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
 import { normalizeReturnSourceType } from '@/lib/returns/constants'
 import type { ReturnSettings } from '@/lib/returns/types'
@@ -87,7 +87,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if ('contact_phone' in body) patch.contact_phone = body.contact_phone || null
     if ('contact_email' in body) patch.contact_email = body.contact_email || null
     if ('notes' in body) patch.notes = body.notes || null
-    if ('return_warehouse_id' in body) patch.return_warehouse_id = body.return_warehouse_id || null
+    if ('return_warehouse_id' in body) {
+        const warehouseId = body.return_warehouse_id || null
+        if (
+            warehouseId !== rc.return_warehouse_id
+            && rc.status !== 'return_draft'
+            && rc.status !== 'return_submitted'
+        ) {
+            return NextResponse.json(
+                { error: 'Return warehouse cannot be changed after inventory receipt/posting has started.' },
+                { status: 409 },
+            )
+        }
+        // Revalidate only a changed selection. This keeps historical returns
+        // editable/displayable when their original warehouse was later made
+        // inactive or moved, without allowing that warehouse on new returns.
+        if (warehouseId && warehouseId !== rc.return_warehouse_id) {
+            const warehouseCheck = await validateReturnWarehouse(ctx, warehouseId)
+            if (!warehouseCheck.ok) {
+                return NextResponse.json({ error: warehouseCheck.error }, { status: 400 })
+            }
+        }
+        patch.return_warehouse_id = warehouseId
+    }
     // Worksheet context snapshots — editable while in draft.
     if (rc.status === 'return_draft') {
         if ('reported_date' in body) patch.reported_date = body.reported_date || null

@@ -7,6 +7,10 @@ import {
   UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
   validateQuickOrderCatalogItems,
 } from '@/lib/orders/quick-order-catalog'
+import {
+  insufficientStockAtWarehouseMessage,
+  resolveSellerHqId,
+} from '@/lib/orders/hq-fulfillment-warehouses'
 
 interface RequestedItem {
   variantId: string
@@ -21,6 +25,9 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     const mode = body?.mode === 'standard' ? 'standard' : 'quick'
+    const fulfillmentWarehouseId = typeof body?.fulfillmentWarehouseId === 'string'
+      ? body.fulfillmentWarehouseId
+      : null
     const items = Array.isArray(body?.items) ? body.items as RequestedItem[] : []
     if (items.length === 0 || items.some(item =>
       typeof item?.variantId !== 'string'
@@ -33,6 +40,10 @@ export async function POST(request: Request) {
     const variantIds = items.map(item => item.variantId)
     if (new Set(variantIds).size !== variantIds.length) {
       return NextResponse.json({ error: 'Duplicate variants must be combined before creating the order.' }, { status: 400 })
+    }
+
+    if (!fulfillmentWarehouseId) {
+      return NextResponse.json({ error: 'A fulfillment warehouse is required.' }, { status: 400 })
     }
 
     const { data: requester, error: requesterError } = await supabase
@@ -48,7 +59,7 @@ export async function POST(request: Request) {
 
     const { data: requesterOrganization, error: requesterOrganizationError } = await supabase
       .from('organizations')
-      .select('org_type_code')
+      .select('id, org_type_code, parent_org_id')
       .eq('id', requester.organization_id)
       .single()
     if (requesterOrganizationError || !requesterOrganization) {
@@ -61,16 +72,26 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
       }
 
-      const catalog = await resolveQuickOrderCatalog(supabase, body.distributorId, requester.organization_id)
+      const catalog = await resolveQuickOrderCatalog(
+        supabase,
+        body.distributorId,
+        requester.organization_id,
+        fulfillmentWarehouseId,
+      )
       try {
-        const validated = validateQuickOrderCatalogItems(items, catalog.variants)
-        return NextResponse.json({ items: validated })
+        const validated = validateQuickOrderCatalogItems(
+          items,
+          catalog.variants,
+          catalog.fulfillmentWarehouseName,
+        )
+        return NextResponse.json({
+          items: validated,
+          fulfillmentWarehouseId: catalog.inventoryOrganizationId,
+          fulfillmentWarehouseName: catalog.fulfillmentWarehouseName,
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to validate the Quick Order catalog.'
-        return NextResponse.json(
-          { error: message },
-          { status: 409 },
-        )
+        return NextResponse.json({ error: message }, { status: 409 })
       }
     }
 
@@ -78,19 +99,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Your organization is not authorized to create this D2H order.' }, { status: 403 })
     }
 
-    let inventoryOrganizationId = requester.organization_id
-    if (requesterOrganization?.org_type_code === 'HQ') {
-      const { data: warehouse } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('parent_org_id', requester.organization_id)
-        .eq('org_type_code', 'WH')
-        .eq('is_active', true)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (warehouse) inventoryOrganizationId = warehouse.id
+    const hqOrganizationId = resolveSellerHqId(requesterOrganization)
+    if (!hqOrganizationId) {
+      return NextResponse.json({ error: 'Unable to resolve the seller HQ organization.' }, { status: 403 })
     }
+
+    const { data: fulfillmentWarehouse, error: fulfillmentWarehouseError } = await supabase
+      .from('organizations')
+      .select('id, org_name, org_type_code, parent_org_id, is_active')
+      .eq('id', fulfillmentWarehouseId)
+      .maybeSingle()
+    if (fulfillmentWarehouseError || !fulfillmentWarehouse) {
+      return NextResponse.json({ error: 'The selected fulfillment warehouse was not found.' }, { status: 400 })
+    }
+    if (
+      fulfillmentWarehouse.org_type_code !== 'WH'
+      || fulfillmentWarehouse.is_active !== true
+      || fulfillmentWarehouse.parent_org_id !== hqOrganizationId
+    ) {
+      return NextResponse.json(
+        { error: 'The selected fulfillment warehouse is not an active warehouse under this HQ.' },
+        { status: 400 },
+      )
+    }
+
+    const inventoryOrganizationId = fulfillmentWarehouse.id
+    const warehouseName = fulfillmentWarehouse.org_name
 
     if (typeof body?.distributorId !== 'string' || !body.distributorId) {
       return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
@@ -142,13 +176,18 @@ export async function POST(request: Request) {
     if (priceMissing) return NextResponse.json({ error: 'Distributor price is not maintained for one or more selected variants.' }, { status: 409 })
     const insufficient = validated.find(item => item.quantity > item.availableQuantity)
     if (insufficient) {
-      return NextResponse.json({ error: `Insufficient stock: ${insufficient.availableQuantity} units are currently available for a selected variant.` }, { status: 409 })
+      return NextResponse.json({ error: insufficientStockAtWarehouseMessage(warehouseName) }, { status: 409 })
     }
 
-    return NextResponse.json({ items: validated })
+    return NextResponse.json({
+      items: validated,
+      fulfillmentWarehouseId: inventoryOrganizationId,
+      fulfillmentWarehouseName: warehouseName,
+    })
   } catch (error) {
     console.error('D2H preflight failed:', error)
-    return NextResponse.json({ error: 'Unable to validate the D2H order.' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unable to validate the D2H order.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
