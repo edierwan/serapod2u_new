@@ -17,6 +17,46 @@ export interface ReturnContext {
     isManager: boolean
 }
 
+type ReturnWarehouseQueryResult = {
+    data: any[] | null
+    error: { message: string } | null
+}
+
+/**
+ * Load selectable Return Warehouses from Organizations Master Data.
+ *
+ * A return destination must be an active Warehouse whose direct parent is an
+ * active HQ. This deliberately excludes distributor-managed warehouses as well
+ * as HQ, distributor, shop, and manufacturer organizations themselves.
+ */
+export async function loadActiveHqReturnWarehouses(
+    // Keep this shared dynamic-select query outside Supabase's generated select
+    // inference; callers still pass the server admin client.
+    admin: any,
+    select = RETURN_ORG_SELECT,
+): Promise<ReturnWarehouseQueryResult> {
+    const { data: headquarters, error: headquartersError } = await admin
+        .from('organizations')
+        .select('id')
+        .eq('org_type_code', 'HQ')
+        .eq('is_active', true)
+
+    if (headquartersError) return { data: null, error: headquartersError }
+
+    const hqIds = (headquarters || []).map((organization: { id: string }) => organization.id)
+    if (hqIds.length === 0) return { data: [], error: null }
+
+    const { data, error } = await admin
+        .from('organizations')
+        .select(select)
+        .eq('org_type_code', 'WH')
+        .eq('is_active', true)
+        .in('parent_org_id', hqIds)
+        .order('org_name', { ascending: true })
+
+    return { data, error }
+}
+
 /**
  * Resolve the caller's return context (auth + org type). Returns a NextResponse
  * on failure so route handlers can `if (ctx instanceof NextResponse) return ctx`.
@@ -109,8 +149,8 @@ export function statusTimestampColumn(status: ReturnStatus): string | null {
 
 /**
  * Authoritative server-side check that a submitted `return_warehouse_id` is a
- * usable return destination: it exists, is a Warehouse (org_type_code = 'WH')
- * and is active.
+ * usable return destination: it exists, is active, is a Warehouse
+ * (org_type_code = 'WH'), and belongs directly to an active HQ organization.
  */
 export async function validateReturnWarehouse(
     ctx: ReturnContext,
@@ -118,7 +158,7 @@ export async function validateReturnWarehouse(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
     const { data: org, error } = await ctx.admin
         .from('organizations')
-        .select('id, org_type_code, is_active')
+        .select('id, org_type_code, is_active, parent_org_id')
         .eq('id', warehouseId)
         .maybeSingle()
 
@@ -127,8 +167,23 @@ export async function validateReturnWarehouse(
     if ((org as any).org_type_code !== 'WH') {
         return { ok: false, error: 'The selected organization is not a Warehouse and cannot be used as a Return Warehouse.' }
     }
-    if ((org as any).is_active === false) {
+    if ((org as any).is_active !== true) {
         return { ok: false, error: 'The selected Return Warehouse is inactive.' }
+    }
+
+    if (!(org as any).parent_org_id) {
+        return { ok: false, error: 'The selected Return Warehouse is not managed under Serapod HQ.' }
+    }
+
+    const { data: parent, error: parentError } = await ctx.admin
+        .from('organizations')
+        .select('id, org_type_code, is_active')
+        .eq('id', (org as any).parent_org_id)
+        .maybeSingle()
+
+    if (parentError) return { ok: false, error: 'Unable to validate the selected Return Warehouse.' }
+    if (!parent || (parent as any).org_type_code !== 'HQ' || (parent as any).is_active !== true) {
+        return { ok: false, error: 'The selected Return Warehouse is not managed under an active Serapod HQ.' }
     }
     return { ok: true }
 }

@@ -1171,7 +1171,7 @@ function ReturnCaseEditor({
                         )}
                     </Field>
                     <Field label="Return Warehouse" required>
-                        <Select value={warehouseId} onValueChange={setWarehouseId} disabled={readOnly}>
+                        <Select value={warehouseId} onValueChange={setWarehouseId} disabled={readOnly || warehouseOptions.length === 0}>
                             <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
                             <SelectContent>
                                 {warehouseOptions.map((w) => (
@@ -1181,6 +1181,11 @@ function ReturnCaseEditor({
                                 ))}
                             </SelectContent>
                         </Select>
+                        {warehouseOptions.length === 0 && (
+                            <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
+                                No active Serapod HQ warehouse available
+                            </span>
+                        )}
                         {selectedWarehouse?.inactive && (
                             <span className="mt-1 block text-xs text-amber-600 dark:text-amber-400">
                                 This warehouse is inactive — retained from the original return.
