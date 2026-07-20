@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, ArrowLeft, Save, Info, AlertTriangle, Star, Link as LinkIcon, Store } from 'lucide-react'
 import OrgLogoUpload from './OrgLogoUpload'
+import DistributorOrderFulfillmentCard from './DistributorOrderFulfillmentCard'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import {
   getOwnedOrganizationLogoPath,
@@ -42,6 +43,8 @@ interface ParentOrganization {
   org_code: string
   org_name: string
   org_type_code: string
+  is_active?: boolean | null
+  default_warehouse_org_id?: string | null
 }
 
 interface StateOption {
@@ -85,6 +88,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoRemoved, setLogoRemoved] = useState(false)
   const [logoError, setLogoError] = useState('')
+  const [parentHqDetails, setParentHqDetails] = useState<ParentOrganization | null>(null)
+  const [siblingWarehouses, setSiblingWarehouses] = useState<ParentOrganization[]>([])
+  const [fulfillmentCardKey, setFulfillmentCardKey] = useState(0)
   const { isReady, supabase, error: authHookError } = useSupabaseAuth()
   const { toast } = useToast()
 
@@ -177,7 +183,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_code, org_name, org_type_code')
+        .select('id, org_code, org_name, org_type_code, is_active, default_warehouse_org_id')
         .eq('is_active', true)
         .order('org_name')
 
@@ -185,6 +191,39 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       setParentOrgs(data || [])
     } catch (error) {
       console.error('Error loading parent organizations:', error)
+    }
+  }
+
+  const loadParentHqContext = async (org: Organization) => {
+    if (org.org_type_code !== 'WH' || !org.parent_org_id) {
+      setParentHqDetails(null)
+      setSiblingWarehouses([])
+      return
+    }
+
+    try {
+      const [{ data: parent, error: parentError }, { data: siblings, error: siblingError }] = await Promise.all([
+        supabase
+          .from('organizations')
+          .select('id, org_code, org_name, org_type_code, is_active, default_warehouse_org_id')
+          .eq('id', org.parent_org_id)
+          .maybeSingle(),
+        supabase
+          .from('organizations')
+          .select('id, org_code, org_name, org_type_code, is_active, default_warehouse_org_id')
+          .eq('parent_org_id', org.parent_org_id)
+          .eq('org_type_code', 'WH')
+          .eq('is_active', true)
+          .order('org_name'),
+      ])
+      if (parentError) throw parentError
+      if (siblingError) throw siblingError
+      setParentHqDetails((parent as ParentOrganization | null) || null)
+      setSiblingWarehouses((siblings || []) as ParentOrganization[])
+    } catch (error) {
+      console.error('Error loading parent HQ fulfillment context:', error)
+      setParentHqDetails(null)
+      setSiblingWarehouses([])
     }
   }
 
@@ -331,8 +370,10 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         await loadDistrictsForState(data.state_id)
       }
 
-      setOrganization(data as Organization)
-      setFormData(data as OrganizationFormData)
+      const loaded = data as Organization
+      setOrganization(loaded)
+      setFormData(loaded)
+      await loadParentHqContext(loaded)
     } catch (error) {
       console.error('Error loading organization:', error)
       toast({
@@ -456,6 +497,27 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       if (formData.warranty_bonus !== undefined) updatePayload.warranty_bonus = formData.warranty_bonus
       if (formData.signature_type !== undefined) updatePayload.signature_type = formData.signature_type
       if (formData.signature_url !== undefined) updatePayload.signature_url = formData.signature_url
+      if (formData.is_active !== undefined && formData.is_active !== organization?.is_active) {
+        const deactivating = organization?.is_active === true && formData.is_active === false
+        const isDefaultFulfillmentWarehouse = Boolean(
+          organization?.org_type_code === 'WH'
+          && parentHqDetails?.org_type_code === 'HQ'
+          && parentHqDetails.default_warehouse_org_id === organization.id
+        )
+        if (deactivating && isDefaultFulfillmentWarehouse) {
+          const replacements = siblingWarehouses.filter((warehouse) => warehouse.id !== organization.id)
+          toast({
+            title: 'Cannot deactivate default warehouse',
+            description: replacements.length > 0
+              ? 'Set another active HQ warehouse as the default fulfillment warehouse before deactivating this one.'
+              : 'This is the only active HQ warehouse and is currently the default. Configure another active warehouse as default before deactivation.',
+            variant: 'destructive',
+          })
+          setSaving(false)
+          return
+        }
+        updatePayload.is_active = formData.is_active
+      }
 
       // Shop-specific fields
       if (organization?.org_type_code === 'SHOP') {
@@ -841,6 +903,45 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                     ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {organization?.org_type_code === 'WH' && parentHqDetails?.org_type_code === 'HQ' && (
+            <DistributorOrderFulfillmentCard
+              key={`${organization.id}:${fulfillmentCardKey}`}
+              warehouse={{
+                id: organization.id,
+                org_name: formData.org_name || organization.org_name,
+                org_type_code: organization.org_type_code,
+                parent_org_id: formData.parent_org_id || organization.parent_org_id,
+                is_active: formData.is_active ?? organization.is_active ?? true,
+              }}
+              parentHq={parentHqDetails}
+              onDefaultChanged={async () => {
+                await loadParentHqContext({
+                  ...organization,
+                  parent_org_id: formData.parent_org_id || organization.parent_org_id,
+                })
+                setFulfillmentCardKey((value) => value + 1)
+              }}
+            />
+          )}
+
+          {organization?.org_type_code === 'WH' && (
+            <div className="flex items-center gap-3 rounded-md border border-border px-3 py-3">
+              <input
+                id="is_active"
+                type="checkbox"
+                className="h-4 w-4"
+                checked={formData.is_active !== false}
+                onChange={(e) => handleInputChange('is_active', e.target.checked)}
+              />
+              <div>
+                <Label htmlFor="is_active" className="mb-0">Warehouse is active</Label>
+                <p className="text-xs text-muted-foreground">
+                  The default fulfillment warehouse cannot be deactivated until another active HQ warehouse is set as default.
+                </p>
+              </div>
             </div>
           )}
 
