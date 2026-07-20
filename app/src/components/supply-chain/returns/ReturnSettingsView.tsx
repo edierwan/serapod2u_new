@@ -92,12 +92,17 @@ export default function ReturnSettingsView({ userProfile: _userProfile }: { user
                 <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">Default Return Warehouse</span>
-                        <Select value={settings.default_return_warehouse_id || ''} onValueChange={(v) => setSettings({ ...settings, default_return_warehouse_id: v })} disabled={!canEdit}>
+                        <Select value={settings.default_return_warehouse_id || ''} onValueChange={(v) => setSettings({ ...settings, default_return_warehouse_id: v })} disabled={!canEdit || warehouses.length === 0}>
                             <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
                             <SelectContent>
                                 {warehouses.map((w) => <SelectItem key={w.id} value={w.id}>{w.org_name}{w.org_code ? ` (${w.org_code})` : ''}</SelectItem>)}
                             </SelectContent>
                         </Select>
+                        {warehouses.length === 0 && (
+                            <span className="block text-xs text-amber-600 dark:text-amber-400">
+                                No active Serapod HQ warehouse available
+                            </span>
+                        )}
                     </label>
                     <label className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
                         <span className="text-sm text-foreground">Enable shop self-service return</span>

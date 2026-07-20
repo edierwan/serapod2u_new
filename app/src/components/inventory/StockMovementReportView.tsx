@@ -698,7 +698,9 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           product_variants: productVariants,
           organizations,
           manufacturers,
-          users
+          users,
+          from_organization_name: fromOrg?.org_name || item.from_organization_name || null,
+          to_organization_name: toOrg?.org_name || item.to_organization_name || null,
         }, configuration)
 
         return resolveStockMovementHistoryValues(configuredMovement)
@@ -1374,7 +1376,19 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                           if (movement.movement_type === 'scratch_game_in') {
                             return movement.organizations?.org_name || 'Serapod Warehouse'
                           }
-                          return movement.organizations?.org_name || 'N/A'
+                          const locationName = movement.organizations?.org_name || 'N/A'
+                          const fromName = (movement as any).from_organization_name as string | undefined
+                          const toName = (movement as any).to_organization_name as string | undefined
+                          return (
+                            <div>
+                              <p>{locationName}</p>
+                              {(fromName || toName) && (fromName !== toName) && (
+                                <p className="text-[11px] text-gray-500">
+                                  {fromName || '—'} → {toName || '—'}
+                                </p>
+                              )}
+                            </div>
+                          )
                         })()}
                         {movement.warehouse_location && (
                           <p className="text-xs text-gray-500">{movement.warehouse_location}</p>

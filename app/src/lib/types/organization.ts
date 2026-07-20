@@ -19,6 +19,7 @@ export interface Organization {
   logo_url: string | null
   latitude: number | null
   longitude: number | null
+  is_active?: boolean | null
   default_warehouse_org_id: string | null
   settings?: Record<string, any> | null
   company_id?: string | null
