@@ -43,6 +43,14 @@ import {
   type InventorySummarySortColumn,
   type VariantInventorySummary
 } from '@/lib/inventory/inventory-view-aggregation'
+import {
+  HQ_ALL_WAREHOUSES_LABEL,
+  HQ_CONSOLIDATED_LEGACY_NOTE,
+  hqConsolidatedLocationValue,
+  hqIdFromConsolidatedLocation,
+  isHqConsolidatedLocation,
+  remapRowsForHqConsolidatedView,
+} from '@/lib/inventory/hq-consolidated-location'
 
 interface InventoryItem {
   id: string
@@ -94,6 +102,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [valueRangeFilter, setValueRangeFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [locations, setLocations] = useState<any[]>([])
+  const [hqWarehouseIdsByHq, setHqWarehouseIdsByHq] = useState<Map<string, string[]>>(new Map())
   const [products, setProducts] = useState<any[]>([])
   const [variants, setVariants] = useState<any[]>([])
   const [sortColumn, setSortColumn] = useState<InventorySummarySortColumn | null>('product_name')
@@ -160,13 +169,20 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   // configuration shares them. Free-text search is deliberately applied after
   // aggregation: matching one Stock SKU must not produce a partial flavour total.
   const identityFilteredRows = useMemo(() => {
-    return inventory.filter(item => {
-      const matchesLocation = locationFilter === 'all' || item.organization_id === locationFilter
+    const locationScoped = isHqConsolidatedLocation(locationFilter)
+      ? remapRowsForHqConsolidatedView(
+        inventory,
+        hqWarehouseIdsByHq.get(hqIdFromConsolidatedLocation(locationFilter)) || [],
+        locationFilter,
+      )
+      : inventory.filter(item => locationFilter === 'all' || item.organization_id === locationFilter)
+
+    return locationScoped.filter(item => {
       const matchesProduct = productFilter === 'all' || item.product_name === productFilter
       const matchesVariant = variantFilter === 'all' || item.variant_code === variantFilter
-      return matchesLocation && matchesProduct && matchesVariant
+      return matchesProduct && matchesVariant
     })
-  }, [inventory, locationFilter, productFilter, variantFilter])
+  }, [inventory, locationFilter, productFilter, variantFilter, hqWarehouseIdsByHq])
 
   // One authoritative summary per organization + variant. Four Banana balance
   // rows collapse to a single row; incoming appears once; value is positive.
@@ -918,13 +934,41 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_name, org_code')
+        .select('id, org_name, org_code, org_type_code, parent_org_id')
         .in('org_type_code', ['WH', 'HQ'])
         .eq('is_active', true)
         .order('org_name')
 
       if (error) throw error
-      setLocations(data || [])
+
+      const rows = data || []
+      const hqRows = rows.filter((row: any) => row.org_type_code === 'HQ')
+      const warehouseRows = rows.filter((row: any) => row.org_type_code === 'WH')
+      const warehouseIdsByHq = new Map<string, string[]>()
+      for (const warehouse of warehouseRows) {
+        if (!warehouse.parent_org_id) continue
+        const current = warehouseIdsByHq.get(warehouse.parent_org_id) || []
+        current.push(warehouse.id)
+        warehouseIdsByHq.set(warehouse.parent_org_id, current)
+      }
+      setHqWarehouseIdsByHq(warehouseIdsByHq)
+
+      const consolidatedOptions = hqRows
+        .filter((hq: any) => (warehouseIdsByHq.get(hq.id) || []).length > 0)
+        .map((hq: any) => ({
+          id: hqConsolidatedLocationValue(hq.id),
+          org_name: HQ_ALL_WAREHOUSES_LABEL,
+          org_code: 'HQ-ALL-WH',
+          is_consolidated: true,
+        }))
+
+      // Keep individual warehouse/HQ filters; append display-only consolidated option(s).
+      setLocations([...rows.map((row: any) => ({
+        id: row.id,
+        org_name: row.org_name,
+        org_code: row.org_code,
+        is_consolidated: false,
+      })), ...consolidatedOptions])
     } catch (error) {
       console.error('Error fetching locations:', error)
     }
@@ -1244,10 +1288,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     {locations.map((location) => (
                       <SelectItem key={location.id} value={location.id}>
                         {location.org_name}
+                        {location.is_consolidated ? ' (consolidated)' : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {isHqConsolidatedLocation(locationFilter) && (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {HQ_CONSOLIDATED_LEGACY_NOTE}
+                  </p>
+                )}
               </div>
 
               <div>
