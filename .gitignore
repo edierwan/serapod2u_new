@@ -195,6 +195,10 @@ z_*
 !/docs/roadtourmodules/
 !/docs/roadtourmodules/33-roadtour-event-product-category-experience.md
 
+# HQ inventory cutover runbooks are implementation artifacts
+!/docs/runbooks/
+!/docs/runbooks/**
+
 # Local reporting audit exports stay private
 /exports/reporting-audit/
 

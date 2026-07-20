@@ -51,6 +51,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ShopDistributorsManager from '@/components/shops/ShopDistributorsManager'
 import DistributorShopsManager from '@/components/distributors/DistributorShopsManager'
+import { buildSetDefaultFulfillmentConfirmMessage } from '@/lib/organizations/distributor-fulfillment-default'
 
 interface UserProfile {
   id: string
@@ -274,6 +275,19 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
   const canDeleteOrganizations = (userProfile.roles?.role_level ?? Number.MAX_SAFE_INTEGER) <= 10
+  const [isHqAdmin, setIsHqAdmin] = useState(false)
+
+  useEffect(() => {
+    if (!isReady) return
+    void supabase.rpc('is_hq_admin').then(({ data, error }) => {
+      if (error) {
+        setIsHqAdmin((userProfile.roles?.role_level ?? Number.MAX_SAFE_INTEGER) <= 10)
+        return
+      }
+      setIsHqAdmin(Boolean(data))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady])
 
   useEffect(() => {
     if (isReady) {
@@ -633,6 +647,15 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
   const handleSetDefaultWarehouse = async (warehouse: Organization) => {
     try {
+      if (!isHqAdmin) {
+        toast({
+          title: "Permission denied",
+          description: "Only HQ Admin can change the default fulfillment warehouse. Open the warehouse Edit page to manage this setting.",
+          variant: "destructive"
+        })
+        return
+      }
+
       // Find the parent HQ organization
       const parentHQ = organizations.find(o => o.id === warehouse.parent_org_id && o.org_type_code === 'HQ')
 
@@ -650,15 +673,15 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       if (isAlreadyDefault) {
         toast({
           title: "Already Default",
-          description: `${warehouse.org_name} is already the default warehouse for ${parentHQ.org_name}.`,
+          description: `${warehouse.org_name} is already the default fulfillment warehouse for ${parentHQ.org_name}.`,
         })
         return
       }
 
-      const confirmMsg = `Set ${warehouse.org_name} as the default warehouse for ${parentHQ.org_name}?\n\nAll new orders will be directed to this warehouse.`
+      const confirmMsg = buildSetDefaultFulfillmentConfirmMessage(warehouse.org_name, parentHQ.org_name)
       if (!confirm(confirmMsg)) return
 
-      // Call the API to set default warehouse
+      // Call the API to set default warehouse on the parent HQ
       const response = await fetch('/api/organizations/set-default-warehouse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -675,8 +698,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       }
 
       toast({
-        title: "✓ Default Warehouse Updated",
-        description: `${warehouse.org_name} is now the default warehouse for ${parentHQ.org_name}.`,
+        title: "✓ Default fulfillment warehouse updated",
+        description: `${warehouse.org_name} is now the default for new distributor orders under ${parentHQ.org_name}.`,
       })
 
       // Refresh organizations to show updated default status
@@ -1370,7 +1393,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       Shops
                     </Button>
                   )}
-                  {org.org_type_code === 'WH' && org.parent_org_id && (
+                  {org.org_type_code === 'WH' && org.parent_org_id && isHqAdmin && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1380,9 +1403,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         }`}
                       onClick={() => handleSetDefaultWarehouse(org)}
                       disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
+                      title="Prefer Edit warehouse → Distributor Order Fulfillment for the guided setting"
                     >
                       <Building2 className="w-3.5 h-3.5 mr-1.5" />
-                      {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Default'}
+                      {organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? 'Default ✓' : 'Set Default'}
                     </Button>
                   )}
                   <Button

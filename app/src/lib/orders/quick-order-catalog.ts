@@ -25,6 +25,7 @@ export const UNCLASSIFIED_INVENTORY_ORDER_MESSAGE =
 export function validateQuickOrderCatalogItems(
   items: QuickOrderCatalogRequestItem[],
   variants: QuickOrderCatalogVariant[],
+  warehouseName?: string | null,
 ) {
   const catalogByVariant = new Map(variants.map(variant => [variant.id, variant]))
   if (items.some(item => !catalogByVariant.has(item.variantId))) {
@@ -37,7 +38,10 @@ export function validateQuickOrderCatalogItems(
       throw new Error(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)
     }
     if (item.quantity > variant.available_qty) {
-      throw new Error(`Insufficient stock: ${variant.available_qty} units are currently available for a selected variant.`)
+      const location = warehouseName || 'the selected warehouse'
+      throw new Error(
+        `Insufficient available stock at ${location}. Select another fulfillment warehouse or adjust the order quantity.`,
+      )
     }
     return {
       variantId: item.variantId,
@@ -165,7 +169,8 @@ export async function resolveQuickOrderCatalog(
   supabase: any,
   distributorId: string,
   requesterOrganizationId: string,
-): Promise<{ variants: QuickOrderCatalogVariant[]; inventoryOrganizationId: string }> {
+  fulfillmentWarehouseId?: string | null,
+): Promise<{ variants: QuickOrderCatalogVariant[]; inventoryOrganizationId: string; fulfillmentWarehouseName: string | null }> {
   const { data: requesterOrganization, error: requesterError } = await supabase
     .from('organizations')
     .select('id, parent_org_id, org_type_code')
@@ -190,19 +195,28 @@ export async function resolveQuickOrderCatalog(
     .maybeSingle()
   if (distributorError || !distributor) throw new Error('The selected distributor is not available in this HQ scope.')
 
-  let inventoryOrganizationId = requesterOrganization.id
-  if (isHeadquarters) {
-    const { data: warehouse } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('parent_org_id', requesterOrganization.id)
-      .eq('org_type_code', 'WH')
-      .eq('is_active', true)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    if (warehouse) inventoryOrganizationId = warehouse.id
+  if (!fulfillmentWarehouseId) {
+    throw new Error('A fulfillment warehouse is required.')
   }
+
+  const { data: fulfillmentWarehouse, error: fulfillmentWarehouseError } = await supabase
+    .from('organizations')
+    .select('id, org_name, org_type_code, parent_org_id, is_active')
+    .eq('id', fulfillmentWarehouseId)
+    .maybeSingle()
+  if (fulfillmentWarehouseError || !fulfillmentWarehouse) {
+    throw new Error('The selected fulfillment warehouse was not found.')
+  }
+  if (
+    fulfillmentWarehouse.org_type_code !== 'WH'
+    || fulfillmentWarehouse.is_active !== true
+    || fulfillmentWarehouse.parent_org_id !== hqOrganizationId
+  ) {
+    throw new Error('The selected fulfillment warehouse is not an active warehouse under this HQ.')
+  }
+
+  const inventoryOrganizationId = fulfillmentWarehouse.id
+  const fulfillmentWarehouseName = fulfillmentWarehouse.org_name as string
 
   const { data: rows, error: variantsError } = await supabase
     .from('product_variants')
@@ -233,7 +247,9 @@ export async function resolveQuickOrderCatalog(
 
   if (variantsError) throw new Error('Unable to load the distributor Quick Order catalog.')
   const variantIds = (rows || []).map((row: QuickOrderCatalogRow) => row.id)
-  if (variantIds.length === 0) return { variants: [], inventoryOrganizationId }
+  if (variantIds.length === 0) {
+    return { variants: [], inventoryOrganizationId, fulfillmentWarehouseName }
+  }
 
   const [{ data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
     supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
@@ -247,5 +263,9 @@ export async function resolveQuickOrderCatalog(
 
   const availableByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
   const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
-  return { variants: filterQuickOrderCatalogRows(rows || [], availableByVariant, unclassifiedVariantIds), inventoryOrganizationId }
+  return {
+    variants: filterQuickOrderCatalogRows(rows || [], availableByVariant, unclassifiedVariantIds),
+    inventoryOrganizationId,
+    fulfillmentWarehouseName,
+  }
 }

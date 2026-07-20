@@ -168,6 +168,30 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       if (error) throw error
       if (!order) throw new Error('Order not found')
 
+      // Resolve fulfillment warehouse display name for D2H/S2D (legacy-safe).
+      const fulfillmentWarehouseId = (order as any).fulfillment_warehouse_id as string | null
+      if (fulfillmentWarehouseId) {
+        const { data: fulfillmentWarehouse } = await supabase
+          .from('organizations')
+          .select('id, org_name')
+          .eq('id', fulfillmentWarehouseId)
+          .maybeSingle()
+        ;(order as any).fulfillment_warehouse_name = fulfillmentWarehouse?.org_name || null
+      } else if (['D2H', 'S2D', 'DH'].includes(order.order_type)) {
+        const { data: inventoryOrgId } = await (supabase as any).rpc('order_inventory_organization', {
+          p_order_id: orderId,
+        })
+        if (inventoryOrgId) {
+          const { data: fulfillmentWarehouse } = await supabase
+            .from('organizations')
+            .select('id, org_name')
+            .eq('id', inventoryOrgId)
+            .maybeSingle()
+          ;(order as any).fulfillment_warehouse_id = inventoryOrgId
+          ;(order as any).fulfillment_warehouse_name = fulfillmentWarehouse?.org_name || null
+        }
+      }
+
       // Compute resolved actors (may be hydrated from API). We keep them
       // separate from the Supabase-inferred row type to avoid type conflicts.
       let resolvedCreatedByUser = order.created_by_user as OrderActor | null | undefined
@@ -710,6 +734,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                 <span className="text-gray-500">By:</span>
                 <span className="font-medium text-gray-900">{orderData.created_by_user?.full_name || 'Unknown'}</span>
               </div>
+              {['D2H', 'S2D', 'DH'].includes(orderData.order_type) && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-500">Fulfilled From:</span>
+                  <span className="font-medium text-gray-900">
+                    {(orderData as any).fulfillment_warehouse_name || 'Legacy / unresolved'}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between gap-4">
                 <span className="text-gray-500">Ledger:</span>
                 <span className="font-medium text-gray-900">Stock Purchased / Inventory</span>

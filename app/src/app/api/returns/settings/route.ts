@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getReturnContext } from '@/lib/returns/server'
+import { getReturnContext, loadActiveHqReturnWarehouses, validateReturnWarehouse } from '@/lib/returns/server'
 
 /** GET /api/returns/settings — settings + reason/condition master lists. */
 export async function GET() {
@@ -10,12 +10,7 @@ export async function GET() {
         ctx.admin.from('return_settings').select('*').eq('id', 1).maybeSingle(),
         ctx.admin.from('return_reasons').select('*').order('sort_order'),
         ctx.admin.from('return_conditions').select('*').order('sort_order'),
-        ctx.admin
-            .from('organizations')
-            .select('id, org_code, org_name')
-            .in('org_type_code', ['WH', 'HQ', 'DIST'])
-            .eq('is_active', true)
-            .order('org_name'),
+        loadActiveHqReturnWarehouses(ctx.admin, 'id, org_code, org_name'),
     ])
 
     const err = settingsRes.error || reasonsRes.error || conditionsRes.error || warehousesRes.error
@@ -40,6 +35,12 @@ export async function PUT(request: NextRequest) {
 
     if (body.settings) {
         const s = body.settings
+        if (s.default_return_warehouse_id) {
+            const warehouseCheck = await validateReturnWarehouse(ctx, s.default_return_warehouse_id)
+            if (!warehouseCheck.ok) {
+                return NextResponse.json({ error: warehouseCheck.error }, { status: 400 })
+            }
+        }
         const { error } = await ctx.admin.from('return_settings').upsert({
             id: 1,
             default_return_warehouse_id: s.default_return_warehouse_id || null,

@@ -8,6 +8,13 @@ import { Input } from '@/components/ui/input'
 import { ArrowLeft, User, Package, Loader2, Trash2, ShoppingCart, Building2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import QuickOrderGrid from './QuickOrderGrid'
+import {
+  MISSING_DEFAULT_FULFILLMENT_WAREHOUSE_MESSAGE,
+  filterEligibleHqFulfillmentWarehouses,
+  resolveDefaultFulfillmentWarehouseId,
+  resolveSellerHqId,
+  type HqFulfillmentWarehouse,
+} from '@/lib/orders/hq-fulfillment-warehouses'
 
 interface UserProfile {
   id: string
@@ -96,6 +103,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const [isDistributorDropdownOpen, setIsDistributorDropdownOpen] = useState(false)
   const distributorSearchRef = useRef<HTMLDivElement>(null)
   const [hqOrgId, setHqOrgId] = useState<string>('')
+  const [fulfillmentWarehouses, setFulfillmentWarehouses] = useState<HqFulfillmentWarehouse[]>([])
+  const [fulfillmentWarehouseId, setFulfillmentWarehouseId] = useState('')
+  const [defaultFulfillmentMissing, setDefaultFulfillmentMissing] = useState(false)
+  const submitLockRef = useRef(false)
 
   // Customer Information
   const [customerName, setCustomerName] = useState('')
@@ -108,6 +119,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   const [selectedVariantId, setSelectedVariantId] = useState('')
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [orderMode, setOrderMode] = useState<'quick' | 'standard'>('quick')
+  const selectedFulfillmentWarehouse = fulfillmentWarehouses.find((warehouse) => warehouse.id === fulfillmentWarehouseId) || null
 
   // Product filtering
   const [productSearchQuery, setProductSearchQuery] = useState('')
@@ -157,47 +169,50 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       setSellerOrg(userOrgData)
       setBuyerOrg(null)
 
-      // Find parent HQ org to load distributors
-      let hqOrgId = userOrgData.parent_org_id
-
-      // If no parent_org_id, check if current org is HQ or WH acting as parent
-      if (!hqOrgId) {
-        if (userOrgData.org_type_code === 'HQ' || userOrgData.org_type_code === 'WH') {
-          // Assume we are the parent/HQ
-          hqOrgId = userOrgData.id
-        } else {
-          toast({
-            title: 'Configuration Error',
-            description: 'Your organization is not linked to a parent HQ. Please contact administrator.',
-            variant: 'destructive'
-          })
-          return
-        }
+      const resolvedHqOrgId = resolveSellerHqId(userOrgData)
+      if (!resolvedHqOrgId) {
+        toast({
+          title: 'Configuration Error',
+          description: 'Your organization is not linked to a parent HQ. Please contact administrator.',
+          variant: 'destructive'
+        })
+        return
       }
 
-      setHqOrgId(hqOrgId)
+      setHqOrgId(resolvedHqOrgId)
 
-      // Determine inventory source organization
-      // If we are HQ, inventory is likely in a child Warehouse
-      let inventoryOrgId = userProfile.organization_id
-      if (userOrgData.org_type_code === 'HQ') {
-        const { data: whData } = await supabase
+      const [{ data: hqData, error: hqError }, { data: warehouseRows, error: warehouseError }] = await Promise.all([
+        supabase
           .from('organizations')
-          .select('id')
-          .eq('parent_org_id', userOrgData.id)
+          .select('id, default_warehouse_org_id')
+          .eq('id', resolvedHqOrgId)
+          .single(),
+        supabase
+          .from('organizations')
+          .select('id, org_name, org_code, org_type_code, parent_org_id, is_active')
+          .eq('parent_org_id', resolvedHqOrgId)
           .eq('org_type_code', 'WH')
           .eq('is_active', true)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle()
+          .order('org_name', { ascending: true }),
+      ])
+      if (hqError) throw hqError
+      if (warehouseError) throw warehouseError
 
-        if (whData) {
-          inventoryOrgId = whData.id
-        }
-      }
+      const eligibleWarehouses = filterEligibleHqFulfillmentWarehouses(
+        (warehouseRows || []) as HqFulfillmentWarehouse[],
+        resolvedHqOrgId,
+      )
+      setFulfillmentWarehouses(eligibleWarehouses)
+
+      const defaultResolution = resolveDefaultFulfillmentWarehouseId(
+        hqData?.default_warehouse_org_id,
+        eligibleWarehouses,
+      )
+      setDefaultFulfillmentMissing(defaultResolution.defaultMissingOrInvalid)
+      setFulfillmentWarehouseId(defaultResolution.warehouseId || '')
 
       // Load available distributors (children of HQ)
-      await loadDistributors(hqOrgId, inventoryOrgId)
+      await loadDistributors(resolvedHqOrgId)
 
     } catch (error: any) {
       console.error('Error initializing order:', error)
@@ -252,6 +267,21 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     }
   }
 
+  const refreshAvailabilityForSelection = async (
+    distributorId: string,
+    warehouseId: string,
+  ) => {
+    if (!distributorId || !warehouseId) {
+      setAvailableVariants([])
+      setQuickOrderVariants([])
+      return
+    }
+    await Promise.all([
+      loadAvailableProducts(distributorId, warehouseId),
+      loadQuickOrderCatalog(distributorId, warehouseId),
+    ])
+  }
+
   const handleDistributorChange = async (distributorId: string) => {
     setSelectedDistributorId(distributorId)
 
@@ -271,44 +301,24 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     ].filter(Boolean).join(', ')
 
     setDeliveryAddress(fullAddress || '')
-
-    // Determine inventory source again (need to pass it or store it)
-    // For now, re-fetch or assume we stored it. 
-    // Better to store it in state.
-    // But since I can't easily add state without replacing the whole component, 
-    // I'll re-derive it or pass it.
-    // Actually, I can just re-derive it inside loadAvailableProducts or pass it.
-    // Let's modify loadAvailableProducts to accept inventoryOrgId.
-
-    // Wait, I need to pass inventoryOrgId to loadAvailableProducts.
-    // I'll fetch it again here to be safe/simple.
-
-    let inventoryOrgId = userProfile.organization_id
-    // Check if we are HQ
-    const { data: userOrg } = await supabase.from('organizations').select('org_type_code').eq('id', userProfile.organization_id).single()
-    if (userOrg?.org_type_code === 'HQ') {
-      const { data: wh } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('parent_org_id', userProfile.organization_id)
-        .eq('org_type_code', 'WH')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-      if (wh) inventoryOrgId = wh.id
-    }
-
-    await Promise.all([
-      loadAvailableProducts(distributorId, inventoryOrgId),
-      loadQuickOrderCatalog(distributorId),
-    ])
+    await refreshAvailabilityForSelection(distributorId, fulfillmentWarehouseId)
   }
 
-  const loadQuickOrderCatalog = async (distributorId: string) => {
+  const handleFulfillmentWarehouseChange = async (warehouseId: string) => {
+    setFulfillmentWarehouseId(warehouseId)
+    if (!selectedDistributorId) return
+    await refreshAvailabilityForSelection(selectedDistributorId, warehouseId)
+    toast({
+      title: 'Fulfillment warehouse updated',
+      description: 'Available quantities were refreshed for the selected warehouse.',
+    })
+  }
+
+  const loadQuickOrderCatalog = async (distributorId: string, warehouseId: string) => {
     const response = await fetch('/api/orders/d2h/quick-order-catalog', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ distributorId }),
+      body: JSON.stringify({ distributorId, fulfillmentWarehouseId: warehouseId }),
     })
     const result = await response.json().catch(() => null)
     if (!response.ok) {
@@ -321,6 +331,23 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       return
     }
     setQuickOrderVariants(result.variants || [])
+
+    const availability = new Map<string, ProductVariant>(
+      (result.variants || []).map((variant: ProductVariant) => [variant.id, variant]),
+    )
+    const insufficient = orderItems.filter((item) => {
+      const variant = availability.get(item.variant_id)
+      return !variant || (
+        variant.inventory_classification !== 'unclassified' && item.qty > variant.available_qty
+      )
+    })
+    if (insufficient.length > 0) {
+      toast({
+        title: 'Insufficient stock at selected warehouse',
+        description: `${insufficient.length} selected item(s) exceed available stock at ${result.fulfillmentWarehouseName || 'the selected warehouse'}. Adjust quantities before submitting.`,
+        variant: 'destructive',
+      })
+    }
   }
 
   const loadAvailableProducts = async (distributorId: string, inventoryOrgId: string) => {
@@ -585,14 +612,28 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   }
 
   const saveOrder = async () => {
+    if (submitLockRef.current || saving) return
+
     try {
       setSaving(true)
+      submitLockRef.current = true
 
       // Validation
       if (!selectedDistributorId) {
         toast({
           title: 'Validation Error',
           description: 'Please select a distributor',
+          variant: 'destructive'
+        })
+        return
+      }
+
+      if (!fulfillmentWarehouseId) {
+        toast({
+          title: 'Validation Error',
+          description: defaultFulfillmentMissing
+            ? MISSING_DEFAULT_FULFILLMENT_WAREHOUSE_MESSAGE
+            : 'Please select a fulfillment warehouse',
           variant: 'destructive'
         })
         return
@@ -627,13 +668,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       }
 
       // Re-read authoritative active variants, distributor prices, and warehouse
-      // availability on the server immediately before using the existing D2H flow.
+      // availability on the server immediately before the atomic D2H submit RPC.
       const preflightResponse = await fetch('/api/orders/d2h/preflight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: orderMode,
           distributorId: selectedDistributorId,
+          fulfillmentWarehouseId,
           items: positiveOrderItems.map(item => ({ variantId: item.variant_id, quantity: item.qty }))
         })
       })
@@ -650,68 +692,29 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         .rpc('get_company_id', { p_org_id: userProfile.organization_id })
 
       const companyId = companyData || userProfile.organization_id
+      const idempotencyKey = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `d2h-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-      // Create order with draft status first (RLS requirement)
-      // Note: order_no and display_doc_no will be auto-generated by database triggers
-      const orderData = {
-        order_type: 'D2H',
-        // order_no is NOT set here - the database trigger orders_before_insert() will generate it
-        // in the format ORD-DH-YYMM-XX, and orders_auto_display_doc_no trigger will generate
-        // display_doc_no in the format SO26XXXXXX
-        company_id: companyId,
-        buyer_org_id: buyerOrg.id,
-        seller_org_id: sellerOrg.id,
-        status: 'draft', // Create as draft first
-        has_rfid: false,
-        has_points: true,
-        has_lucky_draw: true,
-        has_redeem: true,
-        notes: `Customer: ${customerName}, Phone: ${phoneNumber}, Address: ${deliveryAddress}`,
-        created_by: userProfile.id
-      }
+      const { data: order, error: submitError } = await (supabase as any).rpc('submit_and_allocate_d2h_order', {
+        p_company_id: companyId,
+        p_buyer_org_id: buyerOrg.id,
+        p_seller_org_id: sellerOrg.id,
+        p_fulfillment_warehouse_id: fulfillmentWarehouseId,
+        p_items: positiveOrderItems.map(item => ({
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          qty: item.qty,
+          unit_price: authoritativeItems.get(item.variant_id)!.distributorPrice,
+        })),
+        p_notes: `Customer: ${customerName}, Phone: ${phoneNumber}, Address: ${deliveryAddress}`,
+        p_created_by: userProfile.id,
+        p_idempotency_key: idempotencyKey,
+      })
 
-      // Use a type assertion for the payload to satisfy supabase's typed insert
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert(orderData as any)
-        .select()
-        .single()
-
-      if (orderError) {
-        console.error('Error creating order:', orderError)
-        throw new Error(`Failed to create order: ${orderError.message}`)
-      }
-
-      // Insert order items
-      const itemsToInsert = positiveOrderItems.map(item => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        variant_id: item.variant_id,
-        qty: item.qty,
-        unit_price: authoritativeItems.get(item.variant_id)!.distributorPrice,
-        company_id: companyId
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(itemsToInsert)
-
-      if (itemsError) {
-        console.error('Error inserting order items:', itemsError)
-        // Try to delete the order if items failed
-        await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error(`Failed to add products to order: ${itemsError.message}`)
-      }
-
-      // Update order status to submitted (Pending Approval)
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ status: 'submitted' })
-        .eq('id', order.id)
-
-      if (updateError) {
-        console.error('Error updating order status:', updateError)
-        throw new Error(`Failed to submit order: ${updateError.message}`)
+      if (submitError) {
+        console.error('Error submitting D2H order:', submitError)
+        throw new Error(submitError.message || 'Failed to submit and allocate the order')
       }
 
       await fetch('/api/notifications/order-event', {
@@ -725,23 +728,11 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       // Fire-and-forget: trigger notification worker to send WhatsApp/SMS/Email immediately
       fetch('/api/cron/notification-outbox-worker').catch(() => { })
 
-      // Allocate inventory immediately upon submission (reserve stock)
-      console.log('🔒 Allocating inventory for order:', order.order_no)
-      const { error: allocateError } = await supabase
-        .rpc('allocate_inventory_for_order', { p_order_id: order.id })
-
-      if (allocateError) {
-        console.error('Error allocating inventory:', allocateError)
-        // Rollback order creation if allocation fails
-        await supabase.from('orders').delete().eq('id', order.id)
-        throw new Error(`Failed to allocate inventory: ${allocateError.message}`)
-      }
-
       console.log('✅ Order submitted and inventory allocated:', order.order_no)
 
       toast({
         title: 'Success',
-        description: 'Order created and inventory allocated successfully. Awaiting approval.',
+        description: `Order created from ${selectedFulfillmentWarehouse?.org_name || 'selected warehouse'} and inventory allocated. Awaiting approval.`,
       })
 
       // Navigate back to orders list
@@ -758,6 +749,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       })
     } finally {
       setSaving(false)
+      submitLockRef.current = false
     }
   }
 
@@ -877,6 +869,33 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   </p>
                 )}
               </div>
+
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fulfillment Warehouse <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={fulfillmentWarehouseId}
+                  onChange={(e) => handleFulfillmentWarehouseChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  disabled={fulfillmentWarehouses.length === 0}
+                >
+                  <option value="">Select warehouse...</option>
+                  {fulfillmentWarehouses.map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>
+                      {warehouse.org_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-2">
+                  Stock for this order will be allocated and fulfilled from this warehouse.
+                </p>
+                {defaultFulfillmentMissing && !fulfillmentWarehouseId && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    {MISSING_DEFAULT_FULFILLMENT_WAREHOUSE_MESSAGE}
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -951,11 +970,17 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
-              {!selectedDistributorId ? (
+              {!selectedDistributorId || !fulfillmentWarehouseId ? (
                 <div className="text-center py-12 text-gray-500">
                   <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-lg font-medium mb-1">No Distributor Selected</p>
-                  <p className="text-sm">Please select a distributor above to view available products</p>
+                  <p className="text-lg font-medium mb-1">
+                    {!selectedDistributorId ? 'No Distributor Selected' : 'No Fulfillment Warehouse Selected'}
+                  </p>
+                  <p className="text-sm">
+                    {!selectedDistributorId
+                      ? 'Please select a distributor above to view available products'
+                      : 'Please select a fulfillment warehouse above to view available products'}
+                  </p>
                 </div>
               ) : (
                 <>
@@ -1142,6 +1167,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     <span>{deliveryAddress || 'Not set'}</span>
                   </p>
                 </div>
+              </div>
+
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Fulfillment</h4>
+                <p className="text-sm text-gray-700">
+                  Fulfilled From: {selectedFulfillmentWarehouse?.org_name || 'Not selected'}
+                </p>
               </div>
 
               {/* Order Type */}
