@@ -71,23 +71,23 @@ interface ReportingViewProps {
 }
 
 const COLORS = {
-    primary: '#3b82f6',
-    success: '#10b981',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-    purple: '#8b5cf6',
-    pink: '#ec4899',
-    cyan: '#06b6d4',
-    indigo: '#6366f1'
+    primary: '#e85d04',
+    success: '#059669',
+    warning: '#d97706',
+    danger: '#dc2626',
+    ink: '#141210',
+    soft: '#2a2622',
+    muted: '#9ca3af',
+    slate: '#64748b',
 }
 
 const CHART_COLORS = [
     COLORS.primary,
-    COLORS.success,
+    COLORS.ink,
     COLORS.warning,
-    COLORS.purple,
-    COLORS.pink,
-    COLORS.cyan
+    COLORS.success,
+    COLORS.slate,
+    COLORS.muted,
 ]
 
 const numberFormatterCache = new Map<string, Intl.NumberFormat>()
@@ -146,7 +146,7 @@ const AnimatedCounter = ({ value, duration = 1000, prefix = '', suffix = '', dec
     )
 }
 
-// Metric Card Component with animation
+// Metric Card — light Serapod paper chrome
 const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subtitle, loading }: {
     title: string
     value: number | string
@@ -161,52 +161,52 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
     const isNegative = changeType === 'decrease'
 
     return (
-        <Card className="relative overflow-hidden group hover:shadow-lg transition-all duration-300 border-0 bg-card">
-            <div className={`absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full opacity-10 group-hover:opacity-20 transition-opacity`} style={{ backgroundColor: color }} />
-            <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-                        {loading ? (
-                            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                        ) : (
-                            <div className="flex min-h-[2rem] min-w-0 items-center overflow-hidden">
-                                <ExecutiveKpiValue>
-                                    {typeof value === 'number' ? (
-                                        <AnimatedCounter
-                                            value={value}
-                                            prefix={title.includes('Revenue') ? 'RM' : ''}
-                                            decimals={title.includes('Revenue') ? 2 : 0}
-                                        />
-                                    ) : (
-                                        <span className="inline-flex max-w-full min-w-0 items-baseline whitespace-nowrap leading-none">{value}</span>
-                                    )}
-                                </ExecutiveKpiValue>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                            {change !== undefined && (
-                                <Badge
-                                    variant="secondary"
-                                    className={`text-xs font-medium ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                        isNegative ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                                            'bg-muted text-muted-foreground'
-                                        }`}
-                                >
-                                    {isPositive && <ArrowUpRight className="w-3 h-3 mr-0.5" />}
-                                    {isNegative && <ArrowDownRight className="w-3 h-3 mr-0.5" />}
-                                    {Math.abs(change).toFixed(1)}%
-                                </Badge>
-                            )}
-                            {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+        <div className="group relative overflow-hidden rounded-xl border border-[var(--sera-line,#e8eaed)] bg-white p-5 transition-colors hover:border-[var(--sera-orange)]/35">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-2">
+                    <p className="text-sm font-medium text-[var(--sera-muted)]">{title}</p>
+                    {loading ? (
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--sera-muted)]" />
+                    ) : (
+                        <div className="flex min-h-[2rem] min-w-0 items-center overflow-hidden">
+                            <ExecutiveKpiValue>
+                                {typeof value === 'number' ? (
+                                    <AnimatedCounter
+                                        value={value}
+                                        prefix={title.includes('Revenue') ? 'RM' : ''}
+                                        decimals={title.includes('Revenue') ? 2 : 0}
+                                    />
+                                ) : (
+                                    <span className="inline-flex max-w-full min-w-0 items-baseline whitespace-nowrap leading-none">{value}</span>
+                                )}
+                            </ExecutiveKpiValue>
                         </div>
-                    </div>
-                    <div className={`p-3 rounded-xl`} style={{ backgroundColor: `${color}15` }}>
-                        <Icon className="w-6 h-6" style={{ color }} />
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {change !== undefined && (
+                            <Badge
+                                variant="secondary"
+                                className={`text-xs font-medium border-0 ${isPositive ? 'bg-emerald-50 text-emerald-700' :
+                                    isNegative ? 'bg-red-50 text-red-700' :
+                                        'bg-[var(--sera-mist)] text-[var(--sera-muted)]'
+                                    }`}
+                            >
+                                {isPositive && <ArrowUpRight className="w-3 h-3 mr-0.5" />}
+                                {isNegative && <ArrowDownRight className="w-3 h-3 mr-0.5" />}
+                                {Math.abs(change).toFixed(1)}%
+                            </Badge>
+                        )}
+                        {subtitle && <span className="text-xs text-[var(--sera-muted)]">{subtitle}</span>}
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+                <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                    style={{ backgroundColor: `${color}14` }}
+                >
+                    <Icon className="w-5 h-5" style={{ color }} strokeWidth={1.75} />
+                </div>
+            </div>
+        </div>
     )
 }
 
@@ -428,13 +428,13 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
     if (loading && !data) {
         return (
-            <div className="flex h-screen items-center justify-center bg-background">
+            <div className="flex h-[60vh] items-center justify-center">
                 <div className="text-center space-y-4">
-                    <div className="relative">
-                        <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-800 rounded-full animate-pulse" />
-                        <Loader2 className="w-8 h-8 text-blue-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" />
+                    <div className="relative mx-auto w-14 h-14">
+                        <div className="w-14 h-14 border-2 border-[var(--sera-orange)]/20 rounded-full" />
+                        <Loader2 className="w-7 h-7 text-[var(--sera-orange)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" />
                     </div>
-                    <p className="text-muted-foreground font-medium">Loading executive dashboard...</p>
+                    <p className="text-sm text-[var(--sera-muted)] font-medium">Loading executive dashboard...</p>
                 </div>
             </div>
         )
@@ -443,35 +443,76 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const periodDays = differenceInDays(new Date(dateParams.endDate), new Date(dateParams.startDate))
 
     return (
-        <div className="min-h-screen bg-background">
-            <div className="p-6 lg:p-8 space-y-8 max-w-[1600px] mx-auto">
-                {/* Header */}
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-200 dark:shadow-blue-900/30">
-                                <BarChart3 className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <h1 className="text-3xl font-bold text-foreground tracking-tight">Executive Dashboard</h1>
-                                <p className="text-muted-foreground">Real-time business intelligence & analytics</p>
-                            </div>
-                        </div>
+        <div className="min-h-full">
+            <div className="p-6 lg:p-8 space-y-7">
+                {/* Header — Serapod light brand */}
+                <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-4" />
+                        <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
+                            Reporting
+                        </p>
+                        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
+                            Executive Dashboard
+                        </h1>
+                        <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)]">
+                            Real-time business intelligence & analytics
+                        </p>
                     </div>
 
-                </div>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        <Select value={dateRange} onValueChange={setDateRange}>
+                            <SelectTrigger className="w-[150px] h-10 bg-white border-[var(--sera-line)] text-[var(--sera-ink)]">
+                                <Calendar className="w-4 h-4 mr-2 text-[var(--sera-muted)]" />
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="today">Today</SelectItem>
+                                <SelectItem value="last7">Last 7 days</SelectItem>
+                                <SelectItem value="last30">Last 30 days</SelectItem>
+                                <SelectItem value="thisMonth">This month</SelectItem>
+                                <SelectItem value="lastMonth">Last month</SelectItem>
+                                <SelectItem value="last90">Last 90 days</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
+                            <SelectTrigger className="w-[180px] h-10 bg-white border-[var(--sera-line)] text-[var(--sera-ink)]">
+                                <Building2 className="w-4 h-4 mr-2 text-[var(--sera-muted)]" />
+                                <SelectValue placeholder="All distributors" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All distributors</SelectItem>
+                                {distributors.map((d) => (
+                                    <SelectItem key={d.id} value={d.id}>{d.org_name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={fetchData}
+                            disabled={loading}
+                            className="h-10 w-10 border-[var(--sera-line)] text-[var(--sera-muted)] hover:text-[var(--sera-ink)] hover:border-[var(--sera-orange)]/40"
+                            title="Refresh"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                        </Button>
+                    </div>
+                </header>
 
                 {/* Error Banner */}
                 {error && (
-                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <AlertCircle className="w-5 h-5 text-red-500" />
-                            <div>
-                                <p className="font-medium text-red-800 dark:text-red-200">Unable to load reporting data</p>
-                                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+                            <div className="min-w-0">
+                                <p className="font-medium text-red-800">Unable to load reporting data</p>
+                                <p className="text-sm text-red-600 truncate">{error}</p>
                             </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={fetchData} className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30">
+                        <Button variant="outline" size="sm" onClick={fetchData} className="shrink-0 border-red-300 text-red-700 hover:bg-red-100">
                             <RefreshCw className="w-4 h-4 mr-2" />
                             Retry
                         </Button>
@@ -480,32 +521,32 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                 {/* Tab Navigation */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                    <TabsList className="bg-card/80 backdrop-blur border shadow-sm p-1 h-auto">
-                        <TabsTrigger value="overview" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                    <TabsList className="h-auto w-full flex flex-wrap justify-start gap-1 bg-[var(--sera-mist)] border border-[var(--sera-line)] p-1.5 rounded-xl">
+                        <TabsTrigger value="overview" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Activity className="w-4 h-4 mr-2" />
                             Overview
                         </TabsTrigger>
-                        <TabsTrigger value="operations" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="operations" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Truck className="w-4 h-4 mr-2" />
                             Operations
                         </TabsTrigger>
-                        <TabsTrigger value="finance" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="finance" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <DollarSign className="w-4 h-4 mr-2" />
                             Finance
                         </TabsTrigger>
-                        <TabsTrigger value="products" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="products" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Package className="w-4 h-4 mr-2" />
                             Products
                         </TabsTrigger>
-                        <TabsTrigger value="consumer-analytics" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="consumer-analytics" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Users className="w-4 h-4 mr-2" />
                             Consumer Analytics
                         </TabsTrigger>
-                        <TabsTrigger value="shop-performance" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="shop-performance" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Store className="w-4 h-4 mr-2" />
                             Shop Performance
                         </TabsTrigger>
-                        <TabsTrigger value="distributors" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white px-6 py-2.5">
+                        <TabsTrigger value="distributors" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">
                             <Building2 className="w-4 h-4 mr-2" />
                             Distributor
                         </TabsTrigger>
@@ -514,7 +555,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                     {/* Overview Tab */}
                     <TabsContent value="overview" className="space-y-6 animate-in fade-in-50 duration-500">
                         {/* KPI Cards */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <MetricCard
                                 title="Total Revenue"
                                 value={data?.summary?.totalRevenue || 0}
@@ -541,7 +582,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 change={2.1}
                                 changeType="increase"
                                 icon={Package}
-                                color={COLORS.purple}
+                                color={COLORS.slate}
                                 subtitle="shipped"
                                 loading={loading}
                             />
@@ -558,16 +599,16 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         </div>
 
                         {/* Main Charts Row */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                             {/* Trend Chart */}
-                            <Card className="lg:col-span-2 border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="lg:col-span-2 border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
                                         <div>
-                                            <CardTitle className="text-lg font-semibold">Shipment Trend</CardTitle>
-                                            <CardDescription>Volume over time with growth trajectory</CardDescription>
+                                            <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Shipment Trend</CardTitle>
+                                            <CardDescription className="text-[var(--sera-muted)]">Volume over time with growth trajectory</CardDescription>
                                         </div>
-                                        <Badge variant="secondary" className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                        <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-0">
                                             <TrendingUp className="w-3 h-3 mr-1" />
                                             Growing
                                         </Badge>
@@ -632,10 +673,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Product Distribution */}
-                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader className="pb-2">
-                                    <CardTitle className="text-lg font-semibold">Product Distribution</CardTitle>
-                                    <CardDescription>Top performing variants</CardDescription>
+                                    <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Product Distribution</CardTitle>
+                                    <CardDescription className="text-[var(--sera-muted)]">Top performing variants</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-[200px]">
@@ -678,12 +719,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                         </div>
 
                         {/* Secondary Charts */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                             {/* Top Distributors */}
-                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader>
-                                    <CardTitle className="text-lg font-semibold">Top Distributors</CardTitle>
-                                    <CardDescription>By shipment volume</CardDescription>
+                                    <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Top Distributors</CardTitle>
+                                    <CardDescription className="text-[var(--sera-muted)]">By shipment volume</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-[300px]">
@@ -716,33 +757,33 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Recent Activity */}
-                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader>
-                                    <CardTitle className="text-lg font-semibold">Recent Shipments</CardTitle>
-                                    <CardDescription>Latest processed orders</CardDescription>
+                                    <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Recent Shipments</CardTitle>
+                                    <CardDescription className="text-[var(--sera-muted)]">Latest processed orders</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="space-y-4">
+                                    <div className="space-y-3">
                                         {(data?.recentShipments || []).slice(0, 6).map((shipment: any, index: number) => (
-                                            <div key={shipment.id || index} className="flex items-center justify-between p-3 bg-muted rounded-xl hover:bg-muted/80 transition-colors">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                                                        <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                            <div key={shipment.id || index} className="flex items-center justify-between p-3 rounded-xl bg-[var(--sera-mist)] border border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30 transition-colors">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className="p-2 rounded-lg bg-[var(--sera-orange)]/10 shrink-0">
+                                                        <Truck className="w-4 h-4 text-[var(--sera-orange)]" strokeWidth={1.75} />
                                                     </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-foreground">{shipment.distributor}</p>
-                                                        <p className="text-xs text-muted-foreground">{shipment.orderNo}</p>
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-[var(--sera-ink)] truncate">{shipment.distributor}</p>
+                                                        <p className="text-xs text-[var(--sera-muted)]">{shipment.orderNo}</p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-sm font-semibold text-foreground">{shipment.units?.toLocaleString()} units</p>
-                                                    <p className="text-xs text-muted-foreground">{format(new Date(shipment.date), 'MMM dd, HH:mm')}</p>
+                                                <div className="text-right shrink-0 pl-3">
+                                                    <p className="text-sm font-semibold text-[var(--sera-ink)]">{shipment.units?.toLocaleString()} units</p>
+                                                    <p className="text-xs text-[var(--sera-muted)]">{format(new Date(shipment.date), 'MMM dd, HH:mm')}</p>
                                                 </div>
                                             </div>
                                         ))}
                                         {(!data?.recentShipments || data.recentShipments.length === 0) && (
-                                            <div className="text-center py-8 text-muted-foreground">
-                                                <BoxIcon className="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
+                                            <div className="text-center py-8 text-[var(--sera-muted)]">
+                                                <BoxIcon className="w-12 h-12 mx-auto mb-3 opacity-40" />
                                                 <p>No recent shipments</p>
                                             </div>
                                         )}
@@ -764,7 +805,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
 
                     {/* Finance Tab */}
                     <TabsContent value="finance" className="space-y-6 animate-in fade-in-50 duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <MetricCard
                                 title="Total Revenue"
                                 value={financialMetrics?.totalRevenue || 0}
@@ -795,18 +836,18 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                 title="Invoices Issued"
                                 value={financialMetrics?.invoiceCount || 0}
                                 icon={Receipt}
-                                color={COLORS.purple}
+                                color={COLORS.ink}
                                 subtitle="total"
                                 loading={!financialMetrics}
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                             {/* Revenue Breakdown */}
-                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader>
-                                    <CardTitle className="text-lg font-semibold">Revenue by Account Type</CardTitle>
-                                    <CardDescription>Distribution across GL accounts</CardDescription>
+                                    <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Revenue by Account Type</CardTitle>
+                                    <CardDescription className="text-[var(--sera-muted)]">Distribution across GL accounts</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="h-[300px] flex items-center justify-center">
@@ -842,10 +883,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             </Card>
 
                             {/* Payment Status */}
-                            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                            <Card className="border border-[var(--sera-line)] shadow-none bg-white">
                                 <CardHeader>
-                                    <CardTitle className="text-lg font-semibold">Payment Status Overview</CardTitle>
-                                    <CardDescription>Current payment pipeline</CardDescription>
+                                    <CardTitle className="text-base font-semibold text-[var(--sera-ink)]">Payment Status Overview</CardTitle>
+                                    <CardDescription className="text-[var(--sera-muted)]">Current payment pipeline</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
@@ -856,10 +897,10 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                         ].map((item, index) => (
                                             <div key={index} className="space-y-2">
                                                 <div className="flex justify-between text-sm">
-                                                    <span className="text-muted-foreground">{item.label}</span>
-                                                    <span className="font-semibold">{item.value}</span>
+                                                    <span className="text-[var(--sera-muted)]">{item.label}</span>
+                                                    <span className="font-semibold text-[var(--sera-ink)]">{item.value}</span>
                                                 </div>
-                                                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                                <div className="h-2 bg-[var(--sera-mist)] rounded-full overflow-hidden">
                                                     <div
                                                         className="h-full rounded-full transition-all duration-1000 ease-out"
                                                         style={{
@@ -872,14 +913,14 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                                         ))}
                                     </div>
 
-                                    <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-xl border border-green-100 dark:border-green-800">
+                                    <div className="mt-6 p-4 rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]">
                                         <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                                                <Wallet className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                            <div className="p-2 rounded-lg bg-[var(--sera-orange)]/10">
+                                                <Wallet className="w-5 h-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-green-900 dark:text-green-200">Collection Rate</p>
-                                                <p className="text-2xl font-bold text-green-600">
+                                                <p className="text-sm font-medium text-[var(--sera-ink)]">Collection Rate</p>
+                                                <p className="font-display text-2xl font-semibold text-[var(--sera-ink)]">
                                                     {financialMetrics?.invoiceCount
                                                         ? Math.round((financialMetrics.completedPayments / financialMetrics.invoiceCount) * 100)
                                                         : 0}%
@@ -929,7 +970,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 </Tabs>
 
                 {/* Footer */}
-                <div className="text-center text-sm text-muted-foreground pt-4 border-t border-border">
+                <div className="text-center text-xs text-[var(--sera-muted)] pt-4 border-t border-[var(--sera-line)]">
                     <p>Last updated: {format(new Date(), 'MMMM dd, yyyy HH:mm:ss')} • Data refreshes automatically</p>
                 </div>
             </div>
