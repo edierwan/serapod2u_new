@@ -20,10 +20,10 @@ const defaultIconAccent = { chip: 'bg-cyan-50', icon: 'text-cyan-600' }
 
 export default function CrmLandingView({ userName, bannerImageUrl, onViewChange, hideHeroBanner }: CrmLandingViewProps) {
     return (
-        <div className="w-full space-y-8">
+        <div className="sera-module-landing">
             {!hideHeroBanner && <CrmHeroBanner userName={userName ?? null} bannerImageUrl={bannerImageUrl} />}
 
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            <div className="sera-module-landing__grid">
                 {crmNavGroups.map((group: CrmNavGroup) => {
                     const Icon = group.icon
                     const accent = iconAccents[group.id] || defaultIconAccent
@@ -31,18 +31,18 @@ export default function CrmLandingView({ userName, bannerImageUrl, onViewChange,
                     return (
                         <div
                             key={group.id}
-                            className="rounded-xl border border-[var(--sera-line)] bg-white p-5 space-y-3 transition-colors hover:border-[var(--sera-orange)]/35"
+                            className="sera-module-landing__card"
                         >
-                            <div className="flex items-center gap-2.5">
-                                <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', accent.chip, accent.icon)}>
+                            <div className="sera-module-landing__card-head">
+                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
                                     <Icon className="h-4 w-4" strokeWidth={1.75} />
                                 </div>
-                                <h2 className="font-semibold text-base text-[var(--sera-ink)] flex-1">{group.label}</h2>
+                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
                             </div>
 
-                            <p className="text-xs text-[var(--sera-muted)] leading-relaxed">{group.description}</p>
+                            <p className="sera-module-landing__card-desc">{group.description}</p>
 
-                            <ul className="space-y-0.5 pt-1">
+                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     return (
@@ -50,7 +50,7 @@ export default function CrmLandingView({ userName, bannerImageUrl, onViewChange,
                                             <button
                                                 type="button"
                                                 onClick={() => onViewChange(child.id)}
-                                                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors group text-[var(--sera-muted)] hover:text-[var(--sera-ink)] hover:bg-[var(--sera-mist)]"
+                                                className="sera-module-landing__link group"
                                             >
                                                 <ChildIcon className={cn('h-4 w-4 shrink-0', accent.icon)} strokeWidth={1.75} />
                                                 <span className="flex-1 text-left">{child.label}</span>

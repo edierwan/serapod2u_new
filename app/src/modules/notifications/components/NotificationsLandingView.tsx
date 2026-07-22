@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowRight, Bell, Megaphone, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
-import { cn } from '@/lib/utils'
+import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
 
 interface NotificationsCardItem {
   id: string
@@ -81,47 +81,36 @@ export default function NotificationsLandingView() {
   }, [])
 
   return (
-    <div className="w-full space-y-8">
+    <div className="sera-module-landing">
       <ModuleLightHeader
         eyebrow="Notifications"
         title="Delivery monitoring"
         description="Monitor system notifications, WhatsApp delivery, and failed messages."
+        lead="Operational monitoring lives here. Configuration pages remain reusable and are linked below."
       />
 
-      <p className="text-sm text-[var(--sera-muted)]">
-        Operational monitoring lives here. Configuration pages remain reusable and are linked below.
-      </p>
-
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+      <div className="sera-module-landing__grid">
         {notificationCards.map((item) => {
-          const Icon = item.icon
           const href = item.id === 'notification-providers' ? providersHref : item.href
           const action = item.id === 'notification-providers' ? providersAction : 'Open'
 
           return (
-            <div
+            <ModuleLandingCard
               key={item.id}
-              className="rounded-xl border border-[var(--sera-line)] bg-white p-5 space-y-3 transition-colors hover:border-[var(--sera-orange)]/35"
+              icon={item.icon}
+              accent={item.accent}
+              title={item.label}
+              description={item.description}
             >
-              <div className="flex items-center gap-2.5">
-                <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg shrink-0', item.accent.chip, item.accent.icon)}>
-                  <Icon className="h-4 w-4" strokeWidth={1.75} />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="font-semibold text-base text-[var(--sera-ink)]">{item.label}</h2>
-                  <p className="text-xs text-[var(--sera-muted)] mt-0.5 line-clamp-2">{item.description}</p>
-                </div>
-              </div>
-
               <button
                 type="button"
                 onClick={() => router.push(href)}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-[var(--sera-muted)] hover:text-[var(--sera-ink)] hover:bg-[var(--sera-mist)] transition-colors group"
+                className="sera-module-landing__link group"
               >
-                <span className="flex-1 text-left">{action}</span>
+                <span className="flex-1">{action}</span>
                 <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--sera-orange)]" />
               </button>
-            </div>
+            </ModuleLandingCard>
           )
         })}
       </div>

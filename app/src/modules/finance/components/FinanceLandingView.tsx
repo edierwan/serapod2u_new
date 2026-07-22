@@ -55,7 +55,7 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
     const router = useRouter()
 
     return (
-        <div className="w-full space-y-8">
+        <div className="sera-module-landing">
             <FinanceHeroBanner userName={userName ?? null} bannerImageUrl={bannerImageUrl} />
 
             <SetupReadinessBanner
@@ -65,7 +65,7 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                 accentColor="emerald"
             />
 
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3">
+            <div className="sera-module-landing__grid">
                 {financeNavGroups.map((group: FinanceNavGroup) => {
                     const Icon = group.icon
                     const meta = cardDescriptions[group.id]
@@ -74,21 +74,21 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                     return (
                         <div
                             key={group.id}
-                            className="rounded-xl border border-[var(--sera-line)] bg-white p-5 space-y-3 transition-colors hover:border-[var(--sera-orange)]/35"
+                            className="sera-module-landing__card"
                         >
-                            <div className="flex items-center gap-2.5">
-                                <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg', accent.chip, accent.icon)}>
+                            <div className="sera-module-landing__card-head">
+                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
                                     <Icon className="h-4 w-4" strokeWidth={1.75} />
                                 </div>
-                                <h2 className="font-semibold text-base text-[var(--sera-ink)] flex-1">{group.label}</h2>
+                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
                                 {meta && <StatusBadge status={meta.status} />}
                             </div>
 
                             {meta && (
-                                <p className="text-xs text-[var(--sera-muted)] leading-relaxed">{meta.description}</p>
+                                <p className="sera-module-landing__card-desc">{meta.description}</p>
                             )}
 
-                            <ul className="space-y-0.5 pt-1">
+                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     const isComingSoon = meta && meta.status !== 'live'
@@ -100,10 +100,8 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                                                 onClick={() => router.push(child.href)}
                                                 disabled={isComingSoon}
                                                 className={cn(
-                                                    'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors group',
-                                                    isComingSoon
-                                                        ? 'text-[var(--sera-muted)]/50 cursor-not-allowed'
-                                                        : 'text-[var(--sera-muted)] hover:text-[var(--sera-ink)] hover:bg-[var(--sera-mist)]'
+                                                    'sera-module-landing__link group',
+                                                    isComingSoon && 'opacity-45 cursor-not-allowed'
                                                 )}
                                             >
                                                 <ChildIcon className={cn('h-4 w-4 shrink-0', accent.icon)} strokeWidth={1.75} />

@@ -20,10 +20,10 @@ export default function SupplyChainPageHeader({
   actions,
 }: SupplyChainPageHeaderProps) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <header className="sera-module-landing__header sera-module-landing__header--compact flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
       <div className="min-w-0">
-        <div className="h-1 w-10 rounded-sm bg-[var(--sera-orange)] mb-3 sera-sc-header__bar" />
-        <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-[var(--sera-muted)] mb-1.5">
+        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5 sera-sc-header__bar" />
+        <p className="text-[11px] font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
           {eyebrow}
         </p>
         <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">

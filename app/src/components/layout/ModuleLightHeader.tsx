@@ -1,27 +1,40 @@
 'use client'
 
+import type { ReactNode } from 'react'
+
 interface ModuleLightHeaderProps {
   eyebrow: string
   title: string
   description?: string
+  /** Optional second line below description (same width / alignment) */
+  lead?: string
+  actions?: ReactNode
 }
 
 /** Light Serapod header for module landing pages */
-export default function ModuleLightHeader({ eyebrow, title, description }: ModuleLightHeaderProps) {
+export default function ModuleLightHeader({ eyebrow, title, description, lead, actions }: ModuleLightHeaderProps) {
   return (
-    <header className="pt-1">
-      <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5" />
-      <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
-        {eyebrow}
-      </p>
-      <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
-        {title}
-      </h1>
-      {description ? (
-        <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)] max-w-2xl">
-          {description}
+    <header className="sera-module-landing__header">
+      <div className="min-w-0 flex-1">
+        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5 sera-sc-header__bar" />
+        <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
+          {eyebrow}
         </p>
-      ) : null}
+        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
+          {title}
+        </h1>
+        {description ? (
+          <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)] max-w-2xl leading-relaxed">
+            {description}
+          </p>
+        ) : null}
+        {lead ? (
+          <p className="mt-2 text-sm text-[var(--sera-muted)] max-w-2xl leading-relaxed">
+            {lead}
+          </p>
+        ) : null}
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-end gap-2">{actions}</div> : null}
     </header>
   )
 }
