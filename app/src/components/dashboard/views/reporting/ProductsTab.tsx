@@ -66,6 +66,7 @@ import {
   parseISO,
 } from 'date-fns'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
+import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ProductsTabProps {
@@ -150,14 +151,14 @@ interface StrategyInsightDetailRow {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  cyan: '#06b6d4',
+  primary: '#e85d04',
+  success: '#059669',
+  warning: '#d97706',
+  danger: '#dc2626',
+  purple: '#7c3aed',
+  cyan: '#0891b2',
   indigo: '#6366f1',
-  pink: '#ec4899',
+  pink: '#db2777',
 }
 
 const PERIOD_OPTIONS = [
@@ -194,7 +195,7 @@ function Skeleton({ className = '' }: { className?: string }) {
 
 function KPICardSkeleton() {
   return (
-    <Card className="border-0 bg-card/80 backdrop-blur overflow-hidden">
+    <Card className="sera-sc-panel overflow-hidden">
       <CardContent className="pt-6 space-y-3">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
@@ -840,60 +841,25 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
 
   // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {Array.from({ length: 5 }).map((_, i) => <KPICardSkeleton key={i} />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-            <CardContent className="pt-6"><ChartSkeleton height="h-72" /></CardContent>
-          </Card>
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-            <CardContent className="pt-6"><ChartSkeleton height="h-72" /></CardContent>
-          </Card>
-        </div>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-          <CardContent className="pt-6"><ChartSkeleton height="h-80" /></CardContent>
-        </Card>
-      </div>
-    )
+    return <ReportingTabLoading label="Loading product analytics" />
   }
 
   const hasData = orderItems.length > 0
 
   return (
     <div className="space-y-6">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Package className="h-5 w-5 text-blue-500" />
-            Product Analytics
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            SKU performance, inventory health &amp; demand trends
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[160px] h-9 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PERIOD_OPTIONS.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <ReportingTabHeader
+        icon={Package}
+        title="Product Analytics"
+        description="SKU performance, inventory health and demand trends"
+        period={period}
+        onPeriodChange={setPeriod}
+        periodOptions={PERIOD_OPTIONS}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+      />
 
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4 text-amber-500" />
@@ -932,14 +898,14 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       {/* ── 1. KPI Cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {/* Active SKUs */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-400/50 transition-all" onClick={() => setShowSkuModal(true)}>
+        <Card className="sera-sc-panel overflow-hidden cursor-pointer hover:ring-2 hover:border-[var(--sera-orange)]/35 transition-all" onClick={() => setShowSkuModal(true)}>
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Boxes className="h-4 w-4 text-blue-500" />
+              <Boxes className="h-4 w-4 text-[var(--sera-orange)]" />
               <span className="text-xs font-medium uppercase tracking-wide">Active SKUs</span>
             </div>
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-              <ExecutiveKpiValue className="text-blue-600 dark:text-blue-400">
+            <div className="flex items-center gap-2 text-[var(--sera-orange)] dark:text-blue-400">
+              <ExecutiveKpiValue className="text-[var(--sera-orange)] dark:text-blue-400">
                 <AnimatedCounter value={kpis.activeSKUs} />
               </ExecutiveKpiValue>
               <Eye className="h-4 w-4 text-blue-400 opacity-60" />
@@ -950,7 +916,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         </Card>
 
         {/* Total Units Ordered */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <ShoppingCart className="h-4 w-4 text-emerald-500" />
@@ -965,7 +931,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         </Card>
 
         {/* Total Revenue */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <TrendingUp className="h-4 w-4 text-purple-500" />
@@ -980,7 +946,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         </Card>
 
         {/* Inventory Value */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <Layers className="h-4 w-4 text-amber-500" />
@@ -995,7 +961,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         </Card>
 
         {/* Turnover Ratio */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <Zap className="h-4 w-4 text-cyan-500" />
@@ -1011,7 +977,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       </div>
 
       {!hasData ? (
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="py-16 text-center">
             <Package className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
             <h3 className="text-lg font-semibold mb-1">No order data yet</h3>
@@ -1023,10 +989,10 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
       ) : (
         <>
           {/* ── 2. Product Demand Trend ──────────────────────────────────── */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-blue-500" />
+                <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" />
                 Product Demand Trend
               </CardTitle>
               <CardDescription>Monthly units ordered and revenue over the last 12 months</CardDescription>
@@ -1088,7 +1054,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
           {/* ── 3. Top Performing SKUs ───────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Top by Units */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-amber-500" />
@@ -1131,7 +1097,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
             </Card>
 
             {/* Top by Revenue */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Star className="h-4 w-4 text-purple-500" />
@@ -1176,7 +1142,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
 
           {/* ── 4. Slow Moving Products ──────────────────────────────────── */}
           {slowMoving.length > 0 && (
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -1230,7 +1196,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
           )}
 
           {/* ── 5. Inventory Health ──────────────────────────────────────── */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <Layers className="h-4 w-4 text-emerald-500" />
@@ -1333,7 +1299,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
 
           {/* ── 6. Product Performance Quadrant ──────────────────────────── */}
           {quadrantData.points.length > 0 && (
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Target className="h-4 w-4 text-indigo-500" />
@@ -1432,7 +1398,7 @@ export default function ProductsTab({ userProfile, chartGridColor, chartTickColo
         <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Boxes className="h-5 w-5 text-blue-500" />
+              <Boxes className="h-5 w-5 text-[var(--sera-orange)]" />
               Active SKU Directory ({variants.filter(v => v.is_active).length} variants)
             </DialogTitle>
             <DialogDescription>Complete list of active product variants with pricing and inventory details</DialogDescription>

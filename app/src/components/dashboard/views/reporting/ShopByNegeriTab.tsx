@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { ReportingTabHeader, ReportingTabLoading, REPORTING_CHART_COLORS } from './reportingChrome'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,7 +39,7 @@ interface ShopByNegeriTabProps {
   isDark: boolean
 }
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444', '#14b8a6', '#f97316']
+const CHART_COLORS = REPORTING_CHART_COLORS
 
 function formatNum(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`
@@ -256,23 +257,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
 
   // ── Loading state ──────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-12 w-full" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Card key={i} className="border-0 bg-card/80 backdrop-blur overflow-hidden">
-              <CardContent className="pt-6 space-y-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-28" />
-                <Skeleton className="h-3 w-20" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Skeleton className="h-72 w-full" />
-      </div>
-    )
+    return <ReportingTabLoading label="Loading shop by negeri analytics" />
   }
 
   const { kpis, ranking, monthlyTrend } = report
@@ -281,35 +266,28 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30">
-            <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold">Shop by Negeri</h3>
-            <p className="text-sm text-muted-foreground">Performance analytics across Malaysia by state</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleDownloadExcel} disabled={exporting}>
-            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            Export Report
-          </Button>
-          <Button size="sm" className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleDownloadExcel} disabled={exporting}>
-            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
-            Download Excel
-          </Button>
-        </div>
-      </div>
+      <ReportingTabHeader
+        icon={MapPin}
+        title="Shop by Negeri"
+        description="Performance analytics across Malaysia by state"
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 border-[var(--sera-line)]" onClick={handleDownloadExcel} disabled={exporting}>
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Export Report
+            </Button>
+            <Button size="sm" className="h-9 gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={handleDownloadExcel} disabled={exporting}>
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+              Download Excel
+            </Button>
+          </>
+        }
+      />
 
       {/* Filter bar */}
-      <Card className="border-0 shadow-sm bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1.5">
@@ -382,19 +360,19 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total States Active</span>
               <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <MapIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <MapIcon className="h-4 w-4 text-[var(--sera-orange)] dark:text-blue-400" />
               </div>
             </div>
             <ExecutiveKpiValue>{kpis.totalStatesActive} / {kpis.totalStates}</ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">{statesPct}% of Malaysia</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Shops</span>
@@ -406,19 +384,19 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
             <p className="text-xs text-muted-foreground mt-1">across all states</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Scans</span>
               <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Scan className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <Scan className="h-4 w-4 text-[var(--sera-orange)] dark:text-blue-400" />
               </div>
             </div>
             <ExecutiveKpiValue>{kpis.totalScans.toLocaleString()}</ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">in selected period</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Scans / Shop</span>
@@ -452,7 +430,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
       {/* Main panels */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Performance by Negeri (Malaysia map; bar chart fallback) */}
-        <Card className="border-0 shadow-sm bg-card/80 backdrop-blur lg:col-span-2">
+        <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
           <CardContent className="p-5">
             <div className="mb-4">
               <h4 className="font-semibold">Performance by Negeri</h4>
@@ -489,7 +467,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
         </Card>
 
         {/* State Detail panel */}
-        <Card className="border-0 shadow-sm bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold">State Detail</h4>
@@ -552,7 +530,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                       <div key={s.shopId} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs text-muted-foreground w-4">{i + 1}</span>
-                          <span className="truncate text-blue-600 dark:text-blue-400">{s.shopName}</span>
+                          <span className="truncate text-[var(--sera-orange)] dark:text-blue-400">{s.shopName}</span>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span className="font-medium">{s.scans.toLocaleString()}</span>
@@ -571,7 +549,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
       {/* State Ranking + Monthly Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* State Ranking table */}
-        <Card className="border-0 shadow-sm bg-card/80 backdrop-blur lg:col-span-2">
+        <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
           <CardContent className="p-5">
             <div className="mb-4">
               <h4 className="font-semibold">State Ranking</h4>
@@ -622,7 +600,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
                             onClick={() => setSelectedStateId(r.stateId)}
                             title="View detail"
                           >
-                            <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            <Eye className="h-4 w-4 text-[var(--sera-orange)] dark:text-blue-400" />
                           </Button>
                         </td>
                       </tr>
@@ -635,7 +613,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
         </Card>
 
         {/* Monthly Trend */}
-        <Card className="border-0 shadow-sm bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="p-5">
             <div className="mb-4">
               <h4 className="font-semibold">Monthly Trend</h4>

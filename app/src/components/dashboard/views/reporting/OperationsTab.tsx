@@ -119,14 +119,14 @@ interface MonthlyThroughput {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  cyan: '#06b6d4',
+  primary: '#e85d04',
+  success: '#059669',
+  warning: '#d97706',
+  danger: '#dc2626',
+  purple: '#7c3aed',
+  cyan: '#0891b2',
   indigo: '#6366f1',
-  pink: '#ec4899',
+  pink: '#db2777',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -170,7 +170,7 @@ function Skeleton({ className = '' }: { className?: string }) {
 
 function KPICardSkeleton() {
   return (
-    <Card className="border-0 bg-card/80 backdrop-blur overflow-hidden">
+    <Card className="sera-sc-panel overflow-hidden">
       <CardContent className="pt-6 space-y-3">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
@@ -473,7 +473,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
   const renderPipeline = () => {
     const total = orders.length
     return (
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
@@ -632,7 +632,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
     if (bottlenecks.length === 0) {
       return (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardContent className="py-6">
               <div className="flex items-center gap-3 text-emerald-500">
                 <CheckCircle2 className="h-5 w-5" />
@@ -782,7 +782,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
     ]
 
     return (
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg flex items-center gap-2">
             <Truck className="h-5 w-5 text-primary" />
@@ -821,7 +821,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
   }
 
   const renderStatusPie = () => (
-    <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+    <Card className="sera-sc-panel overflow-hidden">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
@@ -885,7 +885,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
   // ── Error state ────────────────────────────────────────────────────────
   if (error) {
     return (
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardContent className="py-12 text-center">
           <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
           <p className="text-lg font-medium mb-1">Failed to load operations data</p>

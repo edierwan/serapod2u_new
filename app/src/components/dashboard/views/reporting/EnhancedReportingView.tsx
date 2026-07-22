@@ -391,7 +391,7 @@ export default function EnhancedReportingView({ userProfile }: ReportingViewProp
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Package className="h-5 w-5 text-blue-600" />
+              <Package className="h-5 w-5 text-[var(--sera-orange)]" />
               {selectedProduct?.name}
             </DialogTitle>
             <DialogDescription>

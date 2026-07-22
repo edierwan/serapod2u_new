@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   FileText,
   Package,
-  Clock,
   CheckCircle2,
   AlertCircle,
   TrendingUp
@@ -205,13 +203,13 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white p-5 animate-pulse">
-            <div className="flex items-center justify-between mb-4">
-              <div className="h-10 w-10 bg-gray-100 rounded-lg" />
-              <div className="h-4 w-16 bg-gray-100 rounded" />
+          <div key={i} className="sera-sc-kpi animate-pulse">
+            <div className="flex items-center justify-between mb-3">
+              <div className="h-10 w-10 bg-[var(--sera-ink)]/5 rounded-lg" />
+              <div className="h-4 w-14 bg-[var(--sera-ink)]/5 rounded" />
             </div>
-            <div className="h-8 w-12 bg-gray-100 rounded-lg mb-1" />
-            <div className="h-3 w-24 bg-gray-50 rounded" />
+            <div className="h-8 w-12 bg-[var(--sera-ink)]/5 rounded-lg mb-1" />
+            <div className="h-3 w-24 bg-[var(--sera-ink)]/5 rounded" />
           </div>
         ))}
       </div>
@@ -223,10 +221,10 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       {statCards.map((stat, index) => (
         <div
           key={index}
-          className="group relative overflow-hidden rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white p-5 transition-colors hover:border-[var(--sera-orange)]/35"
+          className={`sera-sc-kpi group relative overflow-hidden ${stat.accent && stat.value > 0 ? 'border-[var(--sera-orange)]/25' : ''}`}
         >
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${stat.accent && stat.value > 0 ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]' : 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'}`}>
                 <stat.icon className="w-5 h-5" strokeWidth={1.75} />
               </div>
@@ -243,15 +241,15 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
               )}
             </div>
 
-            <p className="font-display text-3xl font-semibold text-[var(--sera-ink)] tracking-tight mb-0.5">
+            <p className="sera-sc-kpi__value mb-0.5">
               {stat.value}
             </p>
 
-            <p className="text-sm font-medium text-[var(--sera-ink-soft)] mb-0.5">
+            <p className="sera-sc-kpi__label">
               {stat.title}
             </p>
 
-            <p className="text-xs text-[var(--sera-muted)] hidden sm:block">
+            <p className="text-xs text-[var(--sera-muted)] hidden sm:block mt-0.5">
               {stat.description}
             </p>
           </div>

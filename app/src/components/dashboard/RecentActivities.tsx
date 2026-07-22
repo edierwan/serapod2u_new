@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Clock,
   FileText,
@@ -195,22 +193,22 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white">
-        <div className="px-6 py-5 border-b border-gray-50">
+      <div className="sera-sc-panel overflow-hidden">
+        <div className="sera-sc-panel__head">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gray-100 animate-pulse" />
-            <div className="h-5 w-36 bg-gray-100 rounded-lg animate-pulse" />
+            <div className="w-9 h-9 rounded-lg bg-[var(--sera-ink)]/5 animate-pulse" />
+            <div className="h-5 w-36 bg-[var(--sera-ink)]/5 rounded-lg animate-pulse" />
           </div>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="sera-sc-panel__body space-y-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex items-center gap-3 animate-pulse">
-              <div className="w-8 h-8 rounded-lg bg-gray-50" />
+              <div className="w-8 h-8 rounded-lg bg-[var(--sera-ink)]/5" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-3.5 w-32 bg-gray-100 rounded-full" />
-                <div className="h-3 w-40 bg-gray-50 rounded-full" />
+                <div className="h-3.5 w-32 bg-[var(--sera-ink)]/5 rounded-full" />
+                <div className="h-3 w-40 bg-[var(--sera-ink)]/5 rounded-full" />
               </div>
-              <div className="h-3 w-12 bg-gray-50 rounded-full" />
+              <div className="h-3 w-12 bg-[var(--sera-ink)]/5 rounded-full" />
             </div>
           ))}
         </div>
@@ -219,19 +217,19 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
   }
 
   return (
-    <div className="rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white overflow-hidden">
-      <div className="px-6 py-5 border-b border-[var(--sera-line,#e5e7eb)]">
+    <div className="sera-sc-panel overflow-hidden">
+      <div className="sera-sc-panel__head">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-ink)]/5">
             <Clock className="w-4.5 h-4.5 text-[var(--sera-ink)]" strokeWidth={1.75} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-[var(--sera-ink)] font-display">Recent Activities</h3>
+            <h3 className="sera-sc-panel__title font-display">Recent Activities</h3>
             <p className="text-xs text-[var(--sera-muted)]">Latest updates across your organization</p>
           </div>
         </div>
       </div>
-      <div className="p-4">
+      <div className="sera-sc-panel__body">
         {activities.length === 0 ? (
           <div className="text-center py-10">
             <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
@@ -246,30 +244,30 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
               {activities.slice(0, 5).map((activity, idx) => (
                 <div
                   key={activity.id}
-                  className="group flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50/80 transition-colors"
+                  className="group flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--sera-ink)]/[0.03] transition-colors"
                 >
                   <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center mt-0.5 ${
                     activity.icon === 'check' 
                       ? 'bg-emerald-50 text-emerald-600' 
                       : activity.icon === 'document'
-                      ? 'bg-blue-50 text-blue-600'
+                      ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]'
                       : activity.icon === 'truck'
-                      ? 'bg-indigo-50 text-indigo-600'
-                      : 'bg-slate-50 text-slate-600'
+                      ? 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'
+                      : 'bg-[var(--sera-ink)]/5 text-[var(--sera-muted)]'
                   }`}>
                     {getActivityIcon(activity.icon)}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 leading-tight">
+                    <p className="text-sm font-medium text-[var(--sera-ink)] leading-tight">
                       {activity.title}
                     </p>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
+                    <p className="text-xs text-[var(--sera-muted)] truncate mt-0.5">
                       {activity.description}
                     </p>
                   </div>
 
-                  <span className="text-[11px] text-gray-400 whitespace-nowrap pt-0.5 flex-shrink-0">
+                  <span className="text-[11px] text-[var(--sera-muted)] whitespace-nowrap pt-0.5 flex-shrink-0">
                     {formatTimeAgo(activity.timestamp)}
                   </span>
                 </div>

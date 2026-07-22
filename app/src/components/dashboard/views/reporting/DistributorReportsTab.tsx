@@ -37,6 +37,7 @@ import { format, parseISO } from 'date-fns'
 import { useTheme } from '@/components/providers/ThemeProvider'
 import RepeatRateAnalytics from './RepeatRateAnalytics'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
+import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
 import type {
   DistributorReportData,
   KPICard,
@@ -51,13 +52,13 @@ import type {
 // CONSTANTS & COLORS
 // ============================================================
 const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  pink: '#ec4899',
-  cyan: '#06b6d4',
+  primary: '#e85d04',
+  success: '#059669',
+  warning: '#d97706',
+  danger: '#dc2626',
+  purple: '#7c3aed',
+  pink: '#db2777',
+  cyan: '#0891b2',
   indigo: '#6366f1',
 }
 
@@ -104,7 +105,7 @@ function Skeleton({ className = '' }: { className?: string }) {
 
 function KPICardSkeleton() {
   return (
-    <Card className="border-0 bg-card/80 backdrop-blur overflow-hidden">
+    <Card className="sera-sc-panel overflow-hidden">
       <CardContent className="pt-6 space-y-3">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
@@ -129,7 +130,7 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
 
   return (
     <Card
-      className={`relative overflow-hidden group hover:shadow-xl transition-all duration-500 border-0 bg-card/80 backdrop-blur hover:-translate-y-0.5 ${isClickable ? 'cursor-pointer ring-0 hover:ring-2 hover:ring-blue-400/50' : ''}`}
+      className={`relative overflow-hidden transition-colors hover:border-[var(--sera-orange)]/35 duration-500 sera-sc-panel overflow-hidden hover:-translate-y-0.5 ${isClickable ? 'cursor-pointer ring-0 hover:ring-2 hover:border-[var(--sera-orange)]/35' : ''}`}
       onClick={onClick}
     >
       <div
@@ -175,7 +176,7 @@ function KPICardComponent({ kpi, loading, onClick }: { kpi: KPICard; loading: bo
               <span className="text-[9px] text-muted-foreground">{kpi.deltaLabel}</span>
             </div>
             {isClickable && (
-              <p className="text-[9px] text-blue-500 font-medium mt-0.5 flex items-center gap-0.5">
+              <p className="text-[9px] text-[var(--sera-orange)] font-medium mt-0.5 flex items-center gap-0.5">
                 <Eye className="w-2.5 h-2.5" /> Click to view details
               </p>
             )}
@@ -205,7 +206,7 @@ function RankBadge({ rank }: { rank: number }) {
 function InsightCardComponent({ insight }: { insight: InsightCardType }) {
   const Icon = ICON_MAP[insight.icon] || Target
   return (
-    <Card className="border-0 bg-card/80 backdrop-blur hover:shadow-lg transition-all duration-300 overflow-hidden group">
+    <Card className="sera-sc-panel overflow-hidden hover:shadow-lg transition-all duration-300 overflow-hidden group">
       <div className="absolute top-0 left-0 h-full w-1 opacity-80" style={{ backgroundColor: insight.color }} />
       <CardContent className="pt-5 pb-4 pl-5">
         <div className="flex items-start gap-3">
@@ -259,7 +260,7 @@ function DistributorDetailDrawer({
       <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto">
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="text-xl font-bold flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-blue-600" />
+            <Building2 className="w-5 h-5 text-[var(--sera-orange)]" />
             {loading ? <Skeleton className="h-6 w-40" /> : detail?.name || 'Distributor'}
           </SheetTitle>
           <SheetDescription>Performance detail & order history</SheetDescription>
@@ -267,7 +268,7 @@ function DistributorDetailDrawer({
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--sera-orange)]" />
           </div>
         ) : detail ? (
           <div className="space-y-6 py-4">
@@ -552,51 +553,49 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
     )
   }
 
+  if (loading && !data) {
+    return <ReportingTabLoading label="Loading distributor reports" />
+  }
+
+  const DATE_RANGE_OPTIONS = [
+    { value: 'thisMonth', label: 'This Month' },
+    { value: 'lastMonth', label: 'Last Month' },
+    { value: 'last3Months', label: 'Last 3 Months' },
+    { value: 'last6Months', label: 'Last 6 Months' },
+    { value: 'last12Months', label: 'Last 12 Months' },
+  ]
+
   return (
     <div className="space-y-8 animate-in fade-in-50 duration-500">
       {/* ─── HEADER / FILTERS ────────────────────────────────── */}
       <div className="space-y-4">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
-                <Building2 className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">Distributor Reports</h2>
-                <p className="text-sm text-muted-foreground">Distributor performance, sell-in trends, and monthly comparison</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={handleCopyLink} className="bg-card shadow-sm">
-              <Link2 className="w-4 h-4 mr-1.5" /> Share
-            </Button>
-            <Button size="sm" onClick={handleExportCSV} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
-              <Download className="w-4 h-4 mr-1.5" /> Export CSV
-            </Button>
-          </div>
-        </div>
+        <ReportingTabHeader
+          icon={Building2}
+          title="Distributor Reports"
+          description="Distributor performance, sell-in trends, and monthly comparison"
+          period={dateRange}
+          onPeriodChange={setDateRange}
+          periodOptions={DATE_RANGE_OPTIONS}
+          periodIcon={CalendarIcon}
+          onRefresh={fetchReport}
+          refreshing={loading}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={handleCopyLink} className="h-9 border-[var(--sera-line)]">
+                <Link2 className="w-4 h-4 mr-1.5" /> Share
+              </Button>
+              <Button size="sm" onClick={handleExportCSV} className="h-9 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
+                <Download className="w-4 h-4 mr-1.5" /> Export CSV
+              </Button>
+            </>
+          }
+        />
 
         {/* Filters Row */}
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[160px] bg-card border-border shadow-sm h-9 text-sm">
-              <CalendarIcon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="thisMonth">This Month</SelectItem>
-              <SelectItem value="lastMonth">Last Month</SelectItem>
-              <SelectItem value="last3Months">Last 3 Months</SelectItem>
-              <SelectItem value="last6Months">Last 6 Months</SelectItem>
-              <SelectItem value="last12Months">Last 12 Months</SelectItem>
-            </SelectContent>
-          </Select>
-
           <Select value={seller} onValueChange={setSeller}>
-            <SelectTrigger className="w-[200px] bg-card border-border shadow-sm h-9 text-sm">
-              <Building2 className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+            <SelectTrigger className="w-[200px] bg-white border-[var(--sera-line)] shadow-sm h-9 text-sm">
+              <Building2 className="mr-2 h-3.5 w-3.5 text-[var(--sera-muted)]" />
               <SelectValue placeholder="All Distributors" />
             </SelectTrigger>
             <SelectContent>
@@ -688,7 +687,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
       </div>
 
       {/* ─── TREND CHART ─────────────────────────────────────── */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
@@ -770,7 +769,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
       </Card>
 
       {/* ─── LEADERBOARD ─────────────────────────────────────── */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
@@ -817,7 +816,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                     >
                       <td className="py-3.5 px-2"><RankBadge rank={row.rank} /></td>
                       <td className="py-3.5 px-2">
-                        <span className="font-medium text-foreground group-hover:text-blue-600 transition-colors">{row.name}</span>
+                        <span className="font-medium text-foreground group-hover:text-[var(--sera-orange)] transition-colors">{row.name}</span>
                       </td>
                       <td className="py-3.5 px-2 text-right font-semibold tabular-nums">
                         RM {row.totalRM.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
@@ -843,7 +842,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
                         {row.lastOrderDate ? format(new Date(row.lastOrderDate), 'dd MMM') : '—'}
                       </td>
                       <td className="py-3.5 px-2 text-right">
-                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+                        <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-[var(--sera-orange)] transition-colors" />
                       </td>
                     </tr>
                   ))}
@@ -862,7 +861,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
 
       {/* ─── COMPARISON CHART ────────────────────────────────── */}
       {comparison.length > 0 && (
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
@@ -978,7 +977,7 @@ export default function DistributorReportsTab({ userProfile }: DistributorReport
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-blue-600" />
+              <ShoppingCart className="w-5 h-5 text-[var(--sera-orange)]" />
               All Distributor Orders
             </DialogTitle>
             <DialogDescription>

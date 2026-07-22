@@ -80,13 +80,13 @@ interface RepeatAnalytics {
 // CONSTANTS
 // ============================================================
 const COLORS = {
-    primary: '#3b82f6',
-    success: '#10b981',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-    purple: '#8b5cf6',
-    pink: '#ec4899',
-    cyan: '#06b6d4',
+    primary: '#e85d04',
+    success: '#059669',
+    warning: '#d97706',
+    danger: '#dc2626',
+    purple: '#7c3aed',
+    pink: '#db2777',
+    cyan: '#0891b2',
     indigo: '#6366f1',
     orange: '#f97316',
 }
@@ -125,7 +125,7 @@ function MiniKPI({ label, value, icon: Icon, color, subtitle }: {
     label: string; value: string | number; icon: any; color: string; subtitle?: string
 }) {
     return (
-        <Card className="relative overflow-hidden border-0 bg-card/80 backdrop-blur hover:shadow-lg transition-all duration-300 group">
+        <Card className="relative overflow-hidden sera-sc-panel overflow-hidden hover:shadow-lg transition-all duration-300 group">
             <div className="absolute top-0 right-0 w-20 h-20 -mr-4 -mt-4 rounded-full opacity-[0.06] group-hover:opacity-[0.12] transition-opacity" style={{ backgroundColor: color }} />
             <div className="absolute bottom-0 left-0 h-0.5 w-full opacity-70" style={{ background: `linear-gradient(to right, ${color}, transparent)` }} />
             <CardContent className="pt-4 pb-3">
@@ -245,11 +245,11 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             </div>
 
             {/* ─── INSIGHT BANNER ──────────────────────────────────── */}
-            <Card className="border-0 bg-gradient-to-r from-indigo-50 to-cyan-50 dark:from-indigo-950/40 dark:to-cyan-950/40 shadow-sm">
+            <Card className="sera-sc-panel border-[var(--sera-orange)]/15 bg-[var(--sera-orange)]/[0.04] shadow-none">
                 <CardContent className="py-4">
                     <div className="flex items-start gap-3">
                         <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg shrink-0 mt-0.5">
-                            <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                            <Zap className="w-4 h-4 text-[var(--sera-orange-deep,#c44a00)] dark:text-indigo-400" />
                         </div>
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400 mb-1.5">Key Insights</p>
@@ -315,10 +315,10 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             {/* ─── ROW: FREQ DISTRIBUTION + REVENUE SPLIT ──────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Frequency Distribution */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
-                            <BarChart3 className="w-4 h-4 text-blue-600" />
+                            <BarChart3 className="w-4 h-4 text-[var(--sera-orange)]" />
                             Order Frequency Distribution
                         </CardTitle>
                         <CardDescription>How many orders each distributor placed</CardDescription>
@@ -343,7 +343,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                 </Card>
 
                 {/* Revenue Split Pie */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
                             <PieChartIcon className="w-4 h-4 text-purple-600" />
@@ -404,7 +404,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             </div>
 
             {/* ─── REPEAT TREND CHART ──────────────────────────────── */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                         <Activity className="w-4 h-4 text-cyan-600" />
@@ -460,7 +460,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             </Card>
 
             {/* ─── TOP REPEAT DISTRIBUTORS TABLE ───────────────────── */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-base font-semibold flex items-center gap-2">
                         <Crown className="w-4 h-4 text-amber-500" />
@@ -493,7 +493,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                                         >
                                             <td className="py-3 px-2"><RankBadge rank={idx + 1} /></td>
                                             <td className="py-3 px-2">
-                                                <span className="font-medium text-foreground group-hover:text-blue-600 transition-colors">{d.name}</span>
+                                                <span className="font-medium text-foreground group-hover:text-[var(--sera-orange)] transition-colors">{d.name}</span>
                                             </td>
                                             <td className="py-3 px-2 text-right font-semibold tabular-nums">{d.orders}</td>
                                             <td className="py-3 px-2 text-right font-semibold tabular-nums">
@@ -509,7 +509,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                                                 {d.lastDate ? format(new Date(d.lastDate), 'dd MMM yy') : '—'}
                                             </td>
                                             <td className="py-3 px-2 text-right">
-                                                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+                                                <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-[var(--sera-orange)] transition-colors" />
                                             </td>
                                         </tr>
                                     ))}
@@ -528,7 +528,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             {/* ─── ROW: SINGLE-ORDER DISTS + AT-RISK ──────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Single-Order Distributors */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
                             <UserMinus className="w-4 h-4 text-amber-500" />
@@ -550,7 +550,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                                                 <Building2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                             </div>
                                             <div className="min-w-0">
-                                                <p className="text-sm font-medium text-foreground truncate group-hover:text-blue-600 transition-colors">{d.name}</p>
+                                                <p className="text-sm font-medium text-foreground truncate group-hover:text-[var(--sera-orange)] transition-colors">{d.name}</p>
                                                 <p className="text-[10px] text-muted-foreground">
                                                     {d.lastDate ? format(new Date(d.lastDate), 'dd MMM yyyy') : 'No date'}
                                                 </p>
@@ -573,7 +573,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                 </Card>
 
                 {/* At-Risk Distributors */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                             <div>
@@ -616,7 +616,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                                                     <RiskIcon className={`w-3.5 h-3.5 ${cfg.text}`} />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className="text-sm font-medium text-foreground truncate group-hover:text-blue-600 transition-colors">{d.name}</p>
+                                                    <p className="text-sm font-medium text-foreground truncate group-hover:text-[var(--sera-orange)] transition-colors">{d.name}</p>
                                                     <p className="text-[10px] text-muted-foreground">
                                                         {d.orders} order{d.orders > 1 ? 's' : ''} · Last: {d.lastDate ? format(new Date(d.lastDate), 'dd MMM yy') : '—'}
                                                     </p>
@@ -645,7 +645,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
             {/* ─── ROW: REORDER GAP + PRODUCT REPEAT ──────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Reorder Gap Analysis */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
                             <Timer className="w-4 h-4 text-purple-600" />
@@ -679,7 +679,7 @@ export default function RepeatRateAnalytics({ data, loading, onBack, onDistribut
                 </Card>
 
                 {/* Product Repeat Analysis */}
-                <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+                <Card className="sera-sc-panel overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
                             <Package className="w-4 h-4 text-pink-600" />

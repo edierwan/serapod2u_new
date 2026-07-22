@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   FileText,
   Receipt,
@@ -371,15 +369,15 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   function getDocumentColor(docType: string) {
     switch (docType) {
       case 'PO':
-        return 'text-blue-600 bg-blue-50'
+        return 'text-[var(--sera-ink)] bg-[var(--sera-ink)]/5'
       case 'INVOICE':
-        return 'text-green-600 bg-green-50'
+        return 'text-emerald-700 bg-emerald-50'
       case 'PAYMENT':
-        return 'text-purple-600 bg-purple-50'
+        return 'text-[var(--sera-orange-deep)] bg-[var(--sera-orange)]/10'
       case 'RECEIPT':
-        return 'text-orange-600 bg-orange-50'
+        return 'text-[var(--sera-orange)] bg-[var(--sera-orange)]/10'
       default:
-        return 'text-gray-600 bg-gray-50'
+        return 'text-[var(--sera-muted)] bg-[var(--sera-ink)]/5'
     }
   }
 
@@ -398,16 +396,16 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white">
-        <div className="px-6 py-5 border-b border-gray-50">
+      <div className="sera-sc-panel overflow-hidden">
+        <div className="sera-sc-panel__head">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-50 animate-pulse" />
-            <div className="h-5 w-36 bg-gray-100 rounded-lg animate-pulse" />
+            <div className="w-9 h-9 rounded-lg bg-[var(--sera-orange)]/10 animate-pulse" />
+            <div className="h-5 w-36 bg-[var(--sera-ink)]/5 rounded-lg animate-pulse" />
           </div>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="sera-sc-panel__body space-y-4">
           {[1, 2].map((i) => (
-            <div key={i} className="h-24 bg-gray-50 rounded-xl animate-pulse" />
+            <div key={i} className="h-24 bg-[var(--sera-ink)]/5 rounded-xl animate-pulse" />
           ))}
         </div>
       </div>
@@ -416,21 +414,21 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
   if (pendingDocs.length === 0 && approvedH2MOrders.length === 0 && submittedOrders.length === 0) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
-        <div className="px-6 py-5 border-b border-gray-50">
+      <div className="sera-sc-panel overflow-hidden">
+        <div className="sera-sc-panel__head">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-50">
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-50">
               <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" strokeWidth={1.75} />
             </div>
-            <h3 className="text-sm font-semibold text-gray-900">Action Required</h3>
+            <h3 className="sera-sc-panel__title">Action Required</h3>
           </div>
         </div>
         <div className="text-center py-12 px-6">
           <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-7 h-7 text-emerald-500" strokeWidth={1.5} />
           </div>
-          <p className="text-sm font-medium text-gray-700">All caught up!</p>
-          <p className="text-xs text-gray-400 mt-1">No pending actions — all documents are up to date</p>
+          <p className="text-sm font-medium text-[var(--sera-ink)]">All caught up!</p>
+          <p className="text-xs text-[var(--sera-muted)] mt-1">No pending actions — all documents are up to date</p>
         </div>
       </div>
     )
@@ -439,24 +437,24 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   const totalActions = pendingDocs.length + approvedH2MOrders.length + submittedOrders.length
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
-      <div className="px-6 py-5 border-b border-gray-50">
+    <div className="sera-sc-panel overflow-hidden">
+      <div className="sera-sc-panel__head">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-amber-50">
-              <AlertCircle className="w-4.5 h-4.5 text-amber-600" strokeWidth={1.75} />
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-orange)]/10">
+              <AlertCircle className="w-4.5 h-4.5 text-[var(--sera-orange)]" strokeWidth={1.75} />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">Action Required</h3>
-              <p className="text-xs text-gray-400">Items that need your attention</p>
+              <h3 className="sera-sc-panel__title">Action Required</h3>
+              <p className="text-xs text-[var(--sera-muted)]">Items that need your attention</p>
             </div>
           </div>
-          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-red-500 text-white text-[11px] font-bold px-1.5">
+          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-[var(--sera-orange)] text-white text-[11px] font-bold px-1.5">
             {totalActions}
           </span>
         </div>
       </div>
-      <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
+      <div className="sera-sc-panel__body space-y-3 max-h-[600px] overflow-y-auto">
         {/* Submitted Orders Awaiting Approval */}
         {submittedOrders.map((order) => {
           const totalAmount = order.order_items.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
@@ -465,16 +463,16 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           return (
             <div
               key={`order-${order.id}`}
-              className="group rounded-xl border border-amber-100 bg-gradient-to-r from-amber-50/80 to-orange-50/50 p-4 transition-all hover:shadow-md hover:shadow-amber-100/50"
+              className="group rounded-xl border border-[var(--sera-orange)]/15 bg-[var(--sera-orange)]/[0.04] p-4 transition-all hover:border-[var(--sera-orange)]/30"
             >
               <div className="space-y-3">
                 {/* Header */}
                 <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[var(--sera-orange)] text-white flex items-center justify-center">
                     <Package className="w-4 h-4" strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-1">
+                    <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-1">
                       Order Awaiting Approval
                     </h4>
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -535,12 +533,12 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         {approvedH2MOrders.map((order) => (
           <div
             key={`h2m-${order.id}`}
-            className="group rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/80 to-indigo-50/50 p-4 transition-all hover:shadow-md hover:shadow-blue-100/50"
+            className="group rounded-xl border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.02] p-4 transition-all hover:border-[var(--sera-orange)]/25"
           >
             <div className="space-y-3">
               {/* Header */}
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-sm">
+                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[var(--sera-ink)] text-white flex items-center justify-center">
                   <Package className="w-4 h-4" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -554,8 +552,8 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               </div>
 
               {/* Info Banner */}
-              <div className="bg-white/80 border border-blue-100 rounded-lg px-3 py-2">
-                <p className="text-[11px] text-blue-800">
+              <div className="bg-white border border-[var(--sera-line)] rounded-lg px-3 py-2">
+                <p className="text-[11px] text-[var(--sera-ink-soft)]">
                   HQ approved — you can now create a D2H order.
                 </p>
               </div>
@@ -577,7 +575,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               {/* Action Button */}
               <Button
                 size="sm"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 rounded-lg shadow-sm"
+                className="w-full bg-[var(--sera-ink)] hover:bg-[var(--sera-ink-soft)] text-white text-xs h-9 rounded-lg"
                 onClick={() => window.location.href = '/dashboard?view=create-order'}
               >
                 Create D2H Order
@@ -625,7 +623,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               {pendingDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  className="group flex items-center gap-4 p-4 rounded-xl border border-gray-100 bg-white hover:bg-gray-50/50 hover:shadow-sm transition-all"
+                  className="group flex items-center gap-4 p-4 rounded-xl border border-[var(--sera-line)] bg-white hover:bg-[var(--sera-ink)]/[0.02] transition-all"
                 >
                   {/* Icon */}
                   <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${getDocumentColor(doc.doc_type)}`}>
@@ -674,7 +672,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                     size="sm"
                     variant="outline"
                     onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                    className="flex-shrink-0 text-xs h-8 rounded-lg border-gray-200 hover:bg-gray-100 hover:border-gray-300"
+                    className="flex-shrink-0 text-xs h-8 rounded-lg border-[var(--sera-line)] hover:bg-[var(--sera-ink)]/5"
                   >
                     Review
                     <ChevronRight className="w-3.5 h-3.5 ml-1" />

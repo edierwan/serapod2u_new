@@ -21,6 +21,7 @@ import {
   eachMonthOfInterval, parseISO, differenceInDays, getDay, getHours,
 } from 'date-fns'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
+import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ConsumerAnalyticsTabProps {
@@ -61,14 +62,14 @@ interface ResolvedConsumer {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  cyan: '#06b6d4',
+  primary: '#e85d04',
+  success: '#059669',
+  warning: '#d97706',
+  danger: '#dc2626',
+  purple: '#7c3aed',
+  cyan: '#0891b2',
   indigo: '#6366f1',
-  pink: '#ec4899',
+  pink: '#db2777',
 }
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444']
@@ -109,7 +110,7 @@ function Skeleton({ className = '' }: { className?: string }) {
 
 function KPICardSkeleton() {
   return (
-    <Card className="border-0 bg-card/80 backdrop-blur overflow-hidden">
+    <Card className="sera-sc-panel overflow-hidden">
       <CardContent className="pt-6 space-y-3">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-8 w-32" />
@@ -540,15 +541,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
   // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => <KPICardSkeleton key={i} />)}
-        </div>
-        <Skeleton className="h-80" />
-        <Skeleton className="h-80" />
-      </div>
-    )
+    return <ReportingTabLoading label="Loading consumer analytics" />
   }
 
   const kpiCards = [
@@ -586,39 +579,22 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
   return (
     <div className="space-y-6">
-      {/* Header + Controls */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Scan className="h-5 w-5 text-blue-600" />
-            Consumer Scan Analytics
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {period === '12months' ? 'Last 12 Months' : `Last ${period} Days`} &bull; Real-time consumer engagement intelligence
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[160px] bg-card">
-              <Calendar className="h-4 w-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PERIOD_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="icon" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </div>
+      <ReportingTabHeader
+        icon={Scan}
+        title="Consumer Scan Analytics"
+        description={`${period === '12months' ? 'Last 12 Months' : `Last ${period} Days`} · Real-time consumer engagement intelligence`}
+        period={period}
+        onPeriodChange={setPeriod}
+        periodOptions={PERIOD_OPTIONS}
+        periodIcon={Calendar}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+      />
 
       {/* KPI Cards */}
       <div className={`grid grid-cols-2 gap-4 ${period === '7' ? 'md:grid-cols-3 xl:grid-cols-6' : 'md:grid-cols-4'}`}>
         {kpiCards.map((card, i) => (
-          <Card key={i} className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden group hover:shadow-xl transition-all">
+          <Card key={i} className="sera-sc-panel overflow-hidden transition-colors hover:border-[var(--sera-orange)]/35">
             <CardContent className="pt-5 pb-4">
               <div className="flex items-start justify-between mb-2">
                 <div>
@@ -638,9 +614,9 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
                 <button
                   type="button"
                   onClick={card.onClick}
-                  className="max-w-full text-foreground underline decoration-dotted underline-offset-4 hover:text-blue-600 transition-colors"
+                  className="max-w-full text-foreground underline decoration-dotted underline-offset-4 hover:text-[var(--sera-orange)] transition-colors"
                 >
-                  <ExecutiveKpiValue className="text-foreground hover:text-blue-600">
+                  <ExecutiveKpiValue className="text-foreground hover:text-[var(--sera-orange)]">
                     <AnimatedCounter value={card.value} suffix={card.suffix || ''} decimals={card.decimals || 0} />
                   </ExecutiveKpiValue>
                 </button>
@@ -664,11 +640,11 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       </div>
 
       {/* Daily Scan Trend */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-600" />
+              <Activity className="h-5 w-5 text-[var(--sera-orange)]" />
               {period === '12months' ? 'Monthly' : 'Daily'} Scan Trend
             </CardTitle>
             <CardDescription>Scans &amp; unique consumers over time</CardDescription>
@@ -696,10 +672,10 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       {/* Monthly Analytics + Month-over-Month */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Trend Chart */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur lg:col-span-2">
+        <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-indigo-600" />
+              <BarChart3 className="h-5 w-5 text-[var(--sera-orange-deep,#c44a00)]" />
               Monthly Analytics (12 Months)
             </CardTitle>
             <CardDescription>Scans, consumers, and avg per consumer by month</CardDescription>
@@ -724,7 +700,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
         </Card>
 
         {/* Month-over-Month Comparison */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader>
             <CardTitle className="text-lg font-semibold">This Month vs Last Month</CardTitle>
             <CardDescription>Month-over-month comparison</CardDescription>
@@ -761,7 +737,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       </div>
 
       {/* Consumer Growth: New vs Returning */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader>
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-green-600" />
@@ -789,7 +765,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       {/* Activity Heatmap + Retention Cohort */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Activity Heatmap */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <Clock className="h-5 w-5 text-orange-600" />
@@ -840,7 +816,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
         </Card>
 
         {/* Retention Cohort */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-purple-600" />
@@ -878,7 +854,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
       </div>
 
       {/* Top Consumers Leaderboard */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader>
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Crown className="h-5 w-5 text-yellow-600" />
@@ -939,7 +915,7 @@ export default function ConsumerAnalyticsTab({ userProfile, chartGridColor, char
 
       {/* Product Engagement */}
       {productEngagement.length > 0 && (
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <Eye className="h-5 w-5 text-cyan-600" />

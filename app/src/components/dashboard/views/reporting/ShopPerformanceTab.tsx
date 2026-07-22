@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { format, subDays, subMonths, eachMonthOfInterval } from 'date-fns'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
+import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface ShopPerformanceTabProps {
@@ -74,14 +75,14 @@ function formatContactLines(phone?: string | null, email?: string | null): Conta
 
 // ── Constants ──────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  cyan: '#06b6d4',
+  primary: '#e85d04',
+  success: '#059669',
+  warning: '#d97706',
+  danger: '#dc2626',
+  purple: '#7c3aed',
+  cyan: '#0891b2',
   indigo: '#6366f1',
-  pink: '#ec4899',
+  pink: '#db2777',
 }
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444', '#14b8a6', '#f97316']
@@ -482,54 +483,27 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
 
   // ── Render ───────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map(i => (
-            <Card key={i} className="border-0 bg-card/80 backdrop-blur overflow-hidden">
-              <CardContent className="pt-6 space-y-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-32" />
-                <Skeleton className="h-3 w-20" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
+    return <ReportingTabLoading label="Loading shop performance" />
   }
 
   const drillShopInfo = drillShopId ? shops.get(drillShopId) : null
 
   return (
     <div className="space-y-6">
-      {/* Period & Refresh */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Store className="h-5 w-5 text-purple-600" />
-          <h3 className="text-lg font-semibold">Shop Performance</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="h-9 w-[160px] text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PERIOD_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <ReportingTabHeader
+        icon={Store}
+        title="Shop Performance"
+        description="Overall shop activity, scans, and consumer engagement"
+        period={period}
+        onPeriodChange={setPeriod}
+        periodOptions={PERIOD_OPTIONS}
+        onRefresh={handleRefresh}
+        refreshing={refreshing}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-purple-400/30">
+        <Card className="sera-sc-panel overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-purple-400/30">
           <button
             type="button"
             onClick={() => openDetailDialog('shops')}
@@ -547,19 +521,19 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             </CardContent>
           </button>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Scans</span>
               <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Scan className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <Scan className="h-4 w-4 text-[var(--sera-orange)] dark:text-blue-400" />
               </div>
             </div>
             <ExecutiveKpiValue><AnimatedCounter value={kpis.totalScans} /></ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">across all shops</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-green-400/30">
+        <Card className="sera-sc-panel overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-green-400/30">
           <button
             type="button"
             onClick={() => openDetailDialog('consumers')}
@@ -577,7 +551,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             </CardContent>
           </button>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Points Issued</span>
@@ -589,7 +563,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             <p className="text-xs text-muted-foreground mt-1">total points</p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg / Shop</span>
@@ -606,7 +580,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Trend */}
-        <Card className="lg:col-span-2 border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="lg:col-span-2 sera-sc-panel overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold">Monthly Shop Activity</CardTitle>
             <CardDescription>Scans and active shops over last 12 months</CardDescription>
@@ -633,7 +607,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
         </Card>
 
         {/* Shop Distribution Pie */}
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold">Shop Size Distribution</CardTitle>
             <CardDescription>Shops grouped by scan volume</CardDescription>
@@ -676,7 +650,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       </div>
 
       {/* Top 10 Shops */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>
