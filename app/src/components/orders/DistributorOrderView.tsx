@@ -797,7 +797,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -821,7 +821,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
         <div className="lg:col-span-2 space-y-6">
 
           {/* Distributor Selection */}
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Building2 className="w-4 h-4" />
@@ -880,7 +880,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           </Card>
 
           {/* Customer Information */}
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <User className="w-4 h-4" />
@@ -942,7 +942,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           </Card>
 
           {/* Product Selection */}
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Package className="w-4 h-4" />

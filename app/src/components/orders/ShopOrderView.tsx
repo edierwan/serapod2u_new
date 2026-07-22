@@ -626,13 +626,13 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sera-orange)]" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -646,8 +646,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             Back
           </Button>
         </div>
-        <h2 className="text-xl font-bold text-gray-900">Create Shop Order (S2D)</h2>
-        <p className="text-gray-600 text-xs mt-1">Create a new order for a Shop using retailer pricing</p>
+        <h2 className="font-display text-xl font-semibold text-[var(--sera-ink)]">Create Shop Order (S2D)</h2>
+        <p className="text-[var(--sera-muted)] text-xs mt-1">Create a new order for a Shop using retailer pricing</p>
       </div>
 
       {/* Main Layout - Two Columns */}
@@ -656,8 +656,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         <div className="lg:col-span-2 space-y-6">
 
           {/* Shop Selection */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Building2 className="w-4 h-4" />
                 Select Shop
@@ -665,13 +665,13 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             </CardHeader>
             <CardContent className="pt-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Shop <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={selectedShopId}
                   onChange={(e) => handleShopChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white"
                   disabled={availableShops.length === 0}
                 >
                   <option value="">Choose shop...</option>
@@ -691,8 +691,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
           </Card>
 
           {/* Customer Information */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <User className="w-4 h-4" />
                 Customer Information
@@ -701,37 +701,37 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             <CardContent className="pt-6">
               {selectedShopId && (
                 <>
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                    <p className="text-xs text-blue-700">
+                  <div className="mb-4 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-md">
+                    <p className="text-xs text-[var(--sera-orange-deep)]">
                       ℹ️ Customer information is automatically filled from the selected shop's profile
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Customer Name <span className="text-red-500">*</span>
                       </label>
                       <Input
                         value={customerName}
                         onChange={(e) => setCustomerName(e.target.value)}
                         placeholder="Customer name"
-                        className="bg-gray-100"
+                        className="bg-[var(--sera-ink)]/[0.06]"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Phone Number
                       </label>
                       <Input
                         value={phoneNumber}
                         onChange={(e) => setPhoneNumber(e.target.value)}
                         placeholder="Phone number"
-                        className="bg-gray-100"
+                        className="bg-[var(--sera-ink)]/[0.06]"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Delivery Address <span className="text-red-500">*</span>
                     </label>
                     <textarea
@@ -739,13 +739,13 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                       onChange={(e) => setDeliveryAddress(e.target.value)}
                       placeholder="Delivery address"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100"
+                      className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-[var(--sera-ink)]/[0.06]"
                     />
                   </div>
                 </>
               )}
               {!selectedShopId && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-[var(--sera-muted)]/80">
                   <p>Please select a shop first</p>
                 </div>
               )}
@@ -753,8 +753,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
           </Card>
 
           {/* Product Selection */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Package className="w-4 h-4" />
                 Product Selection
@@ -762,8 +762,8 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             </CardHeader>
             <CardContent className="pt-6">
               {!selectedShopId ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <div className="text-center py-12 text-[var(--sera-muted)]/80">
+                  <Package className="w-12 h-12 mx-auto mb-3 text-[var(--sera-muted)]/70" />
                   <p className="text-lg font-medium mb-1">No Shop Selected</p>
                   <p className="text-sm">Please select a shop above to view available products</p>
                 </div>
@@ -772,24 +772,24 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                   {/* Search and Filter */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Search Variant
                       </label>
                       <Input
                         value={productSearchQuery}
                         onChange={(e) => setProductSearchQuery(e.target.value)}
                         placeholder="Search by variant name or SKU..."
-                        className="bg-gray-50"
+                        className="bg-[var(--sera-ink)]/[0.03]"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Filter by Product
                       </label>
                       <select
                         value={selectedProductFilter}
                         onChange={(e) => setSelectedProductFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white"
                       >
                         <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
                         {Array.from(new Set(availableVariants.map(v => v.product_name))).sort().map(productName => (
@@ -803,13 +803,13 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
                   {/* Variant Selection */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Select Variant ({filteredVariants.length} available)
                     </label>
                     <select
                       value={selectedVariantId}
                       onChange={(e) => setSelectedVariantId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white"
                       disabled={filteredVariants.length === 0}
                     >
                       <option value="">Choose variant...</option>
@@ -834,20 +834,20 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                   {/* Order Items List */}
                   {orderItems.length > 0 && (
                     <div className="mt-6 space-y-4">
-                      <h4 className="font-semibold text-gray-900">Selected Products ({orderItems.length})</h4>
+                      <h4 className="font-semibold text-[var(--sera-ink)]">Selected Products ({orderItems.length})</h4>
                       {orderItems.map((item) => {
                         const variant = availableVariants.find(v => v.id === item.variant_id)
                         return (
-                          <div key={item.variant_id} className="border rounded-lg p-4 bg-gray-50">
+                          <div key={item.variant_id} className="border rounded-lg p-4 bg-[var(--sera-ink)]/[0.03]">
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex-1">
-                                <h5 className="font-medium text-gray-900">{item.product_name}</h5>
-                                <p className="text-sm text-gray-600">{item.variant_name}</p>
+                                <h5 className="font-medium text-[var(--sera-ink)]">{item.product_name}</h5>
+                                <p className="text-sm text-[var(--sera-muted)]">{item.variant_name}</p>
                                 {item.manufacturer_sku && (
-                                  <p className="text-xs text-gray-500 mt-1">SKU: {item.manufacturer_sku}</p>
+                                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">SKU: {item.manufacturer_sku}</p>
                                 )}
                                 {variant && (
-                                  <p className="text-xs text-blue-600 mt-1">Available: {variant.available_qty} units</p>
+                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} units</p>
                                 )}
                               </div>
                               <Button
@@ -862,7 +862,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
                             <div className="grid grid-cols-3 gap-3">
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Quantity
                                 </label>
                                 <Input
@@ -875,7 +875,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Unit Price (RM)
                                 </label>
                                 <Input
@@ -888,10 +888,10 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Line Total (RM)
                                 </label>
-                                <div className="text-sm font-semibold text-gray-900 py-2">
+                                <div className="text-sm font-semibold text-[var(--sera-ink)] py-2">
                                   {formatCurrency(item.line_total || 0)}
                                 </div>
                               </div>
@@ -910,7 +910,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
         {/* Right Column - Order Summary */}
         <div className="lg:col-span-1">
           <Card className="sticky top-6">
-            <CardHeader className="border-b bg-gray-50">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <ShoppingCart className="w-4 h-4" />
                 Order Summary
@@ -919,7 +919,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
             <CardContent className="pt-6">
               {/* Customer Info */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Customer</h4>
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">Customer</h4>
                 <div className="text-sm space-y-1">
                   <p><span className="font-medium">Name:</span> {customerName || 'Not set'}</p>
                   <p><span className="font-medium">Phone:</span> {phoneNumber || 'Not set'}</p>
@@ -932,9 +932,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
               {/* Order Type */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Order Type</h4>
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">Order Type</h4>
                 <div className="text-sm">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]">
                     S2D (Shop Order)
                   </span>
                 </div>
@@ -943,9 +943,9 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
               {/* Shop */}
               {selectedShopId && (
                 <div className="mb-6 pb-6 border-b">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Selected Shop</h4>
+                  <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">Selected Shop</h4>
                   <div className="text-sm">
-                    <p className="font-medium text-blue-600">
+                    <p className="font-medium text-[var(--sera-orange)]">
                       {availableShops.find(s => s.id === selectedShopId)?.org_name}
                     </p>
                   </div>
@@ -954,7 +954,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
               {/* Organizations */}
               <div className="mb-6 pb-6 border-b">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Organizations</h4>
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">Organizations</h4>
                 <div className="text-sm space-y-2">
                   <div>
                     <span className="font-medium">Buyer:</span> {buyerOrg?.org_name || 'Not set'}
@@ -967,17 +967,17 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
 
               {/* Products */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">
                   Products ({orderItems.length})
                 </h4>
                 {orderItems.length === 0 ? (
-                  <p className="text-sm text-gray-500">No products selected</p>
+                  <p className="text-sm text-[var(--sera-muted)]/80">No products selected</p>
                 ) : (
                   <div className="space-y-2">
                     {orderItems.map((item) => (
                       <div key={item.variant_id} className="text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">{item.variant_name}</span>
+                          <span className="text-[var(--sera-muted)]">{item.variant_name}</span>
                           <span className="font-medium">×{item.qty}</span>
                         </div>
                       </div>
@@ -989,11 +989,11 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
               {/* Totals */}
               <div className="space-y-2 mb-6 pb-6 border-b">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="text-[var(--sera-muted)]">Subtotal:</span>
                   <span className="font-medium">RM {formatCurrency(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Tax:</span>
+                  <span className="text-[var(--sera-muted)]">Tax:</span>
                   <span className="font-medium">RM {formatCurrency(totals.tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -1015,7 +1015,7 @@ export default function ShopOrderView({ userProfile, onViewChange }: ShopOrderVi
                   </div>
                 )}
                 <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveOrder}
                   disabled={saving || !selectedShopId || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}
                 >

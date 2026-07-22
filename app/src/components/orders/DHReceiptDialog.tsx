@@ -310,7 +310,7 @@ export default function DHReceiptDialog({
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Receipt className="w-5 h-5 text-blue-600" />
+            <Receipt className="w-5 h-5 text-[var(--sera-orange)]" />
             Receipt
           </DialogTitle>
           <DialogDescription>
@@ -336,7 +336,7 @@ export default function DHReceiptDialog({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">New Receipt(s):</span>
-                <span className="font-medium text-blue-600">{formatCurrency(newReceiptTotal)}</span>
+                <span className="font-medium text-[var(--sera-orange)]">{formatCurrency(newReceiptTotal)}</span>
               </div>
               <div className="border-t pt-2 mt-2">
                 <div className="flex justify-between font-medium">
@@ -476,7 +476,7 @@ export default function DHReceiptDialog({
               <button
                 type="button"
                 onClick={addReceipt}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
+                className="text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] text-sm font-medium flex items-center gap-1"
               >
                 <Plus className="w-4 h-4" />
                 Add receipt
@@ -506,7 +506,7 @@ export default function DHReceiptDialog({
               <Button
                 onClick={handleSave}
                 disabled={saving || newReceiptTotal === 0}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
               >
                 {saving ? (
                   <>

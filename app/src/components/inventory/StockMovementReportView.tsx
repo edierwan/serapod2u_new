@@ -861,31 +861,31 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
     .reduce((sum, m) => sum + Math.abs(m.quantity_change), 0)
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Stock Movement Reports</h1>
-        <p className="text-gray-600 mt-1">Complete audit trail of all inventory movements</p>
+        <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Stock Movement Reports</h1>
+        <p className="text-[var(--sera-muted)] mt-1">Complete audit trail of all inventory movements</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader className="pb-2 sm:pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Total Movements</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium text-[var(--sera-muted)]">Total Movements</CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+              <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-[var(--sera-orange)]" />
               <span className="text-xl sm:text-2xl font-bold">{formatNumber(movements.length)}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Current page records</p>
+            <p className="text-xs text-[var(--sera-muted)]/80 mt-1 hidden sm:block">Current page records</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader className="pb-2 sm:pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Stock Additions</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium text-[var(--sera-muted)]">Stock Additions</CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
@@ -894,13 +894,13 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                 {totalIncrease > 0 ? '+' : ''}{formatNumber(totalIncrease)}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Units added</p>
+            <p className="text-xs text-[var(--sera-muted)]/80 mt-1 hidden sm:block">Units added</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader className="pb-2 sm:pb-3">
-            <CardTitle className="text-xs sm:text-sm font-medium text-gray-600">Stock Reductions</CardTitle>
+            <CardTitle className="text-xs sm:text-sm font-medium text-[var(--sera-muted)]">Stock Reductions</CardTitle>
           </CardHeader>
           <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
             <div className="flex items-center gap-2">
@@ -909,13 +909,13 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                 {totalDecrease > 0 ? `-${formatNumber(totalDecrease)}` : '0'}
               </span>
             </div>
-            <p className="text-xs text-gray-500 mt-1 hidden sm:block">Units removed</p>
+            <p className="text-xs text-[var(--sera-muted)]/80 mt-1 hidden sm:block">Units removed</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
@@ -937,7 +937,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
           <div className="space-y-4">
             {/* Search Bar */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-[var(--sera-muted)]/70" />
               <Input
                 type="text"
                 value={searchQuery}
@@ -950,7 +950,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             {/* Filter Grid Row 1 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Movement Type</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Movement Type</label>
                 <Select value={movementTypeFilter} onValueChange={setMovementTypeFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Types" />
@@ -975,7 +975,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Reference Type</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Reference Type</label>
                 <Select value={referenceTypeFilter} onValueChange={setReferenceTypeFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All References" />
@@ -991,7 +991,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Product</label>
                 <Select value={productFilter} onValueChange={setProductFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Products" />
@@ -1008,7 +1008,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Variant</label>
                 <Select
                   value={variantFilter}
                   onValueChange={setVariantFilter}
@@ -1029,7 +1029,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Location</label>
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Locations" />
@@ -1049,7 +1049,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             {/* Filter Grid Row 2 - Date Range & Quantity */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">
                   <Calendar className="w-3 h-3 inline mr-1" />
                   Date From
                 </label>
@@ -1061,7 +1061,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">
                   <Calendar className="w-3 h-3 inline mr-1" />
                   Date To
                 </label>
@@ -1073,7 +1073,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Quantity Range</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Quantity Range</label>
                 <Select value={quantityRangeFilter} onValueChange={setQuantityRangeFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Quantities" />
@@ -1114,7 +1114,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
             {/* Active Filters Display */}
             {(searchQuery || movementTypeFilter !== 'all' || referenceTypeFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || locationFilter !== 'all' || quantityRangeFilter !== 'all' || dateFrom || dateTo) && (
               <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
-                <span className="text-sm text-gray-600 font-medium">Active:</span>
+                <span className="text-sm text-[var(--sera-muted)] font-medium">Active:</span>
                 {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
                 {movementTypeFilter !== 'all' && <Badge variant="secondary">Type</Badge>}
                 {referenceTypeFilter !== 'all' && <Badge variant="secondary">Reference</Badge>}
@@ -1133,7 +1133,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
 
       {/* Movements Table */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
           <CardTitle>Movement History</CardTitle>
           <CardDescription>
@@ -1146,7 +1146,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
               <TableHeader>
                 <TableRow>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('created_at')}
                   >
                     <div className="flex items-center">
@@ -1155,7 +1155,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('movement_type')}
                   >
                     <div className="flex items-center">
@@ -1164,7 +1164,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('product_name')}
                   >
                     <div className="flex items-center">
@@ -1173,7 +1173,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('location')}
                   >
                     <div className="flex items-center">
@@ -1182,7 +1182,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
                     onClick={() => handleSort('quantity_change')}
                   >
                     <div className="flex items-center justify-end">
@@ -1191,7 +1191,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
                     onClick={() => handleSort('quantity_before')}
                   >
                     <div className="flex items-center justify-end">
@@ -1200,7 +1200,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
                     onClick={() => handleSort('quantity_after')}
                   >
                     <div className="flex items-center justify-end">
@@ -1209,7 +1209,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
                     onClick={() => handleSort('unit_cost')}
                   >
                     <div className="flex items-center justify-end">
@@ -1218,7 +1218,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('reference_no')}
                   >
                     <div className="flex items-center">
@@ -1227,7 +1227,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                     </div>
                   </TableHead>
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                     onClick={() => handleSort('reason')}
                   >
                     <div className="flex items-center">
@@ -1246,7 +1246,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                   </TableRow>
                 ) : movements.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-[var(--sera-muted)]/80">
                       No movements found
                     </TableCell>
                   </TableRow>
@@ -1267,10 +1267,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                             size={36}
                           />
                           <div>
-                            <p className="text-xs font-medium text-gray-900">
+                            <p className="text-xs font-medium text-[var(--sera-ink)]">
                               {movement.product_variants?.products?.product_name || 'N/A'}
                             </p>
-                            <p className="text-xs text-gray-600">
+                            <p className="text-xs text-[var(--sera-muted)]">
                               {(() => {
                                 const variantName = movement.product_variants?.variant_name || ''
                                 // Extract text between [ and ] if it exists, otherwise show full name
@@ -1292,7 +1292,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                           return movement.organizations?.org_name || 'N/A'
                         })()}
                         {movement.warehouse_location && (
-                          <p className="text-xs text-gray-500">{movement.warehouse_location}</p>
+                          <p className="text-xs text-[var(--sera-muted)]/80">{movement.warehouse_location}</p>
                         )}
                       </TableCell>
                       <TableCell
@@ -1300,12 +1300,12 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                             ? 'text-green-600'
                             : movement.quantity_change < 0
                               ? 'text-red-600'
-                              : 'text-gray-600'
+                              : 'text-[var(--sera-muted)]'
                           }`}
                       >
                         {formatSignedNumber(movement.quantity_change)}
                       </TableCell>
-                      <TableCell className="text-xs text-right text-gray-600">
+                      <TableCell className="text-xs text-right text-[var(--sera-muted)]">
                         {formatNumber(movement.quantity_before)}
                       </TableCell>
                       <TableCell className="text-xs text-right font-semibold">
@@ -1324,7 +1324,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                             <div>
                               <p className="text-xs">{formattedUnitCost}</p>
                               {formattedTotalCost && (
-                                <p className={`text-xs ${movement.total_cost && movement.total_cost < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                <p className={`text-xs ${movement.total_cost && movement.total_cost < 0 ? 'text-red-600' : 'text-[var(--sera-muted)]/80'}`}>
                                   Total impact: {formattedTotalCost}
                                 </p>
                               )}
@@ -1336,10 +1336,10 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                         {movement.reference_no ? (
                           <span className="text-xs font-medium">{movement.reference_no}</span>
                         ) : (
-                          <span className="text-gray-400">-</span>
+                          <span className="text-[var(--sera-muted)]/70">-</span>
                         )}
                         {movement.reference_type && (
-                          <p className="text-xs text-gray-500 mt-1">{movement.reference_type}</p>
+                          <p className="text-xs text-[var(--sera-muted)]/80 mt-1">{movement.reference_type}</p>
                         )}
                       </TableCell>
                       <TableCell className="text-xs max-w-xs">
@@ -1347,13 +1347,13 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
                           const reasonText = getReasonText(movement)
                           if (!reasonText) return null
                           return (
-                            <p className="text-gray-700 truncate" title={reasonText}>
+                            <p className="text-[var(--sera-ink)]/80 truncate" title={reasonText}>
                               {reasonText}
                             </p>
                           )
                         })()}
                         {movement.users && (
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                             By: {movement.users.email.split('@')[0]}
                           </p>
                         )}
@@ -1367,7 +1367,7 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
 
           {/* Pagination */}
           <div className="flex items-center justify-between mt-6">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-[var(--sera-muted)]">
               Page {currentPage}
             </p>
             <div className="flex gap-2">

@@ -453,12 +453,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
   )
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Add Stock</h1>
-          <p className="text-gray-600 mt-1">Manually add stock to your inventory</p>
+          <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Add Stock</h1>
+          <p className="text-[var(--sera-muted)] mt-1">Manually add stock to your inventory</p>
         </div>
         {onViewChange && (
           <Button variant="outline" onClick={() => onViewChange('inventory')}>
@@ -469,12 +469,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
       </div>
 
       {/* Info Card */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+      <Card className="bg-gradient-to-r from-[var(--sera-orange)]/[0.06] to-[var(--sera-orange)]/[0.03] border-[var(--sera-orange)]/20">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-[var(--sera-orange)] mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-[var(--sera-ink)]/80">
                 <strong>Stock Addition Process:</strong> Select the product and variant you want to add stock for, 
                 specify the quantity and cost, optionally record the manufacturer. The system will automatically 
                 update inventory levels and calculate weighted average costs.
@@ -489,7 +489,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Product Selection */}
           <div className="lg:col-span-2 space-y-6">
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="w-5 h-5" />
@@ -500,7 +500,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               <CardContent className="space-y-4">
                 {/* Product Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Product <span className="text-red-500">*</span>
                   </label>
                   <Select 
@@ -527,7 +527,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                             </Badge>
                             <span>{product.product_name}</span>
                             {product.brands && (
-                              <span className="text-gray-500 text-sm">- {product.brands.brand_name}</span>
+                              <span className="text-[var(--sera-muted)]/80 text-sm">- {product.brands.brand_name}</span>
                             )}
                           </div>
                         </SelectItem>
@@ -538,7 +538,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
                 {/* Variant Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Variant <span className="text-red-500">*</span>
                   </label>
                   <Select 
@@ -571,10 +571,10 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               <Badge variant="secondary" className="text-xs">
                                 {variant.variant_code}
                               </Badge>
-                              <span className={isAdded ? "text-gray-400 line-through" : ""}>{variant.variant_name}</span>
+                              <span className={isAdded ? "text-[var(--sera-muted)]/70 line-through" : ""}>{variant.variant_name}</span>
                               {isAdded && <span className="text-xs text-red-500 ml-2">(Added)</span>}
                               {!isAdded && variant.suggested_retail_price && (
-                                <span className="text-gray-500 text-sm">
+                                <span className="text-[var(--sera-muted)]/80 text-sm">
                                   - RM {variant.suggested_retail_price.toFixed(2)}
                                 </span>
                               )}
@@ -605,7 +605,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                            <div className="w-full h-full flex items-center justify-center text-[var(--sera-muted)]/70">
                               <ImageIcon className="w-6 h-6" />
                             </div>
                           )}
@@ -615,23 +615,23 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       {/* Variant Details */}
                       <div className="flex-1 grid grid-cols-2 gap-1.5 text-xs">
                         <div>
-                          <span className="text-gray-500">Product:</span>
-                          <p className="font-medium text-gray-900">{selectedProductData.product_name}</p>
+                          <span className="text-[var(--sera-muted)]/80">Product:</span>
+                          <p className="font-medium text-[var(--sera-ink)]">{selectedProductData.product_name}</p>
                         </div>
                         <div>
-                          <span className="text-gray-500">Variant:</span>
-                          <p className="font-medium text-gray-900">{selectedVariantData.variant_name}</p>
+                          <span className="text-[var(--sera-muted)]/80">Variant:</span>
+                          <p className="font-medium text-[var(--sera-ink)]">{selectedVariantData.variant_name}</p>
                         </div>
                         {selectedVariantData.base_cost && (
                           <div>
-                            <span className="text-gray-500">Base Cost:</span>
-                            <p className="font-medium text-gray-900">RM {selectedVariantData.base_cost.toFixed(2)}</p>
+                            <span className="text-[var(--sera-muted)]/80">Base Cost:</span>
+                            <p className="font-medium text-[var(--sera-ink)]">RM {selectedVariantData.base_cost.toFixed(2)}</p>
                           </div>
                         )}
                         {selectedVariantData.suggested_retail_price && (
                           <div>
-                            <span className="text-gray-500">Retail Price:</span>
-                            <p className="font-medium text-gray-900">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
+                            <span className="text-[var(--sera-muted)]/80">Retail Price:</span>
+                            <p className="font-medium text-[var(--sera-ink)]">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
                           </div>
                         )}
                       </div>
@@ -640,38 +640,38 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     {/* Existing Stock Info */}
                     <div className="mt-3 pt-3 border-t border-green-200">
                       <div className="flex items-center gap-2 mb-2">
-                        <Warehouse className="w-3.5 h-3.5 text-blue-600" />
-                        <span className="text-xs font-medium text-blue-700">Existing Stock</span>
+                        <Warehouse className="w-3.5 h-3.5 text-[var(--sera-orange)]" />
+                        <span className="text-xs font-medium text-[var(--sera-orange-deep)]">Existing Stock</span>
                       </div>
                       {!selectedWarehouse ? (
-                        <p className="text-xs text-gray-600">Select a warehouse to view existing stock.</p>
+                        <p className="text-xs text-[var(--sera-muted)]">Select a warehouse to view existing stock.</p>
                       ) : existingStockLoading || existingStockPending ? (
-                        <p className="text-xs text-blue-700" role="status">Loading existing stock...</p>
+                        <p className="text-xs text-[var(--sera-orange-deep)]" role="status">Loading existing stock...</p>
                       ) : existingStockError ? (
                         <p className="text-xs text-red-600" role="alert">{existingStockError}</p>
                       ) : existingStockLoaded && !existingStock ? (
-                        <p className="text-xs text-gray-600">No existing stock at this warehouse.</p>
+                        <p className="text-xs text-[var(--sera-muted)]">No existing stock at this warehouse.</p>
                       ) : existingStock ? (
                       <div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <span className="text-gray-500">Available:</span>
-                            <p className="font-semibold text-blue-600">{existingStock.quantity_available.toLocaleString()} units</p>
+                            <span className="text-[var(--sera-muted)]/80">Available:</span>
+                            <p className="font-semibold text-[var(--sera-orange)]">{existingStock.quantity_available.toLocaleString()} units</p>
                           </div>
                           <div>
-                            <span className="text-gray-500">Selected Warehouse:</span>
-                            <p className="font-medium text-gray-900">{existingStock.warehouse_name}</p>
+                            <span className="text-[var(--sera-muted)]/80">Selected Warehouse:</span>
+                            <p className="font-medium text-[var(--sera-ink)]">{existingStock.warehouse_name}</p>
                           </div>
                           {existingStock.warehouse_location && (
                             <div>
-                              <span className="text-gray-500">Location:</span>
-                              <p className="font-medium text-gray-900">{existingStock.warehouse_location}</p>
+                              <span className="text-[var(--sera-muted)]/80">Location:</span>
+                              <p className="font-medium text-[var(--sera-ink)]">{existingStock.warehouse_location}</p>
                             </div>
                           )}
                           {existingStock.average_cost && (
                             <div>
-                              <span className="text-gray-500">Avg Cost:</span>
-                              <p className="font-medium text-gray-900">RM {existingStock.average_cost.toFixed(2)}</p>
+                              <span className="text-[var(--sera-muted)]/80">Avg Cost:</span>
+                              <p className="font-medium text-[var(--sera-ink)]">RM {existingStock.average_cost.toFixed(2)}</p>
                             </div>
                           )}
                         </div>
@@ -683,7 +683,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Plus className="w-5 h-5" />
@@ -695,7 +695,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                 <div className="grid grid-cols-2 gap-4">
                   {/* Quantity */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Quantity (Units) <span className="text-red-500">*</span>
                     </label>
                     <Input
@@ -705,12 +705,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       onChange={(e) => setQuantity(e.target.value)}
                       placeholder="e.g., 500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Number of units to add</p>
+                    <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Number of units to add</p>
                   </div>
 
                   {/* Unit Cost */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Unit Cost (RM)
                     </label>
                     <Input
@@ -721,20 +721,20 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       onChange={(e) => setUnitCost(e.target.value)}
                       placeholder="e.g., 25.50"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Cost per unit (optional)</p>
+                    <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Cost per unit (optional)</p>
                   </div>
                 </div>
 
                 {/* Total Cost Calculation */}
                 {quantity && unitCost && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700">Total Cost:</span>
-                      <span className="text-lg font-bold text-blue-600">
+                      <span className="text-sm font-medium text-[var(--sera-ink)]/80">Total Cost:</span>
+                      <span className="text-lg font-bold text-[var(--sera-orange)]">
                         RM {(parseInt(quantity) * parseFloat(unitCost)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-[var(--sera-muted)] mt-1">
                       {parseInt(quantity).toLocaleString()} units × RM {parseFloat(unitCost).toFixed(2)}
                     </p>
                   </div>
@@ -754,7 +754,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
             {/* Items List */}
             {stockItems.length > 0 && (
-              <Card>
+              <Card className="sera-sc-panel overflow-hidden shadow-none">
                 <CardHeader>
                   <CardTitle>Items to Add ({stockItems.length})</CardTitle>
                 </CardHeader>
@@ -773,7 +773,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                         <TableRow key={item.id}>
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200">
+                              <div className="w-10 h-10 rounded-md overflow-hidden bg-[var(--sera-ink)]/[0.06] flex-shrink-0 border border-[var(--sera-line)]">
                                 {item.image_url ? (
                                   <img
                                     src={getStorageUrl(item.image_url) || item.image_url}
@@ -781,14 +781,14 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                                     className="w-full h-full object-cover"
                                   />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                  <div className="w-full h-full flex items-center justify-center text-[var(--sera-muted)]/70">
                                     <ImageIcon className="w-5 h-5" />
                                   </div>
                                 )}
                               </div>
                               <div>
-                                <p className="text-sm font-medium text-gray-900">{item.product_name}</p>
-                                <p className="text-xs text-gray-500">[{item.variant_name}]</p>
+                                <p className="text-sm font-medium text-[var(--sera-ink)]">{item.product_name}</p>
+                                <p className="text-xs text-[var(--sera-muted)]/80">[{item.variant_name}]</p>
                               </div>
                             </div>
                           </TableCell>
@@ -817,8 +817,8 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
           </div>
 
           {/* Right Column - Additional Details */}
-          <div className="space-y-6">
-            <Card>
+          <div className="sera-sc-page space-y-6">
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Factory className="w-5 h-5" />
@@ -834,7 +834,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                         <CheckCircle className="w-4 h-4 text-green-600" />
                         <span className="text-xs font-medium text-green-700">Auto-selected from product</span>
                       </div>
-                      <p className="text-sm font-semibold text-gray-900">
+                      <p className="text-sm font-semibold text-[var(--sera-ink)]">
                         {manufacturers.find(m => m.id === selectedManufacturer)?.org_name || 'Unknown Manufacturer'}
                       </p>
                     </div>
@@ -850,7 +850,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[var(--sera-muted)]/80">
                       Manufacturer is automatically selected based on product relationship. You can change it if needed.
                     </p>
                   </div>
@@ -869,7 +869,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-[var(--sera-muted)]/80 mt-2">
                       {selectedProduct ? 'No manufacturer linked to this product' : 'Select a product first'}
                     </p>
                   </div>
@@ -877,7 +877,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Warehouse className="w-5 h-5" />
@@ -888,7 +888,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
               <CardContent className="space-y-4">
                 {/* Organization/Warehouse */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Organization <span className="text-red-500">*</span>
                   </label>
                   <Select value={selectedWarehouse} onValueChange={(value) => {
@@ -912,7 +912,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
 
                 {/* Physical Location */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Physical Location
                   </label>
                   <Input
@@ -921,14 +921,14 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                     onChange={(e) => setWarehouseLocationText(e.target.value)}
                     placeholder="e.g., Shelf A-12, Zone 3"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                     Optional: Specific shelf or zone
                   </p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle>Notes</CardTitle>
               </CardHeader>
@@ -938,7 +938,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Any additional notes about this stock addition..."
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-lg focus:ring-2 focus:ring-[var(--sera-orange)]/30 focus:border-transparent resize-none"
                 />
               </CardContent>
             </Card>

@@ -196,17 +196,17 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
         <div className="w-screen max-w-2xl">
           <div className="flex h-full flex-col bg-white shadow-xl">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-6">
+            <div className="bg-gradient-to-r from-[var(--sera-orange)] to-[var(--sera-orange-deep)] px-6 py-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h2 className="text-xl font-semibold text-white">Inventory Settings</h2>
-                  <p className="mt-1 text-sm text-blue-100">
+                  <p className="mt-1 text-sm text-white/70">
                     Configure stock rules and thresholds
                   </p>
                 </div>
                 <button
                   onClick={onClose}
-                  className="ml-3 rounded-md text-blue-100 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
+                  className="ml-3 rounded-md text-white/70 hover:text-white focus:outline-none focus:ring-2 focus:ring-white"
                 >
                   <X className="h-6 w-6" />
                 </button>
@@ -215,15 +215,15 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
               {/* Product Info */}
               <div className="mt-4 space-y-1">
                 <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-200" />
+                  <Package className="h-4 w-4 text-white/80" />
                   <span className="text-sm font-medium text-white">{inventoryItem.product_name}</span>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-blue-100">
+                <div className="flex items-center gap-3 text-sm text-white/70">
                   <span className="font-mono">{inventoryItem.variant_code}</span>
                   <span>•</span>
                   <span>{inventoryItem.variant_name}</span>
                 </div>
-                <div className="text-sm text-blue-100">
+                <div className="text-sm text-white/70">
                   📍 {inventoryItem.organization_name}
                   {inventoryItem.warehouse_location && ` - ${inventoryItem.warehouse_location}`}
                 </div>
@@ -234,28 +234,28 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
             <div className="flex-1 overflow-y-auto px-6 py-6">
               {/* Current Stock Metrics */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-semibold text-[var(--sera-ink)] mb-3 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-[var(--sera-orange)]" />
                   Current Stock Status
                 </h3>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs text-gray-600 mb-1">On Hand</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatNumber(inventoryItem.quantity_on_hand)}</p>
+                  <div className="bg-[var(--sera-ink)]/[0.03] rounded-lg p-4">
+                    <p className="text-xs text-[var(--sera-muted)] mb-1">On Hand</p>
+                    <p className="font-display text-2xl font-semibold text-[var(--sera-ink)]">{formatNumber(inventoryItem.quantity_on_hand)}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs text-gray-600 mb-1">Allocated</p>
+                  <div className="bg-[var(--sera-ink)]/[0.03] rounded-lg p-4">
+                    <p className="text-xs text-[var(--sera-muted)] mb-1">Allocated</p>
                     <p className="text-2xl font-bold text-orange-600">{formatNumber(inventoryItem.quantity_allocated)}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-xs text-gray-600 mb-1">Available</p>
+                  <div className="bg-[var(--sera-ink)]/[0.03] rounded-lg p-4">
+                    <p className="text-xs text-[var(--sera-muted)] mb-1">Available</p>
                     <p className="text-2xl font-bold text-green-600">{formatNumber(inventoryItem.quantity_available)}</p>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <p className="text-xs text-gray-600 mb-1">Incoming (Total)</p>
-                    <p className="text-2xl font-bold text-blue-600">{formatNumber(incomingQty)}</p>
+                  <div className="bg-[var(--sera-orange)]/[0.06] rounded-lg p-4">
+                    <p className="text-xs text-[var(--sera-muted)] mb-1">Incoming (Total)</p>
+                    <p className="text-2xl font-bold text-[var(--sera-orange)]">{formatNumber(incomingQty)}</p>
                     {incomingBreakdown && incomingQty > 0 && (
-                      <p className="mt-1 text-xs text-gray-600">
+                      <p className="mt-1 text-xs text-[var(--sera-muted)]">
                         {incomingBreakdown.manufacturer > 0 && incomingBreakdown.transfer > 0
                           ? `Manufacturer ${formatNumber(incomingBreakdown.manufacturer)} · Transfers ${formatNumber(incomingBreakdown.transfer)}`
                           : incomingBreakdown.transfer > 0
@@ -264,9 +264,9 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                       </p>
                     )}
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-4 col-span-2">
-                    <p className="text-xs text-gray-600 mb-1">Inventory Position (Available + Incoming)</p>
-                    <p className="text-2xl font-bold text-blue-900">
+                  <div className="bg-[var(--sera-orange)]/[0.06] rounded-lg p-4 col-span-2">
+                    <p className="text-xs text-[var(--sera-muted)] mb-1">Inventory Position (Available + Incoming)</p>
+                    <p className="text-2xl font-bold text-[var(--sera-ink)]">
                       {formatNumber(inventoryItem.quantity_available + incomingQty)}
                     </p>
                   </div>
@@ -275,7 +275,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                   <div
                     className={`mt-3 rounded-lg p-3 text-sm ${
                       replenishmentDecision.code === 'replenishment_incoming'
-                        ? 'bg-blue-50 text-blue-900'
+                        ? 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-ink)]'
                         : 'bg-red-50 text-red-900'
                     }`}
                   >
@@ -289,16 +289,16 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                   </div>
                 )}
                 {inventoryItem.total_value !== null && (
-                  <div className="mt-3 bg-blue-50 rounded-lg p-3 flex items-center justify-between">
-                    <span className="text-sm text-blue-900">Total Inventory Value</span>
-                    <span className="text-lg font-bold text-blue-900">RM {formatCurrency(inventoryItem.total_value)}</span>
+                  <div className="mt-3 bg-[var(--sera-orange)]/[0.06] rounded-lg p-3 flex items-center justify-between">
+                    <span className="text-sm text-[var(--sera-ink)]">Total Inventory Value</span>
+                    <span className="text-lg font-bold text-[var(--sera-ink)]">RM {formatCurrency(inventoryItem.total_value)}</span>
                   </div>
                 )}
 
                 {/* Visual Stock Bar */}
                 <div className="mt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-700">Stock Level</span>
+                    <span className="text-xs font-medium text-[var(--sera-ink)]/80">Stock Level</span>
                     <Badge variant={stockStatus.label === 'Healthy' ? 'default' : stockStatus.label === 'Out of Stock' ? 'destructive' : 'outline'}>
                       {stockStatus.label}
                     </Badge>
@@ -321,7 +321,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+                  <div className="flex items-center justify-between mt-1 text-xs text-[var(--sera-muted)]/80">
                     <span>0</span>
                     <span>{formatNumber(inventoryItem.quantity_available)} available</span>
                     <span>{maxStockLevel ? formatNumber(parseInt(maxStockLevel)) : 'No max'}</span>
@@ -330,15 +330,15 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
               </div>
 
               {/* Stock Rules Form */}
-              <div className="space-y-6">
-                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <Settings className="h-4 w-4 text-blue-600" />
+              <div className="sera-sc-page space-y-6">
+                <h3 className="text-sm font-semibold text-[var(--sera-ink)] flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-[var(--sera-orange)]" />
                   Stock Rules Configuration
                 </h3>
 
                 {/* Reorder Point */}
                 <div>
-                  <Label htmlFor="reorderPoint" className="text-sm font-medium text-gray-700">
+                  <Label htmlFor="reorderPoint" className="text-sm font-medium text-[var(--sera-ink)]/80">
                     Reorder Point (units) *
                   </Label>
                   <Input
@@ -349,7 +349,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                     onChange={(e) => setReorderPoint(e.target.value)}
                     className={errors.reorderPoint ? 'border-red-500' : ''}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]/80">
                     Low stock alert triggers when Available ≤ Reorder Point
                   </p>
                   {errors.reorderPoint && (
@@ -362,7 +362,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
 
                 {/* Reorder Quantity */}
                 <div>
-                  <Label htmlFor="reorderQuantity" className="text-sm font-medium text-gray-700">
+                  <Label htmlFor="reorderQuantity" className="text-sm font-medium text-[var(--sera-ink)]/80">
                     Reorder Quantity (units) *
                   </Label>
                   <Input
@@ -373,7 +373,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                     onChange={(e) => setReorderQuantity(e.target.value)}
                     className={errors.reorderQuantity ? 'border-red-500' : ''}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]/80">
                     Suggested quantity to order when stock is low
                   </p>
                   {errors.reorderQuantity && (
@@ -386,7 +386,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
 
                 {/* Maximum Stock Level */}
                 <div>
-                  <Label htmlFor="maxStockLevel" className="text-sm font-medium text-gray-700">
+                  <Label htmlFor="maxStockLevel" className="text-sm font-medium text-[var(--sera-ink)]/80">
                     Maximum Stock Level (units)
                   </Label>
                   <Input
@@ -398,7 +398,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                     placeholder="Optional"
                     className={errors.maxStockLevel ? 'border-red-500' : ''}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]/80">
                     Upper limit to avoid overstock in this location
                   </p>
                   {errors.maxStockLevel && (
@@ -411,7 +411,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
 
                 {/* Safety Stock */}
                 <div>
-                  <Label htmlFor="safetyStock" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                  <Label htmlFor="safetyStock" className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1">
                     <Shield className="h-4 w-4" />
                     Safety Stock (units)
                   </Label>
@@ -423,7 +423,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                     onChange={(e) => setSafetyStock(e.target.value)}
                     className={errors.safetyStock ? 'border-red-500' : ''}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]/80">
                     Buffer stock on top of reorder point for unexpected demand
                   </p>
                   {errors.safetyStock && (
@@ -436,7 +436,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
 
                 {/* Lead Time */}
                 <div>
-                  <Label htmlFor="leadTimeDays" className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                  <Label htmlFor="leadTimeDays" className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1">
                     <Clock className="h-4 w-4" />
                     Lead Time (days)
                   </Label>
@@ -449,7 +449,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                     placeholder="Optional"
                     className={errors.leadTimeDays ? 'border-red-500' : ''}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]/80">
                     Expected replenishment time for this location and variant
                   </p>
                   {errors.leadTimeDays && (
@@ -463,7 +463,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
             </div>
 
             {/* Footer */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+            <div className="border-t border-[var(--sera-line)] px-6 py-4 bg-[var(--sera-ink)]/[0.03]">
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -475,7 +475,7 @@ export default function StockSettingsPanel({ inventoryItem, incomingQty = 0, inc
                 <Button
                   onClick={handleSave}
                   disabled={saving}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                 >
                   {saving ? (
                     <>

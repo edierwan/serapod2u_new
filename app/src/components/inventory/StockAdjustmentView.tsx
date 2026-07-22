@@ -702,7 +702,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     { label: 'Counted', value: formatNumber(pageSummary.counted), sub: `${pageSummary.totalItems ? Math.round((pageSummary.counted / pageSummary.totalItems) * 100) : 0}% of total`, icon: CheckCircle2, color: 'text-green-600 bg-green-50' },
     { label: 'Not Counted', value: formatNumber(pageSummary.notCounted), sub: `${pageSummary.totalItems ? Math.round((pageSummary.notCounted / pageSummary.totalItems) * 100) : 0}% remaining`, icon: CalendarDays, color: 'text-amber-600 bg-amber-50' },
     { label: 'Variance Items', value: formatNumber(pageSummary.varianceItems), sub: 'Items with variance', icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
-    { label: 'Net Adjustment', value: `${pageSummary.netAdjustment > 0 ? '+' : ''}${formatNumber(pageSummary.netAdjustment)}`, sub: 'Total units', icon: RotateCcw, color: 'text-blue-600 bg-blue-50' },
+    { label: 'Net Adjustment', value: `${pageSummary.netAdjustment > 0 ? '+' : ''}${formatNumber(pageSummary.netAdjustment)}`, sub: 'Total units', icon: RotateCcw, color: 'text-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06]' },
     { label: 'Estimated Value', value: formatMoney(pageSummary.estimatedValue), sub: 'Based on variance', icon: FileSpreadsheet, color: 'text-purple-600 bg-purple-50' },
   ]
   const warehouseName = warehouseLocations.find(location => location.id === selectedWarehouse)?.org_name || '—'
@@ -734,7 +734,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         </div>
       </div>
 
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Warehouse Location <span className="text-red-500">*</span></label>
@@ -766,9 +766,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       </Card>
 
       {drafts.length > 0 && (
-        <Card className="border-blue-100 bg-blue-50/50">
+        <Card className="border-[var(--sera-orange)]/15 bg-[var(--sera-orange)]/[0.06]/50">
           <CardContent className="flex flex-wrap items-center gap-3 p-3">
-            <span className="text-sm font-semibold text-blue-950">Open draft:</span>
+            <span className="text-sm font-semibold text-[var(--sera-ink)]">Open draft:</span>
             {drafts.map(draft => (
               <Button key={draft.id} variant={currentSessionId === draft.id ? 'default' : 'outline'} size="sm" onClick={() => loadDraft(draft.id)}>
                 {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · {draft.count_date}
@@ -783,7 +783,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         {summaryCards.map(card => <Card key={card.label}><CardContent className="flex items-center gap-4 p-4"><div className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.color}`}><card.icon className="h-6 w-6" /></div><div className="min-w-0"><p className="text-sm font-semibold text-slate-600">{card.label}</p><p className="truncate text-xl font-bold text-slate-950">{card.value}</p><p className="text-xs text-slate-500">{card.sub}</p></div></CardContent></Card>)}
       </div>
 
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap gap-2">
@@ -868,14 +868,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             </div>
             {highImpact && <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><AlertTriangle className="h-5 w-5 shrink-0" /><span><strong>High-impact adjustment.</strong> Review quantities and value carefully before requesting verification.</span></div>}
             <div><label className="mb-1.5 block text-sm font-medium">Posting Note {pageSummary.varianceItems > 0 && <span className="text-red-600">*</span>}</label><Textarea value={notes} onChange={event => handlePostingNoteChange(event.target.value)} placeholder="Explain the reason for this posting..." /></div>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">A verification code will be sent to authorized recipients. Inventory will only be updated after the code is verified.</div>
+            <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-3 text-sm text-[var(--sera-ink)]">A verification code will be sent to authorized recipients. Inventory will only be updated after the code is verified.</div>
             {preflight.status === 'loading' && <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700"><Loader2 className="h-4 w-4 animate-spin" />Checking permission, notification recipients, and email provider…</div>}
             {preflight.status === 'ready' && <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /><span>Verification is ready. The code will be emailed to {preflight.recipientCount} authorized recipient{preflight.recipientCount === 1 ? '' : 's'}.</span></div>}
             {preflight.status === 'error' && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"><div>{preflight.message}</div>{preflight.guidance && <div className="mt-1 text-xs text-red-600">{preflight.guidance}</div>}<Button type="button" variant="outline" size="sm" className="mt-3" onClick={retryVerificationPreflight} disabled={saving || permissionLoading}>{saving ? 'Saving Changes…' : 'Retry Check'}</Button></div>}
             {verificationError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{verificationError}</div>}
             <DialogFooter><Button variant="outline" onClick={closePostDialog}>Cancel</Button><Button onClick={requestVerificationCode} disabled={posting || preflight.status !== 'ready' || !hasPostStockCountPermission || !canPost || (pageSummary.varianceItems > 0 && !isValidStockCountPostingNote(notes))} className="bg-orange-600 hover:bg-orange-700">{posting ? 'Sending Code...' : preflight.status === 'loading' ? 'Checking Configuration...' : 'Request Verification Code'}</Button></DialogFooter>
           </> : <>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+            <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4 text-sm text-[var(--sera-ink)]">
               <div className="font-semibold">Code sent to authorized recipients</div>
               <div className="mt-2 flex flex-wrap gap-2">{verification.recipients.map(recipient => <Badge key={recipient} variant="secondary">{recipient}</Badge>)}</div>
             </div>

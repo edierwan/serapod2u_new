@@ -1327,7 +1327,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       </Card>
 
       {/* Inventory Table */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
           <CardTitle>Inventory Items</CardTitle>
           <CardDescription>

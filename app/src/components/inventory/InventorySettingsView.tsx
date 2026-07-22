@@ -779,14 +779,14 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                           <span className="text-sm font-medium">{formatNumber(item.quantity_available)}</span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <span className={`text-sm ${getIncomingQty(item) > 0 ? 'font-medium text-blue-600' : 'text-gray-400'}`}>
+                          <span className={`text-sm ${getIncomingQty(item) > 0 ? 'font-medium text-[var(--sera-orange)]' : 'text-[var(--sera-muted)]/70'}`}>
                             {formatNumber(getIncomingQty(item))}
                           </span>
                           {(() => {
                             const breakdown = getIncomingBreakdown(getIncomingRow(item))
                             if (breakdown.transfer <= 0) return null
                             return (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[var(--sera-muted)]/80">
                                 PO {formatNumber(breakdown.manufacturer)} · TRF {formatNumber(breakdown.transfer)}
                               </p>
                             )
@@ -807,7 +807,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                               return (
                                 <p
                                   className={`text-xs ${
-                                    decision.code === 'replenishment_incoming' ? 'text-blue-600' : 'text-red-600'
+                                    decision.code === 'replenishment_incoming' ? 'text-[var(--sera-orange)]' : 'text-red-600'
                                   }`}
                                 >
                                   {decision.label}

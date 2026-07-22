@@ -424,8 +424,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading order details...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--sera-orange)] mx-auto mb-4"></div>
+          <p className="text-[var(--sera-muted)]">Loading order details...</p>
         </div>
       </div>
     )
@@ -434,7 +434,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   if (!orderData) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-600">Order not found</p>
+        <p className="text-[var(--sera-muted)]">Order not found</p>
         <Button onClick={handleBack} className="mt-4">
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Orders
@@ -500,9 +500,9 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       case 'partial': return 'text-orange-600'
       case 'unpaid': return 'text-red-600'
       case 'approved': return 'text-green-600'
-      case 'closed': return 'text-gray-600'
+      case 'closed': return 'text-[var(--sera-muted)]'
       case 'cancelled': return 'text-red-600'
-      case 'draft': return 'text-gray-500'
+      case 'draft': return 'text-[var(--sera-muted)]/80'
       default: return 'text-yellow-600' // submitted/pending
     }
   }
@@ -516,14 +516,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 print:bg-white">
+    <div className="min-h-screen bg-[var(--sera-ink)]/[0.03] print:bg-white">
       {/* Action Bar */}
-      <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
+      <div className="bg-white border-b border-[var(--sera-line)] mb-0 print:hidden">
         <div className="px-6 py-4 flex justify-between items-center">
           <Button
             variant="ghost"
             onClick={handleBack}
-            className="hover:bg-gray-100 -ml-2"
+            className="hover:bg-[var(--sera-ink)]/[0.04] -ml-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
@@ -543,7 +543,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <Button
               onClick={() => setDocumentsDialogOpen(true)}
               variant="outline"
-              className="gap-2 border-gray-300 hover:bg-gray-50"
+              className="gap-2 border-[var(--sera-line)] hover:bg-[var(--sera-ink)]/[0.02]"
             >
               <FileText className="w-4 h-4" />
               Documents
@@ -571,7 +571,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   }, 2000)
                 }, 500)
               }}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              className="gap-2 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
             >
               <FileText className="w-4 h-4" />
               Print / Save PDF
@@ -599,8 +599,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               />
             ) : (
               <div className="h-24 flex items-center">
-                <div className="w-20 h-20 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center print:bg-white">
-                  <span className="text-xl font-bold text-gray-500 tracking-wide">{headerOrgInitials || '?'}</span>
+                <div className="w-20 h-20 rounded-full bg-[var(--sera-ink)]/[0.06] border border-[var(--sera-line)] flex items-center justify-center print:bg-white">
+                  <span className="text-xl font-bold text-[var(--sera-muted)]/80 tracking-wide">{headerOrgInitials || '?'}</span>
                 </div>
               </div>
             )}
@@ -608,10 +608,10 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Center: Headquarters Detail */}
           <div className="flex-1">
-            <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
+            <h2 className="font-bold text-[var(--sera-ink)] uppercase mb-2 text-sm tracking-wide">
               {headerOrg?.org_name}
             </h2>
-            <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+            <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
               <p className="whitespace-pre-line">{headerOrg?.address || 'No address provided'}</p>
               {headerOrg?.phone && <p>Phone: {headerOrg.phone}</p>}
               {headerOrg?.email && <p>Email: {headerOrg.email}</p>}
@@ -621,29 +621,29 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Right: PO Detail */}
           <div className="flex-shrink-0 text-right">
-            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">{docTitle}</h1>
+            <h1 className="text-xl font-light text-[var(--sera-ink)] mb-4 uppercase tracking-wider">{docTitle}</h1>
             <div className="text-xs space-y-2">
               <div className="flex justify-between gap-4">
-                <span className="text-gray-500">{docNoLabel}</span>
-                <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
+                <span className="text-[var(--sera-muted)]/80">{docNoLabel}</span>
+                <span className="font-medium text-[var(--sera-ink)]">{orderData.display_doc_no || orderData.order_no}</span>
               </div>
               {orderData.display_doc_no && (
                 <div className="flex justify-between gap-4">
-                  <span className="text-gray-500">Legacy#:</span>
-                  <span className="font-medium text-gray-400 text-[10px]">{orderData.order_no}</span>
+                  <span className="text-[var(--sera-muted)]/80">Legacy#:</span>
+                  <span className="font-medium text-[var(--sera-muted)]/70 text-[10px]">{orderData.order_no}</span>
                 </div>
               )}
               <div className="flex justify-between gap-4">
-                <span className="text-gray-500">Date:</span>
-                <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
+                <span className="text-[var(--sera-muted)]/80">Date:</span>
+                <span className="font-medium text-[var(--sera-ink)]">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-gray-500">By:</span>
-                <span className="font-medium text-gray-900">{orderData.created_by_user?.full_name || 'Unknown'}</span>
+                <span className="text-[var(--sera-muted)]/80">By:</span>
+                <span className="font-medium text-[var(--sera-ink)]">{orderData.created_by_user?.full_name || 'Unknown'}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-gray-500">Ledger:</span>
-                <span className="font-medium text-gray-900">Stock Purchased / Inventory</span>
+                <span className="text-[var(--sera-muted)]/80">Ledger:</span>
+                <span className="font-medium text-[var(--sera-ink)]">Stock Purchased / Inventory</span>
               </div>
             </div>
           </div>
@@ -653,8 +653,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
           {/* Supplier Info */}
           <div className="w-1/2">
-            <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
-            <div className="text-xs text-gray-600 space-y-1 leading-relaxed">
+            <h3 className="font-bold text-[var(--sera-ink)] mb-3 text-sm">{otherOrgLabel}</h3>
+            <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
               <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
               {/* Contact Person if available, otherwise generic */}
               <p className="uppercase">{otherOrg?.contact_person || ''}</p>
@@ -665,8 +665,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Status Box */}
           <div className="w-48">
-            <div className="border border-gray-200 p-4 text-center rounded-sm">
-              <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">Status</p>
+            <div className="border border-[var(--sera-line)] p-4 text-center rounded-sm">
+              <p className="text-xs text-[var(--sera-muted)]/80 mb-1 uppercase tracking-wide">Status</p>
               <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.payment_status || orderData.status)}`}>
                 {getDisplayStatus()}
               </p>
@@ -678,19 +678,19 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         <div className="mb-12 print:mb-6">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200">
-                <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
-                <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
-                <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
-                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
-                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
+              <tr className="border-b border-[var(--sera-line)]">
+                <th className="py-2 text-left text-xs font-bold text-[var(--sera-ink)] w-12">No</th>
+                <th className="py-2 text-left text-xs font-bold text-[var(--sera-ink)]">Description</th>
+                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-24">Unit</th>
+                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-32">Price</th>
+                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-32">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {orderData.order_items?.map((item: any, index: number) => (
                 <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
-                  <td className="py-3 text-xs text-gray-600 align-top pt-4">{index + 1}</td>
-                  <td className="py-3 text-xs text-gray-900 align-top pt-4">
+                  <td className="py-3 text-xs text-[var(--sera-muted)] align-top pt-4">{index + 1}</td>
+                  <td className="py-3 text-xs text-[var(--sera-ink)] align-top pt-4">
                     <p className="font-medium text-sm whitespace-nowrap">
                       {(() => {
                         // Extract product base name (e.g., "Cellera Hero")
@@ -709,18 +709,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                       })()}
                     </p>
                   </td>
-                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
-                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
-                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
+                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatNumber(item.qty)}</td>
+                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
+                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-200">
+              <tr className="border-t border-[var(--sera-line)]">
                 <td colSpan={2} className="py-4"></td>
-                <td className="py-4 text-right text-xs font-bold text-gray-900">{formatNumber(totalQuantity)}</td>
-                <td className="py-4 text-right text-xs font-bold text-gray-900">Total</td>
-                <td className="py-4 text-right text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</td>
+                <td className="py-4 text-right text-xs font-bold text-[var(--sera-ink)]">{formatNumber(totalQuantity)}</td>
+                <td className="py-4 text-right text-xs font-bold text-[var(--sera-ink)]">Total</td>
+                <td className="py-4 text-right text-sm font-bold text-[var(--sera-ink)]">{formatCurrency(subtotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -733,7 +733,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <div>
               {headerOrg?.signature_type === 'electronic' && companySignatureUrl && !companySignatureFailed && (
                 <div className="mb-6">
-                  <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
+                  <p className="text-sm font-bold text-[var(--sera-ink)] mb-2">Issued by:</p>
                   <div className="flex items-start gap-4">
                     <div className="w-32 h-24 flex items-center">
                       <img
@@ -746,12 +746,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   </div>
                 </div>
               )}
-              <p className="text-[10px] text-gray-400 mt-8">This is a computer generated document.</p>
+              <p className="text-[10px] text-[var(--sera-muted)]/70 mt-8">This is a computer generated document.</p>
             </div>
 
             {/* Center: Created By */}
             <div className="text-center">
-              <p className="text-xs text-gray-600 mb-2">Created by: {orderData.created_by_user?.full_name || 'Unknown'}</p>
+              <p className="text-xs text-[var(--sera-muted)] mb-2">Created by: {orderData.created_by_user?.full_name || 'Unknown'}</p>
               {creatorSignatureUrl && !creatorSignatureFailed ? (
                 <div className="flex justify-center mb-2">
                   <img
@@ -763,18 +763,18 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                 </div>
               ) : (
                 <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
-                  <span className="text-[10px] italic text-gray-400">Signature not available</span>
+                  <span className="text-[10px] italic text-[var(--sera-muted)]/70">Signature not available</span>
                 </div>
               )}
-              <div className="border-t border-gray-300 w-48 mx-auto pt-1">
-                <p className="text-xs text-gray-500">{orderData.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+              <div className="border-t border-[var(--sera-line)] w-48 mx-auto pt-1">
+                <p className="text-xs text-[var(--sera-muted)]/80">{orderData.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
               </div>
             </div>
 
             {/* Right: Approved By */}
             {orderData.approved_by && orderData.approved_by_user && (
               <div className="text-center">
-                <p className="text-xs text-gray-600 mb-2">Approved by: {orderData.approved_by_user.full_name || 'Unknown'}</p>
+                <p className="text-xs text-[var(--sera-muted)] mb-2">Approved by: {orderData.approved_by_user.full_name || 'Unknown'}</p>
                 {approverSignatureUrl && !approverSignatureFailed ? (
                   <div className="flex justify-center mb-2">
                     <img
@@ -786,11 +786,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   </div>
                 ) : (
                   <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
-                    <span className="text-[10px] italic text-gray-400">Signature not available</span>
+                    <span className="text-[10px] italic text-[var(--sera-muted)]/70">Signature not available</span>
                   </div>
                 )}
-                <div className="border-t border-gray-300 w-48 mx-auto pt-1">
-                  <p className="text-xs text-gray-500">{orderData.approved_at ? new Date(orderData.approved_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+                <div className="border-t border-[var(--sera-line)] w-48 mx-auto pt-1">
+                  <p className="text-xs text-[var(--sera-muted)]/80">{orderData.approved_at ? new Date(orderData.approved_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
                 </div>
               </div>
             )}

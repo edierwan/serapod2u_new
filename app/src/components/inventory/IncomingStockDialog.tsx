@@ -23,8 +23,8 @@ interface IncomingStockDialogProps {
 }
 
 const LINK_CLASSES =
-  'text-xs font-medium text-blue-600 underline decoration-dotted underline-offset-2 ' +
-  'hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ' +
+  'text-xs font-medium text-[var(--sera-orange)] underline decoration-dotted underline-offset-2 ' +
+  'hover:text-[var(--sera-orange-deep)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/30 ' +
   'focus-visible:ring-offset-1 rounded-sm'
 
 /**
@@ -112,10 +112,10 @@ export default function IncomingStockDialog({
 
   const orderStatusBadge = (status: string) => {
     if (status === 'approved') {
-      return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Approved</Badge>
+      return <Badge variant="outline" className="bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20">Approved</Badge>
     }
     if (status === 'closed') {
-      return <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">Closed (paid)</Badge>
+      return <Badge variant="outline" className="bg-[var(--sera-ink)]/[0.03] text-[var(--sera-ink)]/80 border-[var(--sera-line)]">Closed (paid)</Badge>
     }
     return <Badge variant="outline">{status}</Badge>
   }
@@ -130,7 +130,7 @@ export default function IncomingStockDialog({
       <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5 text-blue-600" />
+            <Truck className="h-5 w-5 text-[var(--sera-orange)]" />
             Incoming Stock — {formatNumber(totalIncoming)} units
           </DialogTitle>
           <DialogDescription>
@@ -149,26 +149,26 @@ export default function IncomingStockDialog({
         )}
 
         {loading ? (
-          <p className="py-8 text-center text-sm text-gray-600">Loading incoming stock...</p>
+          <p className="py-8 text-center text-sm text-[var(--sera-muted)]">Loading incoming stock...</p>
         ) : loadError ? (
           <p className="py-8 text-center text-sm text-red-600">{loadError}</p>
         ) : totalIncoming === 0 && orderRows.length === 0 && transferRows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-600">No incoming stock for this variant.</p>
+          <p className="py-8 text-center text-sm text-[var(--sera-muted)]">No incoming stock for this variant.</p>
         ) : (
           <div className="max-h-[480px] space-y-6 overflow-y-auto">
             {/* Manufacturer Orders */}
             <section aria-label="Manufacturer orders">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                  <Factory className="h-4 w-4 text-blue-600" />
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--sera-ink)]">
+                  <Factory className="h-4 w-4 text-[var(--sera-orange)]" />
                   Manufacturer Orders
                 </h3>
-                <span className="text-xs text-gray-600">
-                  Subtotal: <span className="font-semibold text-blue-700">{formatNumber(manufacturerTotal)}</span> units
+                <span className="text-xs text-[var(--sera-muted)]">
+                  Subtotal: <span className="font-semibold text-[var(--sera-orange-deep)]">{formatNumber(manufacturerTotal)}</span> units
                 </span>
               </div>
               {orderRows.length === 0 ? (
-                <p className="rounded-md bg-gray-50 px-3 py-3 text-xs text-gray-500">
+                <p className="rounded-md bg-[var(--sera-ink)]/[0.03] px-3 py-3 text-xs text-[var(--sera-muted)]/80">
                   No open manufacturer orders for this variant.
                 </p>
               ) : (
@@ -201,12 +201,12 @@ export default function IncomingStockDialog({
                         <TableCell className="text-xs">{row.manufacturer_name || '—'}</TableCell>
                         <TableCell className="text-xs text-right">{formatNumber(row.ordered_qty)}</TableCell>
                         <TableCell className="text-xs text-right">{formatNumber(row.received_qty)}</TableCell>
-                        <TableCell className="text-xs text-right font-semibold text-blue-700">
+                        <TableCell className="text-xs text-right font-semibold text-[var(--sera-orange-deep)]">
                           {formatNumber(row.incoming_qty)}
                         </TableCell>
                         <TableCell>{orderStatusBadge(row.order_status)}</TableCell>
-                        <TableCell className="text-xs text-gray-600">{formatQrStage(row.qr_stage)}</TableCell>
-                        <TableCell className="text-xs text-gray-600">{formatDate(row.approved_at)}</TableCell>
+                        <TableCell className="text-xs text-[var(--sera-muted)]">{formatQrStage(row.qr_stage)}</TableCell>
+                        <TableCell className="text-xs text-[var(--sera-muted)]">{formatDate(row.approved_at)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -217,16 +217,16 @@ export default function IncomingStockDialog({
             {/* Warehouse Transfers */}
             <section aria-label="Warehouse transfers">
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--sera-ink)]">
                   <ArrowRightLeft className="h-4 w-4 text-purple-600" />
                   Warehouse Transfers
                 </h3>
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-[var(--sera-muted)]">
                   Subtotal: <span className="font-semibold text-purple-700">{formatNumber(transferTotal)}</span> units
                 </span>
               </div>
               {transferRows.length === 0 ? (
-                <p className="rounded-md bg-gray-50 px-3 py-3 text-xs text-gray-500">
+                <p className="rounded-md bg-[var(--sera-ink)]/[0.03] px-3 py-3 text-xs text-[var(--sera-muted)]/80">
                   No in-transit transfers for this variant.
                 </p>
               ) : (
@@ -265,8 +265,8 @@ export default function IncomingStockDialog({
                             In Transit
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-gray-600">{formatDate(row.dispatched_at)}</TableCell>
-                        <TableCell className="text-xs text-gray-600">{formatDate(row.received_at)}</TableCell>
+                        <TableCell className="text-xs text-[var(--sera-muted)]">{formatDate(row.dispatched_at)}</TableCell>
+                        <TableCell className="text-xs text-[var(--sera-muted)]">{formatDate(row.received_at)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

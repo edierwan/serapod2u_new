@@ -487,20 +487,20 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
   const totalValue = calculateTotalValue()
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Stock Transfer</h1>
-        <p className="text-gray-600 mt-1">Transfer inventory between warehouse locations</p>
+        <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Stock Transfer</h1>
+        <p className="text-[var(--sera-muted)] mt-1">Transfer inventory between warehouse locations</p>
       </div>
 
       {/* Info Card */}
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+      <Card className="bg-gradient-to-r from-[var(--sera-orange)]/[0.06] to-[var(--sera-orange)]/[0.03] border-[var(--sera-orange)]/20">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-[var(--sera-orange)] mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-[var(--sera-ink)]/80">
                 <strong>Stock Transfer Process:</strong> Select source and destination warehouses, add items with quantities, 
                 and create the transfer. Stock will be deducted from source immediately. The receiving warehouse can later 
                 mark the transfer as received to complete the process.
@@ -515,7 +515,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           {/* Left Column - Warehouse Selection & Items */}
           <div className="lg:col-span-2 space-y-6">
             {/* Warehouse Selection */}
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Truck className="w-5 h-5" />
@@ -527,7 +527,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                   {/* From Warehouse */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       From Warehouse <span className="text-red-500">*</span>
                     </label>
                     <Select value={fromWarehouse} onValueChange={setFromWarehouse}>
@@ -549,12 +549,12 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
                   {/* Arrow */}
                   <div className="flex justify-center items-center">
-                    <ArrowRight className="w-8 h-8 text-gray-400" />
+                    <ArrowRight className="w-8 h-8 text-[var(--sera-muted)]/70" />
                   </div>
 
                   {/* To Warehouse */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       To Warehouse <span className="text-red-500">*</span>
                     </label>
                     <Select value={toWarehouse} onValueChange={setToWarehouse}>
@@ -578,7 +578,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
             </Card>
 
             {/* Add Items */}
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Plus className="w-5 h-5" />
@@ -590,7 +590,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   {/* Product */}
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Product</label>
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Product</label>
                     <Select 
                       value={selectedProduct} 
                       onValueChange={setSelectedProduct}
@@ -612,7 +612,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
                   {/* Variant */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Variant</label>
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Variant</label>
                     <Select 
                       value={selectedVariant} 
                       onValueChange={setSelectedVariant}
@@ -641,7 +641,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
                   {/* Quantity */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Quantity</label>
                     <div className="flex gap-2">
                       <Input
                         type="number"
@@ -668,7 +668,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
 
             {/* Transfer Items List */}
             {transferItems.length > 0 && (
-              <Card>
+              <Card className="sera-sc-panel overflow-hidden shadow-none">
                 <CardHeader>
                   <CardTitle>Transfer Items ({transferItems.length})</CardTitle>
                 </CardHeader>
@@ -694,10 +694,10 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                                 size={48}
                               />
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
+                                <p className="text-sm font-medium text-[var(--sera-ink)]">
                                   {item.product_name}
                                 </p>
-                                <p className="text-sm text-gray-500">
+                                <p className="text-sm text-[var(--sera-muted)]/80">
                                   [{item.variant_name}]
                                 </p>
                               </div>
@@ -730,7 +730,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
           </div>
 
           {/* Right Column - Summary & Notes */}
-          <div className="space-y-6">
+          <div className="sera-sc-page space-y-6">
             {/* Transfer Summary */}
             <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
               <CardHeader>
@@ -738,27 +738,27 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <p className="text-sm text-gray-600">Total Items</p>
-                  <p className="text-2xl font-bold text-gray-900">{transferItems.length}</p>
+                  <p className="text-sm text-[var(--sera-muted)]">Total Items</p>
+                  <p className="font-display text-2xl font-semibold text-[var(--sera-ink)]">{transferItems.length}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Quantity</p>
+                  <p className="text-sm text-[var(--sera-muted)]">Total Quantity</p>
                   <p className="text-2xl font-bold text-purple-600">{totalItems} units</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Total Value</p>
+                  <p className="text-sm text-[var(--sera-muted)]">Total Value</p>
                   <p className="text-2xl font-bold text-green-600">
                     RM {totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 {fromWarehouse && toWarehouse && (
                   <div className="pt-3 border-t border-purple-200">
-                    <p className="text-xs text-gray-600">Transfer Route:</p>
+                    <p className="text-xs text-[var(--sera-muted)]">Transfer Route:</p>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge variant="outline" className="text-xs">
                         {warehouses.find(w => w.id === fromWarehouse)?.org_code}
                       </Badge>
-                      <ArrowRight className="w-3 h-3 text-gray-400" />
+                      <ArrowRight className="w-3 h-3 text-[var(--sera-muted)]/70" />
                       <Badge variant="outline" className="text-xs">
                         {warehouses.find(w => w.id === toWarehouse)?.org_code}
                       </Badge>
@@ -769,7 +769,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
             </Card>
 
             {/* Notes */}
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle>Transfer Notes</CardTitle>
               </CardHeader>
@@ -779,7 +779,7 @@ export default function StockTransferView({ userProfile, onViewChange }: StockTr
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add notes about this transfer..."
                   rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-lg focus:ring-2 focus:ring-[var(--sera-orange)]/30 focus:border-transparent resize-none"
                 />
               </CardContent>
             </Card>

@@ -1426,13 +1426,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sera-orange)]" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -1446,8 +1446,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             Back
           </Button>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900">Create New Order</h2>
-        <p className="text-gray-600 text-sm mt-1">Fill in the details to create a new order</p>
+        <h2 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">Create New Order</h2>
+        <p className="text-[var(--sera-muted)] text-sm mt-1">Fill in the details to create a new order</p>
       </div>
 
       {/* Main Layout - Two Columns */}
@@ -1456,29 +1456,29 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         <div className="lg:col-span-2 space-y-6">
           {/* Auto-determined Seller Info - Show for D2H */}
           {orderType === 'D2H' && sellerOrg && (
-            <Card>
-              <CardHeader className="border-b bg-gray-50">
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
+              <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Package className="w-4 h-4" />
                   Seller Organization
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Package className="w-5 h-5 text-blue-600" />
+                    <div className="w-10 h-10 rounded-lg bg-[var(--sera-orange)]/10 flex items-center justify-center flex-shrink-0">
+                      <Package className="w-5 h-5 text-[var(--sera-orange)]" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900">{sellerOrg.org_name}</h4>
-                      <p className="text-sm text-gray-600">{sellerOrg.org_code}</p>
-                      <p className="text-xs text-blue-600 mt-1">
+                      <h4 className="font-semibold text-[var(--sera-ink)]">{sellerOrg.org_name}</h4>
+                      <p className="text-sm text-[var(--sera-muted)]">{sellerOrg.org_code}</p>
+                      <p className="text-xs text-[var(--sera-orange)] mt-1">
                         ✓ Auto-selected: Your Headquarters
                       </p>
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-3">
+                <p className="text-xs text-[var(--sera-muted)]/80 mt-3">
                   Distributors automatically order from their parent HQ organization
                 </p>
               </CardContent>
@@ -1487,8 +1487,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
           {/* Seller Selection - Show for S2D if multiple distributors */}
           {orderType === 'S2D' && showDistributorSelector && (
-            <Card>
-              <CardHeader className="border-b bg-gray-50">
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
+              <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Package className="w-4 h-4" />
                   Seller Organization
@@ -1496,13 +1496,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               </CardHeader>
               <CardContent className="pt-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Select Distributor <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={selectedSellerOrgId}
                     onChange={(e) => handleDistributorChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white"
                   >
                     <option value="">Choose distributor...</option>
                     {availableDistributors.map(dist => (
@@ -1511,7 +1511,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                     Select the distributor you want to order from
                   </p>
                 </div>
@@ -1521,29 +1521,29 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
           {/* Auto-determined Seller Info - Show for S2D with single/preferred distributor */}
           {orderType === 'S2D' && !showDistributorSelector && sellerOrg && (
-            <Card>
-              <CardHeader className="border-b bg-gray-50">
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
+              <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Package className="w-4 h-4" />
                   Seller Organization
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Package className="w-5 h-5 text-blue-600" />
+                    <div className="w-10 h-10 rounded-lg bg-[var(--sera-orange)]/10 flex items-center justify-center flex-shrink-0">
+                      <Package className="w-5 h-5 text-[var(--sera-orange)]" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900">{sellerOrg.org_name}</h4>
-                      <p className="text-sm text-gray-600">{sellerOrg.org_code}</p>
-                      <p className="text-xs text-blue-600 mt-1">
+                      <h4 className="font-semibold text-[var(--sera-ink)]">{sellerOrg.org_name}</h4>
+                      <p className="text-sm text-[var(--sera-muted)]">{sellerOrg.org_code}</p>
+                      <p className="text-xs text-[var(--sera-orange)] mt-1">
                         ✓ Auto-selected: Your Distributor
                       </p>
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-3">
+                <p className="text-xs text-[var(--sera-muted)]/80 mt-3">
                   Shops automatically order from their linked distributor organization
                 </p>
               </CardContent>
@@ -1551,8 +1551,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           )}
 
           {/* Customer Information */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <User className="w-4 h-4" />
                 Customer Information
@@ -1561,37 +1561,37 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Customer Name <span className="text-red-500">*</span>
                   </label>
                   <Input
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="Enter customer name"
-                    className="bg-gray-50"
+                    className="bg-[var(--sera-ink)]/[0.03]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Phone Number
                   </label>
                   <Input
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     placeholder="Enter phone number"
-                    className="bg-gray-50"
+                    className="bg-[var(--sera-ink)]/[0.03]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Delivery Address <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   value={deliveryAddress}
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-[var(--sera-ink)]/[0.03]"
                   placeholder="Enter delivery address"
                 />
               </div>
@@ -1599,8 +1599,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           </Card>
 
           {/* Order Configuration */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Package className="w-4 h-4" />
                 Order Configuration
@@ -1609,16 +1609,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             <CardContent className="pt-6">
               {/* Auto-Logic Info Banner */}
               {orderItems.length > 0 && (
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="mb-4 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg">
                   <div className="flex items-start gap-2">
-                    <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-4 h-4 text-[var(--sera-orange)] mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                     </svg>
                     <div className="flex-1">
-                      <p className="text-xs font-medium text-blue-900">
+                      <p className="text-xs font-medium text-[var(--sera-ink)]">
                         Smart Case Size Configuration
                       </p>
-                      <p className="text-xs text-blue-700 mt-1">
+                      <p className="text-xs text-[var(--sera-orange-deep)] mt-1">
                         {useIndividualCases
                           ? 'Individual mode: Each product has its own case size based on product family (Cellera Hero/Zero: 100, Ellbow Cat Treat: 20, S.Box: 50, S.Line: 200)'
                           : `Global mode: All products use ${unitsPerCase} units per case`}
@@ -1629,8 +1629,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               )}
 
               {/* Case Size Configuration Mode Toggle */}
-              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                <label className="block text-sm font-medium text-gray-900 mb-3">
+              <div className="mb-6 p-4 bg-[var(--sera-ink)]/[0.03] border border-[var(--sera-line)] rounded-lg">
+                <label className="block text-sm font-medium text-[var(--sera-ink)] mb-3">
                   Case Size Configuration
                 </label>
                 <div className="space-y-3">
@@ -1647,8 +1647,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       className="mt-0.5"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900">Same units per case for all products</span>
-                      <p className="text-xs text-gray-500 mt-1">All products will use the same case size (recommended for standard orders)</p>
+                      <span className="text-sm font-medium text-[var(--sera-ink)]">Same units per case for all products</span>
+                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">All products will use the same case size (recommended for standard orders)</p>
                     </div>
                   </label>
                   <label className="flex items-start gap-3 cursor-pointer">
@@ -1664,8 +1664,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       className="mt-0.5"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900">Individual units per case for each product</span>
-                      <p className="text-xs text-gray-500 mt-1">Set different case sizes for each product variant (flexible for mixed orders)</p>
+                      <span className="text-sm font-medium text-[var(--sera-ink)]">Individual units per case for each product</span>
+                      <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Set different case sizes for each product variant (flexible for mixed orders)</p>
                     </div>
                   </label>
                 </div>
@@ -1673,7 +1673,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     {useIndividualCases ? 'Default Units per Case' : 'Units per Case'}
                   </label>
                   {useCustomUnitsPerCase ? (
@@ -1698,7 +1698,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           setUseCustomUnitsPerCase(false)
                           setCustomUnitsPerCase('')
                         }}
-                        className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+                        className="px-3 py-2 text-sm text-[var(--sera-muted)] hover:text-gray-800 border border-[var(--sera-line)] rounded-md"
                         disabled={useIndividualCases}
                       >
                         Presets
@@ -1709,7 +1709,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       <select
                         value={unitsPerCase}
                         onChange={(e) => handleUnitsPerCaseChange(parseInt(e.target.value))}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        className="flex-1 px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-[var(--sera-ink)]/[0.03]"
                         disabled={useIndividualCases}
                       >
                         <option value="20">20 units per case</option>
@@ -1722,35 +1722,35 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           setUseCustomUnitsPerCase(true)
                           setCustomUnitsPerCase(unitsPerCase.toString())
                         }}
-                        className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md"
+                        className="px-3 py-2 text-sm text-[var(--sera-muted)] hover:text-gray-800 border border-[var(--sera-line)] rounded-md"
                         disabled={useIndividualCases}
                       >
                         Custom
                       </button>
                     </div>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                     {useIndividualCases ? 'Default value for new products' : 'This setting applies to all products in this order'}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     QR Buffer (%)
                   </label>
                   <Input
                     type="number"
                     value={qrBuffer}
                     onChange={(e) => setQrBuffer(parseFloat(e.target.value))}
-                    className="bg-gray-50"
+                    className="bg-[var(--sera-ink)]/[0.03]"
                     step="0.1"
                     min="0"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Additional QR codes for manufacturing (default 10%)</p>
+                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Additional QR codes for manufacturing (default 10%)</p>
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Master QR copies per case
                 </label>
                 <Input
@@ -1763,16 +1763,16 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       setMasterQrDuplicates(value)
                     }
                   }}
-                  className="bg-gray-50"
+                  className="bg-[var(--sera-ink)]/[0.03]"
                   min="0"
                   max="10"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                   How many duplicate Master QR stickers to print per case (0-10). Default is 5. Example: 0 = only 1 sticker per case, 5 = 6 stickers per case, 10 = 11 stickers per case.
                 </p>
               </div>
 
-              <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-start gap-2 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-md">
                 <input
                   type="checkbox"
                   id="rfid"
@@ -1782,18 +1782,18 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                 />
                 <label htmlFor="rfid" className="flex-1">
                   <div className="flex items-center gap-2">
-                    <CheckSquare className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-gray-900">This order supports RFID</span>
+                    <CheckSquare className="w-4 h-4 text-[var(--sera-orange)]" />
+                    <span className="text-sm font-medium text-[var(--sera-ink)]">This order supports RFID</span>
                   </div>
-                  <p className="text-xs text-gray-600 mt-1">RFID tags will equal the total number of Master QR codes to print</p>
+                  <p className="text-xs text-[var(--sera-muted)] mt-1">RFID tags will equal the total number of Master QR codes to print</p>
                 </label>
               </div>
             </CardContent>
           </Card>
 
           {/* Product Selection - Always show, but enable/disable based on availability */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="text-base font-semibold">Product Selection</CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
@@ -1801,7 +1801,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               <div className="space-y-3 mb-4">
                 {/* Product Filter */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Filter by Product
                   </label>
                   <select
@@ -1810,7 +1810,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                       setSelectedProductFilter(e.target.value)
                       setSelectedVariantId('') // Reset variant selection
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white"
                     disabled={availableVariants.length === 0}
                   >
                     <option value="">All Products ({Array.from(new Set(availableVariants.map(v => v.product_name))).length})</option>
@@ -1827,7 +1827,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
                 {/* Search */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Search Variant
                   </label>
                   <Input
@@ -1842,14 +1842,14 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
                 {/* Variant Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                     Select Variant
                   </label>
                   <div className="flex gap-2">
                     <select
                       value={selectedVariantId}
                       onChange={(e) => setSelectedVariantId(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white max-h-[200px]"
+                      className="flex-1 px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 bg-white max-h-[200px]"
                       disabled={availableVariants.length === 0}
                       size={Math.min(8, Math.max(3, availableVariants.filter(v => {
                         const alreadyAdded = orderItems.find(item => item.variant_id === v.id)
@@ -1912,7 +1912,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     </select>
                     <Button
                       variant="outline"
-                      className="bg-blue-600 text-white hover:bg-blue-700 shrink-0"
+                      className="bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)] shrink-0"
                       onClick={handleAddProduct}
                       disabled={!selectedVariantId}
                     >
@@ -1932,8 +1932,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
               {/* Product List */}
               {orderItems.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                  <p className="text-gray-500 text-sm">No products selected. Add products to create your order.</p>
+                <div className="text-center py-8 bg-[var(--sera-ink)]/[0.03] rounded-lg border border-dashed border-[var(--sera-line)]">
+                  <p className="text-[var(--sera-muted)]/80 text-sm">No products selected. Add products to create your order.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1943,19 +1943,19 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
 
                     return (
-                      <div key={item.variant_id} className="border border-gray-200 rounded-lg p-4 bg-white">
+                      <div key={item.variant_id} className="border border-[var(--sera-line)] rounded-lg p-4 bg-white">
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-gray-900">{item.product_name}</h4>
+                              <h4 className="font-medium text-[var(--sera-ink)]">{item.product_name}</h4>
                               {productFamily && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
                                   {productFamily}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-gray-600 mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-sm text-[var(--sera-muted)] mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
+                            <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                               RM {formatCurrency(item.unit_price)} per unit
                               {item.manufacturer_sku && ` • SKU: ${item.manufacturer_sku}`}
                               {familyDefaultSize && ` • Default: ${familyDefaultSize} units/case`}
@@ -1973,13 +1973,13 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         <div className="grid grid-cols-3 gap-3">
                           {useIndividualCases && (
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                              <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                 Units per Case
                               </label>
                               <select
                                 value={item.units_per_case || unitsPerCase}
                                 onChange={(e) => handleUpdateIndividualUnitsPerCase(item.variant_id, parseInt(e.target.value))}
-                                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full px-2 py-1.5 text-sm border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30"
                               >
                                 <option value="20">20</option>
                                 <option value="50">50</option>
@@ -1989,7 +1989,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             </div>
                           )}
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                            <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                               Quantity
                             </label>
                             <Input
@@ -2020,7 +2020,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                             )}
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                            <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                               Unit Price (RM)
                             </label>
                             <Input
@@ -2037,7 +2037,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         {/* Auto-calculated summary */}
                         <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-4 gap-2 text-xs">
                           <div>
-                            <span className="text-gray-500 block">Cases:</span>
+                            <span className="text-[var(--sera-muted)]/80 block">Cases:</span>
                             {useIndividualCases && item.qty % (item.units_per_case || unitsPerCase) !== 0 ? (
                               <>
                                 <span className="font-semibold">
@@ -2052,21 +2052,21 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                               <>
                                 <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
                                 {useIndividualCases && (
-                                  <span className="text-xs text-blue-600 block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
+                                  <span className="text-xs text-[var(--sera-orange)] block mt-0.5">({item.units_per_case || unitsPerCase}/case)</span>
                                 )}
                               </>
                             )}
                           </div>
                           <div>
-                            <span className="text-gray-500 block">Unique Units (with {qrBuffer}% buffer):</span>
+                            <span className="text-[var(--sera-muted)]/80 block">Unique Units (with {qrBuffer}% buffer):</span>
                             <span className="font-semibold">{Math.round(item.qty + (item.qty * qrBuffer / 100)).toLocaleString()} units</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">Line Total:</span>
-                            <span className="font-semibold text-blue-600">RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}</span>
+                            <span className="text-[var(--sera-muted)]/80 block">Line Total:</span>
+                            <span className="font-semibold text-[var(--sera-orange)]">RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500 block">QR Codes:</span>
+                            <span className="text-[var(--sera-muted)]/80 block">QR Codes:</span>
                             <span className="font-semibold">{Math.ceil(item.qty / (item.units_per_case || unitsPerCase))} master + {Math.round(item.qty + (item.qty * qrBuffer / 100))} unique</span>
                           </div>
                         </div>
@@ -2121,7 +2121,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                         ✓ Remainders from multiple products will be mixed into {packingPlan.mixedCasesNeeded} case(s)
                       </p>
                       <div className="bg-white rounded-lg p-3 border border-amber-200 space-y-2">
-                        <div className="text-sm font-semibold text-gray-700">Full Cases:</div>
+                        <div className="text-sm font-semibold text-[var(--sera-ink)]/80">Full Cases:</div>
                         {packingPlan.plan.filter(p => p.fullCases > 0).map(p => (
                           <div key={p.variantId} className="text-sm pl-3">
                             • {p.fullCases} case(s) of {p.productName} - {p.variantName} ({p.unitsPerCase}/case)
@@ -2156,8 +2156,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           })()}
 
           {/* Lucky Draw & Redeem */}
-          <Card>
-            <CardHeader className="border-b bg-gray-50">
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <CheckSquare className="w-4 h-4" />
                 Lucky Draw & Redeem
@@ -2172,7 +2172,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     onChange={(e) => setEnableLuckyDraw(e.target.checked)}
                     className="rounded"
                   />
-                  <span className="text-sm text-gray-700">Enable Lucky Draw</span>
+                  <span className="text-sm text-[var(--sera-ink)]/80">Enable Lucky Draw</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -2181,7 +2181,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     onChange={(e) => setEnableRedeem(e.target.checked)}
                     className="rounded"
                   />
-                  <span className="text-sm text-gray-700">Enable Redeem</span>
+                  <span className="text-sm text-[var(--sera-ink)]/80">Enable Redeem</span>
                 </label>
               </div>
             </CardContent>
@@ -2191,7 +2191,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         {/* Right Column - Order Summary */}
         <div className="lg:col-span-1">
           <Card className="sticky top-6">
-            <CardHeader className="border-b bg-gray-50">
+            <CardHeader className="border-b bg-[var(--sera-ink)]/[0.03]">
               <CardTitle className="flex items-center gap-2 text-base font-semibold">
                 <Package className="w-4 h-4" />
                 Order Summary
@@ -2200,7 +2200,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
             <CardContent className="pt-6">
               {/* Customer Info */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Customer</h4>
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">Customer</h4>
                 <div className="text-sm space-y-1">
                   <p><span className="font-medium">Name:</span> {customerName}</p>
                   <p><span className="font-medium">Phone:</span> {phoneNumber}</p>
@@ -2213,24 +2213,24 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
               {/* Products */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-2">
                   Products ({orderItems.length})
                 </h4>
                 {orderItems.length === 0 ? (
-                  <p className="text-sm text-gray-500">No products selected</p>
+                  <p className="text-sm text-[var(--sera-muted)]/80">No products selected</p>
                 ) : (
                   <div className="space-y-2">
                     {orderItems.map((item) => (
                       <div key={item.variant_id} className="text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-700 font-medium">{item.product_name}</span>
+                          <span className="text-[var(--sera-ink)]/80 font-medium">{item.product_name}</span>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-600">
+                        <div className="flex justify-between text-xs text-[var(--sera-muted)]">
                           <span>{item.variant_name}</span>
                         </div>
-                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <div className="flex justify-between text-xs text-[var(--sera-muted)]/80 mt-1">
                           <span>{item.qty.toLocaleString()} units • {Math.ceil(item.qty / (item.units_per_case || unitsPerCase)).toLocaleString()} cases</span>
-                          <span className="font-medium text-gray-700">
+                          <span className="font-medium text-[var(--sera-ink)]/80">
                             RM {formatCurrency(item.line_total || (item.qty * item.unit_price))}
                           </span>
                         </div>
@@ -2243,20 +2243,20 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               {/* Calculations */}
               <div className="space-y-2 mb-6 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Total Cases:</span>
+                  <span className="text-[var(--sera-muted)]">Total Cases:</span>
                   <span className="font-medium">{totals.totalCases}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Master QR:</span>
+                  <span className="text-[var(--sera-muted)]">Master QR:</span>
                   <span className="font-medium">{totals.masterQR}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Unique QR:</span>
+                  <span className="text-[var(--sera-muted)]">Unique QR:</span>
                   <span className="font-medium">{totals.uniqueQR.toLocaleString()}</span>
                 </div>
                 {enableRFID && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">RFID Tags:</span>
+                    <span className="text-[var(--sera-muted)]">RFID Tags:</span>
                     <span className="font-medium">{totals.masterQR}</span>
                   </div>
                 )}
@@ -2265,11 +2265,11 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
               {/* Totals */}
               <div className="border-t pt-4 space-y-2 mb-6">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="text-[var(--sera-muted)]">Subtotal:</span>
                   <span className="font-medium">RM {formatCurrency(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Tax:</span>
+                  <span className="text-[var(--sera-muted)]">Tax:</span>
                   <span className="font-medium">RM {formatCurrency(totals.tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -2280,7 +2280,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
 
               {/* Action Buttons */}
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-3 flex items-center gap-2">
                   <CheckSquare className="w-4 h-4" />
                   Order Actions
                 </h4>
@@ -2294,7 +2294,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                   </div>
                 )}
                 <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleCreateOrder}
                   disabled={saving || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}
                 >
