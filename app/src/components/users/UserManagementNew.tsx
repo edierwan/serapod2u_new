@@ -57,12 +57,7 @@ import type { User as UserType, Role, Organization } from "@/types/user";
 import { getStorageUrl } from "@/lib/utils";
 import { compressAvatar, formatFileSize } from "@/lib/utils/imageCompression";
 import { samePhone } from "@/utils/phone";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { SeraLoadingState } from "@/components/ui/SeraLoader";
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000, -1] as const; // -1 represents "All"
 const PROGRAM_FILTER_OPTIONS = [
@@ -1376,7 +1371,7 @@ export default function UserManagementNew({
   const getRoleBadgeColor = (roleCode: string): string => {
     const colors: Record<string, string> = {
       SUPER: "bg-purple-100 text-purple-800",
-      HQ_ADMIN: "bg-blue-100 text-blue-800",
+      HQ_ADMIN: "bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]",
       MANU_ADMIN: "bg-indigo-100 text-indigo-800",
       DIST_ADMIN: "bg-green-100 text-green-800",
       WH_MANAGER: "bg-orange-100 text-orange-800",
@@ -1389,19 +1384,15 @@ export default function UserManagementNew({
   // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-      </div>
-    );
+    return <SeraLoadingState variant="page" label="Loading users" />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-gray-600">
+          <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">User Management</h1>
+          <p className="text-[var(--sera-muted)]">
             Manage system users and access permissions
           </p>
         </div>
@@ -1410,7 +1401,7 @@ export default function UserManagementNew({
             setEditingUser(null);
             setDialogOpen(true);
           }}
-          className="bg-blue-600 hover:bg-blue-700"
+          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           disabled={isSaving}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -1435,7 +1426,7 @@ export default function UserManagementNew({
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
+              <Building2 className="w-5 h-5 text-[var(--sera-orange)]" />
               Organization Master Data
             </DialogTitle>
             <DialogDescription>
@@ -1449,28 +1440,28 @@ export default function UserManagementNew({
 
           {organizationLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+              <Loader2 className="w-6 h-6 text-[var(--sera-orange)] animate-spin" />
             </div>
           ) : selectedOrganization ? (
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Code</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Organization Code</label>
                   <Input value={selectedOrganization.org_code || ""} disabled />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Type</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Organization Type</label>
                   <Input value={getOrgTypeName(selectedOrganization.org_type_code || "")} disabled />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Status</label>
                   <Input value={selectedOrganization.is_active === false ? "Inactive" : "Active"} disabled />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Organization Name</label>
                   <Input
                     value={organizationForm.org_name || ""}
                     onChange={(event) => handleOrganizationFieldChange("org_name", event.target.value)}
@@ -1478,7 +1469,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Branch</label>
                   <Input
                     value={organizationForm.branch || ""}
                     onChange={(event) => handleOrganizationFieldChange("branch", event.target.value)}
@@ -1486,7 +1477,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Contact Name</label>
                   <Input
                     value={organizationForm.contact_name || ""}
                     onChange={(event) => handleOrganizationFieldChange("contact_name", event.target.value)}
@@ -1494,7 +1485,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Title</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Contact Title</label>
                   <Input
                     value={organizationForm.contact_title || ""}
                     onChange={(event) => handleOrganizationFieldChange("contact_title", event.target.value)}
@@ -1502,7 +1493,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Contact Phone</label>
                   <Input
                     value={organizationForm.contact_phone || ""}
                     onChange={(event) => handleOrganizationFieldChange("contact_phone", event.target.value)}
@@ -1510,7 +1501,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Contact Email</label>
                   <Input
                     value={organizationForm.contact_email || ""}
                     onChange={(event) => handleOrganizationFieldChange("contact_email", event.target.value)}
@@ -1521,25 +1512,25 @@ export default function UserManagementNew({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Address</label>
                   <textarea
                     value={organizationForm.address || ""}
                     onChange={(event) => handleOrganizationFieldChange("address", event.target.value)}
                     disabled={!canEditSelectedOrganization}
-                    className="min-h-[84px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-[84px] w-full rounded-md border border-[var(--sera-line)] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address Line 2</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Address Line 2</label>
                   <textarea
                     value={organizationForm.address_line2 || ""}
                     onChange={(event) => handleOrganizationFieldChange("address_line2", event.target.value)}
                     disabled={!canEditSelectedOrganization}
-                    className="min-h-[84px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-[84px] w-full rounded-md border border-[var(--sera-line)] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">City</label>
                   <Input
                     value={organizationForm.city || ""}
                     onChange={(event) => handleOrganizationFieldChange("city", event.target.value)}
@@ -1547,7 +1538,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Postal Code</label>
                   <Input
                     value={organizationForm.postal_code || ""}
                     onChange={(event) => handleOrganizationFieldChange("postal_code", event.target.value)}
@@ -1555,7 +1546,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Country Code</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Country Code</label>
                   <Input
                     value={organizationForm.country_code || ""}
                     onChange={(event) => handleOrganizationFieldChange("country_code", event.target.value)}
@@ -1563,7 +1554,7 @@ export default function UserManagementNew({
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Website</label>
                   <Input
                     value={organizationForm.website || ""}
                     onChange={(event) => handleOrganizationFieldChange("website", event.target.value)}
@@ -1575,7 +1566,7 @@ export default function UserManagementNew({
               {selectedOrganization.org_type_code === "SHOP" && (
                 <div className="rounded-lg border p-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Hot Flavour Brands</label>
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Hot Flavour Brands</label>
                     <Input
                       value={organizationForm.hot_flavour_brands || ""}
                       onChange={(event) => handleOrganizationFieldChange("hot_flavour_brands", event.target.value)}
@@ -1583,7 +1574,7 @@ export default function UserManagementNew({
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center gap-2 text-sm text-[var(--sera-ink)]/80">
                       <Checkbox
                         checked={Boolean(organizationForm.sells_serapod_flavour)}
                         onCheckedChange={(checked) => handleOrganizationFieldChange("sells_serapod_flavour", checked === true)}
@@ -1591,7 +1582,7 @@ export default function UserManagementNew({
                       />
                       Sells Serapod Flavour
                     </label>
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center gap-2 text-sm text-[var(--sera-ink)]/80">
                       <Checkbox
                         checked={Boolean(organizationForm.sells_sbox)}
                         onCheckedChange={(checked) => handleOrganizationFieldChange("sells_sbox", checked === true)}
@@ -1599,7 +1590,7 @@ export default function UserManagementNew({
                       />
                       Sells S.Box
                     </label>
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <label className="flex items-center gap-2 text-sm text-[var(--sera-ink)]/80">
                       <Checkbox
                         checked={Boolean(organizationForm.sells_sbox_special_edition)}
                         onCheckedChange={(checked) => handleOrganizationFieldChange("sells_sbox_special_edition", checked === true)}
@@ -1637,26 +1628,26 @@ export default function UserManagementNew({
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Total Users</p>
-                <p className="text-3xl font-bold text-gray-900">
+                <p className="text-sm text-[var(--sera-muted)] mb-1">Total Users</p>
+                <p className="text-3xl font-bold text-[var(--sera-ink)]">
                   {stats.total}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
+              <div className="w-12 h-12 rounded-lg bg-[var(--sera-orange)]/[0.06] flex items-center justify-center">
+                <Users className="w-6 h-6 text-[var(--sera-orange)]" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Online Now</p>
+                <p className="text-sm text-[var(--sera-muted)] mb-1">Online Now</p>
                 <p className="text-3xl font-bold text-emerald-600">
                   {stats.online}
                 </p>
@@ -1668,11 +1659,11 @@ export default function UserManagementNew({
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Active Users</p>
+                <p className="text-sm text-[var(--sera-muted)] mb-1">Active Users</p>
                 <p className="text-3xl font-bold text-green-600">
                   {stats.active}
                 </p>
@@ -1683,11 +1674,11 @@ export default function UserManagementNew({
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Verified Users</p>
+                <p className="text-sm text-[var(--sera-muted)] mb-1">Verified Users</p>
                 <p className="text-3xl font-bold text-purple-600">
                   {stats.verified}
                 </p>
@@ -1701,17 +1692,17 @@ export default function UserManagementNew({
       </div>
 
       {/* Filters and Search */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="pt-6 space-y-4">
           {/* Filters Row */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {/* Role Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                 Filter by Role
               </label>
               <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                 onChange={(e) => setRoleFilter(e.target.value)}
                 value={roleFilter}
               >
@@ -1726,11 +1717,11 @@ export default function UserManagementNew({
 
             {/* Organization Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                 Filter by Organization Type
               </label>
               <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                 onChange={(e) => setOrgTypeFilter(e.target.value)}
                 value={orgTypeFilter}
               >
@@ -1749,11 +1740,11 @@ export default function UserManagementNew({
 
             {/* Organization Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                 Filter by Organization
               </label>
               <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                 onChange={(e) => setOrgFilter(e.target.value)}
                 value={orgFilter}
               >
@@ -1768,11 +1759,11 @@ export default function UserManagementNew({
 
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                 Filter by Status
               </label>
               <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                 onChange={(e) => setStatusFilter(e.target.value)}
                 value={statusFilter}
               >
@@ -1787,11 +1778,11 @@ export default function UserManagementNew({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                 Filter by Program
               </label>
               <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                 onChange={(e) => setProgramFilter(e.target.value)}
                 value={programFilter}
               >
@@ -1806,7 +1797,7 @@ export default function UserManagementNew({
 
           {/* Search Box */}
           <div className="flex items-center gap-2">
-            <Search className="w-5 h-5 text-gray-400" />
+            <Search className="w-5 h-5 text-[var(--sera-muted)]/70" />
             <Input
               placeholder="Search users by name, email, or phone..."
               value={searchQuery}
@@ -1818,7 +1809,7 @@ export default function UserManagementNew({
       </Card>
 
       {/* Users Table */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="pt-6">
           {/* Delete Progress Indicator */}
           {deleteProgress && (
@@ -1853,10 +1844,10 @@ export default function UserManagementNew({
           )}
 
           {selectedUsers.size > 0 && !deleteProgress && (
-            <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="mb-4 flex items-center justify-between bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">
+                <CheckCircle className="w-5 h-5 text-[var(--sera-orange)]" />
+                <span className="text-sm font-medium text-[var(--sera-ink)]">
                   {selectedUsers.size} user{selectedUsers.size > 1 ? "s" : ""}{" "}
                   selected
                 </span>
@@ -1907,7 +1898,7 @@ export default function UserManagementNew({
                       <TableHead>
                         <button
                           onClick={() => handleSort("full_name")}
-                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                          className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium"
                         >
                           User
                           {sortField === "full_name" ? (
@@ -1924,7 +1915,7 @@ export default function UserManagementNew({
                       <TableHead>
                         <button
                           onClick={() => handleSort("role_code")}
-                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                          className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium"
                         >
                           Role
                           {sortField === "role_code" ? (
@@ -1941,7 +1932,7 @@ export default function UserManagementNew({
                       <TableHead>
                         <button
                           onClick={() => handleSort("organization_id")}
-                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                          className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium"
                         >
                           Organization
                           {sortField === "organization_id" ? (
@@ -1959,7 +1950,7 @@ export default function UserManagementNew({
                       <TableHead>
                         <button
                           onClick={() => handleSort("referral_phone")}
-                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                          className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium"
                         >
                           Reference
                           {sortField === "referral_phone" ? (
@@ -1976,7 +1967,7 @@ export default function UserManagementNew({
                       <TableHead>
                         <button
                           onClick={() => handleSort("last_login_at")}
-                          className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium"
+                          className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium"
                         >
                           Last Activity
                           {sortField === "last_login_at" ? (
@@ -1995,7 +1986,7 @@ export default function UserManagementNew({
                   </TableHeader>
                   <TableBody>
                     {paginatedUsers.map((user, index) => (
-                      <TableRow key={user.id} className="hover:bg-gray-50">
+                      <TableRow key={user.id} className="hover:bg-[var(--sera-ink)]/[0.02]">
                         <TableCell>
                           <Checkbox
                             checked={selectedUsers.has(user.id)}
@@ -2005,7 +1996,7 @@ export default function UserManagementNew({
                             disabled={user.id === userProfile.id}
                           />
                         </TableCell>
-                        <TableCell className="text-center text-gray-500 text-sm">
+                        <TableCell className="text-center text-[var(--sera-muted)] text-sm">
                           {startIndex + index + 1}
                         </TableCell>
                         <TableCell>
@@ -2023,7 +2014,7 @@ export default function UserManagementNew({
                                     key={`avatar-${user.id}-${user.updated_at}`}
                                   />
                                 )}
-                                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">
+                                <AvatarFallback className="bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-white text-xs font-medium">
                                   {getInitials(getUserDisplayName(user))}
                                 </AvatarFallback>
                               </Avatar>
@@ -2041,13 +2032,13 @@ export default function UserManagementNew({
                                   setEditingUser(user);
                                   setDialogOpen(true);
                                 }}
-                                className="text-gray-900 truncate font-medium hover:text-blue-600 hover:underline transition-colors text-left block max-w-full"
+                                className="text-[var(--sera-ink)] truncate font-medium hover:text-[var(--sera-orange)] hover:underline transition-colors text-left block max-w-full"
                                 title="Click to edit user"
                               >
                                 {getUserDisplayName(user)}
                               </button>
                               {user.phone && (
-                                <div className="text-xs text-gray-500 truncate">
+                                <div className="text-xs text-[var(--sera-muted)] truncate">
                                   {user.phone}
                                 </div>
                               )}
@@ -2067,19 +2058,19 @@ export default function UserManagementNew({
                           <div className="min-w-0">
                             {(() => {
                               const org = organizations.find(o => o.id === user.organization_id);
-                              if (!org) return <span className="text-gray-400 italic">End User</span>;
+                              if (!org) return <span className="text-[var(--sera-muted)]/70 italic">End User</span>;
                               if (org.org_type_code === 'SHOP') {
                                 return (
                                   <div>
                                     <button
                                       type="button"
                                       onClick={() => handleOpenOrganizationDialog(user, org)}
-                                      className="text-left text-gray-900 font-medium hover:text-blue-600 hover:underline"
+                                      className="text-left text-[var(--sera-ink)] font-medium hover:text-[var(--sera-orange)] hover:underline"
                                       title="View organization master data"
                                     >
                                       {org.org_name}
                                     </button>
-                                    {org.branch && <span className="text-gray-500 text-xs ml-1">({org.branch})</span>}
+                                    {org.branch && <span className="text-[var(--sera-muted)] text-xs ml-1">({org.branch})</span>}
                                   </div>
                                 );
                               }
@@ -2087,7 +2078,7 @@ export default function UserManagementNew({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenOrganizationDialog(user, org)}
-                                  className="text-left text-gray-900 hover:text-blue-600 hover:underline"
+                                  className="text-left text-[var(--sera-ink)] hover:text-[var(--sera-orange)] hover:underline"
                                   title="View organization master data"
                                 >
                                   {getOrgTypeName(org.org_type_code || "")}
@@ -2097,14 +2088,14 @@ export default function UserManagementNew({
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="text-sm text-gray-900">
+                          <span className="text-sm text-[var(--sera-ink)]">
                             {getProgramLabelFromMemberships(user.loyalty_program_user_memberships)}
                           </span>
                         </TableCell>
                         <TableCell>
                           {(() => {
                             if (!user.referral_phone) {
-                              return <span className="text-gray-900">-</span>;
+                              return <span className="text-[var(--sera-ink)]">-</span>;
                             }
 
                             const referenceUser = users.find((candidate) => {
@@ -2113,15 +2104,15 @@ export default function UserManagementNew({
                             });
 
                             if (!referenceUser) {
-                              return <span className="text-gray-900">{user.referral_phone}</span>;
+                              return <span className="text-[var(--sera-ink)]">{user.referral_phone}</span>;
                             }
 
                             return (
                               <div className="min-w-0">
-                                <div className="text-gray-900 font-medium truncate">
+                                <div className="text-[var(--sera-ink)] font-medium truncate">
                                   {getUserDisplayName(referenceUser)}
                                 </div>
-                                <div className="text-xs text-gray-500 truncate">
+                                <div className="text-xs text-[var(--sera-muted)] truncate">
                                   {referenceUser.phone || user.referral_phone}
                                 </div>
                               </div>
@@ -2139,8 +2130,8 @@ export default function UserManagementNew({
                             <span
                               className={
                                 getLatestActivityAt(user)
-                                  ? "text-gray-900"
-                                  : "text-gray-400 italic"
+                                  ? "text-[var(--sera-ink)]"
+                                  : "text-[var(--sera-muted)]/70 italic"
                               }
                               title={formatDateTime(getLatestActivityAt(user))}
                             >
@@ -2177,7 +2168,7 @@ export default function UserManagementNew({
                                 className={
                                   user.is_active
                                     ? "text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                                    : "text-[var(--sera-muted)]/70 hover:text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.02]"
                                 }
                                 title={
                                   user.id === userProfile.id
@@ -2197,7 +2188,7 @@ export default function UserManagementNew({
                                   setDialogOpen(true);
                                 }}
                                 disabled={isSaving}
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                className="text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:bg-[var(--sera-orange)]/[0.06]"
                                 title="Edit user"
                               >
                                 <Edit className="w-4 h-4" />
@@ -2235,9 +2226,9 @@ export default function UserManagementNew({
               {/* Pagination Controls */}
               <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Rows per page:</span>
+                  <span className="text-sm text-[var(--sera-muted)]">Rows per page:</span>
                   <select
-                    className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="px-2 py-1 border border-[var(--sera-line)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/100 bg-white"
                     value={pageSize}
                     onChange={(e) => setPageSize(Number(e.target.value))}
                   >
@@ -2250,7 +2241,7 @@ export default function UserManagementNew({
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-[var(--sera-muted)]">
                     Showing {startIndex + 1} to{" "}
                     {Math.min(endIndex, filteredUsers.length)} of{" "}
                     {filteredUsers.length} users
@@ -2304,11 +2295,11 @@ export default function UserManagementNew({
             </>
           ) : (
             <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+              <Users className="w-12 h-12 text-[var(--sera-muted)]/70 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">
                 No users found
               </h3>
-              <p className="text-gray-600">
+              <p className="text-[var(--sera-muted)]">
                 {searchQuery
                   ? "No users match your search"
                   : "Start by adding your first user"}
@@ -2357,7 +2348,7 @@ export default function UserManagementNew({
             {deleteOtpStep === 'otp' && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Verification Code</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-1">Verification Code</label>
                   <Input
                     type="text"
                     maxLength={4}
@@ -2368,7 +2359,7 @@ export default function UserManagementNew({
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-gray-500 text-center">Code expires in 5 minutes</p>
+                <p className="text-xs text-[var(--sera-muted)] text-center">Code expires in 5 minutes</p>
               </div>
             )}
 

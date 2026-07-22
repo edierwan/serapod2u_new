@@ -288,7 +288,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
 
 const ROLE_LEVELS = [
     { level: 1, code: 'SUPERADMIN', name: 'Super Admin', color: 'bg-purple-100 text-purple-800 border-purple-200' },
-    { level: 10, code: 'HQ_ADMIN', name: 'HQ Admin', color: 'bg-blue-100 text-blue-800 border-blue-200' },
+    { level: 10, code: 'HQ_ADMIN', name: 'HQ Admin', color: 'bg-blue-100 text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20' },
     { level: 20, code: 'POWER_USER', name: 'Power User', color: 'bg-green-100 text-green-800 border-green-200' },
     { level: 30, code: 'MANAGER', name: 'Manager', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
     { level: 40, code: 'USER', name: 'User', color: 'bg-orange-100 text-orange-800 border-orange-200' },
@@ -777,8 +777,8 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
         return (
             <Card>
                 <CardContent className="py-12 text-center">
-                    <RefreshCw className="w-8 h-8 mx-auto text-blue-600 animate-spin mb-4" />
-                    <p className="text-gray-600">Checking permissions...</p>
+                    <RefreshCw className="w-8 h-8 mx-auto text-[var(--sera-orange)] animate-spin mb-4" />
+                    <p className="text-[var(--sera-muted)]">Checking permissions...</p>
                 </CardContent>
             </Card>
         )
@@ -789,8 +789,8 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
             <Card>
                 <CardContent className="py-12 text-center">
                     <Lock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Restricted</h3>
-                    <p className="text-gray-600">You need the Manage Authorization permission to access this page.</p>
+                    <h3 className="text-lg font-semibold text-[var(--sera-ink)] mb-2">Access Restricted</h3>
+                    <p className="text-[var(--sera-muted)]">You need the Manage Authorization permission to access this page.</p>
                 </CardContent>
             </Card>
         )
@@ -800,8 +800,8 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
         return (
             <Card>
                 <CardContent className="py-12 text-center">
-                    <RefreshCw className="w-8 h-8 mx-auto text-blue-600 animate-spin mb-4" />
-                    <p className="text-gray-600">Loading authorization settings...</p>
+                    <RefreshCw className="w-8 h-8 mx-auto text-[var(--sera-orange)] animate-spin mb-4" />
+                    <p className="text-[var(--sera-muted)]">Loading authorization settings...</p>
                 </CardContent>
             </Card>
         )
@@ -845,7 +845,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             size="sm"
                                             onClick={savePermissions}
                                             disabled={saving || !hasChanges}
-                                            className="bg-blue-600 hover:bg-blue-700"
+                                            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                                         >
                                             <Save className="w-4 h-4 mr-2" />
                                             {saving ? 'Saving...' : 'Save Changes'}
@@ -877,7 +877,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             size="sm"
                                             onClick={saveDepartmentOverrides}
                                             disabled={deptSaving || !hasDeptChanges}
-                                            className="bg-blue-600 hover:bg-blue-700"
+                                            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                                         >
                                             <Save className="w-4 h-4 mr-2" />
                                             {deptSaving ? 'Saving...' : 'Save Changes'}
@@ -906,7 +906,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                         key={role.level}
                                         onClick={() => setSelectedRole(role.level)}
                                         className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedRole === role.level
-                                            ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                            ? 'border-blue-500 bg-[var(--sera-orange)]/[0.06] ring-1 ring-blue-500'
                                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                             }`}
                                     >
@@ -920,7 +920,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             </div>
                                         </div>
                                         {selectedRole === role.level && (
-                                            <CheckCircle className="w-4 h-4 text-blue-600" />
+                                            <CheckCircle className="w-4 h-4 text-[var(--sera-orange)]" />
                                         )}
                                     </button>
                                 ))}
@@ -980,7 +980,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             const total = cat.permissions.length
                                             const pct = Math.round((enabled / total) * 100)
                                             const color = pct === 100 ? 'bg-green-100 text-green-800 border-green-200'
-                                                : pct > 0 ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                                : pct > 0 ? 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20'
                                                     : 'bg-gray-50 text-gray-500 border-gray-200'
                                             return (
                                                 <button
@@ -1019,7 +1019,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                 <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
                                                     <div className="flex items-center gap-3 w-full">
                                                         <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                                                            <Icon className="w-4 h-4 text-gray-600" />
+                                                            <Icon className="w-4 h-4 text-[var(--sera-muted)]" />
                                                         </div>
                                                         <div className="flex-1 text-left">
                                                             <div className="font-medium text-sm">{category.name}</div>
@@ -1085,7 +1085,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                                     <Switch
                                                                         checked={getPermissionStatus(permission.id, selectedRole)}
                                                                         onCheckedChange={() => togglePermission(selectedRole, permission.id)}
-                                                                        className="data-[state=checked]:bg-blue-600"
+                                                                        className="data-[state=checked]:bg-[var(--sera-orange)]"
                                                                     />
                                                                 </div>
                                                             </div>
@@ -1111,7 +1111,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b">
-                                            <th className="text-left py-2 px-3 font-medium text-gray-600 w-48 sticky left-0 bg-white z-10">Permission</th>
+                                            <th className="text-left py-2 px-3 font-medium text-[var(--sera-muted)] w-48 sticky left-0 bg-white z-10">Permission</th>
                                             {ROLE_LEVELS.map(role => (
                                                 <th key={role.level} className="text-center py-2 px-2 font-medium min-w-[72px]">
                                                     <div className="flex flex-col items-center gap-1">
@@ -1130,7 +1130,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                 {/* Category header row */}
                                                 <tr className="bg-gray-50">
                                                     <td colSpan={ROLE_LEVELS.length + 1} className="py-1.5 px-3 sticky left-0 bg-gray-50 z-10">
-                                                        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{category.name}</span>
+                                                        <span className="text-xs font-semibold text-[var(--sera-muted)] uppercase tracking-wide">{category.name}</span>
                                                     </td>
                                                 </tr>
                                                 {category.permissions.map((perm) => (
@@ -1167,13 +1167,13 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                     </Card>
 
                     {/* Quick Reference */}
-                    <Card className="bg-blue-50 border-blue-200">
+                    <Card className="bg-[var(--sera-orange)]/[0.06] border-[var(--sera-orange)]/20">
                         <CardContent className="py-4">
                             <div className="flex items-start gap-3">
-                                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                                <AlertCircle className="w-5 h-5 text-[var(--sera-orange)] flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-blue-900">
                                     <p className="font-semibold mb-2">Quick Reference</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-1 gap-x-6 text-blue-800">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-1 gap-x-6 text-[var(--sera-orange-deep)]">
                                         {ROLE_LEVELS.map(role => (
                                             <span key={role.level} className="text-xs">
                                                 <strong>L{role.level} {role.name}</strong>
@@ -1186,7 +1186,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             </span>
                                         ))}
                                     </div>
-                                    <p className="mt-2 text-xs text-blue-700">
+                                    <p className="mt-2 text-xs text-[var(--sera-orange-deep)]">
                                         Menu visibility also depends on <strong>Organisation Type</strong> (HQ / Manufacturer / Distributor / Warehouse / Shop).
                                         Permissions only control feature access <em>within</em> visible modules. Changes take effect after saving.
                                     </p>
@@ -1212,7 +1212,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                         key={dept.id}
                                         onClick={() => setSelectedDepartmentId(dept.id)}
                                         className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${selectedDepartmentId === dept.id
-                                            ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                                            ? 'border-blue-500 bg-[var(--sera-orange)]/[0.06] ring-1 ring-blue-500'
                                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                             }`}
                                     >
@@ -1221,7 +1221,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             <div className="text-xs text-gray-500">{dept.dept_name}</div>
                                         </div>
                                         {selectedDepartmentId === dept.id && (
-                                            <CheckCircle className="w-4 h-4 text-blue-600" />
+                                            <CheckCircle className="w-4 h-4 text-[var(--sera-orange)]" />
                                         )}
                                     </button>
                                 ))}
@@ -1270,7 +1270,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                 <AccordionTrigger className="px-4 py-3 hover:bg-gray-50 hover:no-underline">
                                                     <div className="flex items-center gap-3 w-full">
                                                         <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                                                            <Icon className="w-4 h-4 text-gray-600" />
+                                                            <Icon className="w-4 h-4 text-[var(--sera-muted)]" />
                                                         </div>
                                                         <div className="flex-1 text-left">
                                                             <div className="font-medium text-sm">{category.name}</div>
@@ -1320,7 +1320,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                                         <Switch
                                                                             checked={effective}
                                                                             onCheckedChange={(checked) => updateDepartmentOverride(permission.id, checked)}
-                                                                            className="data-[state=checked]:bg-blue-600"
+                                                                            className="data-[state=checked]:bg-[var(--sera-orange)]"
                                                                             disabled={!selectedDepartmentId}
                                                                         />
                                                                     </div>
@@ -1336,7 +1336,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                                                             </Badge>
                                                                         )}
                                                                         {!overrideAllow && !overrideDeny && (
-                                                                            <Badge variant="outline" className={inherited ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-200'}>
+                                                                            <Badge variant="outline" className={inherited ? 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20' : 'bg-gray-50 text-[var(--sera-muted)] border-gray-200'}>
                                                                                 Inherited {inherited ? 'ON' : 'OFF'}
                                                                             </Badge>
                                                                         )}
@@ -1362,7 +1362,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-600">Search User</label>
+                                    <label className="text-xs font-medium text-[var(--sera-muted)]">Search User</label>
                                     <Input
                                         value={testerQuery}
                                         onChange={(event) => setTesterQuery(event.target.value)}
@@ -1370,7 +1370,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-600">Select User</label>
+                                    <label className="text-xs font-medium text-[var(--sera-muted)]">Select User</label>
                                     <Select value={testerUserId} onValueChange={setTesterUserId}>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select user" />
@@ -1385,7 +1385,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-600">Permission Key</label>
+                                    <label className="text-xs font-medium text-[var(--sera-muted)]">Permission Key</label>
                                     <Input
                                         list="permission-keys"
                                         value={testerPermissionKey}
@@ -1401,7 +1401,7 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                             </div>
 
                             {selectedTesterUser && (
-                                <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                <div className="flex flex-wrap gap-3 text-xs text-[var(--sera-muted)]">
                                     <span>Role: {selectedTesterUser.role_code || 'N/A'} (L{selectedTesterUser.role_level ?? '--'})</span>
                                     <span>Department: {selectedTesterUser.department?.dept_name || 'None'}</span>
                                 </div>

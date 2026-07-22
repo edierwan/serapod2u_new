@@ -161,7 +161,7 @@ function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; 
 
 function CategoryIcon({ category }: { category: string }) {
   const classes = 'h-5 w-5'
-  if (category === 'order') return <ShoppingCart className={`${classes} text-blue-600`} />
+  if (category === 'order') return <ShoppingCart className={`${classes} text-[var(--sera-orange)]`} />
   if (category === 'document') return <FileText className={`${classes} text-violet-600`} />
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />

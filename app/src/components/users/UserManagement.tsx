@@ -376,36 +376,36 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
   }
 
   const getRoleBadgeColor = (roleCode: string): string => {
-    const colors: Record<string, string> = { 'SUPER': 'bg-purple-100 text-purple-800 border-purple-200', 'HQ_ADMIN': 'bg-blue-100 text-blue-800 border-blue-200', 'MANU_ADMIN': 'bg-indigo-100 text-indigo-800 border-indigo-200', 'DIST_ADMIN': 'bg-green-100 text-green-800 border-green-200', 'WH_MANAGER': 'bg-orange-100 text-orange-800 border-orange-200', 'SHOP_MANAGER': 'bg-pink-100 text-pink-800 border-pink-200', 'USER': 'bg-gray-100 text-gray-800 border-gray-200', 'GUEST': 'bg-yellow-100 text-yellow-800 border-yellow-200' }
-    return colors[roleCode] || 'bg-gray-100 text-gray-800 border-gray-200'
+    const colors: Record<string, string> = { 'SUPER': 'bg-purple-100 text-purple-800 border-purple-200', 'HQ_ADMIN': 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20', 'MANU_ADMIN': 'bg-indigo-100 text-indigo-800 border-indigo-200', 'DIST_ADMIN': 'bg-green-100 text-green-800 border-green-200', 'WH_MANAGER': 'bg-orange-100 text-orange-800 border-orange-200', 'SHOP_MANAGER': 'bg-pink-100 text-pink-800 border-pink-200', 'USER': 'bg-gray-100 text-gray-800 border-[var(--sera-line)]', 'GUEST': 'bg-yellow-100 text-yellow-800 border-yellow-200' }
+    return colors[roleCode] || 'bg-gray-100 text-gray-800 border-[var(--sera-line)]'
   }
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => {
     const isActive = sortState.field === field
     const direction = isActive ? sortState.direction : null
-    return <TableHead><Button variant="ghost" size="sm" className="-ml-3 h-8 hover:bg-gray-100" onClick={(e) => { e.stopPropagation(); handleSort(field) }}>
-      <span className="text-gray-700 font-semibold">{children}</span>
-      {!isActive && <ArrowUpDown className="ml-2 h-4 w-4 text-gray-400" />}
-      {isActive && direction === 'asc' && <ArrowUp className="ml-2 h-4 w-4 text-blue-600" />}
-      {isActive && direction === 'desc' && <ArrowDown className="ml-2 h-4 w-4 text-blue-600" />}
+    return <TableHead><Button variant="ghost" size="sm" className="-ml-3 h-8 hover:bg-[var(--sera-ink)]/[0.04]" onClick={(e) => { e.stopPropagation(); handleSort(field) }}>
+      <span className="text-[var(--sera-ink)]/80 font-semibold">{children}</span>
+      {!isActive && <ArrowUpDown className="ml-2 h-4 w-4 text-[var(--sera-muted)]/70" />}
+      {isActive && direction === 'asc' && <ArrowUp className="ml-2 h-4 w-4 text-[var(--sera-orange)]" />}
+      {isActive && direction === 'desc' && <ArrowDown className="ml-2 h-4 w-4 text-[var(--sera-orange)]" />}
     </Button></TableHead>
   }
 
   if (loading) return <SeraLoadingState variant="page" label="Loading users" />
 
-  return <div className="space-y-6">
+  return <div className="sera-sc-page space-y-6">
     <div className="flex items-center justify-between">
-      <div><h1 className="text-2xl font-bold text-gray-900">User Management</h1><p className="text-gray-600">Manage system users and access permissions</p></div>
-      <Button onClick={() => { setEditingUser(null); setDialogOpen(true) }} className="bg-blue-600 hover:bg-blue-700" disabled={isSaving}><Plus className="w-4 h-4 mr-2" />Add User</Button>
+      <div><h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">User Management</h1><p className="text-[var(--sera-muted)]">Manage system users and access permissions</p></div>
+      <Button onClick={() => { setEditingUser(null); setDialogOpen(true) }} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" disabled={isSaving}><Plus className="w-4 h-4 mr-2" />Add User</Button>
     </div>
     <UserDialog user={editingUser} roles={roles} organizations={organizations} open={dialogOpen} isSaving={isSaving} currentUserRoleLevel={userProfile?.roles?.role_level || 100} onOpenChange={setDialogOpen} onSave={handleAddUser} />
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-      <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-gray-600 mb-1">Total Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">{stats.total}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-blue-50 flex items-center justify-center"><Users className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" /></div></div></CardContent></Card>
-      <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-gray-600 mb-1">Active Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{stats.active}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center"><Users className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" /></div></div></CardContent></Card>
-      <Card><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-gray-600 mb-1">Verified Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{stats.verified}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center"><CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" /></div></div></CardContent></Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none"><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Total Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-[var(--sera-ink)]">{stats.total}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-[var(--sera-orange)]/[0.06] flex items-center justify-center"><Users className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--sera-orange)]" /></div></div></CardContent></Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none"><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Active Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{stats.active}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center"><Users className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" /></div></div></CardContent></Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none"><CardContent className="p-3 sm:p-4 lg:p-6"><div className="flex items-start justify-between"><div><p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Verified Users</p><p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{stats.verified}</p></div><div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center"><CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" /></div></div></CardContent></Card>
     </div>
-    <Card><CardContent className="pt-6"><div className="flex items-center gap-2"><Search className="w-5 h-5 text-gray-400" /><Input placeholder="Search users by name or email..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1" /></div></CardContent></Card>
-    <Card><CardContent className="pt-6">{filteredUsers.length > 0 ? <div className="border rounded-lg overflow-hidden"><Table><TableHeader><TableRow>
+    <Card className="sera-sc-panel overflow-hidden shadow-none"><CardContent className="pt-6"><div className="flex items-center gap-2"><Search className="w-5 h-5 text-[var(--sera-muted)]/70" /><Input placeholder="Search users by name or email..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1" /></div></CardContent></Card>
+    <Card className="sera-sc-panel overflow-hidden shadow-none"><CardContent className="pt-6">{filteredUsers.length > 0 ? <div className="border rounded-lg overflow-hidden"><Table><TableHeader><TableRow>
       <SortableHeader field="name">User</SortableHeader>
       <SortableHeader field="role">Role</SortableHeader>
       <SortableHeader field="status">Status</SortableHeader>
@@ -413,31 +413,31 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
       <SortableHeader field="date_joined">Join Date</SortableHeader>
       <SortableHeader field="last_login">Last Login</SortableHeader>
       <TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-      <TableBody>{filteredUsers.map((user) => <TableRow key={user.id} className="hover:bg-gray-50">
+      <TableBody>{filteredUsers.map((user) => <TableRow key={user.id} className="hover:bg-[var(--sera-ink)]/[0.02]">
         <TableCell><div className="flex items-center gap-3"><Avatar className="w-10 h-10">
           {user.avatar_url && <AvatarImage 
             src={getStorageUrl(`${user.avatar_url.split('?')[0]}?v=${avatarRefresh[user.id] || Date.now()}`) || user.avatar_url} 
             alt={user.full_name || 'User'} 
             key={`avatar-${user.id}-${avatarRefresh[user.id]}`}
           />}
-          <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-xs font-medium">{getInitials(user.full_name)}</AvatarFallback>
-        </Avatar><div className="min-w-0 flex-1"><div className="text-gray-900 truncate font-medium">{user.full_name || 'No Name'}</div><div className="text-sm text-gray-500 truncate">{user.email}</div></div></div></TableCell>
+          <AvatarFallback className="bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-white text-xs font-medium">{getInitials(user.full_name)}</AvatarFallback>
+        </Avatar><div className="min-w-0 flex-1"><div className="text-[var(--sera-ink)] truncate font-medium">{user.full_name || 'No Name'}</div><div className="text-sm text-[var(--sera-muted)] truncate">{user.email}</div></div></div></TableCell>
         <TableCell><Badge variant="outline" className={getRoleBadgeColor(user.role_code)}>{roleMap[user.role_code] || user.role_code}</Badge></TableCell>
         <TableCell><Badge variant="outline" className={user.is_active ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}>{user.is_active ? <><CheckCircle className="w-3 h-3 mr-1" />Active</> : <><XCircle className="w-3 h-3 mr-1" />Inactive</>}</Badge></TableCell>
-        <TableCell><div className="min-w-0">{orgMap[user.organization_id] ? <><div className="text-gray-900 font-medium truncate">{orgMap[user.organization_id]}</div><div className="text-xs text-gray-500 truncate">{organizations.find(o => o.id === user.organization_id)?.org_type_code || ''}</div></> : <span className="text-gray-400 italic">No Department</span>}</div></TableCell>
-        <TableCell><span className="text-gray-900">{new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span></TableCell>
-        <TableCell><span className={user.last_login_at ? 'text-gray-900' : 'text-gray-400 italic'}>{formatRelativeTime(user.last_login_at)}</span></TableCell>
+        <TableCell><div className="min-w-0">{orgMap[user.organization_id] ? <><div className="text-[var(--sera-ink)] font-medium truncate">{orgMap[user.organization_id]}</div><div className="text-xs text-[var(--sera-muted)] truncate">{organizations.find(o => o.id === user.organization_id)?.org_type_code || ''}</div></> : <span className="text-[var(--sera-muted)]/70 italic">No Department</span>}</div></TableCell>
+        <TableCell><span className="text-[var(--sera-ink)]">{new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span></TableCell>
+        <TableCell><span className={user.last_login_at ? 'text-[var(--sera-ink)]' : 'text-[var(--sera-muted)]/70 italic'}>{formatRelativeTime(user.last_login_at)}</span></TableCell>
         <TableCell className="text-right"><div className="flex items-center justify-end gap-2"><Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setEditingUser(user); setDialogOpen(true) }}><Edit className="w-4 h-4 mr-1" />Edit</Button>
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteConfirmation({ show: true, userId: user.id }) }} className="text-red-600 hover:text-red-700 hover:bg-red-50"><Trash2 className="w-4 h-4 mr-1" />Delete</Button></div></TableCell>
       </TableRow>)}</TableBody>
-    </Table></div> : <div className="text-center py-12"><Users className="w-12 h-12 text-gray-400 mx-auto mb-4" /><h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3><p className="text-gray-600">{searchQuery ? 'No users match your search' : 'Start by adding your first user'}</p></div>}</CardContent></Card>
+    </Table></div> : <div className="text-center py-12"><Users className="w-12 h-12 text-[var(--sera-muted)]/70 mx-auto mb-4" /><h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No users found</h3><p className="text-[var(--sera-muted)]">{searchQuery ? 'No users match your search' : 'Start by adding your first user'}</p></div>}</CardContent></Card>
     
     {deleteConfirmation.show && (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <Card className="w-full max-w-md">
           <CardContent className="p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Delete User?</h2>
-            <p className="text-gray-600 mb-6">Are you sure you want to delete this user? This action cannot be undone.</p>
+            <h2 className="text-lg font-bold text-[var(--sera-ink)] mb-2">Delete User?</h2>
+            <p className="text-[var(--sera-muted)] mb-6">Are you sure you want to delete this user? This action cannot be undone.</p>
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setDeleteConfirmation({ show: false, userId: null })} disabled={isSaving}>Cancel</Button>
               <Button variant="destructive" onClick={() => {

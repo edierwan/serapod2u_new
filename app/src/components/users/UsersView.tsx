@@ -34,7 +34,7 @@ export default function UsersView({ userProfile }: UsersViewProps) {
   }
 
   if (!userProfile) {
-    return <div className="text-center py-12"><p className="text-gray-600">User profile not found</p></div>
+    return <div className="text-center py-12"><p className="text-[var(--sera-muted)]">User profile not found</p></div>
   }
 
   return <UserManagementNew userProfile={userProfile} />
