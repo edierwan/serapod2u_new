@@ -27,6 +27,7 @@ import {
   ArrowLeft
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   buildIncomingMap,
   getIncomingBreakdown,
@@ -456,7 +457,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
 
   if (permissionsLoading) {
     return (
-      <div className="p-8 text-sm text-gray-600">
+      <div className="p-8 text-sm text-[var(--sera-muted)]">
         Loading inventory settings...
       </div>
     )
@@ -464,35 +465,36 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
 
   if (!canManageSettings) {
     return (
-      <div className="p-8">
-        <h2 className="text-xl font-semibold">Unauthorized</h2>
-        <p>You do not have permission to view this Supply Chain page.</p>
+      <div className="sera-sc-page p-8">
+        <h2 className="text-xl font-semibold text-[var(--sera-ink)]">Unauthorized</h2>
+        <p className="text-[var(--sera-muted)]">You do not have permission to view this Supply Chain page.</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="sera-sc-page space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-2 min-w-0">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="shrink-0 mt-1 border border-transparent hover:border-[var(--sera-line)]"
             onClick={() => onViewChange?.('inventory-list')}
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
+            <ArrowLeft className="w-4 h-4" />
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Inventory Settings</h1>
-            <p className="text-gray-600">Manage stock rules and thresholds in bulk</p>
-          </div>
+          <SupplyChainPageHeader
+            eyebrow="Inventory"
+            title="Inventory Settings"
+            description="Manage stock rules and thresholds in bulk"
+          />
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
+            className="border-[var(--sera-line)]"
             onClick={() => fetchInventory()}
             disabled={loading}
           >
@@ -501,7 +503,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           </Button>
           <Button
             size="sm"
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
             onClick={handleSaveAll}
             disabled={saving}
           >
@@ -521,13 +523,13 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
       </div>
 
       {/* Info Alert */}
-      <Card className="border-blue-200 bg-blue-50">
+      <Card className="sera-sc-panel overflow-hidden border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.05] shadow-none">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-900">
-              <p className="font-medium mb-1">Bulk Settings Management</p>
-              <ul className="list-disc list-inside space-y-1 text-blue-800">
+            <Info className="w-5 h-5 text-[var(--sera-orange)] mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-[var(--sera-ink-soft)]">
+              <p className="font-medium mb-1 text-[var(--sera-ink)]">Bulk Settings Management</p>
+              <ul className="list-disc list-inside space-y-1 text-[var(--sera-muted)]">
                 <li>Select multiple items using checkboxes to apply bulk settings</li>
                 <li>Filter by product to manage all variants at once</li>
                 <li>Use "Copy Settings" to replicate settings across similar items</li>
@@ -540,10 +542,10 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
       </Card>
 
       {/* Bulk Actions Card */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Settings className="w-5 h-5" />
+          <CardTitle className="text-lg flex items-center gap-2 text-[var(--sera-ink)]">
+            <Settings className="w-5 h-5 text-[var(--sera-orange)]" />
             Bulk Settings
           </CardTitle>
           <CardDescription>
@@ -627,12 +629,12 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
       </Card>
 
       {/* Filters and Search */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="p-4">
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
                 <Input
                   placeholder="Search by product name, variant code, or variant name..."
                   value={searchQuery}
@@ -668,11 +670,11 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
       </Card>
 
       {/* Inventory Settings Table */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Inventory Items</CardTitle>
+              <CardTitle className="text-[var(--sera-ink)]">Inventory Items</CardTitle>
               <CardDescription>
                 {filteredInventory.length} item(s) found • {selectedItems.size} selected
               </CardDescription>
@@ -735,7 +737,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                     const isSelected = selectedItems.has(item.id)
 
                     return (
-                      <TableRow key={item.id} className={isSelected ? 'bg-blue-50' : ''}>
+                      <TableRow key={item.id} className={isSelected ? 'bg-[var(--sera-orange)]/[0.06]' : ''}>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -744,7 +746,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                             className="p-0 h-auto"
                           >
                             {isSelected ? (
-                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                              <CheckSquare className="w-4 h-4 text-[var(--sera-orange)]" />
                             ) : (
                               <Square className="w-4 h-4" />
                             )}
@@ -759,7 +761,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                             />
                             <div>
                               <p className="text-sm font-medium">{item.product_name}</p>
-                              <p className="text-xs text-gray-600">
+                              <p className="text-xs text-[var(--sera-muted)]">
                                 {item.variant_code} • {item.variant_name}
                               </p>
                             </div>
@@ -769,7 +771,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                           <div>
                             <p className="text-sm">{item.organization_name}</p>
                             {item.warehouse_location && (
-                              <p className="text-xs text-gray-600">{item.warehouse_location}</p>
+                              <p className="text-xs text-[var(--sera-muted)]">{item.warehouse_location}</p>
                             )}
                           </div>
                         </TableCell>
