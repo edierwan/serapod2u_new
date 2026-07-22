@@ -22,6 +22,7 @@ import ScratchCardCampaignForm from './ScratchCardCampaignForm'
 import SpinWheelCampaignForm from './SpinWheelCampaignForm'
 import DailyQuizCampaignForm from './DailyQuizCampaignForm'
 import ScratchCardStats from './ScratchCardStats'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface ScratchCardGameViewProps {
     userProfile: any
@@ -379,15 +380,14 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
         const currentOrders = orders.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
         return (
-            <div className="space-y-6">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Games</h2>
-                    <p className="text-muted-foreground">
-                        Select an Order to manage games.
-                    </p>
-                </div>
+            <div className="sera-sc-page">
+                <SupplyChainPageHeader
+                    eyebrow="Customer & Growth"
+                    title="Games"
+                    description="Select an order to manage games."
+                />
 
-                <Card>
+                <Card className="sera-sc-panel border-0 shadow-none">
                     <CardHeader>
                         <CardTitle>Select Order</CardTitle>
                         <CardDescription>Choose an order to configure games for its journey.</CardDescription>
@@ -565,34 +565,30 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
     )
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={handleBackToOrders}>
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div>
-                        <h2 className="text-3xl font-bold tracking-tight">Games</h2>
-                        <p className="text-muted-foreground">
-                            Managing games for Order: <span className="font-mono font-medium text-foreground">{selectedOrder.order_no}</span>
-                            {selectedOrder.legacy_order_no && selectedOrder.legacy_order_no !== selectedOrder.order_no && (
-                                <span className="text-[10px] text-gray-400 ml-2">(Legacy: {selectedOrder.legacy_order_no})</span>
-                            )}
-                        </p>
-                    </div>
-                </div>
-                {campaigns.length > 0 && (
-                    <Button onClick={handleCreate}>
-                        <Plus className="mr-2 h-4 w-4" /> New Campaign
-                    </Button>
-                )}
-            </div>
+        <div className="sera-sc-page">
+            <SupplyChainPageHeader
+                eyebrow="Customer & Growth"
+                title="Games"
+                description={`Managing games for Order: ${selectedOrder.order_no}${selectedOrder.legacy_order_no && selectedOrder.legacy_order_no !== selectedOrder.order_no ? ` (Legacy: ${selectedOrder.legacy_order_no})` : ''}`}
+                actions={
+                    <>
+                        <Button variant="outline" size="icon" onClick={handleBackToOrders} className="border-[var(--sera-line)]">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Button>
+                        {campaigns.length > 0 && (
+                            <Button onClick={handleCreate} className="bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white">
+                                <Plus className="mr-2 h-4 w-4" /> New Campaign
+                            </Button>
+                        )}
+                    </>
+                }
+            />
 
             <Tabs defaultValue="scratch-card" value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                <TabsList className="h-auto w-full flex flex-wrap justify-start gap-1 bg-[var(--sera-mist)] border border-[var(--sera-line)] p-1.5 rounded-xl mb-4 max-w-[600px]">
                     <TabsTrigger
                         value="scratch-card"
-                        className={`flex items-center gap-2 ${gameStatuses.scratch ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                        className={`rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2 ${gameStatuses.scratch ? '' : ''}`}
                     >
                         <Ticket className={`w-4 h-4 ${gameStatuses.scratch ? 'text-green-600' : ''}`} />
                         Scratch Card
@@ -600,7 +596,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     </TabsTrigger>
                     <TabsTrigger
                         value="spin-wheel"
-                        className={`flex items-center gap-2 ${gameStatuses.spin ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                        className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2"
                     >
                         <Gamepad2 className={`w-4 h-4 ${gameStatuses.spin ? 'text-green-600' : ''}`} />
                         Spin the Wheel
@@ -608,7 +604,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                     </TabsTrigger>
                     <TabsTrigger
                         value="daily-quiz"
-                        className={`flex items-center gap-2 ${gameStatuses.quiz ? 'data-[state=active]:bg-green-100 data-[state=active]:text-green-900 bg-green-50/50' : ''}`}
+                        className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2"
                     >
                         <Sparkles className={`w-4 h-4 ${gameStatuses.quiz ? 'text-green-600' : ''}`} />
                         Daily Quiz
@@ -617,7 +613,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 </TabsList>
 
                 <TabsContent value="scratch-card" className="mt-6">
-                    <Card>
+                    <Card className="sera-sc-panel border-0 shadow-none">
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <CardTitle>Scratch Card Campaigns</CardTitle>
@@ -641,7 +637,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 </TabsContent>
 
                 <TabsContent value="spin-wheel" className="mt-6">
-                    <Card>
+                    <Card className="sera-sc-panel border-0 shadow-none">
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>
@@ -657,7 +653,7 @@ export default function ScratchCardGameView({ userProfile, onViewChange }: Scrat
                 </TabsContent>
 
                 <TabsContent value="daily-quiz" className="mt-6">
-                    <Card>
+                    <Card className="sera-sc-panel border-0 shadow-none">
                         <CardHeader>
                             <div className="flex items-center justify-between">
                                 <div>

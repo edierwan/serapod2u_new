@@ -23,6 +23,7 @@ import {
     Calendar,
     BarChart3
 } from 'lucide-react';
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader';
 import {
     Select,
     SelectContent,
@@ -583,24 +584,22 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     );
 
     return (
-        <div className="p-6 space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold">Redeem Gift Management</h1>
-                    <p className="text-gray-600 mt-1">Manage free gifts that customers can claim when scanning QR codes at shops</p>
-                </div>
-            </div>
+        <div className="sera-sc-page">
+            <SupplyChainPageHeader
+                eyebrow="Customer & Growth"
+                title="Redeem Gift Management"
+                description="Manage free gifts that customers can claim when scanning QR codes at shops"
+            />
 
             {/* Scope Selection */}
-            <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center gap-4">
-                <span className="font-medium text-sm text-gray-700">Redeem Scope:</span>
+            <div className="sera-sc-panel p-4 flex flex-wrap items-center gap-4">
+                <span className="font-medium text-sm text-[var(--sera-ink)]">Redeem Scope:</span>
                 <div className="flex gap-2">
                     <Button
                         variant={redeemScope === 'order' ? 'default' : 'outline'}
                         onClick={() => setRedeemScope('order')}
                         size="sm"
-                        className="gap-2"
+                        className={`gap-2 ${redeemScope === 'order' ? 'bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white' : 'border-[var(--sera-line)]'}`}
                     >
                         <Package className="h-4 w-4" />
                         By Order
@@ -609,7 +608,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                         variant={redeemScope === 'master' ? 'default' : 'outline'}
                         onClick={() => setRedeemScope('master')}
                         size="sm"
-                        className="gap-2"
+                        className={`gap-2 ${redeemScope === 'master' ? 'bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white' : 'border-[var(--sera-line)]'}`}
                     >
                         <Gift className="h-4 w-4" />
                         Master Redeem (Global)
@@ -629,56 +628,28 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
             <div className="space-y-6">
                 {/* Statistics Dashboard */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                    <Card>
-                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs sm:text-sm text-gray-600">Total Gifts Defined</p>
-                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold">{totalGifts}</p>
-                                </div>
-                                <Gift className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-blue-500" />
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Total Gifts Defined</p>
+                        <p className="sera-sc-kpi__value">{totalGifts}</p>
+                    </div>
 
-                    <Card>
-                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs sm:text-sm text-gray-600">Total Redemptions</p>
-                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-green-600">{totalRedemptions}</p>
-                                </div>
-                                <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-green-500" />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">All time</p>
-                        </CardContent>
-                    </Card>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Total Redemptions</p>
+                        <p className="sera-sc-kpi__value text-[var(--sera-orange)]">{totalRedemptions}</p>
+                        <p className="text-xs text-[var(--sera-muted)] mt-1 hidden sm:block">All time</p>
+                    </div>
 
-                    <Card>
-                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs sm:text-sm text-gray-600">This Month</p>
-                                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">{redemptionsThisMonth}</p>
-                                </div>
-                                <Calendar className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-purple-500" />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">Redemptions</p>
-                        </CardContent>
-                    </Card>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">This Month</p>
+                        <p className="sera-sc-kpi__value">{redemptionsThisMonth}</p>
+                        <p className="text-xs text-[var(--sera-muted)] mt-1 hidden sm:block">Redemptions</p>
+                    </div>
 
-                    <Card>
-                        <CardContent className="pt-3 sm:pt-4 lg:pt-6 px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6">
-                            <div className="flex items-center justify-between">
-                                <div className="min-w-0 flex-1">
-                                    <p className="text-xs sm:text-sm text-gray-600">Most Popular</p>
-                                    <p className="text-base sm:text-lg font-bold text-yellow-600 truncate">{mostPopularGift}</p>
-                                </div>
-                                <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10 text-yellow-500 flex-shrink-0" />
-                            </div>
-                            <p className="text-xs text-gray-500 mt-2 hidden sm:block">Gift item</p>
-                        </CardContent>
-                    </Card>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Most Popular</p>
+                        <p className="text-base sm:text-lg font-semibold text-[var(--sera-ink)] truncate">{mostPopularGift}</p>
+                        <p className="text-xs text-[var(--sera-muted)] mt-1 hidden sm:block">Gift item</p>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

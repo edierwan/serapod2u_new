@@ -25,6 +25,7 @@ import {
     AlertCircle,
     Filter,
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -456,32 +457,22 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     // ── Main render ──────────────────────────────────────────────
 
     return (
-        <div className="w-full max-w-6xl mx-auto space-y-5">
-            {/* Header */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
+        <div className="sera-sc-page w-full max-w-6xl mx-auto">
+            <SupplyChainPageHeader
+                eyebrow="Customer & Growth"
+                title="Store Orders"
+                description="View and manage online storefront orders"
+                actions={
                     <button
-                        onClick={() => onViewChange('customer-growth')}
-                        className="p-2 rounded-lg hover:bg-accent transition-colors"
+                        onClick={fetchOrders}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-[var(--sera-line)] rounded-lg bg-white hover:bg-[var(--sera-mist)] transition-colors disabled:opacity-50 text-[var(--sera-ink)]"
                     >
-                        <ArrowLeft className="h-4 w-4" />
+                        <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
                     </button>
-                    <div>
-                        <h1 className="text-xl font-bold text-foreground">Store Orders</h1>
-                        <p className="text-sm text-muted-foreground">
-                            View and manage online storefront orders
-                        </p>
-                    </div>
-                </div>
-                <button
-                    onClick={fetchOrders}
-                    disabled={loading}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-border rounded-lg hover:bg-accent transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
-                </button>
-            </div>
+                }
+            />
 
             {/* Error */}
             {error && (
@@ -492,26 +483,26 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             )}
 
             {/* Filters */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="sera-sc-panel p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 {/* Search */}
                 <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--sera-muted)]" />
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search by order ref, name, or email…"
-                        className="w-full pl-9 pr-3 py-2 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-violet-500/40 transition-shadow"
+                        className="w-full pl-9 pr-3 py-2 text-sm border border-[var(--sera-line)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 transition-shadow"
                     />
                 </div>
 
                 {/* Status filter */}
                 <div className="flex items-center gap-1.5">
-                    <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Filter className="h-3.5 w-3.5 text-[var(--sera-muted)]" />
                     <select
                         value={statusFilter}
                         onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
-                        className="text-sm border border-border rounded-lg bg-background px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                        className="text-sm border border-[var(--sera-line)] rounded-lg bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 text-[var(--sera-ink)]"
                     >
                         <option value="all">All Statuses</option>
                         {Object.entries(STATUS_CONFIG).map(([key, config]) => (
@@ -524,21 +515,21 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
             {/* Summary cards */}
             {!loading && orders.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="bg-card border border-border rounded-xl p-3">
-                        <p className="text-[11px] text-muted-foreground font-medium">Total Orders</p>
-                        <p className="text-lg font-bold text-foreground mt-0.5">{totalOrders}</p>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Total Orders</p>
+                        <p className="sera-sc-kpi__value">{totalOrders}</p>
                     </div>
-                    <div className="bg-card border border-amber-200 dark:border-amber-800/50 rounded-xl p-3">
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Pending Payment</p>
-                        <p className="text-lg font-bold text-foreground mt-0.5">{statusCounts['pending_payment'] || 0}</p>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Pending Payment</p>
+                        <p className="sera-sc-kpi__value">{statusCounts['pending_payment'] || 0}</p>
                     </div>
-                    <div className="bg-card border border-blue-200 dark:border-blue-800/50 rounded-xl p-3">
-                        <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">Processing</p>
-                        <p className="text-lg font-bold text-foreground mt-0.5">{statusCounts['processing'] || 0}</p>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Processing</p>
+                        <p className="sera-sc-kpi__value">{statusCounts['processing'] || 0}</p>
                     </div>
-                    <div className="bg-card border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-3">
-                        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Delivered</p>
-                        <p className="text-lg font-bold text-foreground mt-0.5">{statusCounts['delivered'] || 0}</p>
+                    <div className="sera-sc-kpi">
+                        <p className="sera-sc-kpi__label">Delivered</p>
+                        <p className="sera-sc-kpi__value">{statusCounts['delivered'] || 0}</p>
                     </div>
                 </div>
             )}

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getStorageUrl } from '@/lib/utils'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Trophy,
   Plus,
@@ -569,21 +570,14 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                <Trophy className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Lucky Draw Management</h1>
-                <p className="text-gray-600 mt-1">Manage order-specific lucky draw campaigns</p>
-              </div>
-            </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        eyebrow="Customer & Growth"
+        title="Lucky Draw Management"
+        description="Manage order-specific lucky draw campaigns"
+        actions={
             <Button
-              className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              className="gap-2 bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white"
               disabled={!selectedOrderId}
               onClick={() => {
                 if (campaigns.length > 0 && selectedCampaign) {
@@ -623,12 +617,10 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 </>
               )}
             </Button>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <Card className="mb-6 border-2">
+        <Card className="sera-sc-panel mb-6 border-0 shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Filter className="w-5 h-5" />
@@ -671,7 +663,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         </Card>
 
         {selectedOrder && selectedOrder.items && selectedOrder.items.length > 0 && (
-          <Card className="mb-6 border-2 bg-slate-50">
+          <Card className="sera-sc-panel mb-6 border-0 shadow-none bg-[var(--sera-mist)]/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Gift className="w-5 h-5 text-purple-500" />
@@ -744,7 +736,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         )}
 
         {selectedOrderId && (
-          <Card className="border-2">
+          <Card className="sera-sc-panel border-0 shadow-none">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
               <CardHeader className="border-b">
                 <TabsList className="grid w-full grid-cols-4">
@@ -1207,7 +1199,6 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             </Tabs>
           </Card>
         )}
-      </div>
 
       {/* New Campaign Modal */}
       <Dialog open={showNewCampaignModal} onOpenChange={setShowNewCampaignModal}>

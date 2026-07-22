@@ -1,18 +1,29 @@
 'use client'
 
-import ModuleBanner from '@/components/ui/ModuleBanner'
-
 interface SettingsHeroBannerProps {
     userName: string | null
     bannerImageUrl?: string | null
 }
 
-export default function SettingsHeroBanner({ userName, bannerImageUrl }: SettingsHeroBannerProps) {
+/**
+ * Light Serapod header for Settings landing (replaces heavy ModuleBanner).
+ * bannerImageUrl kept for API compatibility — not used in the light chrome.
+ */
+export default function SettingsHeroBanner({ userName }: SettingsHeroBannerProps) {
+    const firstName = userName?.trim().split(/\s+/)[0]
+
     return (
-        <ModuleBanner
-            module="settings"
-            userName={userName}
-            bannerImageUrl={bannerImageUrl}
-        />
+        <header className="pt-1">
+            <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5" />
+            <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
+                Settings
+            </p>
+            <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
+                {firstName ? `Account settings, ${firstName}` : 'Account settings'}
+            </h1>
+            <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)] max-w-2xl">
+                Manage your account, organization, notifications, preferences, and system configuration.
+            </p>
+        </header>
     )
 }

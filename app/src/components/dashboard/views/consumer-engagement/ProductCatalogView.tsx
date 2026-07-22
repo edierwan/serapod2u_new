@@ -26,6 +26,7 @@ import {
   Box,
   ShoppingBag
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface Product {
   id: string
@@ -209,73 +210,57 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg">
-              <ShoppingBag className="h-8 w-8 text-white" />
-            </div>
-            Product Catalog
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {isIndependentUser
-              ? 'Browse products from our extensive catalog'
-              : 'Browse and order products from our extensive catalog'
-            }
-          </p>
-        </div>
-        {/* Catalog context toggle (non-invasive): Storefront vs RoadTour */}
-        <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
-          <span className="px-4 py-2 text-sm font-medium rounded-md bg-white text-gray-900 shadow-sm">
-            Storefront Catalog
-          </span>
-          <a
-            href="/engagement/product-catalog/roadtour"
-            className="px-4 py-2 text-sm font-medium rounded-md text-gray-600 hover:text-gray-900"
-          >
-            RoadTour Catalog
-          </a>
-        </div>
-      </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        eyebrow="Customer & Growth"
+        title="Product Catalog"
+        description={
+          isIndependentUser
+            ? 'Browse products from our extensive catalog'
+            : 'Browse and order products from our extensive catalog'
+        }
+        actions={
+          <div className="inline-flex rounded-lg border border-[var(--sera-line)] bg-[var(--sera-mist)] p-1">
+            <span className="px-4 py-2 text-sm font-medium rounded-md bg-white text-[var(--sera-ink)] shadow-sm border border-[var(--sera-line)]">
+              Storefront Catalog
+            </span>
+            <a
+              href="/engagement/product-catalog/roadtour"
+              className="px-4 py-2 text-sm font-medium rounded-md text-[var(--sera-muted)] hover:text-[var(--sera-ink)]"
+            >
+              RoadTour Catalog
+            </a>
+          </div>
+        }
+      />
 
       {/* Info Banner - Only show for users with organization */}
       {!isIndependentUser && (
-      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-        <CardContent className="pt-6">
+      <div className="sera-sc-panel p-5 border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/5">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-blue-500 rounded-lg">
+            <div className="p-2 bg-[var(--sera-orange)] rounded-lg">
               <ShoppingCart className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Quick Ordering</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <h3 className="font-semibold text-[var(--sera-ink)]">Quick Ordering</h3>
+              <p className="text-sm text-[var(--sera-muted)] mt-1">
                 Click &quot;Order Now&quot; on any product to be taken to the order creation page where you can select variants, quantities, and complete your order.
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </div>
       )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Total Products</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{filteredProducts.length}</p>
-              </div>
-              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Total Products</p>
+          <p className="sera-sc-kpi__value">{filteredProducts.length}</p>
+        </div>
       </div>
 
       {/* Filters & Search */}
-      <Card>
+      <Card className="sera-sc-panel border-0 shadow-none">
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-2 relative">

@@ -161,14 +161,14 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
     // ── Render ────────────────────────────────────────────────────
 
     return (
-        <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
+        <div className="sticky top-0 z-40 bg-white border-b border-[var(--sera-line)] print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
             <div className="flex items-center h-12 px-3 gap-2">
                 {/* HR badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
-                    <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded text-sm font-semibold">
-                        <Briefcase className="h-3 w-3" />
-                        <span>HR Module</span>
+                    <div className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold">
+                        <Briefcase className="h-3 w-3" strokeWidth={1.75} />
+                        <span>HR</span>
                     </div>
                 </div>
 
@@ -198,9 +198,9 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                     className={cn(
                                         'flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors',
                                         active
-                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200'
-                                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                        open && !active && 'bg-accent text-accent-foreground'
+                                            ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                                            : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]',
+                                        open && !active && 'bg-[var(--sera-mist)] text-[var(--sera-ink)]'
                                     )}
                                 >
                                     <Icon className="h-3.5 w-3.5" />
@@ -226,7 +226,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                 id={`hr-dropdown-${group.id}`}
                                 role="menu"
                                 aria-label={`${group.label} submenu`}
-                                className="absolute min-w-[200px] bg-popover border border-border rounded-lg shadow-lg py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
+                                className="absolute min-w-[200px] bg-white border border-[var(--sera-line)] rounded-lg shadow-sm py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
                                 style={{ left: dropdownStyle.left, top: dropdownStyle.top + 4 }}
                             >
                                 {group.children.map((child) => {
@@ -242,8 +242,8 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                             className={cn(
                                                 'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors',
                                                 childActive
-                                                    ? 'bg-blue-50 text-blue-700 font-semibold dark:bg-blue-900/30 dark:text-blue-300'
-                                                    : 'text-foreground hover:bg-accent'
+                                                    ? 'bg-[var(--sera-orange)]/8 text-[var(--sera-ink)] font-semibold'
+                                                    : 'text-[var(--sera-ink)] hover:bg-[var(--sera-mist)]'
                                             )}
                                         >
                                             <ChildIcon className="h-3.5 w-3.5 shrink-0" />
@@ -260,7 +260,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent"
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-[var(--sera-muted)] hover:bg-[var(--sera-mist)]"
                         aria-label="Toggle HR menu"
                     >
                         <MenuIcon className="h-4 w-4" />
@@ -275,7 +275,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                         // Dispatch custom event to open the AI drawer
                         window.dispatchEvent(new CustomEvent('hr-ai-assistant-toggle'))
                     }}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-muted-foreground hover:bg-violet-100 dark:hover:bg-violet-900/30 hover:text-violet-700 dark:hover:text-violet-300 transition-colors shrink-0"
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)] transition-colors shrink-0"
                     aria-label="AI Assistant"
                     title={aiHealthOk === null ? 'HR AI Assistant – checking…' : aiHealthOk ? 'HR AI Assistant – online' : 'HR AI Assistant – offline'}
                 >
@@ -296,14 +296,14 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                 {/* ── Search ──────────────────────────────────────────── */}
                 <div ref={searchRef} className="relative shrink-0">
                     {searchOpen ? (
-                        <div className="flex items-center gap-1.5 bg-accent rounded-md px-2 py-1">
-                            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-[var(--sera-mist)] rounded-md px-2 py-1">
+                            <Search className="h-3.5 w-3.5 text-[var(--sera-muted)] shrink-0" />
                             <input
                                 autoFocus
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search HR…"
-                                className="bg-transparent text-sm outline-none w-32 sm:w-44 placeholder:text-muted-foreground"
+                                className="bg-transparent text-sm outline-none w-32 sm:w-44 placeholder:text-[var(--sera-muted)]"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Escape') {
                                         setSearchOpen(false)
@@ -319,7 +319,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                     setSearchOpen(false)
                                     setSearchQuery('')
                                 }}
-                                className="text-muted-foreground hover:text-foreground"
+                                className="text-[var(--sera-muted)] hover:text-[var(--sera-ink)]"
                             >
                                 <X className="h-3 w-3" />
                             </button>
@@ -327,7 +327,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                     ) : (
                         <button
                             onClick={() => setSearchOpen(true)}
-                            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-muted-foreground hover:bg-accent transition-colors"
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition-colors"
                             aria-label="Search HR"
                         >
                             <Search className="h-3.5 w-3.5" />
@@ -337,16 +337,16 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
 
                     {/* ── Search results dropdown ─────────────────────── */}
                     {searchOpen && filteredItems.length > 0 && (
-                        <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-lg py-1 z-40 max-h-64 overflow-y-auto">
+                        <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-[var(--sera-line)] rounded-lg shadow-sm py-1 z-40 max-h-64 overflow-y-auto">
                             {filteredItems.map((item) => {
                                 const ItemIcon = item.icon
                                 return (
                                     <button
                                         key={item.id}
                                         onClick={() => handleNav(item.href)}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--sera-ink)] hover:bg-[var(--sera-mist)] transition-colors"
                                     >
-                                        <ItemIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                        <ItemIcon className="h-3.5 w-3.5 shrink-0 text-[var(--sera-muted)]" />
                                         <span>{item.label}</span>
                                     </button>
                                 )
@@ -354,8 +354,8 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                         </div>
                     )}
                     {searchOpen && searchQuery.trim() && filteredItems.length === 0 && (
-                        <div className="absolute right-0 top-full mt-1 w-60 bg-popover border border-border rounded-lg shadow-lg p-3 z-40">
-                            <p className="text-sm text-muted-foreground">No results for &quot;{searchQuery}&quot;</p>
+                        <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-[var(--sera-line)] rounded-lg shadow-sm p-3 z-40">
+                            <p className="text-sm text-[var(--sera-muted)]">No results for &quot;{searchQuery}&quot;</p>
                         </div>
                     )}
                 </div>
@@ -363,7 +363,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
 
             {/* ─── Mobile dropdown ─────────────────────────────────── */}
             {mobileMenuOpen && (
-                <div className="md:hidden border-t border-border bg-card max-h-[60vh] overflow-y-auto">
+                <div className="md:hidden border-t border-[var(--sera-line)] bg-white max-h-[60vh] overflow-y-auto">
                     {hrNavGroups.map((group) => {
                         const active = isGroupActive(group)
                         const open = openGroupId === group.id
@@ -376,8 +376,8 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                     className={cn(
                                         'w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
                                         active
-                                            ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-                                            : 'text-foreground hover:bg-accent'
+                                            ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                                            : 'text-[var(--sera-ink)] hover:bg-[var(--sera-mist)]'
                                     )}
                                 >
                                     <Icon className="h-4 w-4" />
@@ -391,7 +391,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                 </button>
 
                                 {open && (
-                                    <div className="bg-accent/30">
+                                    <div className="bg-[var(--sera-mist)]/50">
                                         {group.children.map((child) => {
                                             const ChildIcon = child.icon
                                             const childActive = isChildActive(child)
@@ -403,8 +403,8 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                                                     className={cn(
                                                         'w-full flex items-center gap-2.5 pl-10 pr-4 py-2 text-sm transition-colors',
                                                         childActive
-                                                            ? 'bg-blue-50 text-blue-700 font-semibold dark:bg-blue-900/30 dark:text-blue-300'
-                                                            : 'text-muted-foreground hover:bg-accent'
+                                                            ? 'bg-[var(--sera-orange)]/8 text-[var(--sera-ink)] font-semibold'
+                                                            : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)]'
                                                     )}
                                                 >
                                                     <ChildIcon className="h-3.5 w-3.5 shrink-0" />
@@ -422,7 +422,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
 
             {/* ─── Breadcrumb bar ──────────────────────────────────── */}
             {breadcrumbs.length > 1 && (
-                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
+                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--sera-muted)] border-t border-[var(--sera-line)]/80 bg-[var(--sera-mist)]/50">
                     {breadcrumbs.map((crumb, i) => (
                         <span key={i} className="flex items-center gap-1">
                             {i > 0 && <ChevronRight className="h-2.5 w-2.5" />}
