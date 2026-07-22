@@ -663,7 +663,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -675,10 +675,10 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         <CardContent className="p-12 text-center">
           <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
           <p className="text-red-600 font-medium mb-2">{authError}</p>
-          <p className="text-gray-600 mb-4">Your session may have expired. Please log in again.</p>
+          <p className="text-[var(--sera-muted)] mb-4">Your session may have expired. Please log in again.</p>
           <Button
             onClick={() => window.location.href = '/login'}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             Go to Login
           </Button>
@@ -689,9 +689,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
   if (!organization) {
     return (
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="p-12 text-center">
-          <p className="text-gray-600">Organization not found</p>
+          <p className="text-[var(--sera-muted)]">Organization not found</p>
           <Button
             onClick={() => onViewChange?.('organizations')}
             className="mt-4"
@@ -704,7 +704,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -719,13 +719,13 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               Back
             </Button>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">{organization.org_name}</h2>
-          <p className="text-gray-600">{organization.org_code} • {organization.org_type_code}</p>
+          <h2 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">{organization.org_name}</h2>
+          <p className="text-[var(--sera-muted)]">{organization.org_code} • {organization.org_type_code}</p>
         </div>
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="bg-blue-600 hover:bg-blue-700"
+          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
         >
           {saving ? (
             <>
@@ -742,7 +742,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
       </div>
 
       {/* Organization Details Form */}
-      <Card>
+      <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardHeader>
           <CardTitle>Organization Information</CardTitle>
           <CardDescription>Edit basic organization details</CardDescription>
@@ -779,7 +779,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.org_name ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.org_name && (
-                <p className="text-xs text-gray-400 italic">Required - enter the organization name</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Required - enter the organization name</p>
               )}
             </div>
 
@@ -794,7 +794,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.website ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.website && (
-                <p className="text-xs text-gray-400 italic">e.g., https://example.com</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">e.g., https://example.com</p>
               )}
             </div>
           </div>
@@ -855,7 +855,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               className={!formData.address ? 'placeholder:text-gray-300' : ''}
             />
             {!formData.address && (
-              <p className="text-xs text-gray-400 italic">Please enter the street address</p>
+              <p className="text-xs text-[var(--sera-muted)]/80 italic">Please enter the street address</p>
             )}
           </div>
 
@@ -882,7 +882,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.city ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.city && (
-                <p className="text-xs text-gray-400 italic">Enter city name</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Enter city name</p>
               )}
             </div>
 
@@ -896,7 +896,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.postal_code ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.postal_code && (
-                <p className="text-xs text-gray-400 italic">Enter postal code</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Enter postal code</p>
               )}
             </div>
           </div>
@@ -950,7 +950,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 </SelectContent>
               </Select>
               {!formData.state_id && (
-                <p className="text-xs text-gray-400 italic">Select a state to view districts</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Select a state to view districts</p>
               )}
             </div>
           </div>
@@ -965,7 +965,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
               className={!formData.country_code ? 'placeholder:text-gray-300' : ''}
             />
             {!formData.country_code && (
-              <p className="text-xs text-gray-400 italic">e.g., MY, US, UK</p>
+              <p className="text-xs text-[var(--sera-muted)]/80 italic">e.g., MY, US, UK</p>
             )}
           </div>
         </CardContent>
@@ -973,12 +973,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       {/* Linked Distributors Section (for SHOP organizations) */}
       {organization.org_type_code === 'SHOP' && shopDistributors.length > 0 && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <LinkIcon className="w-5 h-5 text-blue-600" />
+                  <LinkIcon className="w-5 h-5 text-[var(--sera-orange)]" />
                   Linked Distributors
                 </CardTitle>
                 <CardDescription>
@@ -991,7 +991,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
             {shopDistributors.map((sd) => (
               <div
                 key={sd.id}
-                className={`flex justify-between items-center p-4 border rounded-lg ${sd.is_preferred ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
+                className={`flex justify-between items-center p-4 border rounded-lg ${sd.is_preferred ? 'border-amber-300 bg-amber-50' : 'border-[var(--sera-line)]'
                   }`}
               >
                 <div className="flex items-center gap-3">
@@ -999,16 +999,16 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                     <LinkIcon className="w-5 h-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900">{sd.distributor?.org_name}</p>
-                    <p className="text-sm text-gray-500">{sd.distributor?.org_code}</p>
+                    <p className="font-medium text-[var(--sera-ink)]">{sd.distributor?.org_name}</p>
+                    <p className="text-sm text-[var(--sera-muted)]">{sd.distributor?.org_code}</p>
                     <div className="flex gap-2 mt-1">
                       {sd.payment_terms && (
-                        <span className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                        <span className="text-xs text-[var(--sera-muted)] bg-gray-100 px-2 py-0.5 rounded">
                           {sd.payment_terms}
                         </span>
                       )}
                       {sd.account_number && (
-                        <span className="text-xs text-gray-600">
+                        <span className="text-xs text-[var(--sera-muted)]">
                           Account: {sd.account_number}
                         </span>
                       )}
@@ -1037,7 +1037,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       {/* Shop Information - Only show for SHOP organizations */}
       {organization.org_type_code === 'SHOP' && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Store className="w-5 h-5 text-orange-600" />
@@ -1065,7 +1065,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                   onChange={(e) => handleInputChange('hot_flavour_brands', e.target.value)}
                   placeholder="Comma-separated brand names"
                 />
-                <p className="text-xs text-gray-500">e.g. Brand A, Brand B</p>
+                <p className="text-xs text-[var(--sera-muted)]">e.g. Brand A, Brand B</p>
               </div>
             </div>
 
@@ -1124,7 +1124,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
       {/* Payment Terms & Warranty Bonus - Only show for manufacturers, distributors, and shops */}
       {(formData.org_type_code === 'MFG' || formData.org_type_code === 'DIST' || formData.org_type_code === 'SHOP') && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle>Payment Terms & Warranty Bonus</CardTitle>
             <CardDescription>Configure financial terms for orders</CardDescription>
@@ -1146,7 +1146,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{term.term_name}</span>
                           {term.is_default && (
-                            <span className="text-xs text-blue-600">(Default)</span>
+                            <span className="text-xs text-[var(--sera-orange)]">(Default)</span>
                           )}
                         </div>
                       </SelectItem>
@@ -1154,12 +1154,12 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                   </SelectContent>
                 </Select>
                 {formData.payment_term_id && (
-                  <p className="text-sm text-gray-600 mt-2">
+                  <p className="text-sm text-[var(--sera-muted)] mt-2">
                     {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
                   </p>
                 )}
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs text-blue-800">
+                <div className="mt-3 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg">
+                  <p className="text-xs text-[var(--sera-orange-deep)]">
                     <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
                     It determines the deposit and balance payment split in the document workflow.
                   </p>
@@ -1180,9 +1180,9 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                     placeholder="0"
                     className="pr-8"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--sera-muted)]">%</span>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm text-[var(--sera-muted)] mt-2">
                   Set the warranty bonus percentage for this organization. This will be used for future calculations.
                 </p>
               </div>
@@ -1209,7 +1209,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.contact_name ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.contact_name && (
-                <p className="text-xs text-gray-400 italic">Please enter the contact person&apos;s name</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Please enter the contact person&apos;s name</p>
               )}
             </div>
 
@@ -1223,7 +1223,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.contact_title ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.contact_title && (
-                <p className="text-xs text-gray-400 italic">Enter the contact person&apos;s job title</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Enter the contact person&apos;s job title</p>
               )}
             </div>
           </div>
@@ -1240,7 +1240,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.contact_email ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.contact_email && (
-                <p className="text-xs text-gray-400 italic">Please enter the contact email address</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Please enter the contact email address</p>
               )}
             </div>
 
@@ -1254,19 +1254,19 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 className={!formData.contact_phone ? 'placeholder:text-gray-300' : ''}
               />
               {!formData.contact_phone && (
-                <p className="text-xs text-gray-400 italic">Please enter the contact phone number</p>
+                <p className="text-xs text-[var(--sera-muted)]/80 italic">Please enter the contact phone number</p>
               )}
             </div>
           </div>
 
           {/* Organization Users List - Show when there are 2 or more users */}
           {orgUsers.length >= 2 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="mt-6 pt-6 border-t border-[var(--sera-line)]">
               <div className="mb-4">
-                <h4 className="text-sm font-semibold text-gray-900">
+                <h4 className="text-sm font-semibold text-[var(--sera-ink)]">
                   Organization Users ({orgUsers.length})
                 </h4>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-[var(--sera-muted)] mt-1">
                   All active users belonging to this organization
                 </p>
               </div>
@@ -1275,7 +1275,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                 {orgUsers.map((user: any) => (
                   <div
                     key={user.id}
-                    className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    className="flex items-start gap-4 p-3 bg-[var(--sera-ink)]/[0.02] rounded-lg border border-[var(--sera-line)] hover:bg-[var(--sera-ink)]/[0.04] transition-colors"
                   >
                     <div className="flex-shrink-0">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
@@ -1285,18 +1285,18 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">
+                        <p className="text-sm font-medium text-[var(--sera-ink)] truncate">
                           {user.full_name || 'No Name'}
                         </p>
                         {user.roles && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]">
                             {Array.isArray(user.roles) ? user.roles[0]?.role_name : user.roles?.role_name}
                           </span>
                         )}
                       </div>
 
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="flex items-center gap-2 text-xs text-[var(--sera-muted)]">
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
@@ -1304,7 +1304,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                         </div>
 
                         {user.phone && (
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <div className="flex items-center gap-2 text-xs text-[var(--sera-muted)]">
                             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                             </svg>
@@ -1333,7 +1333,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="flex-1 bg-blue-600 hover:bg-blue-700"
+          className="flex-1 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
         >
           {saving ? (
             <>

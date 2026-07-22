@@ -262,7 +262,7 @@ export default function GroupDialog({
           <Button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             {isSaving ? (
               <>

@@ -260,7 +260,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -282,7 +282,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
             setEditingCategory(null)
             setDialogOpen(true)
           }}
-          className="bg-blue-600 hover:bg-blue-700"
+          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Category

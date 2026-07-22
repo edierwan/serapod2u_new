@@ -609,14 +609,14 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
                 />
                 {checkingName && formData.product_name.trim() && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-4 h-4 border-2 border-[var(--sera-orange)] border-t-transparent rounded-full animate-spin"></div>
                   </div>
                 )}
               </div>
               
               {checkingName && formData.product_name.trim() && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="flex items-center gap-2 text-sm text-[var(--sera-orange)]">
+                  <div className="w-4 h-4 border-2 border-[var(--sera-orange)] border-t-transparent rounded-full animate-spin"></div>
                   Checking availability...
                 </div>
               )}
@@ -875,7 +875,7 @@ export default function AddProductView({ userProfile, onViewChange }: AddProduct
               </Button>
               <Button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                 disabled={loading}
               >
                 {loading ? 'Creating...' : 'Create Product'}

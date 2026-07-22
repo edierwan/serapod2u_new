@@ -199,7 +199,7 @@ export default function CategoryDialog({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] font-medium"
                   >
                     Change
                   </button>
@@ -217,7 +217,7 @@ export default function CategoryDialog({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:border-[var(--sera-orange)]/40 hover:text-[var(--sera-orange)] transition-colors"
               >
                 {uploading ? (
                   <>
@@ -290,7 +290,7 @@ export default function CategoryDialog({
           <Button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             {isSaving ? (
               <>

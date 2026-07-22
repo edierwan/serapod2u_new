@@ -346,7 +346,7 @@ export default function BrandDialog({
           <Button
             onClick={handleSubmit}
             disabled={isSaving || uploading}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             {isSaving ? (
               <>

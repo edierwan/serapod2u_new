@@ -402,7 +402,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -431,7 +431,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             />
           </div>
         </div>
-        <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
           <Plus className="w-4 h-4 mr-2" /> Add Variant
         </Button>
       </div>
@@ -494,12 +494,12 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                             <img src={preview.url} alt={variant.variant_name} className="w-full h-full object-cover" />
                           )
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 text-xs font-semibold">
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-[var(--sera-orange)] text-xs font-semibold">
                             {getVariantInitials(variant.variant_name)}
                           </div>
                         )}
                         {mediaCount > 1 && (
-                          <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{mediaCount}</span>
+                          <span className="absolute -top-1 -right-1 bg-[var(--sera-orange)] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{mediaCount}</span>
                         )}
                       </div>
                     </TableCell>

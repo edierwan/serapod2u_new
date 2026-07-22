@@ -500,7 +500,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
               {productImages.map((image) => (
                 <div
                   key={image.id}
-                  className="relative group aspect-square border-2 rounded-lg overflow-hidden cursor-pointer hover:border-blue-500 transition-all"
+                  className="relative group aspect-square border-2 rounded-lg overflow-hidden cursor-pointer hover:border-[var(--sera-orange)] transition-all"
                   style={{ borderColor: image.is_primary ? '#3b82f6' : '#e5e7eb' }}
                   onClick={() => {
                     if (!image.is_primary) {
@@ -519,7 +519,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
                   
                   {/* Primary Badge */}
                   {image.is_primary && (
-                    <div className="absolute top-2 left-2 bg-blue-600 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1">
+                    <div className="absolute top-2 left-2 bg-[var(--sera-orange)] text-white px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1">
                       <Star className="w-3 h-3 fill-current" />
                       Primary
                     </div>
@@ -706,7 +706,7 @@ export default function EditProductView({ userProfile, onViewChange }: EditProdu
             <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>
-          <Button type="submit" disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+          <Button type="submit" disabled={saving} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
             <Save className="w-4 h-4 mr-2" />
             {saving ? 'Saving...' : 'Save Changes'}
           </Button>

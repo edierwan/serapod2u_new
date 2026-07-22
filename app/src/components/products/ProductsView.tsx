@@ -572,7 +572,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                           <button
                             type="button"
                             onClick={() => handleViewProduct(product)}
-                            className="w-full text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
+                            className="w-full text-left text-[var(--sera-orange)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)] focus-visible:ring-offset-2 rounded"
                           >
                             {product.product_name}
                           </button>
@@ -675,11 +675,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Product Name
                     {sortColumn === 'product_name' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -694,11 +694,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Brand
                     {sortColumn === 'brand' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -713,11 +713,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Category
                     {sortColumn === 'category' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -732,11 +732,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Manufacturer
                     {sortColumn === 'manufacturer' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -751,11 +751,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Type
                     {sortColumn === 'is_vape' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -770,11 +770,11 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                         setSortDirection('asc')
                       }
                     }}
-                    className="flex items-center gap-1 hover:text-blue-600"
+                    className="flex items-center gap-1 hover:text-[var(--sera-orange)]"
                   >
                     Status
                     {sortColumn === 'status' && (
-                      <span className="text-blue-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                      <span className="text-[var(--sera-orange)]">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                     )}
                   </button>
                 </TableHead>
@@ -838,7 +838,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                             <button
                               type="button"
                               onClick={() => handleViewProduct(product)}
-                              className="text-xs font-medium text-left text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded"
+                              className="text-xs font-medium text-left text-[var(--sera-orange)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)] focus-visible:ring-offset-2 rounded"
                             >
                               {product.product_name}
                             </button>
@@ -876,7 +876,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                           Vape Product
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-1.5 py-0 h-5">
+                        <Badge variant="outline" className="bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/25 text-[10px] px-1.5 py-0 h-5">
                           Regular Product
                         </Badge>
                       )}
@@ -944,7 +944,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="bg-blue-50 text-blue-600 border-blue-200"
+                className="bg-[var(--sera-orange)]/10 text-[var(--sera-orange)] border-[var(--sera-orange)]/25"
               >
                 {currentPage}
               </Button>
