@@ -95,3 +95,81 @@
 .sera-sidebar__nav-btn:hover .sera-sidebar__nav-icon {
   color: var(--sera-ink-soft);
 }
+
+/* ── Supply Chain child pages — shared paper chrome ─────────────── */
+
+.sera-sc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sera-sc-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--sera-line);
+  background: #fff;
+  transition: border-color 0.15s ease;
+}
+
+.sera-sc-kpi:hover {
+  border-color: rgba(232, 93, 4, 0.35);
+}
+
+.sera-sc-kpi__label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--sera-muted);
+}
+
+.sera-sc-kpi__value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--sera-ink);
+  line-height: 1.15;
+}
+
+.sera-sc-panel {
+  border: 1px solid var(--sera-line);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: none;
+}
+
+.sera-sc-select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--sera-line);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--sera-ink);
+  outline: none;
+}
+
+.sera-sc-select:focus {
+  border-color: rgba(232, 93, 4, 0.45);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.12);
+}
+
+.sera-sc-toggle {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--sera-line);
+  border-radius: 0.5rem;
+}
+
+.sera-sc-toggle__btn {
+  flex: 1;
+  border-radius: 0 !important;
+}
+
+.sera-sc-toggle__btn.is-active {
+  background: var(--sera-ink) !important;
+  color: #fff !important;
+}

@@ -38,6 +38,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface UserProfile {
   id: string
@@ -1157,89 +1158,75 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading orders...</p>
+          <div className="w-8 h-8 border-2 border-[var(--sera-orange)]/25 border-t-[var(--sera-orange)] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-[var(--sera-muted)]">Loading orders...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 text-sm">
+    <div className="sera-sc-page text-sm">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Orders</h2>
-          <p className="text-xs text-gray-600 mt-1">Manage and track all your orders</p>
-        </div>
-        {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations or if user doesn't have permission */}
-        {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
-          <Button className="gap-2" onClick={handleCreateOrder}>
-            <Plus className="w-4 h-4" />
-            Create Order
-          </Button>
-        )}
-      </div>
+      <SupplyChainPageHeader
+        title="Orders"
+        description="Manage and track all your orders"
+        actions={
+          !['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders ? (
+            <Button
+              className="gap-2 bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+              onClick={handleCreateOrder}
+            >
+              <Plus className="w-4 h-4" />
+              Create Order
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Total Orders</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.total_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Total Orders</p>
+            <p className="sera-sc-kpi__value">{summary.total_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Submitted</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.submitted_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Submitted</p>
+            <p className="sera-sc-kpi__value">{summary.submitted_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Approved</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.approved_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Approved</p>
+            <p className="sera-sc-kpi__value">{summary.approved_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Total Amount</p>
-                <p className="text-3xl font-bold text-gray-900 truncate">
-                  RM {summary.total_amount.toLocaleString('en-MY', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Total Amount</p>
+            <p className="sera-sc-kpi__value truncate text-[1.35rem] sm:text-[1.75rem]">
+              RM {summary.total_amount.toLocaleString('en-MY', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </p>
+          </div>
         </div>
       )}
 
       {/* Filters and View Toggle */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="pt-6 space-y-4">
           {/* Filter Row */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Order Type Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Order Type</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Order Type</label>
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="all">All Types</option>
                   {canCreateH2M ? <option value="H2M">H2M (HQ → Manufacturer)</option> : null}
@@ -1252,11 +1239,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             {/* Manufacturer/Seller Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Seller/Manufacturer</label>
                 <select
                   value={sellerFilter}
                   onChange={(e) => setSellerFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="">All Sellers</option>
                   {uniqueSellers.map(seller => (
@@ -1271,11 +1258,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             {/* Status Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="all">All Status</option>
                   <option value="draft">Draft</option>
@@ -1288,12 +1275,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
             {/* View Mode Toggle */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
-              <div className="flex border border-gray-300 rounded-md overflow-hidden">
+              <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">View Mode</label>
+              <div className="sera-sc-toggle">
                 <Button
                   variant={viewMode === 'cards' ? 'default' : 'ghost'}
                   size="sm"
-                  className={`flex-1 rounded-none ${viewMode === 'cards' ? 'bg-blue-600' : ''}`}
+                  className={`sera-sc-toggle__btn ${viewMode === 'cards' ? 'is-active' : ''}`}
                   onClick={() => setViewMode('cards')}
                 >
                   <Grid3x3 className="w-4 h-4 mr-2" />
@@ -1302,7 +1289,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <Button
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
                   size="sm"
-                  className={`flex-1 rounded-none ${viewMode === 'list' ? 'bg-blue-600' : ''}`}
+                  className={`sera-sc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`}
                   onClick={() => setViewMode('list')}
                 >
                   <List className="w-4 h-4 mr-2" />
@@ -1314,12 +1301,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
           {/* Search Box */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
             <Input
               placeholder="Search orders by order number or notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
             />
           </div>
         </CardContent>
@@ -1328,19 +1315,19 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       {/* Orders List - Card Layout */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
+          <h2 className="text-base font-semibold text-[var(--sera-ink)]">Recent Orders</h2>
           {filteredOrders.length > 0 && (
-            <span className="text-sm text-gray-500">{filteredOrders.length} orders found</span>
+            <span className="text-sm text-[var(--sera-muted)]">{filteredOrders.length} orders found</span>
           )}
         </div>
 
         {filteredOrders.length === 0 ? (
-          <Card>
+          <Card className="sera-sc-panel shadow-none">
             <CardContent className="py-12">
               <div className="text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
-                <p className="text-gray-600 mb-4">
+                <FileText className="w-12 h-12 text-[var(--sera-muted)] mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No orders found</h3>
+                <p className="text-[var(--sera-muted)] mb-4">
                   {searchQuery || statusFilter !== 'all'
                     ? 'Try adjusting your filters'
                     : ['MANU', 'MFG'].includes(userProfile.organizations.org_type_code)
@@ -1349,7 +1336,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 </p>
                 {/* Hide Create Order button for Manufacturer organizations or if user doesn't have permission */}
                 {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
-                  <Button className="gap-2" onClick={handleCreateOrder}>
+                  <Button
+                    className="gap-2 bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+                    onClick={handleCreateOrder}
+                  >
                     <Plus className="w-4 h-4" />
                     Create Order
                   </Button>
