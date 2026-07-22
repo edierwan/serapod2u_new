@@ -520,7 +520,7 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
                 {/* Action Button */}
                 <Button
                   size="sm"
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 rounded-lg shadow-sm"
+                  className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white text-xs h-9 rounded-lg shadow-none"
                   onClick={() => onViewChange('orders')}
                 >
                   Review & Approve

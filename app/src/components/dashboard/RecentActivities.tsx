@@ -219,15 +219,15 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
   }
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
-      <div className="px-6 py-5 border-b border-gray-50">
+    <div className="rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white overflow-hidden">
+      <div className="px-6 py-5 border-b border-[var(--sera-line,#e5e7eb)]">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100">
-            <Clock className="w-4.5 h-4.5 text-slate-600" strokeWidth={1.75} />
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-ink)]/5">
+            <Clock className="w-4.5 h-4.5 text-[var(--sera-ink)]" strokeWidth={1.75} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Recent Activities</h3>
-            <p className="text-xs text-gray-400">Latest updates across your organization</p>
+            <h3 className="text-sm font-semibold text-[var(--sera-ink)] font-display">Recent Activities</h3>
+            <p className="text-xs text-[var(--sera-muted)]">Latest updates across your organization</p>
           </div>
         </div>
       </div>

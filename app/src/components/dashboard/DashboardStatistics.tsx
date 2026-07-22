@@ -171,45 +171,33 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       title: 'Pending Actions',
       value: stats.pendingDocuments,
       icon: AlertCircle,
-      color: 'text-amber-600',
-      bgColor: 'bg-gradient-to-br from-amber-50 to-orange-50',
-      iconBg: 'bg-amber-100',
-      borderColor: 'border-amber-100',
       description: 'Documents awaiting acknowledgment',
-      trend: stats.pendingDocuments > 0 ? 'needs-attention' : 'ok'
+      trend: stats.pendingDocuments > 0 ? 'needs-attention' : 'ok',
+      accent: true,
     },
     {
       title: 'Active Orders',
       value: stats.activeOrders,
       icon: Package,
-      color: 'text-blue-600',
-      bgColor: 'bg-gradient-to-br from-blue-50 to-indigo-50',
-      iconBg: 'bg-blue-100',
-      borderColor: 'border-blue-100',
       description: 'Orders in progress',
-      trend: 'neutral'
+      trend: 'neutral',
+      accent: false,
     },
     {
       title: 'Completed This Month',
       value: stats.completedThisMonth,
       icon: CheckCircle2,
-      color: 'text-emerald-600',
-      bgColor: 'bg-gradient-to-br from-emerald-50 to-teal-50',
-      iconBg: 'bg-emerald-100',
-      borderColor: 'border-emerald-100',
       description: 'Successfully closed orders',
-      trend: 'positive'
+      trend: 'positive',
+      accent: false,
     },
     {
       title: 'Documents Today',
       value: stats.documentsToday,
       icon: FileText,
-      color: 'text-violet-600',
-      bgColor: 'bg-gradient-to-br from-violet-50 to-purple-50',
-      iconBg: 'bg-violet-100',
-      borderColor: 'border-violet-100',
       description: 'New documents generated',
-      trend: 'neutral'
+      trend: 'neutral',
+      accent: false,
     }
   ]
 
@@ -217,13 +205,13 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="rounded-2xl border bg-white p-5 animate-pulse">
+          <div key={i} className="rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white p-5 animate-pulse">
             <div className="flex items-center justify-between mb-4">
-              <div className="h-10 w-10 bg-gray-100 rounded-xl" />
-              <div className="h-4 w-16 bg-gray-100 rounded-full" />
+              <div className="h-10 w-10 bg-gray-100 rounded-lg" />
+              <div className="h-4 w-16 bg-gray-100 rounded" />
             </div>
             <div className="h-8 w-12 bg-gray-100 rounded-lg mb-1" />
-            <div className="h-3 w-24 bg-gray-50 rounded-full" />
+            <div className="h-3 w-24 bg-gray-50 rounded" />
           </div>
         ))}
       </div>
@@ -235,42 +223,35 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       {statCards.map((stat, index) => (
         <div
           key={index}
-          className={`group relative overflow-hidden rounded-2xl border ${stat.borderColor} ${stat.bgColor} p-5 transition-all duration-300 hover:shadow-lg hover:shadow-gray-200/50 hover:-translate-y-0.5`}
+          className="group relative overflow-hidden rounded-xl border border-[var(--sera-line,#e5e7eb)] bg-white p-5 transition-colors hover:border-[var(--sera-orange)]/35"
         >
-          {/* Subtle radial glow on hover */}
-          <div className="absolute inset-0 bg-white/0 group-hover:bg-white/30 transition-colors duration-300" />
-          
           <div className="relative z-10">
-            {/* Top row: icon + trend indicator */}
             <div className="flex items-center justify-between mb-4">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${stat.iconBg} transition-transform duration-300 group-hover:scale-110`}>
-                <stat.icon className={`w-5 h-5 ${stat.color}`} strokeWidth={1.75} />
+              <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${stat.accent && stat.value > 0 ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]' : 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'}`}>
+                <stat.icon className="w-5 h-5" strokeWidth={1.75} />
               </div>
               {stat.trend === 'needs-attention' && stat.value > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
-                  <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                <span className="inline-flex items-center gap-1 rounded-md bg-[var(--sera-orange)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--sera-orange-deep)] uppercase tracking-wider">
+                  <span className="w-1 h-1 rounded-full bg-[var(--sera-orange)] animate-pulse" />
                   Action
                 </span>
               )}
               {stat.trend === 'positive' && stat.value > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                <span className="inline-flex items-center gap-1 rounded-md bg-[var(--sera-ink)]/5 px-2 py-0.5 text-[10px] font-semibold text-[var(--sera-ink)]">
                   <TrendingUp className="w-3 h-3" />
                 </span>
               )}
             </div>
 
-            {/* Value */}
-            <p className="text-3xl font-bold text-gray-900 tracking-tight mb-0.5">
+            <p className="font-display text-3xl font-semibold text-[var(--sera-ink)] tracking-tight mb-0.5">
               {stat.value}
             </p>
-            
-            {/* Title */}
-            <p className="text-sm font-medium text-gray-600 mb-0.5">
+
+            <p className="text-sm font-medium text-[var(--sera-ink-soft)] mb-0.5">
               {stat.title}
             </p>
-            
-            {/* Description — hidden on mobile */}
-            <p className="text-xs text-gray-400 hidden sm:block">
+
+            <p className="text-xs text-[var(--sera-muted)] hidden sm:block">
               {stat.description}
             </p>
           </div>

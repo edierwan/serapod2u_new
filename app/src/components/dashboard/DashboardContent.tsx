@@ -880,8 +880,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <div className="print:hidden shrink-0">
+    <div className="min-h-screen bg-[var(--sera-paper,#f7f8fa)] flex sera-shell">
+      <div className="print:hidden shrink-0 sticky top-0 h-screen h-[100dvh] self-start">
         <Sidebar
           userProfile={userProfile}
           currentView={currentView}
@@ -891,7 +891,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         />
       </div>
       {/* Main Content - fills remaining space */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-screen flex flex-col bg-[var(--sera-paper,#f7f8fa)]">
         {/* HR Top Navigation — shown only on /hr/* routes */}
         {isHrView && (
           <HRTopNav currentView={currentView} onNavigate={handleHrNavigate} />

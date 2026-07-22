@@ -78,8 +78,10 @@ export function EngagementShell({ userProfile, activeView = 'point-catalog', chi
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <Sidebar userProfile={userProfile} currentView={activeView} onViewChange={handleNavigate} />
+    <div className="min-h-screen bg-background flex sera-shell">
+      <div className="print:hidden shrink-0 sticky top-0 h-screen h-[100dvh] self-start">
+        <Sidebar userProfile={userProfile} currentView={activeView} onViewChange={handleNavigate} />
+      </div>
       <div className="flex-1 overflow-hidden">
         <main className="p-6 h-full overflow-y-auto bg-muted/10">
           {children}

@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
-import ModuleBanner from '@/components/ui/ModuleBanner'
 
 interface UserProfile {
   id: string
@@ -30,7 +28,7 @@ interface DashboardOverviewProps {
   bannerImageUrl?: string | null
 }
 
-export default function DashboardOverview({ userProfile, onViewChange, bannerImageUrl }: DashboardOverviewProps) {
+export default function DashboardOverview({ userProfile, onViewChange }: DashboardOverviewProps) {
   const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST', docNo?: string) => {
     // Store the order ID and document ID in session storage
     // Use 'trackingOrderId' to match what TrackOrderView expects
@@ -68,14 +66,22 @@ export default function DashboardOverview({ userProfile, onViewChange, bannerIma
 
   return (
     <div className="space-y-8">
-      {/* Dashboard Header — uses unified ModuleBanner */}
-      <ModuleBanner
-        module="dashboard"
-        title={`${getGreeting()}${userProfile.organizations?.org_name ? ',' : ''}`}
-        subtitle={userProfile.organizations?.org_name || undefined}
-        userName={userProfile.email}
-        bannerImageUrl={bannerImageUrl}
-      />
+      {/* Light greeting — same language as Login form side, not a heavy banner */}
+      <header className="pt-1">
+        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5" />
+        <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
+          Dashboard
+        </p>
+        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
+          {getGreeting()}
+          {userProfile.organizations?.org_name ? ',' : ''}
+        </h1>
+        {userProfile.organizations?.org_name && (
+          <p className="mt-2 text-base sm:text-lg text-[var(--sera-muted)]">
+            {userProfile.organizations.org_name}
+          </p>
+        )}
+      </header>
 
       {/* Statistics Cards */}
       <DashboardStatistics userProfile={userProfile} />
