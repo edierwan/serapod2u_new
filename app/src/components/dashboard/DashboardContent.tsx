@@ -928,7 +928,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         {isRoadtourView && (
           <RoadtourTopNav currentView={currentView} onNavigate={handleViewChange} />
         )}
-        <main className={`flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${hasModuleTopNav ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
+        <main className={`sera-main flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${hasModuleTopNav ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
           {renderCurrentView()}
         </main>
         {/* HR AI Assistant – floating button + chat drawer */}

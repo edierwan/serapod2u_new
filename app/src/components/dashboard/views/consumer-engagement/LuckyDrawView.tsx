@@ -570,7 +570,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   }
 
   return (
-    <div className="sera-sc-page">
+    <div className="sera-sc-page sera-page-enter">
       <SupplyChainPageHeader
         eyebrow="Customer & Growth"
         title="Lucky Draw Management"
@@ -666,7 +666,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
           <Card className="sera-sc-panel mb-6 border-0 shadow-none bg-[var(--sera-mist)]/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Gift className="w-5 h-5 text-purple-500" />
+                <Gift className="w-5 h-5 text-[var(--sera-orange)]" />
                 Order Products
               </CardTitle>
             </CardHeader>
@@ -754,7 +754,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                       <div className="text-center py-12">
                         <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500 mb-4">No campaigns yet</p>
-                        <Button onClick={() => setShowNewCampaignModal(true)} className="bg-purple-500 hover:bg-purple-600">
+                        <Button onClick={() => setShowNewCampaignModal(true)} className="sera-sc-btn-accent">
                           <Plus className="w-4 h-4 mr-2" />
                           Create First Campaign
                         </Button>
@@ -948,7 +948,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                         Winner
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-blue-500 text-white text-[10px] px-1.5 h-5">
+                                      <Badge className="sera-sc-badge sera-sc-badge--info text-[10px] px-1.5 h-5">
                                         <CheckCircle2 className="w-3 h-3 mr-1" />
                                         Entered
                                       </Badge>
@@ -1010,7 +1010,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between mb-2">
                                       <div className="flex items-center gap-2">
-                                        <Gift className="w-5 h-5 text-purple-500" />
+                                        <Gift className="w-5 h-5 text-[var(--sera-orange)]" />
                                         <h4 className="font-semibold">{prize.name}</h4>
                                       </div>
                                       <div className="flex gap-1">
@@ -1066,42 +1066,36 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* DRAW TAB */}
                 <TabsContent value="draw">
                   <div className="space-y-6">
-                    <div className="text-center">
-                      <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full mb-4">
-                        <Zap className="w-10 h-10 text-purple-600" />
+                    <div className="sera-sc-empty">
+                      <div className="sera-sc-empty__icon">
+                        <Zap className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-bold mb-2">Lucky Draw</h3>
-                      <p className="text-gray-600 mb-6">Randomly select winners from participants</p>
+                      <h3 className="sera-sc-empty__title">Lucky Draw</h3>
+                      <p className="sera-sc-empty__text">Randomly select winners from participants</p>
                     </div>
 
                     {/* Stats Cards */}
                     <div className="grid grid-cols-3 gap-4">
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Users className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalParticipants}</div>
-                          <div className="text-xs text-gray-600">Participants</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Gift className="w-8 h-8 text-purple-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalPrizes}</div>
-                          <div className="text-xs text-gray-600">Total Prizes</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Trophy className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalWinners}</div>
-                          <div className="text-xs text-gray-600">Winners</div>
-                        </CardContent>
-                      </Card>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Users className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalParticipants}</p>
+                        <p className="sera-sc-kpi__label">Participants</p>
+                      </div>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Gift className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalPrizes}</p>
+                        <p className="sera-sc-kpi__label">Total Prizes</p>
+                      </div>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Trophy className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalWinners}</p>
+                        <p className="sera-sc-kpi__label">Winners</p>
+                      </div>
                     </div>
 
                     {/* Draw Status */}
                     {selectedCampaign?.drawn_at ? (
-                      <Alert className="bg-blue-50 border-blue-200">
+                      <Alert className="bg-[var(--sera-orange)]/8 border-[var(--sera-orange)]/25">
                         <CheckCircle2 className="h-4 w-4 text-blue-600" />
                         <AlertDescription className="text-blue-800">
                           <strong>Draw completed!</strong> Winners were selected on {new Date(selectedCampaign.drawn_at).toLocaleString()}
@@ -1141,7 +1135,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                             <Button
                               size="lg"
                               onClick={() => setShowDrawConfirmModal(true)}
-                              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                              className="sera-sc-btn-accent gap-2"
                             >
                               <Sparkles className="w-5 h-5 mr-2" />
                               Perform Lucky Draw
@@ -1338,7 +1332,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowNewCampaignModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateCampaign} className="bg-purple-500 hover:bg-purple-600">
+            <Button onClick={handleCreateCampaign} className="sera-sc-btn-accent">
               {campaigns.length > 0 ? 'Save Changes' : 'Create Campaign'}
             </Button>
           </DialogFooter>
@@ -1478,7 +1472,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowPrizeModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddPrize} className="bg-purple-500 hover:bg-purple-600">
+            <Button onClick={handleAddPrize} className="sera-sc-btn-accent">
               {editingPrizeIndex !== null ? 'Update Prize' : 'Add Prize'}
             </Button>
           </DialogFooter>
@@ -1506,7 +1500,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowDrawConfirmModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handlePerformDraw} className="bg-gradient-to-r from-purple-500 to-pink-500">
+            <Button onClick={handlePerformDraw} className="sera-sc-btn-accent">
               <Sparkles className="w-4 h-4 mr-2" />
               Perform Draw
             </Button>

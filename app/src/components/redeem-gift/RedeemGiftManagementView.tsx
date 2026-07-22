@@ -584,7 +584,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
     );
 
     return (
-        <div className="sera-sc-page">
+        <div className="sera-sc-page sera-page-enter">
             <SupplyChainPageHeader
                 eyebrow="Customer & Growth"
                 title="Redeem Gift Management"
@@ -694,7 +694,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                     {filteredOrders.map((order) => (
                                         <Card
                                             key={order.id}
-                                            className={`cursor-pointer transition-all hover:shadow-md ${selectedOrder?.id === order.id ? 'border-blue-500 bg-blue-50' : ''
+                                            className={`cursor-pointer transition-all hover:shadow-sm ${selectedOrder?.id === order.id ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/6' : 'border-[var(--sera-line)]'
                                                 }`}
                                             onClick={() => setSelectedOrder(order)}
                                         >
@@ -711,7 +711,7 @@ export default function RedeemGiftManagementView({ userProfile, onViewChange, in
                                                         </Badge>
                                                     </div>
                                                     {selectedOrder?.id === order.id && (
-                                                        <Check className="h-5 w-5 text-blue-600" />
+                                                        <Check className="h-5 w-5 text-[var(--sera-orange)]" />
                                                     )}
                                                 </div>
                                             </CardContent>

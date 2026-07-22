@@ -457,7 +457,7 @@ export default function StoreOrdersView({ userProfile, onViewChange }: StoreOrde
     // ── Main render ──────────────────────────────────────────────
 
     return (
-        <div className="sera-sc-page w-full max-w-6xl mx-auto">
+        <div className="sera-sc-page sera-page-enter w-full max-w-6xl mx-auto">
             <SupplyChainPageHeader
                 eyebrow="Customer & Growth"
                 title="Store Orders"

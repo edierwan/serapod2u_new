@@ -652,7 +652,7 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   }, [activeTab])
 
   return (
-    <div className="sera-sc-page">
+    <div className="sera-sc-page sera-page-enter">
       <SupplyChainPageHeader
         eyebrow="Customer & Growth"
         title="Consumer Activity"
@@ -743,51 +743,50 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         </TabsList>
 
         <TabsContent value="activations">
-          {/* Recent Activations */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activations</CardTitle>
-              {/* Filters Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-                <Select value={filterProduct} onValueChange={setFilterProduct}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filter Product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Products</SelectItem>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          <div className="sera-sc-panel overflow-hidden">
+            <div className="sera-sc-panel__head">
+              <h2 className="sera-sc-panel__title">Recent Activations</h2>
+            </div>
+            <div className="sera-sc-filters">
+              <Select value={filterProduct} onValueChange={setFilterProduct}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="Filter Product" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Products</SelectItem>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                <Input
-                  placeholder="MMYY (e.g. 1125)"
-                  value={filterMMYY}
-                  onChange={(e) => setFilterMMYY(e.target.value)}
-                />
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="MMYY (e.g. 1125)"
+                value={filterMMYY}
+                onChange={(e) => setFilterMMYY(e.target.value)}
+              />
 
-                <Input
-                  placeholder="Consumer Name/Phone"
-                  value={filterConsumer}
-                  onChange={(e) => setFilterConsumer(e.target.value)}
-                />
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Consumer Name/Phone"
+                value={filterConsumer}
+                onChange={(e) => setFilterConsumer(e.target.value)}
+              />
 
-                <Input
-                  placeholder="Shop Name"
-                  value={filterShop}
-                  onChange={(e) => setFilterShop(e.target.value)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Shop Name"
+                value={filterShop}
+                onChange={(e) => setFilterShop(e.target.value)}
+              />
+            </div>
+            <div className="sera-sc-panel__body">
+              <div className="overflow-x-auto -mx-1">
+                <table className="sera-sc-table">
+                  <thead>
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        #
-                      </th>
+                      <th>#</th>
                       {columnOrder.map((col) => {
                         if (col === 'order') {
                           return (
@@ -797,11 +796,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                               onDragStart={() => handleDragStart('order')}
                               onDragOver={handleDragOver}
                               onDrop={() => handleDrop('order')}
-                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                              className="is-draggable"
                             >
                               <div className="flex items-center gap-1">
                                 Ord No
-                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                                <span className="text-[10px] sera-sc-table__meta">(Drag)</span>
                               </div>
                             </th>
                           )
@@ -813,62 +812,62 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                               onDragStart={() => handleDragStart('product')}
                               onDragOver={handleDragOver}
                               onDrop={() => handleDrop('product')}
-                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                              className="is-draggable"
                               onClick={() => handleSort('product_id')}
                             >
                               <div className="flex items-center gap-1">
                                 Product <ArrowUpDown className="w-3 h-3" />
-                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                                <span className="text-[10px] sera-sc-table__meta">(Drag)</span>
                               </div>
                             </th>
                           )
                         }
                       })}
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('sequence_number')}
                       >
                         <div className="flex items-center gap-1">Seq <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('updated_at')}
                       >
                         <div className="flex items-center gap-1">Date & Time <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('consumer_name')}
                       >
                         <div className="flex items-center gap-1">Consumer <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                      <th>ID Shop</th>
+                      <th>User</th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('points_value')}
                       >
                         <div className="flex items-center gap-1">Points <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Redeem</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GameCard</th>
+                      <th>Redeem</th>
+                      <th>GameCard</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">Loading...</td>
+                        <td colSpan={10} className="sera-sc-table__empty">Loading...</td>
                       </tr>
                     ) : activations.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">No activations found</td>
+                        <td colSpan={10} className="sera-sc-table__empty">No activations found</td>
                       </tr>
                     ) : (
                       activations.map((activation, index) => {
                         const rowNumber = (currentPage - 1) * pageSize + index + 1
                         return (
-                          <tr key={activation.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-xs text-gray-600 font-medium">
+                          <tr key={activation.id}>
+                            <td className="font-medium">
                               {rowNumber}
                             </td>
                             {columnOrder.map((col) => {
@@ -876,9 +875,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                 return (
                                   <td key="order" className="px-4 py-3">
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-medium text-blue-600">{activation.order_doc_no}</span>
+                                      <span className="text-xs font-medium text-[var(--sera-orange)]">{activation.order_doc_no}</span>
                                       {activation.legacy_order_no && (
-                                        <span className="text-[10px] text-gray-500">Legacy: {activation.legacy_order_no}</span>
+                                        <span className="sera-sc-table__meta">Legacy: {activation.legacy_order_no}</span>
                                       )}
                                     </div>
                                   </td>
@@ -894,9 +893,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                         </Avatar>
                                       )}
                                       <div>
-                                        <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
+                                        <p className="text-xs font-medium text-[var(--sera-ink)]">{activation.product_name}</p>
                                         {activation.variant_name && (
-                                          <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                                          <p className="sera-sc-table__meta">{activation.variant_name}</p>
                                         )}
                                       </div>
                                     </div>
@@ -919,13 +918,13 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                   <button
                                     onClick={() => openConsumerDetail(activation.consumer_user_id, activation.consumer_phone)}
                                     disabled={loadingConsumerDetail}
-                                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left disabled:opacity-50"
+                                    className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline cursor-pointer text-left disabled:opacity-50"
                                     title="Click to view consumer details"
                                   >
                                     {activation.consumer_name || 'Anonymous'}
                                   </button>
                                 ) : (
-                                  <p className="text-xs font-medium text-gray-900">
+                                  <p className="text-xs font-medium text-[var(--sera-ink)]">
                                     {activation.consumer_name || 'Anonymous'}
                                   </p>
                                 )}
@@ -937,9 +936,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                             </td>
                             <td className="px-4 py-3">
                               {activation.independent_user_name ? (
-                                <span className="text-xs font-medium text-blue-600">{activation.independent_user_name}</span>
+                                <span className="text-[var(--sera-orange)] font-medium">{activation.independent_user_name}</span>
                               ) : (
-                                <span className="text-xs text-gray-500">-</span>
+                                <span className="text-[var(--sera-muted)]">-</span>
                               )}
                             </td>
                             <td className="px-4 py-3">
@@ -996,8 +995,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-gray-500">
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--sera-line)]">
+                <div className="text-sm text-[var(--sera-muted)]">
                   Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
                 </div>
                 <div className="flex items-center gap-2">
@@ -1020,8 +1019,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="feedback">

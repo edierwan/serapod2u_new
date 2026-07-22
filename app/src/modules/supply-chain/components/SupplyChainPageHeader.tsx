@@ -22,7 +22,7 @@ export default function SupplyChainPageHeader({
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <div className="h-1 w-10 rounded-sm bg-[var(--sera-orange)] mb-3" />
+        <div className="h-1 w-10 rounded-sm bg-[var(--sera-orange)] mb-3 sera-sc-header__bar" />
         <p className="text-[11px] font-medium tracking-[0.14em] uppercase text-[var(--sera-muted)] mb-1.5">
           {eyebrow}
         </p>

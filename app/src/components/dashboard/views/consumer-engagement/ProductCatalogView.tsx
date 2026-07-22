@@ -210,7 +210,7 @@ export default function ProductCatalogView({ userProfile, onViewChange }: Produc
   }
 
   return (
-    <div className="sera-sc-page">
+    <div className="sera-sc-page sera-page-enter">
       <SupplyChainPageHeader
         eyebrow="Customer & Growth"
         title="Product Catalog"

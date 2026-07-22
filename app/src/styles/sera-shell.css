@@ -173,3 +173,262 @@
   background: var(--sera-ink) !important;
   color: #fff !important;
 }
+
+/* ── Main content canvas — subtle depth like login paper side ─── */
+
+.sera-main {
+  position: relative;
+  isolation: isolate;
+}
+
+.sera-main::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(42vw, 520px);
+  height: min(42vw, 520px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 93, 4, 0.07) 0%, transparent 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sera-main > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes sera-page-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sera-bar-pulse {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(1.08); opacity: 0.88; }
+}
+
+.sera-sc-page.sera-page-enter {
+  animation: sera-page-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sera-sc-header__bar {
+  transform-origin: left center;
+  animation: sera-bar-pulse 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sera-sc-page.sera-page-enter,
+  .sera-sc-header__bar {
+    animation: none !important;
+  }
+}
+
+/* ── Tables — full paper data grid (replaces gray admin tables) ─── */
+
+.sera-sc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+
+.sera-sc-table thead {
+  background: var(--sera-mist);
+  border-bottom: 1px solid var(--sera-line);
+}
+
+.sera-sc-table thead th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sera-muted);
+  white-space: nowrap;
+}
+
+.sera-sc-table thead th.is-sortable,
+.sera-sc-table thead th.is-draggable {
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sera-sc-table thead th.is-sortable:hover,
+.sera-sc-table thead th.is-draggable:hover {
+  background: rgba(232, 93, 4, 0.06);
+  color: var(--sera-ink);
+}
+
+.sera-sc-table tbody tr {
+  border-bottom: 1px solid var(--sera-line);
+  transition: background 0.12s ease;
+}
+
+.sera-sc-table tbody tr:hover {
+  background: rgba(242, 243, 245, 0.65);
+}
+
+.sera-sc-table tbody td {
+  padding: 0.75rem 1rem;
+  color: var(--sera-ink-soft);
+  vertical-align: middle;
+}
+
+.sera-sc-table tbody td .sera-sc-table__meta {
+  font-size: 0.625rem;
+  color: var(--sera-muted);
+}
+
+.sera-sc-table__empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--sera-muted);
+  font-size: 0.875rem;
+}
+
+/* ── Filter row inside panels ───────────────────────────────────── */
+
+.sera-sc-filters {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--sera-line);
+  background: rgba(242, 243, 245, 0.35);
+}
+
+@media (min-width: 640px) {
+  .sera-sc-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.sera-sc-filters .sera-sc-input,
+.sera-sc-page input.sera-sc-input,
+.sera-sc-page [data-slot="input"] {
+  border-color: var(--sera-line);
+  background: #fff;
+}
+
+.sera-sc-filters .sera-sc-input:focus,
+.sera-sc-page input.sera-sc-input:focus {
+  border-color: rgba(232, 93, 4, 0.45);
+  box-shadow: 0 0 0 3px rgba(232, 93, 4, 0.1);
+}
+
+/* ── Panel sections (card replacement) ──────────────────────────── */
+
+.sera-sc-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.15rem 1.25rem 0;
+}
+
+.sera-sc-panel__title {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--sera-ink);
+}
+
+.sera-sc-panel__body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+/* ── Primary / accent actions ───────────────────────────────────── */
+
+.sera-sc-btn-primary {
+  background: var(--sera-ink) !important;
+  color: #fff !important;
+}
+
+.sera-sc-btn-primary:hover {
+  background: var(--sera-ink-soft) !important;
+}
+
+.sera-sc-btn-accent {
+  background: var(--sera-orange) !important;
+  color: #fff !important;
+}
+
+.sera-sc-btn-accent:hover {
+  background: var(--sera-orange-deep) !important;
+}
+
+/* ── Status badges inside module pages ──────────────────────────── */
+
+.sera-sc-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sera-sc-badge--orange {
+  background: rgba(232, 93, 4, 0.12);
+  color: var(--sera-orange-deep);
+}
+
+.sera-sc-badge--ink {
+  background: rgba(20, 18, 16, 0.08);
+  color: var(--sera-ink);
+}
+
+.sera-sc-badge--success {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.sera-sc-badge--info {
+  background: rgba(232, 93, 4, 0.1);
+  color: var(--sera-orange-deep);
+}
+
+/* ── Empty / hero moments inside pages ──────────────────────────── */
+
+.sera-sc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  gap: 0.75rem;
+}
+
+.sera-sc-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 9999px;
+  background: rgba(232, 93, 4, 0.08);
+  color: var(--sera-orange);
+}
+
+.sera-sc-empty__title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--sera-ink);
+}
+
+.sera-sc-empty__text {
+  font-size: 0.875rem;
+  color: var(--sera-muted);
+  max-width: 24rem;
+}
