@@ -766,7 +766,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <Button
               variant="outline"
               size="sm"
-              className="bg-white text-black hover:bg-gray-100"
+              className="bg-white text-black hover:bg-[var(--sera-ink)]/[0.04]"
               onClick={() => {
                 if (onViewChange) onViewChange('my-profile')
               }}
@@ -1611,7 +1611,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
 
-                    <span className="text-xs text-gray-700">
+                    <span className="text-xs text-[var(--sera-ink)]/80">
                       Page {currentPage} of {totalPages}
                     </span>
 
@@ -1847,7 +1847,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Select Order Type</h3>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="text-sm text-[var(--sera-muted)] mb-6">
               Choose the type of order you want to create:
             </p>
 
@@ -1855,13 +1855,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
               {canCreateH2M ? (
                 <button
                   onClick={() => handleOrderTypeSelection('regular')}
-                  className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+                  className="w-full p-4 border-2 border-[var(--sera-line)] rounded-lg hover:border-gray-400 hover:bg-[var(--sera-ink)]/[0.02] transition-colors text-left"
                 >
                   <div className="flex items-start gap-3">
-                    <Store className="w-5 h-5 text-gray-600 mt-0.5" />
+                    <Store className="w-5 h-5 text-[var(--sera-muted)] mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-gray-900">HQ Order to Manufacture (H2M)</h4>
-                      <p className="text-sm text-gray-600 mt-1">Create an order from Headquarters to a manufacturer.</p>
+                      <h4 className="font-semibold text-[var(--sera-ink)]">HQ Order to Manufacture (H2M)</h4>
+                      <p className="text-sm text-[var(--sera-muted)] mt-1">Create an order from Headquarters to a manufacturer.</p>
                     </div>
                   </div>
                 </button>
@@ -1869,13 +1869,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
               <button
                 onClick={() => handleOrderTypeSelection('d2h')}
-                className="w-full p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
+                className="w-full p-4 border-2 border-[var(--sera-orange)]/20 rounded-lg hover:border-[var(--sera-orange)]/45 hover:bg-[var(--sera-orange)]/[0.06] transition-colors text-left"
               >
                 <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <Building2 className="w-5 h-5 text-[var(--sera-orange)] mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-gray-900">Order to HQ (D2H)</h4>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <h4 className="font-semibold text-[var(--sera-ink)]">Order to HQ (D2H)</h4>
+                    <p className="text-sm text-[var(--sera-muted)] mt-1">
                       Order products from headquarters using distributor pricing (only products with available stock)
                     </p>
                   </div>
@@ -1889,8 +1889,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <div className="flex items-start gap-3">
                   <ShoppingCart className="w-5 h-5 text-green-600 mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-gray-900">Shop Order (S2D)</h4>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <h4 className="font-semibold text-[var(--sera-ink)]">Shop Order (S2D)</h4>
+                    <p className="text-sm text-[var(--sera-muted)] mt-1">
                       Create order for Shop from Distributor using retailer pricing (deducts from Distributor inventory)
                     </p>
                   </div>

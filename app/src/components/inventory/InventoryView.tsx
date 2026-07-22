@@ -1074,7 +1074,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       case 'reorder_required':
         return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Reorder Required</Badge>
       case 'replenishment_incoming':
-        return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Replenishment Incoming</Badge>
+        return <Badge variant="outline" className="bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/20">Replenishment Incoming</Badge>
       case 'additional_reorder_required':
         return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">Additional Reorder Required</Badge>
     }
@@ -1207,7 +1207,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             {/* Filter Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Location</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Location</label>
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Locations" />
@@ -1224,7 +1224,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Product Name</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Product Name</label>
                 <Select value={productFilter} onValueChange={setProductFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Products" />
@@ -1241,7 +1241,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Variant</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Variant</label>
                 <Select
                   value={variantFilter}
                   onValueChange={setVariantFilter}
@@ -1262,7 +1262,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Stock Status</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Stock Status</label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Status" />
@@ -1277,7 +1277,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-700 mb-1.5 block">Value Range</label>
+                <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Value Range</label>
                 <Select value={valueRangeFilter} onValueChange={setValueRangeFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Values" />
@@ -1297,7 +1297,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             {(searchQuery || locationFilter !== 'all' || statusFilter !== 'all' || productFilter !== 'all' || variantFilter !== 'all' || valueRangeFilter !== 'all') && (
               <div className="flex items-center justify-between pt-2 border-t">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-gray-600">Active filters:</span>
+                  <span className="text-sm text-[var(--sera-muted)]">Active filters:</span>
                   {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
                   {locationFilter !== 'all' && <Badge variant="secondary">Location</Badge>}
                   {productFilter !== 'all' && <Badge variant="secondary">Product</Badge>}
@@ -1316,7 +1316,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                     setStatusFilter('all')
                     setValueRangeFilter('all')
                   }}
-                  className="text-gray-600 hover:text-gray-900"
+                  className="text-[var(--sera-muted)] hover:text-[var(--sera-ink)]"
                 >
                   Clear All Filters
                 </Button>
@@ -1339,7 +1339,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             <TableHeader>
               <TableRow>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('product_name')}
                 >
                   <div className="flex items-center">
@@ -1348,7 +1348,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('location')}
                 >
                   <div className="flex items-center">
@@ -1357,7 +1357,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('on_hand')}
                 >
                   <div className="flex items-center">
@@ -1366,7 +1366,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('allocated')}
                 >
                   <div className="flex items-center">
@@ -1375,7 +1375,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('available')}
                 >
                   <div className="flex items-center">
@@ -1384,7 +1384,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('incoming')}
                 >
                   <div className="flex items-center">
@@ -1393,7 +1393,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   </div>
                 </TableHead>
                 <TableHead
-                  className="cursor-pointer hover:bg-gray-100 select-none"
+                  className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none"
                   onClick={() => handleSort('position')}
                 >
                   <div className="flex items-center">
@@ -1404,7 +1404,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                 <TableHead>Stock Level</TableHead>
                 {canViewTotalValue() && (
                   <TableHead
-                    className="cursor-pointer hover:bg-gray-100 select-none text-right"
+                    className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
                     onClick={() => handleSort('total_value')}
                   >
                     <div className="flex items-center justify-end">
@@ -1443,7 +1443,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           <p className="text-xs font-medium">
                             {item.product_name || 'Unknown Product'}
                           </p>
-                          <p className="text-xs text-gray-600">
+                          <p className="text-xs text-[var(--sera-muted)]">
                             [{item.variant_name || 'No variant'}]
                           </p>
                         </div>
@@ -1453,7 +1453,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                       <div>
                         <p className="text-xs font-medium">{item.organization_name || 'Unknown Location'}</p>
                         {item.warehouse_location && (
-                          <p className="text-xs text-gray-600">{item.warehouse_location}</p>
+                          <p className="text-xs text-[var(--sera-muted)]">{item.warehouse_location}</p>
                         )}
                       </div>
                     </TableCell>
@@ -1461,7 +1461,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                       <span className="text-xs font-medium">{formatNumber(item.quantity_on_hand)}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-xs text-gray-600">{formatNumber(item.quantity_allocated)}</span>
+                      <span className="text-xs text-[var(--sera-muted)]">{formatNumber(item.quantity_allocated)}</span>
                     </TableCell>
                     <TableCell>
                       <span className="text-xs font-medium">{formatNumber(item.quantity_available)}</span>
@@ -1472,7 +1472,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           <button
                             type="button"
                             onClick={() => setIncomingDetailItem(item)}
-                            className="text-xs font-medium text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded-sm"
+                            className="text-xs font-medium text-[var(--sera-orange)] underline decoration-dotted underline-offset-2 hover:text-[var(--sera-orange-deep)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:ring-offset-1 rounded-sm"
                             title="View incoming orders and transfers"
                           >
                             {formatNumber(getIncomingQty(item))}
@@ -1481,14 +1481,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             const breakdown = getItemIncomingBreakdown(item)
                             if (breakdown.transfer <= 0) return null
                             return (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-[var(--sera-muted)]/80">
                                 PO {formatNumber(breakdown.manufacturer)} · TRF {formatNumber(breakdown.transfer)}
                               </p>
                             )
                           })()}
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400">0</span>
+                        <span className="text-xs text-[var(--sera-muted)]/70">0</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -1513,7 +1513,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             }}
                           />
                         </div>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-[var(--sera-muted)]">
                           Reorder at: {formatNumber(item.reorder_point)}
                         </p>
                       </div>
@@ -1523,7 +1523,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                         <span className="font-medium">
                           RM {formatCurrency(item.total_value ?? 0)}
                         </span>
-                        <p className="text-xs text-gray-600">
+                        <p className="text-xs text-[var(--sera-muted)]">
                           @ RM {formatCurrency(item.unit_cost ?? 0)} per unit
                         </p>
                       </TableCell>
@@ -1534,7 +1534,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           variant="ghost"
                           size="sm"
                           onClick={() => handleOpenSettings(item)}
-                          className="hover:bg-blue-50 hover:text-blue-600"
+                          className="hover:bg-[var(--sera-orange)]/[0.06] hover:text-[var(--sera-orange)]"
                           title="Configure stock settings"
                         >
                           <Settings className="h-4 w-4" />
@@ -1549,7 +1549,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
           {/* Pagination */}
           <div className="mt-6 flex items-center justify-between">
-            <p className="text-gray-600 text-sm">
+            <p className="text-[var(--sera-muted)] text-sm">
               {filteredInventory.length === 0
                 ? 'No items to display'
                 : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, filteredInventory.length)} of ${filteredInventory.length} items`}
@@ -1566,7 +1566,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               <Button
                 variant="outline"
                 size="sm"
-                className="bg-blue-50 text-blue-600 border-blue-200"
+                className="bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange)] border-[var(--sera-orange)]/20"
               >
                 {currentPage}
               </Button>
