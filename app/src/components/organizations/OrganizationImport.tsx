@@ -228,13 +228,13 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
   const distParents = parentOrgs.filter(o => o.org_type_code === 'DIST' || o.org_type_code === 'HQ')
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Progress Steps */}
       <div className="flex items-center gap-2 text-sm">
         {(['upload', 'mapping', 'preview', 'result'] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
-            {i > 0 && <ArrowRight className="w-3 h-3 text-gray-400" />}
-            <span className={step === s ? 'font-semibold text-blue-600' : step === 'importing' && s === 'preview' ? 'font-semibold text-blue-600' : 'text-gray-500'}>
+            {i > 0 && <ArrowRight className="w-3 h-3 text-[var(--sera-muted)]/70" />}
+            <span className={step === s ? 'font-semibold text-[var(--sera-orange)]' : step === 'importing' && s === 'preview' ? 'font-semibold text-[var(--sera-orange)]' : 'text-[var(--sera-muted)]'}>
               {i + 1}. {s.charAt(0).toUpperCase() + s.slice(1)}
             </span>
           </div>
@@ -250,7 +250,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
 
       {/* Step 1: Upload */}
       {step === 'upload' && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5" />
@@ -263,21 +263,21 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
               ref={dropZoneRef}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
               onDrop={handleFileDrop}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer"
+              className="border-2 border-dashed border-[var(--sera-line)] rounded-lg p-8 text-center hover:border-[var(--sera-orange)]/40 transition-colors cursor-pointer"
               onClick={() => fileInputRef.current?.click()}
             >
-              <FileSpreadsheet className="w-10 h-10 mx-auto text-gray-400 mb-3" />
+              <FileSpreadsheet className="w-10 h-10 mx-auto text-[var(--sera-muted)]/70 mb-3" />
               {file ? (
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">{(file.size / 1024).toFixed(1)} KB</p>
+                  <p className="text-sm font-medium text-[var(--sera-ink)]">{file.name}</p>
+                  <p className="text-xs text-[var(--sera-muted)] mt-1">{(file.size / 1024).toFixed(1)} KB</p>
                 </div>
               ) : (
                 <div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-[var(--sera-muted)]">
                     Drag & drop your CSV or Excel file here, or click to browse
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-[var(--sera-muted)]/70 mt-1">
                     Supports .csv, .xlsx, .xls
                   </p>
                 </div>
@@ -307,7 +307,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
 
       {/* Step 2: Column Mapping */}
       {step === 'mapping' && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle>Column Mapping</CardTitle>
             <CardDescription>
@@ -332,7 +332,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
                 {headers.map((h) => (
                   <TableRow key={h}>
                     <TableCell className="font-medium">{h}</TableCell>
-                    <TableCell className="text-gray-500 text-sm max-w-[200px] truncate">
+                    <TableCell className="text-[var(--sera-muted)] text-sm max-w-[200px] truncate">
                       {preview[0]?.data[h] || '—'}
                     </TableCell>
                     <TableCell>
@@ -377,7 +377,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
       {step === 'preview' && (
         <>
           {/* Import Settings */}
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader>
               <CardTitle>Import Settings</CardTitle>
             </CardHeader>
@@ -418,7 +418,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
           </Card>
 
           {/* Data Preview */}
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader>
               <CardTitle>Data Preview</CardTitle>
               <CardDescription>
@@ -440,7 +440,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
                   <TableBody>
                     {preview.map((row) => (
                       <TableRow key={row.rowNum}>
-                        <TableCell className="text-gray-500">{row.rowNum}</TableCell>
+                        <TableCell className="text-[var(--sera-muted)]">{row.rowNum}</TableCell>
                         {Object.entries(mapping)
                           .filter(([, v]) => v)
                           .map(([csvCol, sysField]) => (
@@ -470,11 +470,11 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
 
       {/* Step 3.5: Importing */}
       {step === 'importing' && (
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="py-12 text-center">
-            <Loader2 className="w-10 h-10 mx-auto text-blue-500 animate-spin mb-4" />
+            <Loader2 className="w-10 h-10 mx-auto text-[var(--sera-orange)] animate-spin mb-4" />
             <p className="text-lg font-medium">Importing organizations...</p>
-            <p className="text-sm text-gray-500 mt-1">Processing {rowCount} rows</p>
+            <p className="text-sm text-[var(--sera-muted)] mt-1">Processing {rowCount} rows</p>
             <Progress value={50} className="max-w-xs mx-auto mt-4" />
           </CardContent>
         </Card>
@@ -485,34 +485,34 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold">{importSummary.total}</p>
-                <p className="text-xs text-gray-500">Total Rows</p>
+                <p className="text-xs text-[var(--sera-muted)]">Total Rows</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold text-green-600">{importSummary.inserted}</p>
-                <p className="text-xs text-gray-500">Inserted</p>
+                <p className="text-xs text-[var(--sera-muted)]">Inserted</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardContent className="p-4 text-center">
-                <p className="text-2xl font-bold text-blue-600">{importSummary.updated}</p>
-                <p className="text-xs text-gray-500">Updated</p>
+                <p className="text-2xl font-bold text-[var(--sera-orange)]">{importSummary.updated}</p>
+                <p className="text-xs text-[var(--sera-muted)]">Updated</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold text-yellow-600">{importSummary.skipped}</p>
-                <p className="text-xs text-gray-500">Skipped</p>
+                <p className="text-xs text-[var(--sera-muted)]">Skipped</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardContent className="p-4 text-center">
                 <p className="text-2xl font-bold text-red-600">{importSummary.failed}</p>
-                <p className="text-xs text-gray-500">Failed</p>
+                <p className="text-xs text-[var(--sera-muted)]">Failed</p>
               </CardContent>
             </Card>
           </div>
@@ -529,7 +529,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
 
           {/* Error rows */}
           {importResults.some(r => r.errors.length > 0 || r.warnings.length > 0) && (
-            <Card>
+            <Card className="sera-sc-panel overflow-hidden shadow-none">
               <CardHeader>
                 <CardTitle className="text-sm">Row Details</CardTitle>
               </CardHeader>
@@ -565,7 +565,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
                               <span key={i} className="text-yellow-600 block">{w}</span>
                             ))}
                             {r.isDuplicate && r.errors.length === 0 && (
-                              <span className="text-gray-500">Matched existing organization</span>
+                              <span className="text-[var(--sera-muted)]">Matched existing organization</span>
                             )}
                           </TableCell>
                         </TableRow>

@@ -1278,7 +1278,7 @@ export default function EditOrganizationView({ userProfile, onViewChange }: Edit
                     className="flex items-start gap-4 p-3 bg-[var(--sera-ink)]/[0.02] rounded-lg border border-[var(--sera-line)] hover:bg-[var(--sera-ink)]/[0.04] transition-colors"
                   >
                     <div className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] flex items-center justify-center text-white font-medium text-sm">
                         {user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
                       </div>
                     </div>

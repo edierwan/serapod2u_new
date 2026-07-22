@@ -577,7 +577,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const getOrgTypeColor = (typeCode: string) => {
     const colors = {
       'HQ': 'bg-purple-100 text-purple-700',
-      'MFG': 'bg-blue-100 text-[var(--sera-orange-deep)]',
+      'MFG': 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
       'DIST': 'bg-green-100 text-green-700',
       'WH': 'bg-orange-100 text-orange-700',
       'SHOP': 'bg-pink-100 text-pink-700'
@@ -1101,7 +1101,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         className="w-full h-full object-contain p-1"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--sera-orange)]/10 to-[var(--sera-orange)]/15">
                         <span className="text-[var(--sera-orange)] font-semibold text-sm">
                           {getOrgInitials(org.org_name)}
                         </span>
@@ -1137,7 +1137,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <p className="text-sm text-gray-500 mt-0.5">
                     {org.org_code}
                     {org.branch && (
-                      <span className="text-gray-600 ml-1.5">• {org.branch}</span>
+                      <span className="text-[var(--sera-muted)] ml-1.5">• {org.branch}</span>
                     )}
                     {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
                       (org as any).payment_terms && (
@@ -1502,7 +1502,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       </div>
                     </TableCell>
                     {filterType === 'SHOP' && (
-                      <TableCell className="text-xs text-gray-600">
+                      <TableCell className="text-xs text-[var(--sera-muted)]">
                         {org.branch || '-'}
                       </TableCell>
                     )}
@@ -1597,7 +1597,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   </span>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600">Rows:</span>
+                    <span className="text-xs text-[var(--sera-muted)]">Rows:</span>
                     <Select
                       value={itemsPerPage.toString()}
                       onValueChange={(value) => {
@@ -1652,7 +1652,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           <CardContent className="p-12 text-center">
             <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No organizations found</h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-[var(--sera-muted)] mb-4">
               {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterProgram !== 'all'
                 ? 'Try adjusting your search criteria'
                 : 'Get started by adding your first organization'
@@ -1673,7 +1673,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <div className="p-6 border-b flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold">Manage Distributors</h2>
-                <p className="text-gray-600">
+                <p className="text-[var(--sera-muted)]">
                   {selectedShopForDistributors.org_name} ({selectedShopForDistributors.org_code})
                 </p>
               </div>
@@ -1704,7 +1704,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <div className="p-6 border-b flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold">Manage Shops</h2>
-                <p className="text-gray-600">
+                <p className="text-[var(--sera-muted)]">
                   {selectedDistributorForShops.org_name} ({selectedDistributorForShops.org_code})
                 </p>
               </div>
@@ -1825,7 +1825,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </div>
                     {deleteDependenciesModal.data.blocking_records && deleteDependenciesModal.data.blocking_records.length > 0 && (
                       <div className="space-y-3">
-                        <p className="text-sm text-gray-600">The following will be automatically removed:</p>
+                        <p className="text-sm text-[var(--sera-muted)]">The following will be automatically removed:</p>
                         {deleteDependenciesModal.data.blocking_records
                           .filter(r => r.auto_delete)
                           .map((record, index) => (
@@ -1864,7 +1864,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
+                            <span className="bg-gray-100 text-[var(--sera-muted)] text-xs font-bold px-2 py-1 rounded">
                               Step {index + 1}
                             </span>
                             <span className="font-semibold text-gray-800">{record.display_name}</span>
@@ -1873,7 +1873,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             {record.count} record(s)
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{record.description}</p>
+                        <p className="text-sm text-[var(--sera-muted)] mb-2">{record.description}</p>
                         <div className="flex items-start gap-2 bg-[var(--sera-orange)]/[0.06] rounded p-2">
                           <Info className="h-4 w-4 text-[var(--sera-orange)] mt-0.5 flex-shrink-0" />
                           <p className="text-sm text-[var(--sera-orange-deep)]">{record.action}</p>
@@ -1886,7 +1886,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             <div className="space-y-1">
                               {record.records.slice(0, 5).map((r, i) => (
                                 <div key={i} className="text-xs bg-gray-50 rounded px-2 py-1 flex items-center gap-2">
-                                  <span className="font-mono text-gray-600">{r.reference}</span>
+                                  <span className="font-mono text-[var(--sera-muted)]">{r.reference}</span>
                                   {r.code && <span className="text-gray-400">({r.code})</span>}
                                   {r.status && (
                                     <Badge variant="outline" className="text-xs px-1 py-0">
@@ -1915,7 +1915,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       ?.filter(r => r.auto_delete)
                       .map((record, index) => (
                         <div key={index} className="flex items-center justify-between py-1">
-                          <span className="text-sm text-gray-600">{record.display_name}</span>
+                          <span className="text-sm text-[var(--sera-muted)]">{record.display_name}</span>
                           <Badge variant="secondary">{record.count}</Badge>
                         </div>
                       ))}

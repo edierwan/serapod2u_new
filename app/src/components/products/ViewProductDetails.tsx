@@ -624,14 +624,14 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="sera-sc-page space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => onViewChange?.('products')}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
         </div>
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-6">
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
@@ -646,17 +646,17 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
   if (!product) {
     return (
-      <div className="space-y-6">
+      <div className="sera-sc-page space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => onViewChange?.('products')}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-2xl font-bold">Product Not Found</h1>
         </div>
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardContent className="p-12 text-center">
-            <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">The product you&apos;re looking for could not be found.</p>
+            <AlertCircle className="w-12 h-12 text-[var(--sera-muted)]/70 mx-auto mb-4" />
+            <p className="text-[var(--sera-muted)]">The product you&apos;re looking for could not be found.</p>
             <Button className="mt-4" onClick={() => onViewChange?.('products')}>
               Back to Products
             </Button>
@@ -670,7 +670,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                       product.product_images?.[0]?.image_url
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -678,8 +678,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{product.product_name}</h1>
-            <p className="text-gray-600">Product Code: {product.product_code}</p>
+            <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">{product.product_name}</h1>
+            <p className="text-[var(--sera-muted)]">Product Code: {product.product_code}</p>
           </div>
         </div>
         <div className="flex gap-3">
@@ -704,8 +704,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         <Card className="lg:col-span-2 border-0 shadow-sm overflow-hidden">
           <CardHeader className="pb-2 px-4 pt-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <ImageIcon className="w-4 h-4 text-blue-600" />
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-[var(--sera-ink)]/80">
+                <ImageIcon className="w-4 h-4 text-[var(--sera-orange)]" />
                 Product Image
               </CardTitle>
               <Button
@@ -713,7 +713,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                 size="sm"
                 onClick={() => setShowImageUpload(!showImageUpload)}
                 disabled={uploadingImage}
-                className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                className="h-7 px-2 text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:bg-[var(--sera-orange)]/[0.06]"
               >
                 <Upload className="w-3 h-3 mr-1" />
                 {showImageUpload ? 'Cancel' : 'Change'}
@@ -749,7 +749,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                 {/* Thumbnail Gallery */}
                 {product.product_images && product.product_images.length > 0 && (
                   <div className="mt-3">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">
+                    <p className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide mb-2">
                       {product.product_images.length} image{product.product_images.length > 1 ? 's' : ''}
                     </p>
                     <div className="flex gap-3 overflow-x-auto pb-2">
@@ -765,13 +765,13 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                             }}
                             className={`w-20 h-20 object-cover rounded-lg cursor-pointer transition-all duration-200 ${
                               (selectedImageUrl === img.image_url || (!selectedImageUrl && img.is_primary)) 
-                                ? 'ring-2 ring-blue-500 ring-offset-2' 
-                                : 'border-2 border-gray-200 hover:border-blue-300 opacity-80 hover:opacity-100'
+                                ? 'ring-2 ring-[var(--sera-orange)] ring-offset-2' 
+                                : 'border-2 border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30 opacity-80 hover:opacity-100'
                             }`}
                           />
                           {/* Primary badge */}
                           {img.is_primary && (
-                            <div className="absolute -top-1 -left-1 bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-sm">
+                            <div className="absolute -top-1 -left-1 bg-[var(--sera-orange)] text-white text-[9px] px-1.5 py-0.5 rounded-full shadow-sm">
                               Primary
                             </div>
                           )}
@@ -802,8 +802,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         {/* Product Information - Redesigned */}
         <Card className="lg:col-span-3 border-0 shadow-sm">
           <CardHeader className="pb-3 px-4 pt-4">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <Info className="w-4 h-4 text-blue-600" />
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-[var(--sera-ink)]/80">
+              <Info className="w-4 h-4 text-[var(--sera-orange)]" />
               Product Information
             </CardTitle>
           </CardHeader>
@@ -812,37 +812,37 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             <div className="grid grid-cols-2 gap-x-6 gap-y-4">
               {/* Brand */}
               <div className="space-y-1">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Brand</span>
-                <p className="text-[13px] font-medium text-gray-900">{product.brands?.brand_name || 'No Brand'}</p>
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Brand</span>
+                <p className="text-[13px] font-medium text-[var(--sera-ink)]">{product.brands?.brand_name || 'No Brand'}</p>
               </div>
 
               {/* Category */}
               <div className="space-y-1">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Category</span>
-                <p className="text-[13px] font-medium text-gray-900">{product.product_categories?.category_name || 'No Category'}</p>
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Category</span>
+                <p className="text-[13px] font-medium text-[var(--sera-ink)]">{product.product_categories?.category_name || 'No Category'}</p>
               </div>
 
               {/* Manufacturer */}
               <div className="space-y-1">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Manufacturer</span>
-                <p className="text-[13px] font-medium text-gray-900 leading-tight">
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Manufacturer</span>
+                <p className="text-[13px] font-medium text-[var(--sera-ink)] leading-tight">
                   {product.manufacturers?.org_name || 'Unknown'}
                   {product.manufacturers?.org_code && (
-                    <span className="text-gray-500 font-normal"> ({product.manufacturers.org_code})</span>
+                    <span className="text-[var(--sera-muted)] font-normal"> ({product.manufacturers.org_code})</span>
                   )}
                 </p>
               </div>
 
               {/* Product Type */}
               <div className="space-y-1">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Product Type</span>
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Product Type</span>
                 <div>
                   {product.is_vape ? (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700 ring-1 ring-red-600/20">
                       Vape Product
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 ring-1 ring-blue-600/20">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] ring-1 ring-[var(--sera-orange)]/20">
                       Regular Product
                     </span>
                   )}
@@ -851,12 +851,12 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
 
               {/* Status */}
               <div className="space-y-1">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Status</span>
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Status</span>
                 <div>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
                     product.is_active 
                       ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20' 
-                      : 'bg-gray-100 text-gray-500 ring-1 ring-gray-500/20'
+                      : 'bg-gray-100 text-[var(--sera-muted)] ring-1 ring-gray-500/20'
                   }`}>
                     {product.is_active ? 'Active' : 'Inactive'}
                   </span>
@@ -866,8 +866,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
               {/* Age Restriction */}
               {product.age_restriction && product.age_restriction > 0 && (
                 <div className="space-y-1">
-                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">Age Restriction</span>
-                  <p className="text-[13px] font-medium text-gray-900">{product.age_restriction}+</p>
+                  <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Age Restriction</span>
+                  <p className="text-[13px] font-medium text-[var(--sera-ink)]">{product.age_restriction}+</p>
                 </div>
               )}
             </div>
@@ -875,8 +875,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             {/* Description */}
             {product.product_description && (
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wide">Description</span>
-                <p className="text-[12px] text-gray-600 mt-1 leading-relaxed">{product.product_description}</p>
+                <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Description</span>
+                <p className="text-[12px] text-[var(--sera-muted)] mt-1 leading-relaxed">{product.product_description}</p>
               </div>
             )}
           </CardContent>
@@ -890,7 +890,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Tag className="w-4 h-4 text-blue-600" />
+                  <Tag className="w-4 h-4 text-[var(--sera-orange)]" />
                   Product Variants ({product.product_variants.length})
                 </CardTitle>
                 <CardDescription className="text-xs mt-1">Different variants of this product</CardDescription>
@@ -911,7 +911,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
               {product.product_variants.map((variant: any) => (
                 <div 
                   key={variant.id} 
-                  className="group relative bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all duration-200 overflow-hidden"
+                  className="group relative bg-white rounded-xl border border-gray-100 hover:border-[var(--sera-line)] hover:shadow-md transition-all duration-200 overflow-hidden"
                 >
                   {/* Status Badge & Edit/Delete Buttons */}
                   <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
@@ -919,7 +919,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
                         variant.is_active
                           ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
-                          : 'bg-gray-100 text-gray-500 ring-1 ring-gray-500/20'
+                          : 'bg-gray-100 text-[var(--sera-muted)] ring-1 ring-gray-500/20'
                       }`}
                     >
                       {variant.is_active ? 'Active' : 'Inactive'}
@@ -927,7 +927,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-blue-600 hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-[var(--sera-muted)]/70 hover:text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => handleEditVariant(variant)}
                       title="Edit variant"
                     >
@@ -936,7 +936,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="h-5 w-5 p-0 rounded-full bg-white/80 backdrop-blur-sm text-[var(--sera-muted)]/70 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => handleDeleteVariant(variant.id, variant.variant_name)}
                       disabled={deletingVariant === variant.id}
                     >
@@ -978,41 +978,41 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
                   {/* Content Section */}
                   <div className="p-3 space-y-2">
                     {/* Variant Name */}
-                    <h4 className="font-medium text-[13px] text-gray-900 leading-tight line-clamp-2">
+                    <h4 className="font-medium text-[13px] text-[var(--sera-ink)] leading-tight line-clamp-2">
                       {variant.variant_name}
                     </h4>
 
                     {/* Info Grid */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-gray-400">Code:</span>
-                        <span className="text-gray-700 font-medium">{variant.variant_code}</span>
+                        <span className="text-[var(--sera-muted)]/70">Code:</span>
+                        <span className="text-[var(--sera-ink)]/80 font-medium">{variant.variant_code}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-gray-400">Mfg SKU:</span>
-                        <span className="text-gray-700 font-medium truncate ml-2 max-w-[120px]">{variant.manufacturer_sku || '-'}</span>
+                        <span className="text-[var(--sera-muted)]/70">Mfg SKU:</span>
+                        <span className="text-[var(--sera-ink)]/80 font-medium truncate ml-2 max-w-[120px]">{variant.manufacturer_sku || '-'}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-gray-400">Barcode:</span>
-                        <span className="text-gray-700 font-medium">{variant.barcode || '-'}</span>
+                        <span className="text-[var(--sera-muted)]/70">Barcode:</span>
+                        <span className="text-[var(--sera-ink)]/80 font-medium">{variant.barcode || '-'}</span>
                       </div>
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className="text-gray-400">Product Code:</span>
-                        <span className="text-gray-700 font-medium">{variant.product_code || '-'}</span>
+                        <span className="text-[var(--sera-muted)]/70">Product Code:</span>
+                        <span className="text-[var(--sera-ink)]/80 font-medium">{variant.product_code || '-'}</span>
                       </div>
                     </div>
 
                     {/* Price Section */}
                     <div className="pt-2 border-t border-gray-100 space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Retail Price</span>
-                        <span className="text-[13px] font-semibold text-blue-600">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span>
+                        <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Retail Price</span>
+                        <span className="text-[13px] font-semibold text-[var(--sera-orange)]">RM {variant.suggested_retail_price?.toFixed(2) || '0.00'}</span>
                       </div>
                       {/* Hide BASE COST for independent users (Level 50 Guest users) */}
                       {!isIndependentUser && (
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">Base Cost</span>
-                        <span className="text-[11px] font-medium text-gray-600">RM {variant.base_cost?.toFixed(2) || '0.00'}</span>
+                        <span className="text-[10px] text-[var(--sera-muted)]/70 uppercase tracking-wide">Base Cost</span>
+                        <span className="text-[11px] font-medium text-[var(--sera-muted)]">RM {variant.base_cost?.toFixed(2) || '0.00'}</span>
                       </div>
                       )}
                     </div>
@@ -1028,7 +1028,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <Tag className="w-4 h-4 text-blue-600" />
+                  <Tag className="w-4 h-4 text-[var(--sera-orange)]" />
                   Product Variants
                 </CardTitle>
                 <CardDescription className="text-xs mt-1">No variants yet</CardDescription>
@@ -1045,10 +1045,10 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="text-center py-8 text-gray-500 text-sm">
+            <div className="text-center py-8 text-[var(--sera-muted)] text-sm">
               <Tag className="w-12 h-12 mx-auto mb-2 text-gray-300" />
               <p>No variants have been added yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Click "Add Variant" to create one.</p>
+              <p className="text-xs text-[var(--sera-muted)]/70 mt-1">Click "Add Variant" to create one.</p>
             </div>
           </CardContent>
         </Card>

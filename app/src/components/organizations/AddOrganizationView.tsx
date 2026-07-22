@@ -690,15 +690,15 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading form...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--sera-orange)] mx-auto mb-4"></div>
+          <p className="text-[var(--sera-muted)]">Loading form...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <Button
@@ -710,8 +710,8 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
           Back
         </Button>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Add New Organization</h2>
-          <p className="text-gray-600 text-sm">Create a new organization in your supply chain network</p>
+          <h2 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">Add New Organization</h2>
+          <p className="text-[var(--sera-muted)] text-sm">Create a new organization in your supply chain network</p>
         </div>
       </div>
 
@@ -731,9 +731,19 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
       )}
 
       <Tabs defaultValue="manual" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-          <TabsTrigger value="import">Import CSV/Excel</TabsTrigger>
+        <TabsList className="grid w-full max-w-md grid-cols-2 gap-2 rounded-2xl bg-transparent p-0">
+          <TabsTrigger
+            value="manual"
+            className="rounded-xl border border-[var(--sera-line)] px-3 py-2 text-sm font-medium text-[var(--sera-muted)] transition data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-[var(--sera-orange)] data-[state=active]:text-white"
+          >
+            Manual Entry
+          </TabsTrigger>
+          <TabsTrigger
+            value="import"
+            className="rounded-xl border border-[var(--sera-line)] px-3 py-2 text-sm font-medium text-[var(--sera-muted)] transition data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-[var(--sera-orange)] data-[state=active]:text-white"
+          >
+            Import CSV/Excel
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="import" className="mt-6">
@@ -742,9 +752,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
         <TabsContent value="manual" className="mt-6">
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="sera-sc-page space-y-6">
         {/* Basic Information */}
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
@@ -757,15 +767,15 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
               
               {/* Auto-assigned HQ Badge */}
               {autoAssignedHQ && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm">
-                  <div className="flex items-center gap-2 text-blue-700 font-medium mb-1">
+                <div className="bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg px-4 py-2 text-sm">
+                  <div className="flex items-center gap-2 text-[var(--sera-orange-deep)] font-medium mb-1">
                     <Info className="w-4 h-4" />
                     Headquarters Active
                   </div>
-                  <div className="text-blue-600 font-semibold">
+                  <div className="text-[var(--sera-orange)] font-semibold">
                     {autoAssignedHQ.org_name}
                   </div>
-                  <div className="text-blue-500 text-xs mt-0.5">
+                  <div className="text-[var(--sera-orange)] text-xs mt-0.5">
                     ({autoAssignedHQ.org_code})
                   </div>
                 </div>
@@ -816,12 +826,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                       <Input
                         value={`${autoAssignedHQ.org_name} (${autoAssignedHQ.org_code})`}
                         disabled
-                        className="bg-blue-50 border-blue-200 text-blue-900 font-medium cursor-not-allowed"
+                        className="bg-[var(--sera-orange)]/[0.06] border-[var(--sera-orange)]/20 text-[var(--sera-ink)] font-medium cursor-not-allowed"
                       />
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-semibold">
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-[var(--sera-orange)] text-white text-xs px-2 py-1 rounded-full font-semibold">
                         Auto-assigned
                       </div>
-                      <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                      <p className="text-xs text-[var(--sera-orange)] mt-1 flex items-center gap-1">
                         <Info className="w-3 h-3" />
                         Only one headquarters available - automatically assigned
                       </p>
@@ -888,7 +898,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   />
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     {orgCodeStatus === 'generating' && (
-                      <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                      <Loader2 className="w-4 h-4 text-[var(--sera-orange)] animate-spin" />
                     )}
                     {orgCodeStatus === 'ready' && (
                       <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -917,7 +927,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   </p>
                 )}
                 {orgCodeStatus === 'idle' && (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-[var(--sera-muted)] mt-1">
                     Select an organization type to auto-generate code
                   </p>
                 )}
@@ -930,7 +940,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.org_name}
                   onChange={(e) => handleInputChange('org_name', e.target.value)}
                   placeholder="Enter full organization name"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
             </div>
@@ -943,7 +953,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.registration_no}
                   onChange={(e) => handleInputChange('registration_no', e.target.value)}
                   placeholder="Enter business registration number"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -954,7 +964,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.tax_id}
                   onChange={(e) => handleInputChange('tax_id', e.target.value)}
                   placeholder="Enter tax identification number"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -966,7 +976,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('website', e.target.value)}
                   placeholder="Enter website URL (e.g., https://example.com)"
                   type="url"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
             </div>
@@ -974,7 +984,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         </Card>
 
         {/* Address Information */}
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle>Address Information</CardTitle>
             <CardDescription>Physical location details</CardDescription>
@@ -988,7 +998,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 onChange={(e) => handleInputChange('address', e.target.value)}
                 placeholder="Enter street address (e.g., 123 Main Street)"
                 rows={2}
-                className="placeholder:text-gray-400 placeholder:italic"
+                className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
               />
             </div>
 
@@ -1000,7 +1010,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 onChange={(e) => handleInputChange('address_line2', e.target.value)}
                 placeholder="Enter additional address information (e.g., Suite 100, Building B)"
                 rows={2}
-                className="placeholder:text-gray-400 placeholder:italic"
+                className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
               />
             </div>
 
@@ -1012,7 +1022,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.city}
                   onChange={(e) => handleInputChange('city', e.target.value)}
                   placeholder="Enter city name (e.g., Kuala Lumpur)"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1024,7 +1034,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('postal_code', e.target.value)}
                   placeholder="Enter 5-digit postal code (e.g., 50450)"
                   maxLength={5}
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
             </div>
@@ -1088,7 +1098,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('country_code', e.target.value)}
                   maxLength={2}
                   placeholder="Enter 2-letter country code (e.g., MY)"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1103,7 +1113,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   step="0.000001"
                   min="-90"
                   max="90"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1118,7 +1128,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   step="0.000001"
                   min="-180"
                   max="180"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
             </div>
@@ -1131,7 +1141,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 size="sm"
                 onClick={handleGetLocation}
                 disabled={gettingLocation}
-                className="text-blue-600 hover:text-blue-700"
+                className="text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)]"
               >
                 {gettingLocation ? (
                   <>
@@ -1157,7 +1167,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
         {/* Payment Terms - Only show for manufacturers, distributors, and shops */}
         {(formData.org_type_code === 'MFG' || formData.org_type_code === 'DIST' || formData.org_type_code === 'SHOP') && (
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader>
               <CardTitle>Payment Terms</CardTitle>
               <CardDescription>Default payment terms for orders with this organization as seller</CardDescription>
@@ -1178,7 +1188,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{term.term_name}</span>
                           {term.is_default && (
-                            <span className="text-xs text-blue-600">(Default)</span>
+                            <span className="text-xs text-[var(--sera-orange)]">(Default)</span>
                           )}
                         </div>
                       </SelectItem>
@@ -1186,12 +1196,12 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   </SelectContent>
                 </Select>
                 {formData.payment_term_id && (
-                  <p className="text-sm text-gray-600 mt-2">
+                  <p className="text-sm text-[var(--sera-muted)] mt-2">
                     {paymentTerms.find(t => t.id === formData.payment_term_id)?.description}
                   </p>
                 )}
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs text-blue-800">
+                <div className="mt-3 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg">
+                  <p className="text-xs text-[var(--sera-orange-deep)]">
                     <strong>Note:</strong> This payment term will be automatically applied when creating orders with this organization as the seller.
                     It determines the deposit and balance payment split in the document workflow.
                   </p>
@@ -1203,7 +1213,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
 
         {/* Shop Information - Only show for SHOP type */}
         {formData.org_type_code === 'SHOP' && (
-          <Card>
+          <Card className="sera-sc-panel overflow-hidden shadow-none">
             <CardHeader>
               <CardTitle>Shop Information</CardTitle>
               <CardDescription>Shop-specific details for field survey data</CardDescription>
@@ -1217,7 +1227,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                     value={formData.branch}
                     onChange={(e) => handleInputChange('branch', e.target.value)}
                     placeholder="Branch name or location variant"
-                    className="placeholder:text-gray-400 placeholder:italic"
+                    className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                   />
                 </div>
                 <div>
@@ -1227,9 +1237,9 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                     value={formData.hot_flavour_brands}
                     onChange={(e) => handleInputChange('hot_flavour_brands', e.target.value)}
                     placeholder="Comma-separated brand names"
-                    className="placeholder:text-gray-400 placeholder:italic"
+                    className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                   />
-                  <p className="text-xs text-gray-500 mt-1">e.g. Brand A, Brand B</p>
+                  <p className="text-xs text-[var(--sera-muted)] mt-1">e.g. Brand A, Brand B</p>
                 </div>
               </div>
 
@@ -1285,7 +1295,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         )}
 
         {/* Contact Information */}
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle>Contact Information</CardTitle>
             <CardDescription>Primary contact details</CardDescription>
@@ -1299,7 +1309,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.contact_name}
                   onChange={(e) => handleInputChange('contact_name', e.target.value)}
                   placeholder="Enter contact person's full name (e.g., John Doe)"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1310,7 +1320,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   value={formData.contact_title}
                   onChange={(e) => handleInputChange('contact_title', e.target.value)}
                   placeholder="Enter job title (e.g., General Manager)"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1322,7 +1332,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('contact_phone', e.target.value)}
                   placeholder="Enter phone number (e.g., +60123456789)"
                   type="tel"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
 
@@ -1334,7 +1344,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                   onChange={(e) => handleInputChange('contact_email', e.target.value)}
                   placeholder="Enter email address (e.g., contact@example.com)"
                   type="email"
-                  className="placeholder:text-gray-400 placeholder:italic"
+                  className="placeholder:text-[var(--sera-muted)]/70 placeholder:italic"
                 />
               </div>
             </div>
@@ -1342,7 +1352,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         </Card>
 
         {/* Settings */}
-        <Card>
+        <Card className="sera-sc-panel overflow-hidden shadow-none">
           <CardHeader>
             <CardTitle>Settings</CardTitle>
             <CardDescription>Organization configuration</CardDescription>
@@ -1354,7 +1364,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
                 id="is_active"
                 checked={formData.is_active}
                 onChange={(e) => handleInputChange('is_active', e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                className="h-4 w-4 rounded border-[var(--sera-line)] text-[var(--sera-orange)]"
               />
               <Label htmlFor="is_active" className="mb-0">Organization is active</Label>
             </div>
@@ -1377,22 +1387,22 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
         {formData.org_type_code && (
           <Card className="border-dashed">
             <CardContent className="py-3">
-              <p className="text-xs font-medium text-gray-600 mb-2">Readiness Check</p>
+              <p className="text-xs font-medium text-[var(--sera-muted)] mb-2">Readiness Check</p>
               <div className="flex flex-wrap gap-3 text-xs">
-                <span className={`flex items-center gap-1 ${formData.org_type_code ? 'text-green-600' : 'text-gray-400'}`}>
+                <span className={`flex items-center gap-1 ${formData.org_type_code ? 'text-green-600' : 'text-[var(--sera-muted)]/70'}`}>
                   {formData.org_type_code ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                   Type
                 </span>
-                <span className={`flex items-center gap-1 ${orgCodeStatus === 'ready' ? 'text-green-600' : orgCodeStatus === 'error' ? 'text-red-500' : 'text-gray-400'}`}>
+                <span className={`flex items-center gap-1 ${orgCodeStatus === 'ready' ? 'text-green-600' : orgCodeStatus === 'error' ? 'text-red-500' : 'text-[var(--sera-muted)]/70'}`}>
                   {orgCodeStatus === 'ready' ? <CheckCircle2 className="w-3 h-3" /> : orgCodeStatus === 'generating' ? <Loader2 className="w-3 h-3 animate-spin" /> : <AlertCircle className="w-3 h-3" />}
                   Code
                 </span>
-                <span className={`flex items-center gap-1 ${formData.org_name.trim() ? 'text-green-600' : 'text-gray-400'}`}>
+                <span className={`flex items-center gap-1 ${formData.org_name.trim() ? 'text-green-600' : 'text-[var(--sera-muted)]/70'}`}>
                   {formData.org_name.trim() ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                   Name
                 </span>
                 {isParentRequired(formData.org_type_code as OrgType) && (
-                  <span className={`flex items-center gap-1 ${formData.parent_org_id ? 'text-green-600' : 'text-gray-400'}`}>
+                  <span className={`flex items-center gap-1 ${formData.parent_org_id ? 'text-green-600' : 'text-[var(--sera-muted)]/70'}`}>
                     {formData.parent_org_id ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                     Parent
                   </span>
@@ -1415,7 +1425,7 @@ export default function AddOrganizationView({ userProfile, onViewChange }: AddOr
           <Button
             type="submit"
             disabled={loading || orgCodeStatus === 'generating' || orgCodeStatus === 'error'}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
             title={orgCodeStatus === 'error' ? 'Fix the organization code error first' : undefined}
           >
             <Save className="w-4 h-4 mr-2" />
