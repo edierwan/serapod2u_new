@@ -1,0 +1,138 @@
+/* Serapod Login UX — scoped brand tokens & motion (visual only) */
+.login-ux {
+  --sera-ink: #141210;
+  --sera-ink-soft: #2a2622;
+  --sera-orange: #e85d04;
+  --sera-orange-deep: #c44a00;
+  --sera-mist: #f2f3f5;
+  --sera-line: #d8dbe0;
+  --sera-muted: #6b7280;
+  --sera-paper: #fafbfc;
+  --font-display: var(--font-sera-display), 'Syne', sans-serif;
+  --font-body: var(--font-sera-body), 'Manrope', sans-serif;
+  font-family: var(--font-body);
+  color: var(--sera-ink);
+}
+
+.login-ux .font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes login-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes login-bar {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(1.12); opacity: 0.85; }
+}
+
+@keyframes login-drift {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  50% { transform: translate3d(2%, -1.5%, 0) rotate(1deg); }
+  100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+}
+
+@keyframes login-sheen {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.login-ux .login-rise {
+  animation: login-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-ux .login-rise-delay-1 { animation-delay: 0.08s; }
+.login-ux .login-rise-delay-2 { animation-delay: 0.16s; }
+.login-ux .login-rise-delay-3 { animation-delay: 0.24s; }
+.login-ux .login-rise-delay-4 { animation-delay: 0.32s; }
+
+.login-ux .login-fade {
+  animation: login-fade 1s ease both;
+}
+
+.login-ux .login-accent-bar {
+  transform-origin: left center;
+  animation: login-bar 3.2s ease-in-out infinite;
+}
+
+.login-ux .login-drift {
+  animation: login-drift 18s ease-in-out infinite;
+}
+
+.login-ux .login-sheen {
+  background-size: 200% 200%;
+  animation: login-sheen 10s ease-in-out infinite;
+}
+
+/* ── Product stage — real device hero fills vertical space ───── */
+
+@keyframes login-float-soft {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 0); }
+}
+
+.login-ux .login-stage3d {
+  position: relative;
+  width: min(100%, 380px);
+  height: min(62vh, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-ux .login-stage3d__glow {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 6%;
+  height: 42%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(232, 93, 4, 0.28) 0%, rgba(232, 93, 4, 0.08) 45%, transparent 72%);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.login-ux .login-stage3d__photo {
+  position: relative;
+  z-index: 1;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 28px 40px rgba(0, 0, 0, 0.55));
+  animation: login-float-soft 6.5s ease-in-out infinite;
+}
+
+@media (max-width: 1280px) {
+  .login-ux .login-stage3d {
+    width: min(100%, 300px);
+    height: min(52vh, 440px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-ux .login-rise,
+  .login-ux .login-fade,
+  .login-ux .login-accent-bar,
+  .login-ux .login-drift,
+  .login-ux .login-sheen,
+  .login-ux .login-stage3d__photo {
+    animation: none !important;
+  }
+}

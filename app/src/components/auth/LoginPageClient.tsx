@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { createClient, resetClient, forceCleanStorage } from '@/lib/supabase/client'
 import { normalizePhone } from '@/lib/utils'
@@ -10,13 +9,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-    Eye, EyeOff, Loader2, AlertCircle, ChevronLeft, ChevronRight,
-    Package,
+    Eye, EyeOff, Loader2, AlertCircle,
 } from 'lucide-react'
 import useEmblaCarousel from 'embla-carousel-react'
 import Autoplay from 'embla-carousel-autoplay'
 import HeroMedia from '@/components/storefront/HeroMedia'
-import VectorAuroraBackground from '@/components/storefront/VectorAuroraBackground'
+import LoginProductStage3D from '@/components/auth/LoginProductStage3D'
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -43,6 +41,9 @@ interface LoginPageClientProps {
     loginBanners: HeroBanner[]
 }
 
+const WORDMARK_SRC = '/brand/serapod-wordmark.png'
+const WORDMARK_LIGHT_SRC = '/brand/serapod-wordmark-light.png'
+
 // ── Social Icons ──────────────────────────────────────────────────
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -61,6 +62,29 @@ function FacebookIcon({ className }: { className?: string }) {
         <svg className={className} viewBox="0 0 24 24" fill="#1877F2">
             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
         </svg>
+    )
+}
+
+function BrandWordmark({
+    src,
+    className,
+    priority,
+}: {
+    src: string
+    className?: string
+    priority?: boolean
+}) {
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={src}
+            alt="serapod"
+            className={className}
+            width={360}
+            height={120}
+            decoding="async"
+            {...(priority ? { fetchPriority: 'high' as const } : {})}
+        />
     )
 }
 
@@ -281,7 +305,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
             const supabase = createClient()
             const siteUrl = window.location.origin
 
-            const { data, error } = await supabase.auth.signInWithOAuth({
+            const { error } = await supabase.auth.signInWithOAuth({
                 provider,
                 options: {
                     redirectTo: `${siteUrl}/auth/callback`,
@@ -303,9 +327,9 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
     // ── Render ──────────────────────────────────────────────────────
 
     return (
-        <div className="min-h-screen flex">
-            {/* Left: Hero Banner Section */}
-            <div className="hidden lg:flex lg:w-[55%] xl:w-[60%] relative bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
+        <div className="min-h-screen flex bg-[var(--sera-paper)]">
+            {/* Left: Brand visual plane */}
+            <div className="hidden lg:flex lg:w-[54%] xl:w-[58%] relative overflow-hidden bg-[var(--sera-ink)] text-white">
                 {bannerCount > 0 ? (
                     <>
                         <div ref={emblaRef} className="overflow-hidden absolute inset-0">
@@ -321,34 +345,37 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                             context="login"
                                             priority={index === 0}
                                         />
-                                        {(banner.title || banner.subtitle) && (
-                                            <div className="absolute bottom-12 left-8 right-8 text-white">
-                                                {banner.badge_text && (
-                                                    <span className="inline-block px-3 py-1 text-xs font-medium tracking-wider uppercase bg-blue-500/20 backdrop-blur-sm rounded-full mb-3 border border-blue-400/30">
-                                                        {banner.badge_text}
-                                                    </span>
-                                                )}
-                                                {banner.title && (
-                                                    <h2 className="text-3xl xl:text-4xl font-bold leading-tight mb-2">{banner.title}</h2>
-                                                )}
-                                                {banner.subtitle && (
-                                                    <p className="text-base text-white/80 max-w-md">{banner.subtitle}</p>
-                                                )}
-                                            </div>
-                                        )}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-[var(--sera-ink)] via-[var(--sera-ink)]/45 to-transparent" />
+                                        <div className="absolute inset-x-0 bottom-0 p-10 xl:p-14">
+                                            <BrandWordmark
+                                                src={WORDMARK_LIGHT_SRC}
+                                                className="h-10 xl:h-12 w-auto mb-6 login-rise"
+                                                priority={index === 0}
+                                            />
+                                            {(banner.title || banner.subtitle) && (
+                                                <div className="text-white max-w-lg login-rise login-rise-delay-1">
+                                                    {banner.title && (
+                                                        <h2 className="font-display text-3xl xl:text-4xl font-semibold leading-tight tracking-tight mb-2">
+                                                            {banner.title}
+                                                        </h2>
+                                                    )}
+                                                    {banner.subtitle && (
+                                                        <p className="text-base text-white/75 leading-relaxed">{banner.subtitle}</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        {/* Dots indicator */}
                         {bannerCount > 1 && (
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 z-10">
+                            <div className="absolute bottom-5 left-10 xl:left-14 flex items-center gap-2 z-10">
                                 {loginBanners.map((_, i) => (
                                     <button
                                         key={i}
                                         onClick={() => emblaApi?.scrollTo(i)}
-                                        className={`h-2 rounded-full transition-all ${i === selectedIndex ? 'w-6 bg-white' : 'w-2 bg-white/40 hover:bg-white/60'
-                                            }`}
+                                        className={`h-1.5 rounded-sm transition-all ${i === selectedIndex ? 'w-8 bg-[var(--sera-orange)]' : 'w-3 bg-white/35 hover:bg-white/55'}`}
                                         aria-label={`Go to slide ${i + 1}`}
                                     />
                                 ))}
@@ -356,38 +383,57 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                         )}
                     </>
                 ) : (
-                    /* Default hero — SVG vector aurora when no login banners configured */
                     <div className="relative w-full h-full overflow-hidden">
-                        <VectorAuroraBackground intensity="medium" animate={true} />
+                        {/* Atmospheric field — charcoal + orange, no purple */}
+                        <div
+                            className="absolute inset-0 login-sheen"
+                            style={{
+                                backgroundImage:
+                                    'radial-gradient(ellipse 80% 60% at 20% 80%, rgba(232,93,4,0.28), transparent 55%), radial-gradient(ellipse 70% 50% at 85% 15%, rgba(255,255,255,0.08), transparent 50%), linear-gradient(145deg, #141210 0%, #1f1b17 45%, #2a2018 100%)',
+                            }}
+                        />
+                        <div
+                            className="absolute inset-0 opacity-[0.14] mix-blend-soft-light"
+                            style={{
+                                backgroundImage:
+                                    'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'4\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23n)\'/%3E%3C/svg%3E")',
+                            }}
+                        />
+                        {/* Soft brand atmosphere — kept subtle so products + copy stay primary */}
+                        <div className="absolute inset-x-0 bottom-0 h-1/2 opacity-50 pointer-events-none">
+                            <div
+                                className="absolute inset-0"
+                                style={{
+                                    background:
+                                        'radial-gradient(ellipse 70% 80% at 70% 80%, rgba(232,93,4,0.18), transparent 60%)',
+                                }}
+                            />
+                        </div>
 
-                        {/* Gradient overlay for depth */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 z-[2]" />
+                        <div className="relative z-10 flex h-full flex-col p-10 xl:p-14">
+                            <div className="login-rise shrink-0">
+                                <BrandWordmark
+                                    src={WORDMARK_LIGHT_SRC}
+                                    className="h-11 xl:h-14 w-auto"
+                                    priority
+                                />
+                            </div>
 
-                        {/* Content */}
-                        <div className="relative flex items-center justify-center w-full h-full p-12 z-10">
-                            <div className="text-center text-white max-w-lg">
-                                {/* Logo badge */}
-                                <div className="h-16 w-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-lg shadow-blue-500/10">
-                                    <Package className="h-8 w-8 text-white" />
-                                </div>
-                                <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-white via-blue-200 to-white bg-clip-text text-transparent">Serapod2U</h2>
-                                <p className="text-lg text-white/70 leading-relaxed">
-                                    Your one-stop platform for premium products, seamless supply chain management, and exceptional shopping experience.
-                                </p>
-                                <div className="mt-8 flex items-center justify-center gap-8">
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>500+</div>
-                                        <div className="text-sm text-white/60">Products</div>
+                            {/* Tall product fills vertical void; copy sits beside it */}
+                            <div className="flex-1 flex items-center min-h-0 py-4">
+                                <div className="w-full flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8 xl:gap-6">
+                                    <div className="max-w-[340px] xl:max-w-md shrink-0">
+                                        <div className="h-1.5 w-16 rounded-sm bg-[var(--sera-orange)] mb-7 login-accent-bar login-rise login-rise-delay-1" />
+                                        <h2 className="font-display text-5xl xl:text-6xl font-semibold tracking-tight leading-[1.05] login-rise login-rise-delay-2">
+                                            Products.<br />Campaigns.<br />One flow.
+                                        </h2>
+                                        <p className="mt-6 text-lg xl:text-xl text-white/75 leading-relaxed login-rise login-rise-delay-3">
+                                            From flavour drops to field teams — Serapod keeps every launch moving with the brand.
+                                        </p>
                                     </div>
-                                    <div className="w-px h-10 bg-white/20" />
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>24/7</div>
-                                        <div className="text-sm text-white/60">Support</div>
-                                    </div>
-                                    <div className="w-px h-10 bg-white/20" />
-                                    <div className="text-center">
-                                        <div className="text-2xl font-bold" style={{ textShadow: '0 0 20px rgba(99,102,241,0.3)' }}>100%</div>
-                                        <div className="text-sm text-white/60">Authentic</div>
+
+                                    <div className="login-rise login-rise-delay-2 flex justify-center xl:justify-end flex-1 min-h-0">
+                                        <LoginProductStage3D />
                                     </div>
                                 </div>
                             </div>
@@ -396,54 +442,61 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                 )}
             </div>
 
-            {/* Right: Login Form Section */}
-            <div className="flex-1 flex flex-col min-h-screen bg-white">
-                {/* Top bar */}
-                <div className="flex items-center justify-between px-6 sm:px-8 py-4 border-b border-gray-100">
-                    <Link href="/store" className="flex items-center gap-2">
-                        {branding.logoUrl ? (
-                            <Image src={branding.logoUrl} alt="Logo" width={32} height={32} className="rounded-lg" />
-                        ) : (
-                            <div className="h-8 w-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-sm">S</span>
-                            </div>
-                        )}
-                        <span className="text-lg font-semibold text-gray-900">Serapod2U</span>
+            {/* Right: Sign-in interaction */}
+            <div className="flex-1 flex flex-col min-h-screen bg-[var(--sera-paper)] relative">
+                <div
+                    className="pointer-events-none absolute inset-0 opacity-[0.35]"
+                    style={{
+                        backgroundImage:
+                            'linear-gradient(to right, transparent 0%, transparent 96%, rgba(20,18,16,0.04) 100%), radial-gradient(ellipse 50% 40% at 100% 0%, rgba(232,93,4,0.06), transparent 60%)',
+                    }}
+                />
+
+                <div className="relative flex items-center justify-between px-6 sm:px-10 py-5">
+                    <Link href="/store" className="flex items-center gap-3 group">
+                        <BrandWordmark
+                            src={WORDMARK_SRC}
+                            className="h-8 sm:h-9 w-auto max-w-[160px] object-contain object-left"
+                            priority
+                        />
                     </Link>
                     <Link
                         href="/store"
-                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                        className="text-sm text-[var(--sera-muted)] hover:text-[var(--sera-ink)] transition-colors"
                     >
                         Need help?
                     </Link>
                 </div>
 
-                {/* Login Form */}
-                <div className="flex-1 flex items-center justify-center px-6 sm:px-8 py-8">
-                    <div className="w-full max-w-[400px] space-y-6">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">
-                                {mode === 'business' ? 'Business Portal Login' : 'Log In'}
+                <div className="relative flex-1 flex items-center justify-center px-6 sm:px-10 py-8">
+                    <div className="w-full max-w-[420px]">
+                        {/* Mobile brand mark when left panel is hidden */}
+                        <div className="lg:hidden mb-10 login-rise">
+                            <BrandWordmark src={WORDMARK_SRC} className="h-10 w-auto" priority />
+                            <div className="mt-4 h-1 w-12 rounded-sm bg-[var(--sera-orange)] login-accent-bar" />
+                        </div>
+
+                        <div className="login-rise login-rise-delay-1">
+                            <h1 className="font-display text-3xl sm:text-[2.1rem] font-semibold tracking-tight text-[var(--sera-ink)]">
+                                {mode === 'business' ? 'Business Portal' : 'Welcome back'}
                             </h1>
-                            <p className="mt-1 text-sm text-gray-500">
+                            <p className="mt-2 text-sm sm:text-[15px] text-[var(--sera-muted)] leading-relaxed">
                                 {mode === 'business'
                                     ? 'Sign in to access your Serapod business dashboard.'
-                                    : 'Welcome back! Sign in to continue.'}
+                                    : (branding.loginSubtitle || 'Sign in to continue to your workspace.')}
                             </p>
                         </div>
 
-                        {/* Error Message */}
                         {error && (
-                            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                            <div className="mt-6 bg-red-50 border border-red-200/80 rounded-lg p-3.5 flex items-start gap-2.5 login-rise login-rise-delay-2">
                                 <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                                <p className="text-sm text-red-700">{error}</p>
+                                <p className="text-sm text-red-700 leading-snug">{error}</p>
                             </div>
                         )}
 
-                        {/* Login Form */}
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                        <form onSubmit={handleSubmit} className="mt-8 space-y-5 login-rise login-rise-delay-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="email" className="text-[13px] font-medium text-[var(--sera-ink-soft)]">
                                     Phone number / Email
                                 </Label>
                                 <Input
@@ -454,12 +507,12 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
                                     disabled={isLoading || !!socialLoading}
-                                    className="h-11 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                                    className="h-12 rounded-lg border-[var(--sera-line)] bg-white px-3.5 text-[var(--sera-ink)] placeholder:text-gray-400 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:border-[var(--sera-orange)]"
                                 />
                             </div>
 
-                            <div className="space-y-1.5">
-                                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                            <div className="space-y-2">
+                                <Label htmlFor="password" className="text-[13px] font-medium text-[var(--sera-ink-soft)]">
                                     Password
                                 </Label>
                                 <div className="relative">
@@ -471,11 +524,11 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isLoading || !!socialLoading}
-                                        className="h-11 pr-10 rounded-xl border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                                        className="h-12 pr-11 rounded-lg border-[var(--sera-line)] bg-white px-3.5 text-[var(--sera-ink)] placeholder:text-gray-400 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:border-[var(--sera-orange)]"
                                     />
                                     <button
                                         type="button"
-                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-[var(--sera-ink)] transition-colors"
                                         onClick={() => setShowPassword(!showPassword)}
                                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                                     >
@@ -486,7 +539,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
 
                             <Button
                                 type="submit"
-                                className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg shadow-blue-600/25 transition-all"
+                                className="w-full h-12 rounded-lg bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white font-semibold tracking-wide shadow-none transition-colors"
                                 disabled={isLoading || !!socialLoading}
                             >
                                 {isLoading ? (
@@ -500,30 +553,31 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                             </Button>
                         </form>
 
-                        <div className="text-left">
-                            <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                        <div className="mt-4 login-rise login-rise-delay-3">
+                            <Link
+                                href="/forgot-password"
+                                className="text-sm font-medium text-[var(--sera-ink-soft)] underline-offset-4 hover:text-[var(--sera-orange)] hover:underline transition-colors"
+                            >
                                 Forgot Password
                             </Link>
                         </div>
 
-                        {/* Divider */}
-                        <div className="relative">
+                        <div className="relative my-8 login-rise login-rise-delay-3">
                             <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-gray-200" />
+                                <div className="w-full border-t border-[var(--sera-line)]" />
                             </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-white px-3 text-gray-400 font-medium">OR</span>
+                            <div className="relative flex justify-center text-[11px] uppercase tracking-[0.18em]">
+                                <span className="bg-[var(--sera-paper)] px-3 text-[var(--sera-muted)] font-medium">OR</span>
                             </div>
                         </div>
 
-                        {/* Social Login Buttons */}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-3 login-rise login-rise-delay-4">
                             <button
                                 type="button"
                                 onClick={() => handleSocialLogin('facebook')}
                                 disabled={isLoading || !!socialLoading}
                                 aria-label="Continue with Facebook"
-                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-lg border border-[var(--sera-line)] bg-white hover:border-[var(--sera-ink)]/30 text-sm font-medium text-[var(--sera-ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {socialLoading === 'facebook' ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -538,7 +592,7 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                                 onClick={() => handleSocialLogin('google')}
                                 disabled={isLoading || !!socialLoading}
                                 aria-label="Continue with Google"
-                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center justify-center gap-2 h-11 px-4 rounded-lg border border-[var(--sera-line)] bg-white hover:border-[var(--sera-ink)]/30 text-sm font-medium text-[var(--sera-ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {socialLoading === 'google' ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -549,19 +603,17 @@ export default function LoginPageClient({ branding, loginBanners }: LoginPageCli
                             </button>
                         </div>
 
-                        {/* Sign Up Link */}
-                        <div className="text-center text-sm text-gray-500 pt-2">
+                        <div className="mt-8 text-center text-sm text-[var(--sera-muted)] login-rise login-rise-delay-4">
                             New to Serapod2U?{' '}
-                            <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-semibold">
+                            <Link href="/signup" className="font-semibold text-[var(--sera-ink)] hover:text-[var(--sera-orange)] transition-colors">
                                 Sign Up
                             </Link>
                         </div>
                     </div>
                 </div>
 
-                {/* Footer */}
-                <div className="px-6 sm:px-8 py-4 border-t border-gray-100 text-center">
-                    <p className="text-xs text-gray-400">{branding.copyrightText}</p>
+                <div className="relative px-6 sm:px-10 py-4 text-center">
+                    <p className="text-[11px] tracking-wide text-[var(--sera-muted)]">{branding.copyrightText}</p>
                 </div>
             </div>
         </div>
