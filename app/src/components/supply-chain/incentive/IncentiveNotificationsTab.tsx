@@ -348,7 +348,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Bell className="w-5 h-5 text-indigo-500" /> Notification Center
+            <Bell className="w-5 h-5 text-[var(--sera-orange)]" /> Notification Center
           </h2>
           <p className="text-sm text-muted-foreground">Manage blast notifications for incentive campaigns</p>
         </div>
@@ -481,7 +481,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
               const ch = CHANNEL_CONFIG[tpl.channel] || CHANNEL_CONFIG.whatsapp
               const ChannelIcon = ch.icon
               return (
-                <Card key={tpl.id} className="sera-sc-panel overflow-hidden hover:shadow-lg transition-shadow">
+                <Card key={tpl.id} className="sera-sc-panel overflow-hidden transition-colors hover:border-[var(--sera-orange)]/30">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -523,7 +523,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
             <Card className="sera-sc-panel overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <History className="w-4 h-4 text-indigo-500" /> Recent Activity
+                  <History className="w-4 h-4 text-[var(--sera-orange)]" /> Recent Activity
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -559,7 +559,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
             <Card className="sera-sc-panel overflow-hidden">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-indigo-500" /> Channel Performance
+                  <BarChart3 className="w-4 h-4 text-[var(--sera-orange)]" /> Channel Performance
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -635,7 +635,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-indigo-500" /> New Notification Blast
+              <Zap className="w-5 h-5 text-[var(--sera-orange)]" /> New Notification Blast
             </DialogTitle>
             <DialogDescription>Step-by-step notification blast workflow</DialogDescription>
           </DialogHeader>
@@ -680,12 +680,12 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
             {/* Step 1: Load Recipients */}
             {wizardStep === 1 && (
               <div className="text-center space-y-4 py-6">
-                <Users className="w-12 h-12 mx-auto text-indigo-500" />
+                <Users className="w-12 h-12 mx-auto text-[var(--sera-orange)]" />
                 <div>
                   <p className="font-medium text-foreground">Loading Recipients</p>
                   <p className="text-sm text-muted-foreground">Fetching eligible distributors for this campaign...</p>
                 </div>
-                <Loader2 className="w-6 h-6 mx-auto animate-spin text-indigo-500" />
+                <Loader2 className="w-6 h-6 mx-auto animate-spin text-[var(--sera-orange)]" />
               </div>
             )}
 
@@ -695,7 +695,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
                 <div className="grid grid-cols-3 gap-3">
                   <Card className="border-0 shadow-sm">
                     <CardContent className="p-4 text-center">
-                      <Users className="w-6 h-6 mx-auto mb-1 text-indigo-500" />
+                      <Users className="w-6 h-6 mx-auto mb-1 text-[var(--sera-orange)]" />
                       <p className="text-2xl font-bold">{recipientCount}</p>
                       <p className="text-xs text-muted-foreground">Total</p>
                     </CardContent>
@@ -789,7 +789,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
                           : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                       }`}
                     >
-                      <Zap className={`w-5 h-5 mx-auto mb-1 ${scheduleMode === 'now' ? 'text-indigo-600' : 'text-muted-foreground'}`} />
+                      <Zap className={`w-5 h-5 mx-auto mb-1 ${scheduleMode === 'now' ? 'text-[var(--sera-orange)]' : 'text-muted-foreground'}`} />
                       <p className="text-sm font-medium">Send Now</p>
                     </button>
                     <button
@@ -800,7 +800,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
                           : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                       }`}
                     >
-                      <Clock className={`w-5 h-5 mx-auto mb-1 ${scheduleMode === 'later' ? 'text-indigo-600' : 'text-muted-foreground'}`} />
+                      <Clock className={`w-5 h-5 mx-auto mb-1 ${scheduleMode === 'later' ? 'text-[var(--sera-orange)]' : 'text-muted-foreground'}`} />
                       <p className="text-sm font-medium">Schedule</p>
                     </button>
                   </div>
@@ -840,7 +840,7 @@ export default function IncentiveNotificationsTab({ campaigns, loading }: Incent
             )}
             {wizardStep === 5 && (
               <Button
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg"
+                className="bg-[var(--sera-ink)] hover:bg-[var(--sera-ink-soft)] text-white"
                 onClick={executeBroadcast}
                 disabled={isSending || (scheduleMode === 'later' && !scheduleDate)}
               >

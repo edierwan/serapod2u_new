@@ -43,6 +43,7 @@ import {
 import { buildReturnReportPdf, type ReturnReportPdf } from '@/lib/returns/report-pdf'
 import { ReturnSourceCombobox } from './ReturnSourceCombobox'
 import { ReturnReportEmailDialog } from './ReturnReportEmailDialog'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface UserProfile { id: string }
 
@@ -363,17 +364,14 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
     )
 
     return (
-        <div className="w-full space-y-4">
-            {/* Header */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                    <h1 className="text-xl font-semibold text-foreground">Return Product Reports</h1>
-                    <p className="text-sm text-muted-foreground">
-                        {mode === 'monthly' ? 'Monthly' : 'Quarterly'} overview of return product performance and trends.
-                        <span className="ml-2 font-medium text-foreground">Period: {periodLabel(period)}</span>
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+        <div className="sera-sc-page space-y-4">
+            <SupplyChainPageHeader
+                eyebrow="Quality · Returns"
+                title="Return Product Reports"
+                description={`${mode === 'monthly' ? 'Monthly' : 'Quarterly'} overview of return product performance. Period: ${periodLabel(period)}`}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
                     <Tabs value={mode} onValueChange={(v) => { setMode(v as ReportMode); setCmpOverride(null) }}>
                         <TabsList className="h-9">
                             <TabsTrigger value="monthly" className="text-xs">Monthly</TabsTrigger>
@@ -422,10 +420,9 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                             <DropdownMenuItem onClick={() => handlePdf('download')} className="gap-2"><Download className="h-4 w-4" /> Download PDF</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button className="h-9 gap-1.5" onClick={() => setEmailOpen(true)} disabled={busy}>
+                    <Button className="h-9 gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={() => setEmailOpen(true)} disabled={busy}>
                         <Mail className="h-4 w-4" /> Email Report
                     </Button>
-                </div>
             </div>
 
             {/* Filters */}

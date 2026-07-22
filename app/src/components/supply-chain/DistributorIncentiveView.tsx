@@ -541,7 +541,7 @@ function LeaderboardRow({ dist, index }: { dist: DistributorPerformance; index: 
         </div>
       </div>
       <div className="text-right min-w-[80px]">
-        <p className="text-sm font-semibold text-indigo-600">RM{dist.earnedRewards.toLocaleString()}</p>
+        <p className="text-sm font-semibold text-[var(--sera-orange)]">RM{dist.earnedRewards.toLocaleString()}</p>
         <p className="text-[10px] text-muted-foreground">earned</p>
       </div>
     </div>
@@ -823,7 +823,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
             <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-indigo-500" /> Distributor Order Trend
+                  <Activity className="w-5 h-5 text-[var(--sera-orange)]" /> Distributor Order Trend
                 </CardTitle>
                 <CardDescription>Monthly revenue, active distributors & order count (last 12 months)</CardDescription>
               </CardHeader>
@@ -912,7 +912,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
             <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Target className="w-5 h-5 text-indigo-500" /> Active Campaign Status
+                  <Target className="w-5 h-5 text-[var(--sera-orange)]" /> Active Campaign Status
                 </CardTitle>
                 <CardDescription>Real-time progress of running campaigns</CardDescription>
               </CardHeader>
@@ -985,7 +985,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                   { type: 'tiered', icon: Layers, desc: 'Multi-tier bonus structure: Bronze → Silver → Gold → Platinum rewards' },
                 ].map(ct => (
                   <div key={ct.type} className="p-4 bg-muted/40 rounded-xl border border-border/50 hover:border-[var(--sera-orange)]/30 transition-colors">
-                    <ct.icon className="w-8 h-8 text-indigo-500 mb-2" />
+                    <ct.icon className="w-8 h-8 text-[var(--sera-orange)] mb-2" />
                     <p className="font-semibold text-sm text-foreground mb-1">{CAMPAIGN_TYPE_LABELS[ct.type]}</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">{ct.desc}</p>
                   </div>
@@ -1027,7 +1027,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                 'from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 border-orange-200 dark:border-orange-800',
               ]
               return (
-                <Card key={dist.id} className={`border shadow-lg bg-gradient-to-br ${gradients[index]}`}>
+                <Card key={dist.id} className={`sera-sc-panel overflow-hidden border ${gradients[index]}`}>
                   <CardContent className="p-6 text-center">
                     <div className="text-4xl mb-2">{['🥇', '🥈', '🥉'][index]}</div>
                     <h3 className="font-bold text-lg text-foreground">{dist.name}</h3>
@@ -1049,7 +1049,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                         <p className="text-[10px] text-muted-foreground">Growth</p>
                       </div>
                       <div className="p-2 bg-white/50 dark:bg-white/5 rounded-lg">
-                        <p className="text-xl font-bold text-indigo-600">RM{(dist.earnedRewards / 1000).toFixed(1)}K</p>
+                        <p className="text-xl font-bold text-[var(--sera-orange)]">RM{(dist.earnedRewards / 1000).toFixed(1)}K</p>
                         <p className="text-[10px] text-muted-foreground">Rewards</p>
                       </div>
                     </div>
@@ -1150,7 +1150,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               }
               const style = severityStyles[insight.severity]
               return (
-                <Card key={index} className={`border shadow-lg ${style.bg} ${style.border}`}>
+                <Card key={index} className={`sera-sc-panel overflow-hidden border ${style.bg} ${style.border}`}>
                   <CardContent className="p-5">
                     <div className="flex items-start gap-3 mb-3">
                       <div className="p-2 bg-white/60 dark:bg-white/5 rounded-lg">
@@ -1175,7 +1175,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           <Card className="sera-sc-panel overflow-hidden">
             <CardHeader>
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-indigo-500" /> Program Health Score
+                <ShieldCheck className="w-5 h-5 text-[var(--sera-orange)]" /> Program Health Score
               </CardTitle>
               <CardDescription>Composite health metric of your incentive program</CardDescription>
             </CardHeader>
@@ -1229,7 +1229,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {editingCampaign ? <Edit className="w-5 h-5 text-indigo-500" /> : <Plus className="w-5 h-5 text-indigo-500" />}
+              {editingCampaign ? <Edit className="w-5 h-5 text-[var(--sera-orange)]" /> : <Plus className="w-5 h-5 text-[var(--sera-orange)]" />}
               {editingCampaign ? 'Edit Campaign' : 'Create New Campaign'}
             </DialogTitle>
             <DialogDescription>

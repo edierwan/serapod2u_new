@@ -48,6 +48,8 @@ import {
     type ReturnExcelContext, type ReturnExcelImportResult,
 } from '@/lib/returns/excel'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { SC_PANEL_CLASS } from '@/modules/supply-chain/components/supplyChainChrome'
 
 interface UserProfile { id: string; full_name?: string | null }
 
@@ -55,7 +57,7 @@ const STATUS_BADGE: Record<string, string> = {
     return_draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
     return_submitted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
     return_received: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-    return_processing: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    return_processing: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
     return_completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     return_cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
 }
@@ -147,16 +149,17 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
     }
 
     return (
-        <div className="w-full space-y-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-xl font-semibold text-foreground">Return Product</h1>
-                    <p className="text-sm text-muted-foreground">Create and manage product return cases from shops to warehouse.</p>
-                </div>
-                <Button onClick={openNew} className="gap-1.5" disabled={metaLoading || !!metaError}>
-                    {metaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} New Return
-                </Button>
-            </div>
+        <div className="sera-sc-page space-y-4">
+            <SupplyChainPageHeader
+                eyebrow="Quality · Returns"
+                title="Return Product"
+                description="Create and manage product return cases from shops to warehouse."
+                actions={
+                    <Button onClick={openNew} className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" disabled={metaLoading || !!metaError}>
+                        {metaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} New Return
+                    </Button>
+                }
+            />
 
             {metaError && (
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -192,9 +195,9 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                 </Button>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <div className={`${SC_PANEL_CLASS} overflow-x-auto`}>
+                <table className="sera-sc-table w-full text-sm">
+                    <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-3 py-2 font-medium">Return No</th>
                             <th className="px-3 py-2 font-medium">Shop</th>
@@ -1119,12 +1122,12 @@ function ReturnCaseEditor({
             />
 
             {/* Stepper */}
-            <div className="rounded-lg border border-border bg-card p-4">
+            <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <ReturnStatusStepper status={status} />
             </div>
 
             {/* Return Information */}
-            <section className="rounded-lg border border-border bg-card p-4">
+            <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <PackageOpen className="h-4 w-4 text-muted-foreground" />
                     <h2 className="text-sm font-semibold text-foreground">Return Information</h2>
@@ -1279,14 +1282,14 @@ function ReturnCaseEditor({
             />
 
             {/* Additional Notes */}
-            <section className="rounded-lg border border-border bg-card p-4">
+            <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <h2 className="mb-2 text-sm font-semibold text-foreground">Additional Notes</h2>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={readOnly} rows={3} placeholder="General return notes…" />
             </section>
 
             {/* Warehouse Processing */}
             {showsWarehouseProcessing(status) && (
-                <section className="rounded-lg border border-border bg-card p-4">
+                <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                     <h2 className="mb-3 text-sm font-semibold text-foreground">Warehouse Processing</h2>
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="Received Date"><Input type="date" value={wh.received_date} onChange={(e) => setWh({ ...wh, received_date: e.target.value })} disabled={readOnly || !meta.isManager} /></Field>
@@ -1304,7 +1307,7 @@ function ReturnCaseEditor({
 
             {/* Timeline */}
             {rc?.status_history && rc.status_history.length > 0 && (
-                <section className="rounded-lg border border-border bg-card p-4">
+                <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                     <h2 className="mb-3 text-sm font-semibold text-foreground">Return Case Timeline</h2>
                     <ol className="space-y-3">
                         {rc.status_history.map((h) => (
@@ -1351,14 +1354,14 @@ function ReadOnlyCard({ label, value, hint }: { label: string; value: string; hi
 function PackingReference() {
     return (
         <div className="grid gap-3 lg:grid-cols-3">
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Package className="h-5 w-5 text-muted-foreground" /></div>
                 <div>
                     <div className="text-sm font-semibold text-foreground">Enter Quantity in Pcs or Box</div>
                     <div className="text-xs text-muted-foreground">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
                 </div>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Boxes className="h-5 w-5 text-muted-foreground" /></div>
                 <div>
                     <div className="text-sm font-semibold text-foreground">Box (4 Pcs)</div>
@@ -1448,7 +1451,7 @@ function ReturnWorksheet({
     }, [rows, search, viewMode, hideEmpty, lineTab])
 
     return (
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
             <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 className="text-sm font-semibold text-foreground">Return Items (Worksheet)</h2>
