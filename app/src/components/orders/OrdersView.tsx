@@ -1060,12 +1060,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   const getStatusColor = (status: OrderStatus) => {
     const colors = {
-      draft: 'bg-gray-100 text-gray-800',
-      submitted: 'bg-blue-100 text-blue-800',
-      approved: 'bg-green-100 text-green-800',
-      closed: 'bg-purple-100 text-purple-800',
+      draft: 'sera-sc-badge sera-sc-badge--ink',
+      submitted: 'sera-sc-badge sera-sc-badge--info',
+      approved: 'sera-sc-badge sera-sc-badge--success',
+      closed: 'sera-sc-badge sera-sc-badge--ink',
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'sera-sc-badge sera-sc-badge--ink'
   }
 
   const getStatusIcon = (status: OrderStatus) => {
@@ -1166,7 +1166,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
   }
 
   return (
-    <div className="sera-sc-page text-sm">
+    <div className="sera-sc-page sera-page-enter text-sm">
       {/* Header */}
       <SupplyChainPageHeader
         title="Orders"
@@ -1349,14 +1349,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           </Card>
         ) : viewMode === 'list' ? (
           /* LIST VIEW - Table Format */
-          <Card>
-            <CardContent className="p-0">
+          <div className="sera-sc-panel overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
+                <table className="sera-sc-table">
+                  <thead>
                     <tr>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('created_at')}
                       >
                         <div className="flex items-center gap-1">
@@ -1365,7 +1364,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('order_no')}
                       >
                         <div className="flex items-center gap-1">
@@ -1374,7 +1373,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('seller')}
                       >
                         <div className="flex items-center gap-1">
@@ -1383,7 +1382,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-right"
                         onClick={() => handleSort('total')}
                       >
                         <div className="flex items-center justify-end gap-1">
@@ -1392,7 +1391,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-right"
                         onClick={() => handleSort('balance')}
                       >
                         <div className="flex items-center justify-end gap-1">
@@ -1401,7 +1400,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-center"
                         onClick={() => handleSort('status')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -1409,9 +1408,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Due</th>
+                      <th className="text-center">Due</th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('created_by')}
                       >
                         <div className="flex items-center gap-1">
@@ -1419,10 +1418,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody>
                     {paginatedOrders.map((order) => {
                       const totalAmount = calculateOrderTotal(order)
                       const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
@@ -1430,9 +1429,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       const balance = Math.max(0, totalAmount - paidAmount)
 
                       return (
-                        <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                          {/* Date Created */}
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-900">
+                        <tr key={order.id}>
+                          <td className="whitespace-nowrap">
                             {new Date(order.created_at).toLocaleDateString('en-MY', {
                               day: '2-digit',
                               month: '2-digit',
@@ -1440,10 +1438,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             })}
                           </td>
 
-                          {/* Order Number */}
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="whitespace-nowrap">
                             <button
-                              className="text-xs font-medium text-gray-900 hover:underline"
+                              className="font-medium text-[var(--sera-ink)] hover:text-[var(--sera-orange)] hover:underline"
                               onClick={() => handleViewOrderDetails(order.id)}
                               title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                             >
@@ -1451,25 +1448,21 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             </button>
                           </td>
 
-                          {/* Seller Name */}
-                          <td className="px-4 py-3 text-xs text-gray-900">
+                          <td>
                             <div className="max-w-[200px] truncate" title={getDisplayOrgName(order)}>
                               {getDisplayOrgName(order)}
                             </div>
                           </td>
 
-                          {/* Total Amount */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-xs font-medium text-gray-900">
+                          <td className="text-right font-medium">
                             {formatCurrency(totalAmount)}
                           </td>
 
-                          {/* Balance */}
-                          <td className={`px-4 py-3 whitespace-nowrap text-right text-xs font-medium ${balance > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                          <td className={`text-right font-medium ${balance > 0 ? 'text-red-600' : ''}`}>
                             {formatCurrency(balance)}
                           </td>
 
-                          {/* Status */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <td className="text-center">
                             {order.status === 'approved' && (order as any).po_acknowledged ? (
                               (() => {
                                 const totalAmount = calculateOrderTotal(order)
@@ -1477,45 +1470,40 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                                 if (paidAmount >= totalAmount && totalAmount > 0) {
                                   return (
-                                    <Badge className="bg-green-100 text-green-800">
-                                      <span className="text-[11px] capitalize">Paid</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--success">
+                                      <span className="capitalize">Paid</span>
                                     </Badge>
                                   )
                                 } else if (paidAmount > 0) {
                                   return (
-                                    <Badge className="bg-orange-100 text-orange-800">
-                                      <span className="text-[11px] capitalize">Partial</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--orange">
+                                      <span className="capitalize">Partial</span>
                                     </Badge>
                                   )
                                 } else {
                                   return (
-                                    <Badge className="bg-red-100 text-red-800">
-                                      <span className="text-[11px] capitalize">Unpaid</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700">
+                                      <span className="capitalize">Unpaid</span>
                                     </Badge>
                                   )
                                 }
                               })()
                             ) : (
                               <Badge className={getStatusColor(order.status)}>
-                                <span className="text-[11px] capitalize">{order.status}</span>
+                                <span className="capitalize">{order.status}</span>
                               </Badge>
                             )}
                           </td>
 
-                          {/* Due Date (empty for now) */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs text-gray-900">
-                            -
-                          </td>
+                          <td className="text-center">-</td>
 
-                          {/* Created By */}
-                          <td className="px-4 py-3 text-xs text-gray-900">
+                          <td>
                             <div className="max-w-[120px] truncate" title={order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}>
                               {order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}
                             </div>
                           </td>
 
-                          {/* Actions */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <td className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               {canEditOrder(order) && (
                                 <Button
@@ -1532,7 +1520,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 gap-1 text-xs px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                  className="h-7 gap-1 text-xs px-2 border-[var(--sera-line)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/8"
                                   onClick={() => handleCopyOrder(order.id, order.order_no)}
                                   title="Copy Order"
                                 >
@@ -1543,7 +1531,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
+                                  className="h-7 gap-1 text-xs px-2 sera-sc-btn-primary"
                                   onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                                   title="Approve Order"
                                 >
@@ -1592,9 +1580,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
               {/* Pagination Controls */}
               {sortedOrders.length > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+                <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--sera-line)] bg-[var(--sera-mist)]/40">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-700">
+                    <span className="text-xs text-[var(--sera-muted)]">
                       Showing {startIndex + 1} to {Math.min(endIndex, sortedOrders.length)} of {sortedOrders.length} orders
                     </span>
                   </div>
@@ -1606,7 +1594,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         setItemsPerPage(Number(e.target.value))
                         setCurrentPage(1)
                       }}
-                      className="px-2 py-1 text-xs border border-gray-300 rounded-md"
+                      className="px-2 py-1 text-xs border border-[var(--sera-line)] rounded-md bg-white"
                     >
                       <option value={10}>10 per page</option>
                       <option value={25}>25 per page</option>
@@ -1638,8 +1626,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         ) : (
           /* CARD VIEW */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

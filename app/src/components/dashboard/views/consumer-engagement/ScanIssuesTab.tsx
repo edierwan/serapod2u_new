@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -81,31 +80,31 @@ type Template = {
 }
 
 const ISSUE_TYPE_BADGE: Record<string, { label: string; className: string }> = {
-    not_shipped_yet: { label: 'Not Shipped Yet', className: 'bg-red-100 text-red-700' },
-    buffer_unpromoted: { label: 'Buffer (Unpromoted)', className: 'bg-red-100 text-red-700' },
-    qr_not_found: { label: 'Invalid QR Code', className: 'bg-amber-100 text-amber-700' },
-    already_collected: { label: 'Already Collected', className: 'bg-blue-100 text-blue-700' },
-    expired_qr: { label: 'Expired Code', className: 'bg-amber-100 text-amber-700' },
-    blocked_qr: { label: 'Blocked Code', className: 'bg-gray-200 text-gray-700' },
-    qr_not_active: { label: 'Not Active', className: 'bg-amber-100 text-amber-700' },
-    invalid_status: { label: 'Invalid Status', className: 'bg-amber-100 text-amber-700' },
-    authentication_failed: { label: 'Auth Failed', className: 'bg-red-100 text-red-700' },
-    system_error: { label: 'System Error', className: 'bg-red-100 text-red-700' },
-    unknown_error: { label: 'Unknown', className: 'bg-gray-200 text-gray-700' },
+    not_shipped_yet: { label: 'Not Shipped Yet', className: 'sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700' },
+    buffer_unpromoted: { label: 'Buffer (Unpromoted)', className: 'sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700' },
+    qr_not_found: { label: 'Invalid QR Code', className: 'sera-sc-badge sera-sc-badge--orange' },
+    already_collected: { label: 'Already Collected', className: 'sera-sc-badge sera-sc-badge--info' },
+    expired_qr: { label: 'Expired Code', className: 'sera-sc-badge sera-sc-badge--orange' },
+    blocked_qr: { label: 'Blocked Code', className: 'sera-sc-badge sera-sc-badge--ink' },
+    qr_not_active: { label: 'Not Active', className: 'sera-sc-badge sera-sc-badge--orange' },
+    invalid_status: { label: 'Invalid Status', className: 'sera-sc-badge sera-sc-badge--orange' },
+    authentication_failed: { label: 'Auth Failed', className: 'sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700' },
+    system_error: { label: 'System Error', className: 'sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700' },
+    unknown_error: { label: 'Unknown', className: 'sera-sc-badge sera-sc-badge--ink' },
 }
 
 const STATUS_BADGE: Record<string, string> = {
-    pending: 'bg-orange-100 text-orange-700',
-    in_progress: 'bg-blue-100 text-blue-700',
-    resolved: 'bg-green-100 text-green-700',
-    ignored: 'bg-gray-100 text-gray-500',
+    pending: 'sera-sc-badge sera-sc-badge--orange',
+    in_progress: 'sera-sc-badge sera-sc-badge--info',
+    resolved: 'sera-sc-badge sera-sc-badge--success',
+    ignored: 'sera-sc-badge sera-sc-badge--ink',
 }
 
 const PRIORITY_BADGE: Record<string, string> = {
-    low: 'bg-gray-100 text-gray-700',
-    medium: 'bg-amber-100 text-amber-700',
-    high: 'bg-red-100 text-red-700',
-    urgent: 'bg-red-200 text-red-800',
+    low: 'sera-sc-badge sera-sc-badge--ink',
+    medium: 'sera-sc-badge sera-sc-badge--orange',
+    high: 'sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700',
+    urgent: 'sera-sc-badge sera-sc-badge--ink bg-red-100 text-red-800',
 }
 
 function fmtDateTime(s: string | null | undefined) {
@@ -303,22 +302,23 @@ export default function ScanIssuesTab() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <AlertTriangle className="h-6 w-6 text-orange-600" />
-                    <div>
-                        <h2 className="text-2xl font-bold">Scan Issues</h2>
-                        <p className="text-sm text-gray-600">Track and manage QR scan issues reported by consumers</p>
-                    </div>
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                <div>
+                    <div className="h-1 w-10 rounded-sm bg-[var(--sera-orange)] mb-3 sera-sc-header__bar" />
+                    <h2 className="font-display text-2xl font-semibold tracking-tight text-[var(--sera-ink)] flex items-center gap-2">
+                        <AlertTriangle className="h-6 w-6 text-[var(--sera-orange)]" />
+                        Scan Issues
+                    </h2>
+                    <p className="text-sm text-[var(--sera-muted)] mt-1">Track and manage QR scan issues reported by consumers</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)}>
+                    <Button variant="outline" size="sm" className="border-[var(--sera-line)]" onClick={() => setTemplatesOpen(true)}>
                         <MessageCircle className="h-4 w-4 mr-1" /> Message Templates
                     </Button>
-                    <Button variant="outline" size="sm" onClick={exportCsv} disabled={!issues.length}>
+                    <Button variant="outline" size="sm" className="border-[var(--sera-line)]" onClick={exportCsv} disabled={!issues.length}>
                         <Download className="h-4 w-4 mr-1" /> Export
                     </Button>
-                    <Button variant="outline" size="sm" onClick={loadIssues}>
+                    <Button variant="outline" size="sm" className="border-[var(--sera-line)]" onClick={loadIssues}>
                         <RefreshCw className="h-4 w-4 mr-1" /> Refresh
                     </Button>
                 </div>
@@ -326,19 +326,18 @@ export default function ScanIssuesTab() {
 
             {/* KPI cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <KpiCard label="Total Issues" value={kpis.total_issues} icon={<AlertTriangle className="h-6 w-6 text-gray-500" />} />
-                <KpiCard label="Pending" value={kpis.pending} icon={<Clock className="h-6 w-6 text-orange-500" />} valueClass="text-orange-600" />
-                <KpiCard label="Resolved Today" value={kpis.resolved_today} icon={<CheckCircle2 className="h-6 w-6 text-green-500" />} valueClass="text-green-600" />
-                <KpiCard label="High Priority" value={kpis.high_priority} icon={<Flame className="h-6 w-6 text-red-500" />} valueClass="text-red-600" />
+                <div className="sera-sc-kpi"><p className="sera-sc-kpi__label">Total Issues</p><p className="sera-sc-kpi__value">{kpis.total_issues.toLocaleString()}</p></div>
+                <div className="sera-sc-kpi"><p className="sera-sc-kpi__label">Pending</p><p className="sera-sc-kpi__value text-[var(--sera-orange)]">{kpis.pending.toLocaleString()}</p></div>
+                <div className="sera-sc-kpi"><p className="sera-sc-kpi__label">Resolved Today</p><p className="sera-sc-kpi__value">{kpis.resolved_today.toLocaleString()}</p></div>
+                <div className="sera-sc-kpi"><p className="sera-sc-kpi__label">High Priority</p><p className="sera-sc-kpi__value">{kpis.high_priority.toLocaleString()}</p></div>
             </div>
 
             {/* Filters */}
-            <Card>
-                <CardContent className="pt-4">
+            <div className="sera-sc-panel p-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                        <Input placeholder="Search QR / Order / Phone / Issue No" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearch()} />
+                        <Input className="border-[var(--sera-line)]" placeholder="Search QR / Order / Phone / Issue No" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearch()} />
                         <Select value={filterType} onValueChange={(v) => { setFilterType(v); setPage(1) }}>
-                            <SelectTrigger><SelectValue placeholder="All Types" /></SelectTrigger>
+                            <SelectTrigger className="border-[var(--sera-line)] bg-white"><SelectValue placeholder="All Types" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Types</SelectItem>
                                 {Object.entries(ISSUE_TYPE_BADGE).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
@@ -370,17 +369,16 @@ export default function ScanIssuesTab() {
                         </div>
                     </div>
                     <div className="flex justify-end mt-3">
-                        <Button size="sm" onClick={onSearch}>Apply Filters</Button>
+                        <Button size="sm" className="sera-sc-btn-primary" onClick={onSearch}>Apply Filters</Button>
                     </div>
-                </CardContent>
-            </Card>
+            </div>
 
             {/* Layout: table (full width). Drawer is a slide-over panel on top. */}
             <div>
-                <Card>
-                    <CardContent className="pt-4 overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50">
+                <div className="sera-sc-panel overflow-hidden">
+                    <div className="sera-sc-panel__body pt-4 overflow-x-auto">
+                        <table className="sera-sc-table min-w-full">
+                            <thead>
                                 <tr>
                                     <Th>Issue ID</Th>
                                     <Th>Type</Th>
@@ -394,17 +392,17 @@ export default function ScanIssuesTab() {
                                     <Th></Th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
+                            <tbody>
                                 {loading ? (
-                                    <tr><td colSpan={10} className="text-center py-6 text-gray-500">Loading...</td></tr>
+                                    <tr><td colSpan={10} className="sera-sc-table__empty">Loading...</td></tr>
                                 ) : issues.length === 0 ? (
-                                    <tr><td colSpan={10} className="text-center py-6 text-gray-500">No scan issues yet</td></tr>
+                                    <tr><td colSpan={10} className="sera-sc-table__empty">No scan issues yet</td></tr>
                                 ) : issues.map((r) => {
-                                    const t = ISSUE_TYPE_BADGE[r.issue_type] || { label: r.issue_type, className: 'bg-gray-100 text-gray-700' }
+                                    const t = ISSUE_TYPE_BADGE[r.issue_type] || { label: r.issue_type, className: 'sera-sc-badge--ink' }
                                     const isSelected = selected?.id === r.id
                                     return (
-                                        <tr key={r.id} className={`hover:bg-gray-50 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`} onClick={() => setSelected(r)}>
-                                            <Td><button className="text-blue-600 hover:underline" onClick={(e) => { e.stopPropagation(); setSelected(r) }}>{r.issue_no}</button></Td>
+                                        <tr key={r.id} className={`cursor-pointer ${isSelected ? 'bg-[var(--sera-orange)]/6' : ''}`} onClick={() => setSelected(r)}>
+                                            <Td><button className="text-[var(--sera-orange)] hover:underline font-medium" onClick={(e) => { e.stopPropagation(); setSelected(r) }}>{r.issue_no}</button></Td>
                                             <Td><Badge className={t.className}>{t.label}</Badge></Td>
                                             <Td className="truncate max-w-[180px] font-mono text-[11px]" title={r.qr_code_text}>{r.qr_code_text}</Td>
                                             <Td>{r.display_doc_no_snapshot || r.order_no_snapshot || '-'}</Td>
@@ -424,16 +422,16 @@ export default function ScanIssuesTab() {
                             </tbody>
                         </table>
                         {/* Pagination */}
-                        <div className="flex items-center justify-between mt-4 text-sm">
+                        <div className="flex items-center justify-between mt-4 text-sm text-[var(--sera-muted)] px-1">
                             <div>Showing {issues.length} of {totalCount}</div>
                             <div className="flex gap-2 items-center">
-                                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</Button>
-                                <span>Page {page} of {totalPages}</span>
-                                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+                                <Button size="sm" variant="outline" className="border-[var(--sera-line)]" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                                <span className="text-[var(--sera-ink)]">Page {page} of {totalPages}</span>
+                                <Button size="sm" variant="outline" className="border-[var(--sera-line)]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
 
                 {/* Right slide-over drawer */}
                 {selected && (
@@ -442,7 +440,7 @@ export default function ScanIssuesTab() {
                         <aside
                             role="dialog"
                             aria-label="Issue details"
-                            className="fixed top-0 right-0 z-50 h-full w-full sm:w-[480px] lg:w-[520px] max-w-[95vw] bg-white shadow-2xl border-l flex flex-col"
+                            className="fixed top-0 right-0 z-50 h-full w-full sm:w-[480px] lg:w-[520px] max-w-[95vw] bg-white shadow-xl border-l border-[var(--sera-line)] flex flex-col"
                         >
                             <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -454,8 +452,8 @@ export default function ScanIssuesTab() {
 
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
                                 <div>
-                                    <div className="text-blue-600 font-semibold text-base">{selected.issue_no}</div>
-                                    <div className="text-xs text-gray-500">Reported: {fmtDateTime(selected.scan_attempted_at)}</div>
+                                    <div className="text-[var(--sera-orange)] font-semibold text-base">{selected.issue_no}</div>
+                                    <div className="text-xs text-[var(--sera-muted)]">Reported: {fmtDateTime(selected.scan_attempted_at)}</div>
                                 </div>
 
                                 <Section title="Consumer & Contact">
@@ -526,12 +524,8 @@ export default function ScanIssuesTab() {
 
             {/* Settings + Templates row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Admin WhatsApp Notifications */}
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base">Admin WhatsApp Notifications (System Alerts)</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
+                <div className="sera-sc-panel p-4 space-y-3">
+                        <h3 className="font-display text-base font-semibold text-[var(--sera-ink)]">Admin WhatsApp Notifications (System Alerts)</h3>
                         <div>
                             <label className="text-xs font-medium text-gray-600">Admin WhatsApp Numbers (one per line)</label>
                             <textarea
@@ -561,17 +555,14 @@ export default function ScanIssuesTab() {
                                 Issue resolved
                             </label>
                         </div>
-                        <Button size="sm" onClick={saveSettings}>Save Settings</Button>
-                    </CardContent>
-                </Card>
+                        <Button size="sm" className="sera-sc-btn-primary" onClick={saveSettings}>Save Settings</Button>
+                </div>
 
-                {/* Message Templates preview */}
-                <Card>
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                        <CardTitle className="text-base">Message Templates</CardTitle>
-                        <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>Manage</Button>
-                    </CardHeader>
-                    <CardContent>
+                <div className="sera-sc-panel p-4">
+                        <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-display text-base font-semibold text-[var(--sera-ink)]">Message Templates</h3>
+                        <Button size="sm" variant="outline" className="border-[var(--sera-line)]" onClick={() => setTemplatesOpen(true)}>Manage</Button>
+                        </div>
                         <div className="space-y-2">
                             {[ackTemplate, rescanTemplate].filter(Boolean).map((tpl) => (
                                 <div key={tpl!.id} className="border rounded p-2">
@@ -583,8 +574,7 @@ export default function ScanIssuesTab() {
                                 </div>
                             ))}
                         </div>
-                    </CardContent>
-                </Card>
+                </div>
             </div>
 
             {/* Templates modal */}
@@ -636,32 +626,16 @@ export default function ScanIssuesTab() {
     )
 }
 
-function KpiCard({ label, value, icon, valueClass = '' }: { label: string; value: number; icon: React.ReactNode; valueClass?: string }) {
-    return (
-        <Card>
-            <CardContent className="pt-4 pb-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-gray-600">{label}</div>
-                        <div className={`text-2xl font-bold ${valueClass}`}>{value.toLocaleString()}</div>
-                    </div>
-                    {icon}
-                </div>
-            </CardContent>
-        </Card>
-    )
-}
-
 function Th({ children }: { children: React.ReactNode }) {
-    return <th className="text-left px-3 py-2 text-xs font-medium text-gray-500 uppercase whitespace-nowrap">{children}</th>
+    return <th className="whitespace-nowrap">{children}</th>
 }
 function Td({ children, className = '', title }: { children: React.ReactNode; className?: string; title?: string }) {
-    return <td className={`px-3 py-2 text-xs text-gray-700 ${className}`} title={title}>{children}</td>
+    return <td className={className} title={title}>{children}</td>
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
         <div>
-            <div className="text-xs font-semibold text-gray-700 mb-1">{title}</div>
+            <div className="text-xs font-semibold text-[var(--sera-ink)] mb-1">{title}</div>
             <div className="space-y-1">{children}</div>
         </div>
     )
@@ -669,8 +643,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function KV({ k, v }: { k: string; v: React.ReactNode }) {
     return (
         <div className="flex justify-between items-start gap-2 text-xs">
-            <span className="text-gray-500 shrink-0">{k}</span>
-            <span className="text-gray-800 text-right break-all">{v}</span>
+            <span className="text-[var(--sera-muted)] shrink-0">{k}</span>
+            <span className="text-[var(--sera-ink-soft)] text-right break-all">{v}</span>
         </div>
     )
 }

@@ -1024,40 +1024,67 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
         </TabsContent>
 
         <TabsContent value="feedback">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Consumer Feedback
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Total Feedback</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.total}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Pending</p>
+                <p className="sera-sc-kpi__value text-[var(--sera-orange)]">{feedbackSummary.pending}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Reviewed</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.reviewed}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Resolved</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.resolved}</p>
+              </div>
+            </div>
+
+            <div className="sera-sc-panel overflow-hidden">
+              <div className="sera-sc-panel__head">
+                <h2 className="sera-sc-panel__title flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-[var(--sera-orange)]" />
+                  Consumer Feedback
+                </h2>
+              </div>
+              <div className="sera-sc-panel__body">
               {feedbackLoading ? (
-                <div className="text-center py-8 text-gray-500">Loading feedback...</div>
+                <div className="sera-sc-table__empty">Loading feedback...</div>
               ) : feedback.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No feedback received yet</div>
+                <div className="sera-sc-empty">
+                  <div className="sera-sc-empty__icon">
+                    <MessageSquare className="h-8 w-8" />
+                  </div>
+                  <p className="sera-sc-empty__title">No feedback yet</p>
+                  <p className="sera-sc-empty__text">Consumer feedback will appear here when submitted through the app.</p>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {feedback.map((item: any) => (
-                    <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-semibold text-gray-900">{item.title}</h4>
-                          <p className="text-sm text-gray-600">
+                    <div key={item.id} className="sera-sc-feed-card">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-[var(--sera-ink)]">{item.title}</h4>
+                          <p className="text-sm text-[var(--sera-muted)] mt-0.5">
                             From: {item.consumer_name || 'Anonymous'}
                             {item.consumer_phone && ` • ${item.consumer_phone}`}
                             {item.consumer_email && ` • ${item.consumer_email}`}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                            item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
-                              item.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                                'bg-gray-100 text-gray-800'
-                            }`}>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`sera-sc-badge ${
+                            item.status === 'new' ? 'sera-sc-badge--info' :
+                            item.status === 'reviewed' ? 'sera-sc-badge--orange' :
+                            item.status === 'resolved' ? 'sera-sc-badge--success' :
+                            'sera-sc-badge--ink'
+                          }`}>
                             {item.status || 'new'}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-[var(--sera-muted)]">
                             {new Date(item.created_at).toLocaleDateString()}
                           </span>
                           {isSuperAdmin && (
@@ -1073,13 +1100,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                           )}
                         </div>
                       </div>
-                      <p className="text-gray-700 whitespace-pre-wrap">{item.message}</p>
+                      <p className="text-sm text-[var(--sera-ink-soft)] whitespace-pre-wrap leading-relaxed">{item.message}</p>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Scan Issues Tab */}
@@ -1089,99 +1117,99 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
         {/* WhatsApp Activity Tab */}
         <TabsContent value="whatsapp">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5 text-green-600" />
+          <div className="sera-sc-panel overflow-hidden">
+            <div className="sera-sc-panel__head">
+              <h2 className="sera-sc-panel__title flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-[var(--sera-orange)]" />
                 WhatsApp Activity
-              </CardTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-                <Select value={waFilterPurpose} onValueChange={(v) => { setWaFilterPurpose(v); setWaPage(1) }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Purposes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Purposes</SelectItem>
-                    <SelectItem value="password_reset">Password Reset</SelectItem>
-                    <SelectItem value="registration_verification">Registration</SelectItem>
-                    <SelectItem value="phone_verification">Phone Verification</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={waFilterStatus} onValueChange={(v) => { setWaFilterStatus(v); setWaPage(1) }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="sent">Sent</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                    <SelectItem value="verified">Verified</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="rate_limited">Rate Limited</SelectItem>
-                    <SelectItem value="no_account">No Account</SelectItem>
-                    <SelectItem value="send_failed">Send Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Filter by phone..."
-                  value={waFilterPhone}
-                  onChange={(e) => { setWaFilterPhone(e.target.value); setWaPage(1) }}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
+              </h2>
+            </div>
+            <div className="sera-sc-filters sm:grid-cols-3">
+              <Select value={waFilterPurpose} onValueChange={(v) => { setWaFilterPurpose(v); setWaPage(1) }}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="All Purposes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Purposes</SelectItem>
+                  <SelectItem value="password_reset">Password Reset</SelectItem>
+                  <SelectItem value="registration_verification">Registration</SelectItem>
+                  <SelectItem value="phone_verification">Phone Verification</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={waFilterStatus} onValueChange={(v) => { setWaFilterStatus(v); setWaPage(1) }}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="sent">Sent</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="rate_limited">Rate Limited</SelectItem>
+                  <SelectItem value="no_account">No Account</SelectItem>
+                  <SelectItem value="send_failed">Send Failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Filter by phone..."
+                value={waFilterPhone}
+                onChange={(e) => { setWaFilterPhone(e.target.value); setWaPage(1) }}
+              />
+            </div>
+            <div className="sera-sc-panel__body">
               {waLoading ? (
-                <div className="text-center py-8 text-gray-500">Loading WhatsApp activity...</div>
+                <div className="sera-sc-table__empty">Loading WhatsApp activity...</div>
               ) : waEvents.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No WhatsApp activity found</div>
+                <div className="sera-sc-table__empty">No WhatsApp activity found</div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b">
+                  <div className="overflow-x-auto -mx-1">
+                    <table className="sera-sc-table">
+                      <thead>
                         <tr>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date & Time</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Phone</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Event</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Purpose</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Status</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Provider</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Error</th>
+                          <th>Date & Time</th>
+                          <th>Phone</th>
+                          <th>Event</th>
+                          <th>Purpose</th>
+                          <th>Status</th>
+                          <th>Provider</th>
+                          <th>Error</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody>
                         {waEvents.map((evt: any) => (
-                          <tr key={evt.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                          <tr key={evt.id}>
+                            <td className="whitespace-nowrap">
                               {new Date(evt.created_at).toLocaleString()}
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-900 font-mono">
+                            <td className="font-mono text-[var(--sera-ink)]">
                               {evt.recipient_phone || '-'}
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-700">
+                            <td>
                               {(evt.event_type || '').replace(/_/g, ' ')}
                             </td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-[10px]">
+                            <td>
+                              <Badge variant="outline" className="text-[10px] border-[var(--sera-line)]">
                                 {(evt.purpose || '').replace(/_/g, ' ')}
                               </Badge>
                             </td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${evt.status === 'sent' ? 'bg-green-100 text-green-800' :
-                                evt.status === 'failed' || evt.status === 'send_failed' ? 'bg-red-100 text-red-800' :
-                                  evt.status === 'verified' ? 'bg-blue-100 text-blue-800' :
-                                    evt.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                                      evt.status === 'rate_limited' ? 'bg-orange-100 text-orange-800' :
-                                        evt.status === 'no_account' ? 'bg-gray-100 text-gray-600' :
-                                          'bg-gray-100 text-gray-800'
-                                }`}>
+                            <td>
+                              <span className={`sera-sc-badge ${
+                                evt.status === 'sent' || evt.status === 'completed' ? 'sera-sc-badge--success' :
+                                evt.status === 'failed' || evt.status === 'send_failed' ? 'sera-sc-badge--ink bg-red-50 text-red-700' :
+                                evt.status === 'verified' ? 'sera-sc-badge--info' :
+                                evt.status === 'rate_limited' ? 'sera-sc-badge--orange' :
+                                'sera-sc-badge--ink'
+                              }`}>
                                 {evt.status}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-500">{evt.provider || '-'}</td>
-                            <td className="px-3 py-2 text-xs text-red-600 max-w-[200px] truncate" title={evt.error_message || ''}>
+                            <td className="text-[var(--sera-muted)]">{evt.provider || '-'}</td>
+                            <td className="text-red-600 max-w-[200px] truncate" title={evt.error_message || ''}>
                               {evt.error_message || '-'}
                             </td>
                           </tr>
@@ -1190,26 +1218,27 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     </table>
                   </div>
 
-                  {/* Pagination */}
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <p className="text-sm text-gray-500">
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--sera-line)]">
+                    <p className="text-sm text-[var(--sera-muted)]">
                       Showing {(waPage - 1) * waPageSize + 1} to {Math.min(waPage * waPageSize, waTotal)} of {waTotal} results
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="border-[var(--sera-line)]"
                         disabled={waPage <= 1}
                         onClick={() => setWaPage((p) => Math.max(1, p - 1))}
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-[var(--sera-ink)]">
                         Page {waPage} of {Math.max(1, Math.ceil(waTotal / waPageSize))}
                       </span>
                       <Button
                         variant="outline"
                         size="sm"
+                        className="border-[var(--sera-line)]"
                         disabled={waPage * waPageSize >= waTotal}
                         onClick={() => setWaPage((p) => p + 1)}
                       >
@@ -1219,8 +1248,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -432,3 +432,28 @@
   color: var(--sera-muted);
   max-width: 24rem;
 }
+
+/* ── Feedback / list cards ──────────────────────────────────────── */
+
+.sera-sc-feed-card {
+  border: 1px solid var(--sera-line);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sera-sc-feed-card:hover {
+  border-color: rgba(232, 93, 4, 0.28);
+  box-shadow: 0 1px 0 rgba(20, 18, 16, 0.04);
+}
+
+.sera-sc-table th.text-right,
+.sera-sc-table td.text-right {
+  text-align: right;
+}
+
+.sera-sc-table th.text-center,
+.sera-sc-table td.text-center {
+  text-align: center;
+}
