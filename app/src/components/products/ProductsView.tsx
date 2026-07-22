@@ -546,7 +546,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 .slice(0, 2)
 
               return (
-                <Card key={product.id} className="hover:shadow-lg transition-shadow">
+                <Card key={product.id} className="sera-sc-panel overflow-hidden transition-colors hover:border-[var(--sera-orange)]/30">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between mb-3">
                       {resolvedPrimaryImage && !failedImageKeys[imageKey] ? (

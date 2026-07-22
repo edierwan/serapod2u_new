@@ -218,7 +218,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                                 No return cases yet.
                             </td></tr>
                         ) : cases.map((c) => (
-                            <tr key={c.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openCase(c.id)}>
+                            <tr key={c.id} className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.03]" onClick={() => openCase(c.id)}>
                                 <td className="px-3 py-2 font-medium text-foreground">{c.return_no}</td>
                                 <td className="px-3 py-2">{c.shop?.org_name || '—'}</td>
                                 <td className="px-3 py-2">{c.warehouse?.org_name || '—'}</td>
@@ -1046,22 +1046,23 @@ function ReturnCaseEditor({
     const shopName = selectedShop?.org_name || rc?.source?.org_name || rc?.shop?.org_name || '—'
 
     return (
-        <div className="w-full space-y-4">
+        <div className="sera-sc-page space-y-4">
             {/* Header bar */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex items-start gap-2">
-                    <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-xl font-semibold text-foreground">Return Product</h1>
+            <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-2 min-w-0">
+                    <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 mt-0.5 border border-transparent hover:border-[var(--sera-line)]"><ArrowLeft className="h-4 w-4" /></Button>
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-1">Quality · Returns</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">Return Product</h1>
                             <StatusBadge status={status} />
                         </div>
-                        <p className="text-sm text-muted-foreground">Create and manage product return cases from shops to warehouse.</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-0.5">Create and manage product return cases from shops to warehouse.</p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     {unsavedChanges && !readOnly && (
-                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                        <Badge variant="outline" className="border-[var(--sera-orange)]/30 bg-[var(--sera-orange)]/8 text-[var(--sera-orange-deep)]">
                             Unsaved changes
                         </Badge>
                     )}
@@ -1095,7 +1096,7 @@ function ReturnCaseEditor({
                     <Button variant="outline" onClick={previewPdf} className="gap-1.5"><Eye className="h-4 w-4" /> Preview PDF</Button>
                     <Button variant="outline" onClick={downloadPdf} className="gap-1.5"><FileText className="h-4 w-4" /> Generate PDF</Button>
                     {nextActionLabel && canAdvance && (
-                        <Button onClick={advance} disabled={advancing || saving} className="gap-1.5">
+                        <Button onClick={advance} disabled={advancing || saving} className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
                             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {nextActionLabel}
                         </Button>
                     )}
@@ -1105,10 +1106,10 @@ function ReturnCaseEditor({
                         </Button>
                     )}
                 </div>
-            </div>
+            </header>
 
             {!excelReady && !readOnly && (
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.03] px-3 py-2 text-xs text-[var(--sera-muted)]">
                     <Info className="h-3.5 w-3.5 shrink-0" />
                     Complete the required Return Information before using Excel.
                 </div>
@@ -1130,7 +1131,7 @@ function ReturnCaseEditor({
             <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <PackageOpen className="h-4 w-4 text-muted-foreground" />
-                    <h2 className="text-sm font-semibold text-foreground">Return Information</h2>
+                    <h2 className="text-sm font-semibold text-[var(--sera-ink)]">Return Information</h2>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Return From Type" required>
@@ -1146,7 +1147,7 @@ function ReturnCaseEditor({
                                         onClick={() => changeSourceType(t)}
                                         className={cn(
                                             'rounded px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-                                            sourceType === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                                            sourceType === t ? 'bg-[var(--sera-orange)] text-white' : 'text-[var(--sera-muted)] hover:text-[var(--sera-ink)]',
                                         )}
                                     >
                                         {RETURN_SOURCE_LABELS[t]}
@@ -1283,7 +1284,7 @@ function ReturnCaseEditor({
 
             {/* Additional Notes */}
             <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
-                <h2 className="mb-2 text-sm font-semibold text-foreground">Additional Notes</h2>
+                <h2 className="mb-2 text-sm font-semibold text-[var(--sera-ink)]">Additional Notes</h2>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={readOnly} rows={3} placeholder="General return notes…" />
             </section>
 
@@ -1454,7 +1455,7 @@ function ReturnWorksheet({
         <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
             <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 className="text-sm font-semibold text-foreground">Return Items (Worksheet)</h2>
+                    <h2 className="text-sm font-semibold text-[var(--sera-ink)]">Return Items (Worksheet)</h2>
                     <p className="text-xs text-muted-foreground">All available flavours and devices for the selected category are preloaded below.</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1478,7 +1479,7 @@ function ReturnWorksheet({
                 <button
                     type="button"
                     onClick={() => setViewMode((v) => (v === 'entered' ? 'all' : 'entered'))}
-                    className={cn('rounded-md border border-border px-3 py-1.5 text-xs font-medium', viewMode === 'entered' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent')}
+                    className={cn('rounded-md border border-[var(--sera-line)] px-3 py-1.5 text-xs font-medium', viewMode === 'entered' ? 'bg-[var(--sera-orange)] text-white' : 'bg-white text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.03]')}
                 >
                     Entered Items Only
                 </button>
@@ -1501,7 +1502,7 @@ function ReturnWorksheet({
             {!readOnly && (
                 <div className="mb-3 flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3 lg:flex-row lg:items-end">
                     <div className="flex items-center gap-2 lg:min-w-[220px]">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]">
                             <Zap className="h-4 w-4" />
                         </div>
                         <div>
@@ -1540,7 +1541,7 @@ function ReturnWorksheet({
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                    <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-2 py-2 font-medium">No.</th>
                             <th className="px-2 py-2 font-medium">Image</th>
@@ -1904,7 +1905,7 @@ function LineTab({ label, count, active, onClick }: { label: string; count: numb
         <button
             type="button"
             onClick={onClick}
-            className={cn('px-3 py-1.5 text-xs font-medium', active ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent')}
+            className={cn('px-3 py-1.5 text-xs font-medium', active ? 'bg-[var(--sera-orange)] text-white' : 'bg-white text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.03]')}
         >
             {label} ({count})
         </button>
