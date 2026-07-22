@@ -1629,33 +1629,29 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           </div>
         ) : (
           /* CARD VIEW */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="sera-module-landing__grid">
             {filteredOrders.map((order) => {
               const totalAmount = calculateOrderTotal(order)
               const itemCount = order.order_items?.length || 0
               const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
 
               return (
-                <Card key={order.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardContent className="p-5">
-                    {/* Header with Order Number and Status */}
+                <div key={order.id} className="sera-module-landing__card cursor-pointer">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div
-                          className="font-bold text-blue-600 text-lg mb-1 cursor-pointer hover:underline"
+                      <div className="flex-1 min-w-0">
+                        <button
+                          type="button"
+                          className="font-display font-semibold text-lg mb-1 text-[var(--sera-ink)] hover:text-[var(--sera-orange)] hover:underline text-left"
                           onClick={() => handleViewOrderDetails(order.id)}
                           title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                         >
                           {order.display_doc_no || order.order_no}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                          >
+                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-xs sera-sc-badge sera-sc-badge--info border-[var(--sera-line)]">
                             {order.order_type}
                           </Badge>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-[var(--sera-muted)]">
                             {getOrderTypeLabel(order.order_type)}
                           </span>
                         </div>
@@ -1667,7 +1663,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                           if (paidAmount >= totalAmount && totalAmount > 0) {
                             return (
-                              <Badge className="bg-green-100 text-green-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--success">
                                 <div className="flex items-center gap-1">
                                   <CheckCircle className="w-3 h-3" />
                                   <span className="text-xs font-medium">Paid</span>
@@ -1676,7 +1672,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             )
                           } else if (paidAmount > 0) {
                             return (
-                              <Badge className="bg-orange-100 text-orange-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--orange">
                                 <div className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
                                   <span className="text-xs font-medium">Partial</span>
@@ -1685,7 +1681,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             )
                           } else {
                             return (
-                              <Badge className="bg-red-100 text-red-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700">
                                 <div className="flex items-center gap-1">
                                   <AlertCircle className="w-3 h-3" />
                                   <span className="text-xs font-medium">Unpaid</span>
@@ -1704,85 +1700,76 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       )}
                     </div>
 
-                    {/* Organization Details */}
-                    <div className="space-y-2 mb-4 border-t border-b border-gray-100 py-3">
-                      {/* Customer/Buyer */}
+                    <div className="space-y-2 mb-4 border-t border-b border-[var(--sera-line)] py-3">
                       <div className="flex items-start gap-2">
-                        <ShoppingCart className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <ShoppingCart className="w-4 h-4 text-[var(--sera-orange)] mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-gray-500">Customer</div>
-                          <div className="text-sm font-medium text-gray-900 truncate">
+                          <div className="text-xs text-[var(--sera-muted)]">Customer</div>
+                          <div className="text-sm font-medium text-[var(--sera-ink)] truncate">
                             {order.buyer_org?.org_name || 'Unknown'}
                           </div>
                         </div>
                       </div>
 
-                      {/* Seller */}
                       <div className="flex items-start gap-2">
-                        <Store className="w-4 h-4 text-green-500 mt-0.5" />
+                        <Store className="w-4 h-4 text-[var(--sera-orange)] mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-gray-500">Seller</div>
-                          <div className="text-sm font-medium text-gray-900 truncate" title={getDisplayOrgName(order)}>
+                          <div className="text-xs text-[var(--sera-muted)]">Seller</div>
+                          <div className="text-sm font-medium text-[var(--sera-ink)] truncate" title={getDisplayOrgName(order)}>
                             {shortenOrgName(getDisplayOrgName(order))}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Order Stats */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-gray-500 mb-1">Items</div>
-                        <div className="text-lg font-bold text-gray-900">{formatNumber(itemCount)}</div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Items</div>
+                        <div className="sera-sc-kpi__value !text-lg">{formatNumber(itemCount)}</div>
                       </div>
-                      <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-gray-500 mb-1">Units</div>
-                        <div className="text-lg font-bold text-gray-900">{formatNumber(totalUnits)}</div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Units</div>
+                        <div className="sera-sc-kpi__value !text-lg">{formatNumber(totalUnits)}</div>
                       </div>
-                      <div className="bg-blue-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-blue-600 mb-1">Amount</div>
-                        <div className="text-sm font-bold text-blue-700">
-                          {formatCurrency(totalAmount)}
-                        </div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Amount</div>
+                        <div className="sera-sc-kpi__value !text-sm">{formatCurrency(totalAmount)}</div>
                       </div>
                     </div>
 
-                    {/* Date */}
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 text-xs text-[var(--sera-muted)]">
                         <Calendar className="w-3 h-3" />
                         <span>Created {new Date(order.created_at).toLocaleDateString('en-MY')}</span>
                       </div>
                     </div>
 
-                    {/* Creator and Approver Info */}
-                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                    <div className="space-y-1.5 pt-2 border-t border-[var(--sera-line)]">
                       {order.created_by_user && (
                         <div className="flex items-center gap-2 text-xs">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <span className="text-gray-500">Created by:</span>
-                          <span className="font-medium text-gray-700">
+                          <User className="w-3 h-3 text-[var(--sera-muted)]" />
+                          <span className="text-[var(--sera-muted)]">Created by:</span>
+                          <span className="font-medium text-[var(--sera-ink)]">
                             {order.created_by_user.full_name || order.created_by_user.email}
                           </span>
                         </div>
                       )}
                       {order.status === 'approved' && order.approved_by_user && (
                         <div className="flex items-center gap-2 text-xs">
-                          <CheckCircle className="w-3 h-3 text-green-500" />
-                          <span className="text-gray-500">Approved by:</span>
-                          <span className="font-medium text-green-700">
+                          <CheckCircle className="w-3 h-3 text-[var(--sera-orange)]" />
+                          <span className="text-[var(--sera-muted)]">Approved by:</span>
+                          <span className="font-medium text-[var(--sera-ink)]">
                             {order.approved_by_user.full_name || order.approved_by_user.email}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--sera-line)]">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-7 px-2"
+                        className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)]"
                         title="View Details"
                         onClick={() => handleViewOrderDetails(order.id)}
                       >
@@ -1793,7 +1780,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2"
+                          className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)]"
                           title="Edit Order"
                           onClick={() => handleEditOrder(order.id)}
                         >
@@ -1805,7 +1792,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/8"
                           title="Copy Order"
                           onClick={() => handleCopyOrder(order.id, order.order_no)}
                         >
@@ -1817,7 +1804,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="default"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                          className="flex-1 gap-1 text-xs h-7 px-2 sera-sc-btn-primary"
                           onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                           title="Approve Order"
                         >
@@ -1848,8 +1835,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </Button>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                </div>
               )
             })}
           </div>
