@@ -20,7 +20,7 @@ interface PendingDocument {
   id: string
   doc_type: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST'
   doc_no: string
-  display_doc_no?: string | null  // New format: PO26000001, SI26000001, etc.
+  display_doc_no?: string | null
   status: string
   created_at: string
   issued_by_org_id: string
@@ -28,7 +28,7 @@ interface PendingDocument {
   order: {
     id: string
     order_no: string
-    display_doc_no?: string | null  // New format: ORD26000001
+    display_doc_no?: string | null
     order_type: string
     status: string
   }
@@ -41,7 +41,7 @@ interface PendingDocument {
 interface ApprovedH2MOrder {
   id: string
   order_no: string
-  display_doc_no?: string | null  // New format: ORD26000001
+  display_doc_no?: string | null
   order_type: string
   status: string
   approved_at: string
@@ -54,7 +54,7 @@ interface ApprovedH2MOrder {
 interface SubmittedOrder {
   id: string
   order_no: string
-  display_doc_no?: string | null  // New format: ORD26000001
+  display_doc_no?: string | null
   order_type: string
   status: string
   created_at: string
@@ -109,12 +109,9 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
     loadOrgSettings()
     loadSubmittedOrders()
 
-    // Load approved H2M orders for distributors
     if (userProfile.organizations?.org_type_code === 'DIST') {
       loadApprovedH2MOrders()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
@@ -128,13 +125,9 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         .single()) as { data: any; error: any }
 
       if (error) throw error
-
-      // Check if require_payment_proof is set, default to true
-      const requireProof = data?.settings?.require_payment_proof ?? true
-      setRequirePaymentProof(requireProof)
+      setRequirePaymentProof(data?.settings?.require_payment_proof ?? true)
     } catch (error) {
       console.error('Error loading organization settings:', error)
-      // Default to true on error
       setRequirePaymentProof(true)
     }
   }
@@ -142,7 +135,6 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   async function loadApprovedH2MOrders() {
     if (!userProfile.organization_id) return
     try {
-      // Get parent org (HQ) for this distributor
       const { data: orgData, error: orgError } = (await supabase
         .from('organizations')
         .select('parent_org_id')
@@ -151,7 +143,6 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
       if (orgError || !orgData?.parent_org_id) return
 
-      // Get approved H2M orders from parent HQ in last 30 days
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
@@ -178,7 +169,6 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
       if (error) throw error
 
-      // Transform data
       const transformedOrders: ApprovedH2MOrder[] = (data || []).map((order: any) => ({
         id: order.id,
         order_no: order.order_no,
@@ -198,14 +188,11 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   async function loadSubmittedOrders() {
     if (!userProfile.organization_id || !userProfile.organizations) return
     try {
-      // Check if user can approve orders based on role level
-      // Level 30 (Manager) can also approve orders from lower levels
       const canApprove = userProfile.roles.role_level <= 30
       if (!canApprove) return
 
       const userOrgType = userProfile.organizations.org_type_code
 
-      // Get company_id
       const { data: companyData } = await supabase
         .rpc('get_company_id', { p_org_id: userProfile.organization_id } as any)
 
@@ -238,28 +225,19 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
         .order('created_at', { ascending: false })
         .limit(5)
 
-      // Filter based on user organization type and order type
-      // H2M: HQ users can approve
-      // D2H: HQ users can approve  
-      // S2D: Distributor (seller) users can approve
       if (userOrgType === 'HQ') {
-        // HQ can approve H2M and D2H orders
         query = query.in('order_type', ['H2M', 'D2H'])
       } else if (userOrgType === 'DIST') {
-        // Distributors can only approve S2D orders where they are the seller
         query = query
           .eq('order_type', 'S2D')
           .eq('seller_org_id', userProfile.organization_id)
       } else {
-        // Other org types cannot approve orders
         return
       }
 
       const { data, error } = await query
-
       if (error) throw error
 
-      // Transform data
       const transformedOrders: SubmittedOrder[] = (data || []).map((order: any) => ({
         id: order.id,
         order_no: order.order_no,
@@ -286,7 +264,6 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
     try {
       setLoading(true)
 
-      // Get pending documents where user's org should acknowledge
       const { data, error } = await supabase
         .from('documents')
         .select(`
@@ -317,16 +294,14 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
       if (error) throw error
 
-      // Filter documents that user can actually acknowledge
       const filteredDocs = (data || []).filter((doc: any) => {
         return canAcknowledgeDocument(doc as unknown as Document, {
           organizationId: userProfile.organization_id,
-          orgTypeCode: userProfile.organizations.org_type_code,
+          orgTypeCode: userProfile.organizations!.org_type_code,
           roleLevel: userProfile.roles.role_level
         })
       })
 
-      // Transform data to match PendingDocument interface
       const transformedDocs: PendingDocument[] = filteredDocs.map((doc: any) => ({
         id: doc.id,
         doc_type: doc.doc_type,
@@ -396,14 +371,11 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
   if (loading) {
     return (
-      <div className="sera-sc-panel overflow-hidden">
+      <div className="sera-sc-panel overflow-hidden min-h-[280px]">
         <div className="sera-sc-panel__head">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[var(--sera-orange)]/10 animate-pulse" />
-            <div className="h-5 w-36 bg-[var(--sera-ink)]/5 rounded-lg animate-pulse" />
-          </div>
+          <div className="h-5 w-40 bg-[var(--sera-ink)]/5 rounded animate-pulse" />
         </div>
-        <div className="sera-sc-panel__body space-y-4">
+        <div className="sera-sc-panel__body space-y-3">
           {[1, 2].map((i) => (
             <div key={i} className="h-24 bg-[var(--sera-ink)]/5 rounded-xl animate-pulse" />
           ))}
@@ -414,21 +386,26 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
 
   if (pendingDocs.length === 0 && approvedH2MOrders.length === 0 && submittedOrders.length === 0) {
     return (
-      <div className="sera-sc-panel overflow-hidden">
+      <div className="sera-sc-panel overflow-hidden h-full">
         <div className="sera-sc-panel__head">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-50">
               <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" strokeWidth={1.75} />
             </div>
-            <h3 className="sera-sc-panel__title">Action Required</h3>
+            <div>
+              <h3 className="sera-sc-panel__title">Action Required</h3>
+              <p className="text-xs text-[var(--sera-muted)]">Nothing pending right now</p>
+            </div>
           </div>
         </div>
-        <div className="text-center py-12 px-6">
+        <div className="text-center py-14 px-6">
           <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="w-7 h-7 text-emerald-500" strokeWidth={1.5} />
           </div>
-          <p className="text-sm font-medium text-[var(--sera-ink)]">All caught up!</p>
-          <p className="text-xs text-[var(--sera-muted)] mt-1">No pending actions — all documents are up to date</p>
+          <p className="text-sm font-medium text-[var(--sera-ink)]">All caught up</p>
+          <p className="text-xs text-[var(--sera-muted)] mt-1 max-w-xs mx-auto">
+            No documents or orders need your attention at the moment.
+          </p>
         </div>
       </div>
     )
@@ -437,85 +414,78 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
   const totalActions = pendingDocs.length + approvedH2MOrders.length + submittedOrders.length
 
   return (
-    <div className="sera-sc-panel overflow-hidden">
+    <div className="sera-sc-panel overflow-hidden h-full">
       <div className="sera-sc-panel__head">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-orange)]/10">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-orange)]/10 shrink-0">
               <AlertCircle className="w-4.5 h-4.5 text-[var(--sera-orange)]" strokeWidth={1.75} />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="sera-sc-panel__title">Action Required</h3>
-              <p className="text-xs text-[var(--sera-muted)]">Items that need your attention</p>
+              <p className="text-xs text-[var(--sera-muted)] truncate">Items that need your attention</p>
             </div>
           </div>
-          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-[var(--sera-orange)] text-white text-[11px] font-bold px-1.5">
+          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] rounded-full bg-[var(--sera-orange)] text-white text-[11px] font-bold px-1.5 shrink-0">
             {totalActions}
           </span>
         </div>
       </div>
-      <div className="sera-sc-panel__body space-y-3 max-h-[600px] overflow-y-auto">
-        {/* Submitted Orders Awaiting Approval */}
+
+      <div className="sera-sc-panel__body space-y-3 max-h-[640px] overflow-y-auto">
         {submittedOrders.map((order) => {
           const totalAmount = order.order_items.reduce((sum, item) => sum + (item.qty * item.unit_price), 0)
           const totalUnits = order.order_items.reduce((sum, item) => sum + item.qty, 0)
 
           return (
-            <div
-              key={`order-${order.id}`}
-              className="group rounded-xl border border-[var(--sera-orange)]/15 bg-[var(--sera-orange)]/[0.04] p-4 transition-all hover:border-[var(--sera-orange)]/30"
-            >
+            <div key={`order-${order.id}`} className="sera-dashboard-action sera-dashboard-action--urgent pl-4">
               <div className="space-y-3">
-                {/* Header */}
                 <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[var(--sera-orange)] text-white flex items-center justify-center">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[var(--sera-orange)] text-white flex items-center justify-center">
                     <Package className="w-4 h-4" strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-1">
-                      Order Awaiting Approval
+                    <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-1.5">
+                      Order awaiting approval
                     </h4>
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="inline-flex items-center rounded-md bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-mono text-gray-700">
+                      <span className="sera-dashboard-tag">
                         {order.display_doc_no || order.order_no}
                       </span>
-                      <span className="inline-flex items-center rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                      <span className="sera-dashboard-tag sera-dashboard-tag--type">
                         {order.order_type}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Buyer</p>
-                    <p className="font-medium text-gray-800 truncate">{order.buyer_org.org_name}</p>
+                    <p className="text-[10px] text-[var(--sera-muted)] uppercase tracking-wider mb-0.5">Buyer</p>
+                    <p className="font-medium text-[var(--sera-ink-soft)] truncate">{order.buyer_org.org_name}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Seller</p>
-                    <p className="font-medium text-gray-800 truncate">{order.seller_org.org_name}</p>
+                    <p className="text-[10px] text-[var(--sera-muted)] uppercase tracking-wider mb-0.5">Seller</p>
+                    <p className="font-medium text-[var(--sera-ink-soft)] truncate">{order.seller_org.org_name}</p>
                   </div>
                 </div>
 
-                {/* Stats Row */}
                 <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3 text-gray-500">
+                  <div className="flex items-center gap-3 text-[var(--sera-muted)]">
                     <span className="flex items-center gap-1">
                       <Package className="w-3 h-3" />
                       {totalUnits} units
                     </span>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-[var(--sera-ink-soft)]">
                       RM {totalAmount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     </span>
                   </div>
-                  <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                  <span className="flex items-center gap-1 text-[11px] text-[var(--sera-muted)]">
                     <Clock className="w-3 h-3" />
                     {formatTimeAgo(order.created_at)}
                   </span>
                 </div>
 
-                {/* Action Button */}
                 <Button
                   size="sm"
                   className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white text-xs h-9 rounded-lg shadow-none"
@@ -529,50 +499,42 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           )
         })}
 
-        {/* Approved H2M Orders for Distributors */}
         {approvedH2MOrders.map((order) => (
-          <div
-            key={`h2m-${order.id}`}
-            className="group rounded-xl border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.02] p-4 transition-all hover:border-[var(--sera-orange)]/25"
-          >
+          <div key={`h2m-${order.id}`} className="sera-dashboard-action sera-dashboard-action--neutral">
             <div className="space-y-3">
-              {/* Header */}
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[var(--sera-ink)] text-white flex items-center justify-center">
+                <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[var(--sera-ink)] text-white flex items-center justify-center">
                   <Package className="w-4 h-4" strokeWidth={2} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-1">
-                    H2M Order Approved
+                  <h4 className="text-sm font-semibold text-[var(--sera-ink)] mb-1.5">
+                    H2M order approved
                   </h4>
-                  <span className="inline-flex items-center rounded-md bg-white border border-gray-200 px-2 py-0.5 text-[11px] font-mono text-gray-700">
+                  <span className="sera-dashboard-tag">
                     {order.display_doc_no || order.order_no}
                   </span>
                 </div>
               </div>
 
-              {/* Info Banner */}
-              <div className="bg-white border border-[var(--sera-line)] rounded-lg px-3 py-2">
+              <div className="border border-[var(--sera-line)] rounded-lg px-3 py-2 bg-white">
                 <p className="text-[11px] text-[var(--sera-ink-soft)]">
                   HQ approved — you can now create a D2H order.
                 </p>
               </div>
 
-              {/* Details */}
               <div className="text-xs space-y-1">
-                <p className="text-gray-500">
-                  From: <span className="font-medium text-gray-800">{order.buyer_org.org_name}</span>
+                <p className="text-[var(--sera-muted)]">
+                  From: <span className="font-medium text-[var(--sera-ink-soft)]">{order.buyer_org.org_name}</span>
                 </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wider text-gray-400">{order.order_type}</span>
-                  <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                  <span className="sera-dashboard-tag sera-dashboard-tag--type">{order.order_type}</span>
+                  <span className="flex items-center gap-1 text-[11px] text-[var(--sera-muted)]">
                     <Clock className="w-3 h-3" />
                     {formatTimeAgo(order.approved_at)}
                   </span>
                 </div>
               </div>
 
-              {/* Action Button */}
               <Button
                 size="sm"
                 className="w-full bg-[var(--sera-ink)] hover:bg-[var(--sera-ink-soft)] text-white text-xs h-9 rounded-lg"
@@ -585,32 +547,31 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           </div>
         ))}
 
-        {/* Pending Documents */}
         {pendingDocs.length > 0 && (
           <>
-            {/* Mobile grid */}
             <div className="grid grid-cols-2 gap-2 sm:hidden">
               {pendingDocs.map((doc) => (
                 <button
                   key={`mobile-${doc.id}`}
+                  type="button"
                   onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                  className="p-3 rounded-xl border border-gray-100 bg-white text-left shadow-sm hover:shadow-md transition-all group"
+                  className="sera-dashboard-action p-3 text-left"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className={`inline-flex items-center justify-center rounded-lg ${getDocumentColor(doc.doc_type)} p-1.5`}>
                       {getDocumentIcon(doc.doc_type)}
                     </div>
-                    <span className="text-[10px] font-mono text-gray-500">
+                    <span className="sera-dashboard-tag text-[10px]">
                       {doc.display_doc_no || doc.doc_no}
                     </span>
                   </div>
-                  <p className="mt-2 text-xs font-semibold text-gray-900 truncate">
+                  <p className="mt-2 text-xs font-semibold text-[var(--sera-ink)] truncate">
                     {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
                   </p>
-                  <p className="text-[11px] text-gray-500 truncate">
+                  <p className="text-[11px] text-[var(--sera-muted)] truncate">
                     Order {doc.order.display_doc_no || doc.order.order_no}
                   </p>
-                  <div className="mt-2 flex items-center gap-1 text-[10px] text-gray-400">
+                  <div className="mt-2 flex items-center gap-1 text-[10px] text-[var(--sera-muted)]">
                     <Clock className="w-3 h-3" />
                     <span>{formatTimeAgo(doc.created_at)}</span>
                   </div>
@@ -618,52 +579,49 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
               ))}
             </div>
 
-            {/* Desktop / tablet list */}
             <div className="hidden sm:flex sm:flex-col sm:gap-2">
               {pendingDocs.map((doc) => (
                 <div
                   key={doc.id}
-                  className="group flex items-center gap-4 p-4 rounded-xl border border-[var(--sera-line)] bg-white hover:bg-[var(--sera-ink)]/[0.02] transition-all"
+                  className="sera-dashboard-action flex items-center gap-4 p-4"
                 >
-                  {/* Icon */}
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${getDocumentColor(doc.doc_type)}`}>
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${getDocumentColor(doc.doc_type)}`}>
                     {getDocumentIcon(doc.doc_type)}
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-semibold text-gray-900">
+                      <h4 className="text-sm font-semibold text-[var(--sera-ink)]">
                         {getDocumentTypeLabel(doc.doc_type as Document['doc_type'])}
                       </h4>
-                      <span className="inline-flex items-center rounded-md bg-gray-50 border border-gray-100 px-2 py-0.5 text-[11px] font-mono text-gray-600">
+                      <span className="sera-dashboard-tag">
                         {doc.display_doc_no || doc.doc_no}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                      <span>Order: <span className="text-gray-700 font-medium">{doc.order.display_doc_no || doc.order.order_no}</span></span>
-                      <span className="text-gray-300">&bull;</span>
-                      <span>From: {doc.issued_by_org.org_name}</span>
-                      <span className="text-gray-300">&bull;</span>
-                      <span className="flex items-center gap-1 text-gray-400">
+                    <div className="flex items-center gap-2 mt-1 text-xs text-[var(--sera-muted)] flex-wrap">
+                      <span>Order <span className="text-[var(--sera-ink-soft)] font-medium">{doc.order.display_doc_no || doc.order.order_no}</span></span>
+                      <span className="text-[var(--sera-line)]">&bull;</span>
+                      <span>From {doc.issued_by_org.org_name}</span>
+                      <span className="text-[var(--sera-line)]">&bull;</span>
+                      <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatTimeAgo(doc.created_at)}
                       </span>
                     </div>
 
-                    {/* Payment Proof Warning */}
                     {doc.doc_type === 'INVOICE' &&
-                      userProfile.organizations.org_type_code === 'HQ' &&
+                      userProfile.organizations?.org_type_code === 'HQ' &&
                       requirePaymentProof && (
                         <button
+                          type="button"
                           onClick={() => onViewDocument(doc.order.id, doc.id, doc.doc_type, doc.display_doc_no || doc.doc_no)}
-                          className="mt-2 w-full bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5 flex items-center justify-between gap-2 hover:bg-amber-100/70 transition-colors group/inner"
+                          className="mt-2 w-full bg-[var(--sera-orange)]/8 border border-[var(--sera-orange)]/20 rounded-lg px-3 py-1.5 flex items-center justify-between gap-2 hover:bg-[var(--sera-orange)]/12 transition-colors group/inner"
                         >
                           <div className="flex items-center gap-2">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                            <span className="text-[11px] font-medium text-amber-800">Payment proof required</span>
+                            <AlertCircle className="w-3.5 h-3.5 text-[var(--sera-orange)]" />
+                            <span className="text-[11px] font-medium text-[var(--sera-orange-deep)]">Payment proof required</span>
                           </div>
-                          <span className="text-[11px] text-amber-600 font-medium group-hover/inner:text-amber-800">Upload &rarr;</span>
+                          <span className="text-[11px] text-[var(--sera-orange)] font-medium group-hover/inner:text-[var(--sera-orange-deep)]">Upload →</span>
                         </button>
                       )}
                   </div>
@@ -683,11 +641,10 @@ export default function ActionRequired({ userProfile, onViewDocument, onViewChan
           </>
         )}
 
-
         {pendingDocs.length >= 10 && (
-          <div className="text-center pt-3 border-t border-gray-50">
-            <Button variant="ghost" size="sm" className="text-xs text-gray-500 hover:text-gray-800">
-              View All Pending Actions
+          <div className="text-center pt-3 border-t border-[var(--sera-line)]">
+            <Button variant="ghost" size="sm" className="text-xs text-[var(--sera-muted)] hover:text-[var(--sera-ink)]">
+              View all pending actions
               <ChevronRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </div>

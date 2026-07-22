@@ -221,11 +221,11 @@ export default function DashboardStatistics({ userProfile }: DashboardStatsProps
       {statCards.map((stat, index) => (
         <div
           key={index}
-          className={`sera-sc-kpi group relative overflow-hidden ${stat.accent && stat.value > 0 ? 'border-[var(--sera-orange)]/25' : ''}`}
+          className={`sera-sc-kpi group relative overflow-hidden sera-dashboard-enter sera-dashboard-enter--${Math.min(index + 1, 4)} ${stat.accent && stat.value > 0 ? 'sera-sc-kpi--accent' : ''}`}
         >
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-3">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${stat.accent && stat.value > 0 ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]' : 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'}`}>
+              <div className={`sera-sc-kpi__icon ${stat.accent && stat.value > 0 ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]' : 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'}`}>
                 <stat.icon className="w-5 h-5" strokeWidth={1.75} />
               </div>
               {stat.trend === 'needs-attention' && stat.value > 0 && (

@@ -7,7 +7,8 @@ import {
   FileText,
   Package,
   CheckCircle2,
-  TruckIcon
+  TruckIcon,
+  ChevronRight,
 } from 'lucide-react'
 import { getDocumentTypeLabel } from '@/lib/document-permissions'
 
@@ -18,7 +19,6 @@ interface Activity {
   description: string
   timestamp: string
   icon: 'document' | 'order' | 'check' | 'truck'
-  color: string
 }
 
 interface UserProfile {
@@ -41,8 +41,6 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
   useEffect(() => {
     loadRecentActivities()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile.organization_id])
 
   async function loadRecentActivities() {
@@ -53,7 +51,6 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
     try {
       setLoading(true)
 
-      // Get recent documents
       const { data: docs, error: docsError } = await supabase
         .from('documents')
         .select(`
@@ -72,7 +69,6 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
 
       if (docsError) throw docsError
 
-      // Get recent orders
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select(`
@@ -89,66 +85,50 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
 
       if (ordersError) throw ordersError
 
-      // Combine and sort activities
       const docActivities: Activity[] = (docs || []).flatMap((doc: any) => {
-        const activities: Activity[] = []
+        const items: Activity[] = []
 
-        // Document created
-        activities.push({
+        items.push({
           id: `doc-created-${doc.id}`,
           type: 'document_created',
-          title: `${getDocumentTypeLabel(doc.doc_type)} Created`,
-          description: `${doc.doc_no}`,
+          title: `${getDocumentTypeLabel(doc.doc_type)} created`,
+          description: doc.doc_no,
           timestamp: doc.created_at,
           icon: 'document',
-          color: getDocColorClass(doc.doc_type)
         })
 
-        // Document acknowledged
         if (doc.acknowledged_at) {
-          activities.push({
+          items.push({
             id: `doc-ack-${doc.id}`,
             type: 'document_acknowledged',
-            title: `${getDocumentTypeLabel(doc.doc_type)} Acknowledged`,
-            description: `${doc.doc_no}`,
+            title: `${getDocumentTypeLabel(doc.doc_type)} acknowledged`,
+            description: doc.doc_no,
             timestamp: doc.acknowledged_at,
             icon: 'check',
-            color: 'text-green-600'
           })
         }
 
-        return activities
+        return items
       })
 
       const orderActivities: Activity[] = (orders || []).map((order: any) => ({
         id: `order-${order.id}`,
         type: 'order_created',
-        title: 'Order Created',
-        description: `${order.order_no} - ${formatOrderType(order.order_type)}`,
+        title: 'Order created',
+        description: `${order.order_no} · ${formatOrderType(order.order_type)}`,
         timestamp: order.created_at,
         icon: 'order',
-        color: 'text-blue-600'
       }))
 
       const allActivities = [...docActivities, ...orderActivities]
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, 10) // Keep track of up to 10 for determining if View More should show
+        .slice(0, 10)
 
       setActivities(allActivities)
     } catch (error) {
       console.error('Error loading activities:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  function getDocColorClass(docType: string): string {
-    switch (docType) {
-      case 'PO': return 'text-blue-600'
-      case 'INVOICE': return 'text-green-600'
-      case 'PAYMENT': return 'text-purple-600'
-      case 'RECEIPT': return 'text-orange-600'
-      default: return 'text-gray-600'
     }
   }
 
@@ -191,25 +171,28 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
     }
   }
 
+  function getDotClass(icon: Activity['icon']) {
+    switch (icon) {
+      case 'check':
+        return 'bg-emerald-50 text-emerald-600'
+      case 'document':
+        return 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]'
+      case 'truck':
+        return 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'
+      default:
+        return 'bg-[var(--sera-ink)]/5 text-[var(--sera-muted)]'
+    }
+  }
+
   if (loading) {
     return (
-      <div className="sera-sc-panel overflow-hidden">
+      <div className="sera-sc-panel overflow-hidden min-h-[280px] h-full">
         <div className="sera-sc-panel__head">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-[var(--sera-ink)]/5 animate-pulse" />
-            <div className="h-5 w-36 bg-[var(--sera-ink)]/5 rounded-lg animate-pulse" />
-          </div>
+          <div className="h-5 w-40 bg-[var(--sera-ink)]/5 rounded animate-pulse" />
         </div>
-        <div className="sera-sc-panel__body space-y-4">
+        <div className="sera-sc-panel__body space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 animate-pulse">
-              <div className="w-8 h-8 rounded-lg bg-[var(--sera-ink)]/5" />
-              <div className="flex-1 space-y-1.5">
-                <div className="h-3.5 w-32 bg-[var(--sera-ink)]/5 rounded-full" />
-                <div className="h-3 w-40 bg-[var(--sera-ink)]/5 rounded-full" />
-              </div>
-              <div className="h-3 w-12 bg-[var(--sera-ink)]/5 rounded-full" />
-            </div>
+            <div key={i} className="h-10 bg-[var(--sera-ink)]/5 rounded-lg animate-pulse" />
           ))}
         </div>
       </div>
@@ -217,7 +200,7 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
   }
 
   return (
-    <div className="sera-sc-panel overflow-hidden">
+    <div className="sera-sc-panel overflow-hidden h-full">
       <div className="sera-sc-panel__head">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-[var(--sera-ink)]/5">
@@ -229,36 +212,26 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
           </div>
         </div>
       </div>
+
       <div className="sera-sc-panel__body">
         {activities.length === 0 ? (
-          <div className="text-center py-10">
-            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
-              <Clock className="w-6 h-6 text-gray-300" strokeWidth={1.5} />
+          <div className="text-center py-12">
+            <div className="w-12 h-12 rounded-xl bg-[var(--sera-ink)]/5 flex items-center justify-center mx-auto mb-3">
+              <Clock className="w-6 h-6 text-[var(--sera-muted)]" strokeWidth={1.5} />
             </div>
-            <p className="text-sm font-medium text-gray-500">No recent activities</p>
-            <p className="text-xs text-gray-400 mt-0.5">Activities will appear here</p>
+            <p className="text-sm font-medium text-[var(--sera-ink-soft)]">No recent activities</p>
+            <p className="text-xs text-[var(--sera-muted)] mt-0.5">Updates will appear here as they happen</p>
           </div>
         ) : (
           <>
-            <div className="space-y-1">
-              {activities.slice(0, 5).map((activity, idx) => (
-                <div
-                  key={activity.id}
-                  className="group flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-[var(--sera-ink)]/[0.03] transition-colors"
-                >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center mt-0.5 ${
-                    activity.icon === 'check' 
-                      ? 'bg-emerald-50 text-emerald-600' 
-                      : activity.icon === 'document'
-                      ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]'
-                      : activity.icon === 'truck'
-                      ? 'bg-[var(--sera-ink)]/5 text-[var(--sera-ink)]'
-                      : 'bg-[var(--sera-ink)]/5 text-[var(--sera-muted)]'
-                  }`}>
+            <div className="sera-dashboard-timeline">
+              {activities.slice(0, 5).map((activity) => (
+                <div key={activity.id} className="sera-dashboard-timeline__item">
+                  <div className={`sera-dashboard-timeline__dot ${getDotClass(activity.icon)}`}>
                     {getActivityIcon(activity.icon)}
                   </div>
 
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 pt-0.5">
                     <p className="text-sm font-medium text-[var(--sera-ink)] leading-tight">
                       {activity.title}
                     </p>
@@ -267,22 +240,21 @@ export default function RecentActivities({ userProfile }: RecentActivitiesProps)
                     </p>
                   </div>
 
-                  <span className="text-[11px] text-[var(--sera-muted)] whitespace-nowrap pt-0.5 flex-shrink-0">
+                  <span className="text-[11px] text-[var(--sera-muted)] whitespace-nowrap pt-1 flex-shrink-0">
                     {formatTimeAgo(activity.timestamp)}
                   </span>
                 </div>
               ))}
             </div>
 
-            {/* View More Link */}
             {activities.length > 5 && (
-              <div className="mt-3 pt-3 border-t border-gray-50 px-3">
+              <div className="mt-4 pt-3 border-t border-[var(--sera-line)]">
                 <a
                   href="/dashboard/activities"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[var(--sera-muted)] hover:text-[var(--sera-orange)] transition-colors"
                 >
                   View all activities
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <ChevronRight className="w-3 h-3" />
                 </a>
               </div>
             )}

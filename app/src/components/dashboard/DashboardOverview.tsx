@@ -1,5 +1,6 @@
 'use client'
 
+import { Package, PlusCircle, BarChart3, FileText } from 'lucide-react'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
@@ -31,19 +32,14 @@ interface DashboardOverviewProps {
 
 export default function DashboardOverview({ userProfile, onViewChange }: DashboardOverviewProps) {
   const handleViewDocument = (orderId: string, documentId: string, docType: 'PO' | 'INVOICE' | 'PAYMENT' | 'RECEIPT' | 'PAYMENT_REQUEST', docNo?: string) => {
-    // Store the order ID and document ID in session storage
-    // Use 'trackingOrderId' to match what TrackOrderView expects
     sessionStorage.setItem('trackingOrderId', orderId)
     sessionStorage.setItem('selectedDocumentId', documentId)
     sessionStorage.setItem('selectedDocumentType', docType)
 
-    // Map document type to the correct tab
-    let initialTab = 'po' // default
+    let initialTab = 'po'
     if (docType === 'INVOICE') {
-      // Check if it's deposit invoice or final invoice
       initialTab = docNo?.includes('-DEP') ? 'depositInvoice' : 'invoice'
     } else if (docType === 'PAYMENT') {
-      // Check if it's deposit payment or balance payment
       initialTab = docNo?.includes('-BAL') ? 'balancePayment' : 'depositPayment'
     } else if (docType === 'RECEIPT') {
       initialTab = 'receipt'
@@ -51,10 +47,7 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
       initialTab = 'balanceRequest'
     }
 
-    // Store the initial tab to open
     sessionStorage.setItem('selectedDocumentTab', initialTab)
-
-    // Navigate to track order view
     onViewChange('track-order')
   }
 
@@ -65,29 +58,67 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     return 'Good evening'
   }
 
+  const quickLinks = [
+    { label: 'Orders', icon: Package, view: 'orders' },
+    { label: 'Create Order', icon: PlusCircle, view: 'create-order' },
+    { label: 'Reporting', icon: BarChart3, view: 'reporting' },
+    { label: 'Documents', icon: FileText, view: 'track-order' },
+  ]
+
   return (
-    <div className="sera-module-landing">
+    <div className="sera-dashboard sera-module-landing">
       <ModuleLightHeader
         eyebrow="Dashboard"
-        title={`${getGreeting()}${userProfile.organizations?.org_name ? ',' : ''}`}
-        description={userProfile.organizations?.org_name ?? undefined}
+        title={getGreeting()}
+        actions={
+          <div className="sera-dashboard__meta">
+            {userProfile.roles?.role_name ? (
+              <span className="sera-dashboard__meta-pill sera-dashboard__meta-pill--role">
+                {userProfile.roles.role_name}
+              </span>
+            ) : null}
+            {userProfile.organizations?.org_code ? (
+              <span className="sera-dashboard__meta-pill">
+                {userProfile.organizations.org_code}
+              </span>
+            ) : null}
+          </div>
+        }
       />
 
-      <DashboardStatistics userProfile={userProfile} />
+      <section className="sera-dashboard__section sera-dashboard-enter">
+        <p className="sera-dashboard__section-label">Quick access</p>
+        <div className="sera-dashboard__quick-links">
+          {quickLinks.map(({ label, icon: Icon, view }) => (
+            <button
+              key={view}
+              type="button"
+              className="sera-dashboard__quick-link"
+              onClick={() => onViewChange(view)}
+            >
+              <Icon strokeWidth={1.75} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
 
-      {/* Action Required and Recent Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-3">
+      <section className="sera-dashboard__section sera-dashboard-enter sera-dashboard-enter--1">
+        <p className="sera-dashboard__section-label">At a glance</p>
+        <DashboardStatistics userProfile={userProfile} />
+      </section>
+
+      <section className="sera-dashboard__section sera-dashboard-enter sera-dashboard-enter--2">
+        <p className="sera-dashboard__section-label">Your workspace</p>
+        <div className="sera-dashboard__grid">
           <ActionRequired
             userProfile={userProfile}
             onViewDocument={handleViewDocument}
             onViewChange={onViewChange}
           />
-        </div>
-        <div className="lg:col-span-2">
           <RecentActivities userProfile={userProfile} />
         </div>
-      </div>
+      </section>
     </div>
   )
 }
