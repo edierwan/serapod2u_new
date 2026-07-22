@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ScanIssuesTab from '@/components/dashboard/views/consumer-engagement/ScanIssuesTab'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Dialog,
   DialogContent,
@@ -651,20 +652,18 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   }, [activeTab])
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Consumer Activity</h1>
-            <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
-          </div>
-
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        eyebrow="Customer & Growth"
+        title="Consumer Activity"
+        description="Track consumer QR code scans and engagement"
+        actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div className="w-full sm:w-48">
               <Select value={selectedActivityType} onValueChange={setSelectedActivityType}>
-                <SelectTrigger>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
                   <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-500" />
+                    <Filter className="w-4 h-4 text-[var(--sera-muted)]" />
                     <SelectValue placeholder="Activity Type" />
                   </div>
                 </SelectTrigger>
@@ -678,9 +677,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             </div>
             <div className="w-full sm:w-64">
               <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
-                <SelectTrigger>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
                   <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-500" />
+                    <Filter className="w-4 h-4 text-[var(--sera-muted)]" />
                     <SelectValue placeholder="Filter by Order" />
                   </div>
                 </SelectTrigger>
@@ -695,77 +694,50 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               </Select>
             </div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Statistics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Total Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_scans.toLocaleString()}</p>
-              </div>
-              <Scan className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Total Scans</p>
+          <p className="sera-sc-kpi__value">{stats.total_scans.toLocaleString()}</p>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Unique Consumers</p>
-                <button
-                  onClick={loadUniqueConsumersList}
-                  disabled={loadingUniqueConsumers}
-                  className="text-xl sm:text-2xl font-bold text-green-600 hover:text-green-800 underline decoration-dotted underline-offset-4 cursor-pointer transition-colors disabled:opacity-50"
-                  title="Click to view unique consumers list"
-                >
-                  {loadingUniqueConsumers ? '...' : stats.unique_consumers.toLocaleString()}
-                </button>
-              </div>
-              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Unique Consumers</p>
+          <button
+            type="button"
+            onClick={loadUniqueConsumersList}
+            disabled={loadingUniqueConsumers}
+            className="sera-sc-kpi__value text-left text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] underline decoration-dotted underline-offset-4 disabled:opacity-50"
+            title="Click to view unique consumers list"
+          >
+            {loadingUniqueConsumers ? '...' : stats.unique_consumers.toLocaleString()}
+          </button>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Points Distributed</p>
-                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.total_points.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-1">Est. Cost: RM {stats.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Points Distributed</p>
+          <p className="sera-sc-kpi__value">{stats.total_points.toLocaleString()}</p>
+          <p className="text-xs text-[var(--sera-muted)] mt-1">Est. Cost: RM {stats.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Today&apos;s Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.today_scans.toLocaleString()}</p>
-              </div>
-              <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Today&apos;s Scans</p>
+          <p className="sera-sc-kpi__value">{stats.today_scans.toLocaleString()}</p>
+        </div>
       </div>
 
       {/* Tabs for Activations and Feedback */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="activations">Recent Activations</TabsTrigger>
-          <TabsTrigger value="feedback" className="flex items-center gap-2">
+        <TabsList className="h-auto w-full flex flex-wrap justify-start gap-1 bg-[var(--sera-mist)] border border-[var(--sera-line)] p-1.5 rounded-xl mb-4">
+          <TabsTrigger value="activations" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">Recent Activations</TabsTrigger>
+          <TabsTrigger value="feedback" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             Consumer Feedback
           </TabsTrigger>
-          <TabsTrigger value="scan_issues" className="flex items-center gap-2">
+          <TabsTrigger value="scan_issues" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2">
             ⚠️ Scan Issues
           </TabsTrigger>
         </TabsList>
