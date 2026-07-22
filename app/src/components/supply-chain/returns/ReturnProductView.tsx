@@ -1237,7 +1237,7 @@ function ReturnCaseEditor({
 
                 {/* Shop master-data card + shortcut */}
                 {selectedShop && (
-                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg sera-sc-panel overflow-hidden bg-[var(--sera-ink)]/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-start gap-2.5">
                             <Store className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 text-sm">
@@ -1291,7 +1291,7 @@ function ReturnCaseEditor({
             {/* Warehouse Processing */}
             {showsWarehouseProcessing(status) && (
                 <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
-                    <h2 className="mb-3 text-sm font-semibold text-foreground">Warehouse Processing</h2>
+                    <h2 className="mb-3 text-sm font-semibold text-[var(--sera-ink)]">Warehouse Processing</h2>
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="Received Date"><Input type="date" value={wh.received_date} onChange={(e) => setWh({ ...wh, received_date: e.target.value })} disabled={readOnly || !meta.isManager} /></Field>
                         <Field label="Received By"><Input value={wh.received_by} onChange={(e) => setWh({ ...wh, received_by: e.target.value })} disabled={readOnly || !meta.isManager} /></Field>
@@ -1309,18 +1309,18 @@ function ReturnCaseEditor({
             {/* Timeline */}
             {rc?.status_history && rc.status_history.length > 0 && (
                 <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
-                    <h2 className="mb-3 text-sm font-semibold text-foreground">Return Case Timeline</h2>
+                    <h2 className="mb-3 text-sm font-semibold text-[var(--sera-ink)]">Return Case Timeline</h2>
                     <ol className="space-y-3">
                         {rc.status_history.map((h) => (
                             <li key={h.id} className="flex gap-2 text-sm">
-                                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--sera-orange)]" />
                                 <div>
-                                    <div className="font-medium text-foreground">{RETURN_STATUS_LABELS[h.to_status as ReturnStatus] || h.to_status}</div>
-                                    <div className="text-xs text-muted-foreground">
+                                    <div className="font-medium text-[var(--sera-ink)]">{RETURN_STATUS_LABELS[h.to_status as ReturnStatus] || h.to_status}</div>
+                                    <div className="text-xs text-[var(--sera-muted)]">
                                         {new Date(h.changed_at).toLocaleString('en-MY')}
                                         {h.changed_by_name ? ` • ${h.changed_by_name}` : ''}
                                     </div>
-                                    {h.notes && <div className="text-xs text-muted-foreground">{h.notes}</div>}
+                                    {h.notes && <div className="text-xs text-[var(--sera-muted)]">{h.notes}</div>}
                                 </div>
                             </li>
                         ))}
@@ -1344,9 +1344,9 @@ function ReadOnlyCard({ label, value, hint }: { label: string; value: string; hi
     return (
         <div className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">{label}</span>
-            <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-                <div className="text-sm font-medium text-foreground">{label}: {value}</div>
-                <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><Info className="h-3 w-3" /> {hint}</div>
+            <div className="rounded-md border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.03] px-3 py-2">
+                <div className="text-sm font-medium text-[var(--sera-ink)]">{label}: {value}</div>
+                <div className="mt-0.5 flex items-center gap-1 text-xs text-[var(--sera-muted)]"><Info className="h-3 w-3" /> {hint}</div>
             </div>
         </div>
     )
@@ -1356,22 +1356,22 @@ function PackingReference() {
     return (
         <div className="grid gap-3 lg:grid-cols-3">
             <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Package className="h-5 w-5 text-muted-foreground" /></div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10"><Package className="h-5 w-5 text-[var(--sera-orange)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-foreground">Enter Quantity in Pcs or Box</div>
-                    <div className="text-xs text-muted-foreground">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Enter Quantity in Pcs or Box</div>
+                    <div className="text-xs text-[var(--sera-muted)]">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
                 </div>
             </div>
             <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Boxes className="h-5 w-5 text-muted-foreground" /></div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-ink)]/5"><Boxes className="h-5 w-5 text-[var(--sera-ink)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-foreground">Box (4 Pcs)</div>
-                    <div className="text-xs text-muted-foreground">1 Box = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Box (4 Pcs)</div>
+                    <div className="text-xs text-[var(--sera-muted)]">1 Box = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
                 </div>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
-                <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-                <div className="text-xs text-amber-800 dark:text-amber-200">
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.05] p-4">
+                <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sera-orange)]" />
+                <div className="text-xs text-[var(--sera-orange-deep)]">
                     Total Pcs is auto-calculated. Switch between Pcs and Box mode without losing your quantity.
                 </div>
             </div>
@@ -1460,7 +1460,7 @@ function ReturnWorksheet({
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Product Line</span>
-                    <div className="inline-flex overflow-hidden rounded-md border border-border">
+                    <div className="inline-flex overflow-hidden rounded-md border border-[var(--sera-line)]">
                         <LineTab label="All Items" count={lineCounts.all} active={lineTab === 'all'} onClick={() => setLineTab('all')} />
                         <LineTab label="Hero" count={lineCounts.hero} active={lineTab === 'hero'} onClick={() => setLineTab('hero')} />
                         <LineTab label="Zero" count={lineCounts.zero} active={lineTab === 'zero'} onClick={() => setLineTab('zero')} />
@@ -1500,7 +1500,7 @@ function ReturnWorksheet({
 
             {/* Bulk update panel — applies Reason/Condition to every entered row (Total Pcs > 0). */}
             {!readOnly && (
-                <div className="mb-3 flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3 lg:flex-row lg:items-end">
+                <div className="mb-3 flex flex-col gap-3 rounded-lg sera-sc-panel overflow-hidden bg-[var(--sera-orange)]/[0.04] border border-[var(--sera-orange)]/15 p-3 lg:flex-row lg:items-end">
                     <div className="flex items-center gap-2 lg:min-w-[220px]">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]">
                             <Zap className="h-4 w-4" />
@@ -1528,7 +1528,7 @@ function ReturnWorksheet({
                         <Button
                             type="button"
                             size="sm"
-                            className="gap-1.5"
+                            className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                             disabled={!bulkReason && !bulkCondition}
                             onClick={() => onBulkApply(bulkReason || null, bulkCondition || null)}
                         >
@@ -1539,8 +1539,8 @@ function ReturnWorksheet({
             )}
 
             {/* Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+            <div className="overflow-x-auto sera-sc-panel overflow-hidden">
+                <table className="sera-sc-table w-full text-sm">
                     <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-2 py-2 font-medium">No.</th>
