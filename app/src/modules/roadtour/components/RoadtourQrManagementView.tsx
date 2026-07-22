@@ -13,6 +13,7 @@ import {
     Copy, Download, Eye, Loader2, QrCode, RefreshCcw,
     Search, Send, ShieldOff
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 import { buildRoadTourUrl } from '@/lib/roadtour/url'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
@@ -323,7 +324,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         expired: 'bg-gray-100 text-gray-700',
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     return (
         <div className="space-y-4 sm:space-y-6">

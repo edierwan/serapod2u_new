@@ -14,6 +14,7 @@ import { getRoadtourShopSurveyField, ROADTOUR_SHOP_SURVEY_FIELDS } from '@/lib/r
 import {
     ArrowDown, ArrowUp, ClipboardList, Edit, GripVertical, Loader2, Plus, Save, Trash2
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 
 interface RoadtourSurveyBuilderViewProps {
@@ -420,7 +421,7 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         return <input disabled type={field.field_type === 'number' ? 'number' : field.field_type === 'phone' ? 'tel' : 'text'} placeholder="Preview answer" className="w-full rounded-xl border bg-muted/30 px-3 py-2 text-sm" />
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     // Field builder view
     if (editingTemplate) {

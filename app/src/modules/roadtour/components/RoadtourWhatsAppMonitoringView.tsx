@@ -9,6 +9,7 @@ import {
     Smartphone, CheckCircle2, XCircle, Clock, Loader2, Send, AlertTriangle,
     RefreshCw, MessageSquare
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 
@@ -121,7 +122,7 @@ export function RoadtourWhatsAppMonitoringView({ userProfile, onViewChange }: Ro
         pending: { icon: Clock, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-700' },
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     return (
         <div className="space-y-6">

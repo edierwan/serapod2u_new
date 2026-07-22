@@ -10,6 +10,7 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, ArrowUp, ArrowDown, Minus, CheckCircle2, AlertTriangle, XCircle, MinusCircle, Inbox, FileQuestion } from 'lucide-react'
@@ -206,12 +207,7 @@ export function KPITableSkeleton({ rows = 5, cols = 5 }: { rows?: number; cols?:
 }
 
 export function KPICenteredLoader({ label }: { label?: string }) {
-    return (
-        <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            {label ?? 'Loading…'}
-        </div>
-    )
+    return <SeraLoadingState variant="section" label={label ?? 'Loading'} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import {
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
     Store, Users, XCircle
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell
@@ -639,7 +640,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         return { label: v.visit_status || '—', tone: 'slate' }
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     const lastUpdatedLabel = lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 

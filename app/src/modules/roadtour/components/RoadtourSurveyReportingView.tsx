@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
     BarChart3, Loader2, RefreshCw, Users, ClipboardCheck, Megaphone, Clock, Eye, Download, Inbox, FileText,
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
 } from 'recharts'

@@ -13,6 +13,7 @@ import {
   BarChart3, CheckCircle2, Loader2, Map as MapIcon, MapPin, QrCode, Scan, Star,
   TrendingUp, Users
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 
@@ -480,7 +481,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
     setScanPage(0)
   }, [dateFrom, dateTo, scansPerPage])
 
-  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+  if (loading) return <SeraLoadingState variant="page" />
 
   const rewardStatusColor: Record<string, string> = {
     pending: 'bg-amber-100 text-amber-700',

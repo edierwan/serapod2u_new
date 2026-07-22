@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertCircle, CheckCircle2, Coins, Info, Loader2, Map, Save, Sparkles } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 
 interface RoadtourRewardSettingsProps {
@@ -178,7 +179,7 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
     }
 
     if (loading) {
-        return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+        return <SeraLoadingState variant="page" label="Loading reward settings" />
     }
 
     return (

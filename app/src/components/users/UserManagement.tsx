@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Users, Search, Plus, Loader2, Edit, Trash2, CheckCircle, XCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import UserDialog from './UserDialog'
 import type { User as UserType, Role, Organization } from '@/types/user'
 import { getStorageUrl } from '@/lib/utils'
@@ -390,7 +391,7 @@ export default function UserManagement({ userProfile }: { userProfile: UserProfi
     </Button></TableHead>
   }
 
-  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>
+  if (loading) return <SeraLoadingState variant="page" label="Loading users" />
 
   return <div className="space-y-6">
     <div className="flex items-center justify-between">

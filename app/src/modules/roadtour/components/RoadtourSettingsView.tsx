@@ -14,6 +14,7 @@ import {
     AlertCircle, CheckCircle2, Info, Loader2, Lock, MessageCircle, Save,
     Settings, ShieldCheck, MapPin, Send, ClipboardList
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 
 interface RoadtourSettingsViewProps {
@@ -254,7 +255,7 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     const toneClass = (tone: string) => {
         switch (tone) {

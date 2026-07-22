@@ -1,7 +1,7 @@
 'use client'
 
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
-import { Loader2 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import UserManagementNew from './UserManagementNew'
 
 interface UserProfile {
@@ -30,7 +30,7 @@ export default function UsersView({ userProfile }: UsersViewProps) {
   const { isReady } = useSupabaseAuth()
 
   if (!isReady) {
-    return <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>
+    return <SeraLoadingState variant="page" label="Loading users" />
   }
 
   if (!userProfile) {

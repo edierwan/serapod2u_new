@@ -26,6 +26,7 @@ import {
     Search, ShieldAlert, Store, Trash2, Users, Eye, Play, Pause, Archive, X, ClipboardList,
     Coins, Gift, Globe, ShieldCheck, Sparkles, FileText
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 import {
     DUPLICATE_POLICY_LABEL,
@@ -857,7 +858,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
         }
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     return (
         <div className="space-y-4 sm:space-y-6">

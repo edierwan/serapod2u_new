@@ -47,6 +47,7 @@ import {
   AlertCircle,
   ShoppingCart,
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import {
   format,
   subDays,
@@ -878,41 +879,7 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
 
   // ── Loading state ──────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="space-y-6">
-        {/* Header skeleton */}
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-6 w-48" />
-          <div className="flex gap-2">
-            <Skeleton className="h-9 w-36" />
-            <Skeleton className="h-9 w-9" />
-          </div>
-        </div>
-        {/* Pipeline skeleton */}
-        <Card className="border-0 bg-card/80 backdrop-blur">
-          <CardContent className="pt-6">
-            <div className="flex gap-3">
-              {[1, 2, 3, 4].map(i => (
-                <Skeleton key={i} className="flex-1 h-28" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-        {/* KPI skeletons */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <KPICardSkeleton key={i} />)}
-        </div>
-        {/* Chart skeletons */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="border-0 bg-card/80 backdrop-blur">
-            <CardContent className="pt-6"><ChartSkeleton height="h-72" /></CardContent>
-          </Card>
-          <Card className="border-0 bg-card/80 backdrop-blur">
-            <CardContent className="pt-6"><ChartSkeleton height="h-72" /></CardContent>
-          </Card>
-        </div>
-      </div>
-    )
+    return <SeraLoadingState variant="section" label="Loading operations overview" />
   }
 
   // ── Error state ────────────────────────────────────────────────────────

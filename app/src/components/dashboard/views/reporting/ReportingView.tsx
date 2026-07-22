@@ -66,6 +66,7 @@ import OperationsTab from './OperationsTab'
 import ProductsTab from './ProductsTab'
 import ShopReportsTab from './ShopReportsTab'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
+import { SeraLoader, SeraLoadingState } from '@/components/ui/SeraLoader'
 
 interface ReportingViewProps {
     userProfile: any
@@ -167,7 +168,7 @@ const MetricCard = ({ title, value, change, changeType, icon: Icon, color, subti
                 <div className="min-w-0 space-y-2">
                     <p className="text-sm font-medium text-[var(--sera-muted)]">{title}</p>
                     {loading ? (
-                        <Loader2 className="w-6 h-6 animate-spin text-[var(--sera-muted)]" />
+                        <SeraLoader size="sm" className="text-[var(--sera-muted)]" />
                     ) : (
                         <div className="flex min-h-[2rem] min-w-0 items-center overflow-hidden">
                             <ExecutiveKpiValue>
@@ -428,17 +429,7 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     }, [data?.productMix])
 
     if (loading && !data) {
-        return (
-            <div className="flex h-[60vh] items-center justify-center">
-                <div className="text-center space-y-4">
-                    <div className="relative mx-auto w-14 h-14">
-                        <div className="w-14 h-14 border-2 border-[var(--sera-orange)]/20 rounded-full" />
-                        <Loader2 className="w-7 h-7 text-[var(--sera-orange)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin" />
-                    </div>
-                    <p className="text-sm text-[var(--sera-muted)] font-medium">Loading executive dashboard...</p>
-                </div>
-            </div>
-        )
+        return <SeraLoadingState variant="page" label="Loading executive dashboard" />
     }
 
     const periodDays = differenceInDays(new Date(dateParams.endDate), new Date(dateParams.startDate))

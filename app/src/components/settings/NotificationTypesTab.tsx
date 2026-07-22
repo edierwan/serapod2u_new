@@ -29,6 +29,7 @@ import {
   UserCheck,
   XCircle,
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 
 type Channel = 'whatsapp' | 'email' | 'sms'
 type RoutingPreset = 'whatsapp_only' | 'email_only' | 'sms_only' | 'whatsapp_email_fallback'
@@ -334,7 +335,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   }
 
   if (loading) {
-    return <div className="flex min-h-[420px] items-center justify-center rounded-2xl border bg-white"><Loader2 className="h-7 w-7 animate-spin text-violet-600" /><span className="ml-3 text-slate-600">Loading notification routing…</span></div>
+    return <SeraLoadingState variant="section" minHeight="420px" label="Loading notification routing" className="rounded-2xl border bg-white" />
   }
 
   const selectedPreset = PRESETS.find((preset) => preset.id === defaultPreset)!
