@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   List
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface Product {
   id: string
@@ -374,100 +375,60 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Products</h1>
-          <p className="text-sm text-gray-600">Manage your product catalog</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-          <Button 
-            size="sm" 
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => onViewChange?.('add-product')}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Product
-          </Button>
-        </div>
-      </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        title="Products"
+        description="Manage your product catalog"
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="border-[var(--sera-line)] text-[var(--sera-ink)]">
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+            <Button
+              size="sm"
+              className="bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+              onClick={() => onViewChange?.('add-product')}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-blue-50 flex items-center justify-center mb-2 sm:mb-0">
-                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-              </div>
-              <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
-                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>+12.5%</span>
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs mb-1">Total Products</p>
-            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalProducts}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center mb-2 sm:mb-0">
-                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-              <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
-                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>+8.1%</span>
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs mb-1">Active Products</p>
-            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.activeProducts}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center mb-2 sm:mb-0">
-                <Filter className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs mb-1">Categories</p>
-            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalCategories}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-orange-50 flex items-center justify-center mb-2 sm:mb-0">
-                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs mb-1">Brands</p>
-            <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalBrands}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Total Products</p>
+          <p className="sera-sc-kpi__value">{stats.totalProducts}</p>
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Active Products</p>
+          <p className="sera-sc-kpi__value">{stats.activeProducts}</p>
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Categories</p>
+          <p className="sera-sc-kpi__value">{stats.totalCategories}</p>
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Brands</p>
+          <p className="sera-sc-kpi__value">{stats.totalBrands}</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="p-6">
           <div className="flex flex-wrap gap-4">
             <div className="flex-1 min-w-[300px]">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-5 h-5" />
                 <Input
                   placeholder="Search products by name or code..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
                 />
               </div>
             </div>
@@ -533,7 +494,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 variant={viewMode === 'card' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('card')}
-                className={viewMode === 'card' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'card' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <LayoutGrid className="w-4 h-4" />
               </Button>
@@ -541,7 +502,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
                 variant={viewMode === 'list' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className={viewMode === 'list' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'list' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <List className="w-4 h-4" />
               </Button>

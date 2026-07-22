@@ -23,6 +23,7 @@ import {
   ArrowDown,
   Settings
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import ProductThumbnail from './ProductThumbnail'
 import StockSettingsPanel from './StockSettingsPanel'
 import IncomingStockDialog from './IncomingStockDialog'
@@ -1116,44 +1117,47 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const inStockPercentage = filteredInventory.length > 0 ? Math.round((inStockItems / filteredInventory.length) * 100) : 0
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-gray-600">Real-time inventory tracking across all locations</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={loading || exporting}>
-            {exporting ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
-            ) : (
-              <Download className="w-4 h-4 mr-2" />
-            )}
-            {exporting ? 'Exporting...' : 'Export Excel'}
-          </Button>
-          {canEditSettings() && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onViewChange?.('inventory-settings')}
-              className="border-blue-600 text-blue-600 hover:bg-blue-50"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Inventory Settings
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        title="Inventory"
+        description="Real-time inventory tracking across all locations"
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={loading || exporting} className="border-[var(--sera-line)]">
+              {exporting ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+              ) : (
+                <Download className="w-4 h-4 mr-2" />
+              )}
+              {exporting ? 'Exporting...' : 'Export Excel'}
             </Button>
-          )}
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => onViewChange?.('stock-adjustment')}>
-            <Package className="w-4 h-4 mr-2" />
-            Stock Adjustment
-          </Button>
-        </div>
-      </div>
+            {canEditSettings() && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onViewChange?.('inventory-settings')}
+                className="border-[var(--sera-line)] text-[var(--sera-ink)] hover:border-[var(--sera-orange)]/40"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Inventory Settings
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+              onClick={() => onViewChange?.('stock-adjustment')}
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Stock Adjustment
+            </Button>
+          </>
+        }
+      />
       {exportMessage && (
         <div
           className={`rounded-md border px-3 py-2 text-sm ${
             exportMessage.type === 'success'
-              ? 'border-green-200 bg-green-50 text-green-700'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
               : 'border-red-200 bg-red-50 text-red-700'
           }`}
         >
@@ -1162,76 +1166,41 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex items-start justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-              </div>
-              <div className="flex items-center gap-1 text-xs sm:text-sm text-green-600">
-                <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">+8.1%</span>
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Total Inventory Value</p>
-            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">RM {formatCurrency(totalValue)}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex items-start justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center">
-                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">In Stock</p>
-            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{inStockPercentage}%</p>
-            <p className="text-xs text-gray-600 hidden sm:block">{inStockItems} of {filteredInventory.length} items</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex items-start justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-orange-50 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Low Stock</p>
-            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{lowStockItems}</p>
-            {lowStockWithIncoming > 0 && (
-              <p className="text-xs text-blue-600 hidden sm:block">{lowStockWithIncoming} with incoming replenishment</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 lg:p-6">
-            <div className="flex items-start justify-between mb-2 sm:mb-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-red-50 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
-              </div>
-            </div>
-            <p className="text-gray-600 text-xs sm:text-sm mb-1">Out of Stock</p>
-            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{outOfStockItems}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Total Inventory Value</p>
+          <p className="sera-sc-kpi__value text-[1.35rem] sm:text-[1.75rem] truncate">RM {formatCurrency(totalValue)}</p>
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">In Stock</p>
+          <p className="sera-sc-kpi__value">{inStockPercentage}%</p>
+          <p className="text-xs text-[var(--sera-muted)] hidden sm:block">{inStockItems} of {filteredInventory.length} items</p>
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Low Stock</p>
+          <p className="sera-sc-kpi__value">{lowStockItems}</p>
+          {lowStockWithIncoming > 0 && (
+            <p className="text-xs text-[var(--sera-orange)] hidden sm:block">{lowStockWithIncoming} with incoming replenishment</p>
+          )}
+        </div>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Out of Stock</p>
+          <p className="sera-sc-kpi__value">{outOfStockItems}</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="p-6">
           <div className="space-y-4">
             {/* Search Bar */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-5 h-5" />
               <Input
                 placeholder="Search by product name, variant code, or location..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
               />
             </div>
 

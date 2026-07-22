@@ -40,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Dialog,
   DialogContent,
@@ -964,20 +965,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
-        </div>
+      <div className="sera-sc-page">
+        <SupplyChainPageHeader title="Organizations" description="Manage your supply chain network" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i} className="animate-pulse sera-sc-panel shadow-none">
               <CardContent className="p-6">
-                <div className="h-4 bg-gray-200 rounded mb-4"></div>
-                <div className="h-8 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="h-4 bg-[var(--sera-mist)] rounded mb-4"></div>
+                <div className="h-8 bg-[var(--sera-mist)] rounded mb-2"></div>
+                <div className="h-4 bg-[var(--sera-mist)] rounded mb-4"></div>
                 <div className="flex gap-2">
-                  <div className="h-6 bg-gray-200 rounded flex-1"></div>
-                  <div className="h-6 bg-gray-200 rounded w-16"></div>
+                  <div className="h-6 bg-[var(--sera-mist)] rounded flex-1"></div>
+                  <div className="h-6 bg-[var(--sera-mist)] rounded w-16"></div>
                 </div>
               </CardContent>
             </Card>
@@ -988,36 +987,38 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
-          <p className="text-gray-600">Manage your supply chain network</p>
-        </div>
-        <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => onViewChange?.('add-organization')}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Organization
-        </Button>
-      </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        title="Organizations"
+        description="Manage your supply chain network"
+        actions={
+          <Button
+            className="bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+            onClick={() => onViewChange?.('add-organization')}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Organization
+          </Button>
+        }
+      />
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
                 <Input
                   placeholder="Search organizations..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
                 />
               </div>
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-[var(--sera-line)]">
                 <Filter className="w-4 h-4 mr-2" />
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -1032,7 +1033,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-[var(--sera-line)]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -1042,7 +1043,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </SelectContent>
             </Select>
             <Select value={filterProgram} onValueChange={setFilterProgram}>
-              <SelectTrigger className="w-full sm:w-52">
+              <SelectTrigger className="w-full sm:w-52 border-[var(--sera-line)]">
                 <SelectValue placeholder="Program" />
               </SelectTrigger>
               <SelectContent>
@@ -1058,7 +1059,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 variant={viewMode === 'card' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('card')}
-                className={viewMode === 'card' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'card' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <LayoutGrid className="w-4 h-4" />
               </Button>
@@ -1066,7 +1067,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 variant={viewMode === 'list' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className={viewMode === 'list' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'list' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <List className="w-4 h-4" />
               </Button>
