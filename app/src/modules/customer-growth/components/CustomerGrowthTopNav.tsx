@@ -118,16 +118,17 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
     // ── Render ────────────────────────────────────────────────────
 
     return (
-        <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
+        <div className="sticky top-0 z-40 bg-white border-b border-[var(--sera-line)] print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
-            <div className="flex items-center h-11 px-3 gap-2">
+            <div className="flex items-center h-12 px-3 gap-2">
                 {/* Domain badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <button
+                        type="button"
                         onClick={() => router.push('/customer-growth')}
-                        className="flex items-center gap-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2.5 py-0.5 rounded text-sm font-semibold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors"
+                        className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold hover:bg-[var(--sera-orange)]/15 transition-colors"
                     >
-                        <UsersRound className="h-3 w-3" />
+                        <UsersRound className="h-3 w-3" strokeWidth={1.75} />
                         <span>Customer & Growth</span>
                     </button>
                 </div>
@@ -157,12 +158,12 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                     className={cn(
                                         'flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors',
                                         active
-                                            ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200'
-                                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                        open && !active && 'bg-accent text-accent-foreground'
+                                            ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                                            : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]',
+                                        open && !active && 'bg-[var(--sera-mist)] text-[var(--sera-ink)]'
                                     )}
                                 >
-                                    <Icon className="h-3.5 w-3.5" />
+                                    <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
                                     {group.label}
                                     <ChevronDown
                                         className={cn(
@@ -185,7 +186,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                 id={`cg-dropdown-${group.id}`}
                                 role="menu"
                                 aria-label={`${group.label} submenu`}
-                                className="absolute min-w-[200px] bg-popover border border-border rounded-lg shadow-lg py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
+                                className="absolute min-w-[200px] bg-white border border-[var(--sera-line)] rounded-lg shadow-sm py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
                                 style={{ left: dropdownStyle.left, top: dropdownStyle.top + 4 }}
                             >
                                 {group.children.map((child) => {
@@ -201,11 +202,11 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                             className={cn(
                                                 'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors',
                                                 childActive
-                                                    ? 'bg-teal-50 text-teal-700 font-semibold dark:bg-teal-900/30 dark:text-teal-300'
-                                                    : 'text-foreground hover:bg-accent'
+                                                    ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)] font-semibold'
+                                                    : 'text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]'
                                             )}
                                         >
-                                            <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                                            <ChildIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                                             <span>{child.label}</span>
                                         </button>
                                     )
@@ -218,8 +219,9 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                 {/* ── Mobile hamburger ────────────────────────────────── */}
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button
+                        type="button"
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent"
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]"
                         aria-label="Toggle Customer & Growth menu"
                     >
                         <MenuIcon className="h-4 w-4" />
@@ -231,7 +233,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
 
             {/* ─── Mobile dropdown ─────────────────────────────────── */}
             {mobileMenuOpen && (
-                <div className="md:hidden border-t border-border bg-card max-h-[60vh] overflow-y-auto">
+                <div className="md:hidden border-t border-[var(--sera-line)] bg-white max-h-[60vh] overflow-y-auto">
                     {customerGrowthNavGroups.map((group) => {
                         const active = isGroupActive(group)
                         const open = openGroupId === group.id
@@ -240,15 +242,16 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                         return (
                             <div key={group.id}>
                                 <button
+                                    type="button"
                                     onClick={() => setOpenGroupId(open ? null : group.id)}
                                     className={cn(
                                         'w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
                                         active
-                                            ? 'bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200'
-                                            : 'text-foreground hover:bg-accent'
+                                            ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                                            : 'text-[var(--sera-ink)] hover:bg-[var(--sera-mist)]'
                                     )}
                                 >
-                                    <Icon className="h-4 w-4" />
+                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
                                     <span className="flex-1 text-left">{group.label}</span>
                                     <ChevronRight
                                         className={cn(
@@ -259,7 +262,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                 </button>
 
                                 {open && (
-                                    <div className="bg-accent/30">
+                                    <div className="bg-[var(--sera-mist)]/60">
                                         {group.children.map((child) => {
                                             const ChildIcon = child.icon
                                             const childActive = isChildActive(child)
@@ -267,15 +270,16 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                                             return (
                                                 <button
                                                     key={child.id}
+                                                    type="button"
                                                     onClick={() => handleNav(child.route)}
                                                     className={cn(
                                                         'w-full flex items-center gap-2.5 pl-10 pr-4 py-2 text-sm transition-colors',
                                                         childActive
-                                                            ? 'bg-teal-50 text-teal-700 font-semibold dark:bg-teal-900/30 dark:text-teal-300'
-                                                            : 'text-muted-foreground hover:bg-accent'
+                                                            ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)] font-semibold'
+                                                            : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]'
                                                     )}
                                                 >
-                                                    <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                                                    <ChildIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                                                     <span>{child.label}</span>
                                                 </button>
                                             )
