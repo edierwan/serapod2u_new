@@ -29,6 +29,8 @@ import {
 import IncentiveRulesTab from './incentive/IncentiveRulesTab'
 import IncentivePayoutsTab from './incentive/IncentivePayoutsTab'
 import IncentiveNotificationsTab from './incentive/IncentiveNotificationsTab'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { SC_CHART_COLORS, SC_KPI_COLORS } from '@/modules/supply-chain/components/supplyChainChrome'
 
 // ── Types ───────────────────────────────────────────────────────
 interface UserProfile {
@@ -72,7 +74,7 @@ interface DistributorPerformance {
 }
 
 // ── Constants ───────────────────────────────────────────────────
-const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6']
+const CHART_COLORS = SC_CHART_COLORS
 const TIER_COLORS = { platinum: '#94a3b8', gold: '#f59e0b', silver: '#9ca3af', bronze: '#d97706' }
 const TIER_ICONS = { platinum: Crown, gold: Medal, silver: Award, bronze: Star }
 const CAMPAIGN_TYPE_LABELS: Record<string, string> = {
@@ -374,7 +376,7 @@ function KPICard({ title, value, subtitle, icon: Icon, trend, trendValue, color,
   color: string; loading?: boolean
 }) {
   return (
-    <Card className="border-0 shadow-lg bg-card/80 backdrop-blur hover:shadow-xl transition-all duration-300">
+    <Card className="sera-sc-panel overflow-hidden hover:shadow-xl transition-all duration-300">
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-2 flex-1">
@@ -417,7 +419,7 @@ function CampaignCard({ campaign, onEdit, onToggle }: {
     : 0
 
   return (
-    <Card className="border-0 shadow-lg bg-card/80 backdrop-blur hover:shadow-xl transition-all duration-300 group">
+    <Card className="sera-sc-panel overflow-hidden hover:shadow-xl transition-all duration-300 group">
       <CardContent className="p-5">
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -479,7 +481,7 @@ function CampaignCard({ campaign, onEdit, onToggle }: {
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-indigo-500 to-purple-500"
+              className="h-full rounded-full transition-all duration-700 bg-[var(--sera-orange)]"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
@@ -759,52 +761,44 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
 
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg">
-              <Trophy className="w-6 h-6" />
-            </div>
-            Distributor Incentive Program
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Design, launch and monitor incentive campaigns to drive distributor performance
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData()}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Refresh
-          </Button>
-          <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg" onClick={openNewCampaignDialog}>
-            <Plus className="w-4 h-4 mr-1" /> New Campaign
-          </Button>
-        </div>
-      </div>
+    <div className="sera-sc-page space-y-6">
+      <SupplyChainPageHeader
+        title="Distributor Incentive Program"
+        description="Design, launch and monitor incentive campaigns to drive distributor performance"
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="border-[var(--sera-line)]" onClick={() => loadData()}>
+              <RefreshCw className="w-4 h-4 mr-1" /> Refresh
+            </Button>
+            <Button size="sm" className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={openNewCampaignDialog}>
+              <Plus className="w-4 h-4 mr-1" /> New Campaign
+            </Button>
+          </>
+        }
+      />
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-muted/50 p-1 rounded-xl">
-          <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+        <TabsList className="bg-[var(--sera-ink)]/5 p-1 rounded-xl border border-[var(--sera-line)]">
+          <TabsTrigger value="dashboard" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <BarChart3 className="w-4 h-4" /> Dashboard
           </TabsTrigger>
-          <TabsTrigger value="campaigns" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="campaigns" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <Target className="w-4 h-4" /> Campaigns
           </TabsTrigger>
-          <TabsTrigger value="leaderboard" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="leaderboard" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <Crown className="w-4 h-4" /> Leaderboard
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="notifications" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <Bell className="w-4 h-4" /> Notifications
           </TabsTrigger>
-          <TabsTrigger value="insights" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="insights" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <Sparkles className="w-4 h-4" /> Insights
           </TabsTrigger>
-          <TabsTrigger value="rules" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="rules" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <Settings className="w-4 h-4" /> Rules / Setup
           </TabsTrigger>
-          <TabsTrigger value="payouts" className="rounded-lg data-[state=active]:bg-background data-[state=active]:shadow gap-1.5">
+          <TabsTrigger value="payouts" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-none gap-1.5">
             <DollarSign className="w-4 h-4" /> Payouts
           </TabsTrigger>
         </TabsList>
@@ -814,19 +808,19 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           {/* KPI Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KPICard title="Active Campaigns" value={kpis.activeCampaigns} subtitle="running now"
-              icon={Target} color="#6366f1" trend="up" trendValue="+1 this month" loading={loading} />
+              icon={Target} color={SC_KPI_COLORS.primary} trend="up" trendValue="+1 this month" loading={loading} />
             <KPICard title="Total Spend" value={`RM${kpis.totalSpend.toLocaleString()}`} subtitle={`of RM${kpis.totalBudget.toLocaleString()} budget`}
-              icon={DollarSign} color="#22c55e" trend="neutral" trendValue={`${kpis.budgetUtilization}% utilised`} loading={loading} />
+              icon={DollarSign} color={SC_KPI_COLORS.success} trend="neutral" trendValue={`${kpis.budgetUtilization}% utilised`} loading={loading} />
             <KPICard title="Avg Achievement" value={`${kpis.avgAchievement}%`} subtitle="across active campaigns"
-              icon={TrendingUp} color="#f59e0b" trend={kpis.avgAchievement > 50 ? 'up' : 'down'} trendValue={kpis.avgAchievement > 50 ? 'on track' : 'needs push'} loading={loading} />
+              icon={TrendingUp} color={SC_KPI_COLORS.warning} trend={kpis.avgAchievement > 50 ? 'up' : 'down'} trendValue={kpis.avgAchievement > 50 ? 'on track' : 'needs push'} loading={loading} />
             <KPICard title="Estimated ROI" value={`${kpis.estimatedROI}%`} subtitle="revenue vs spend"
-              icon={Zap} color="#8b5cf6" trend="up" trendValue="strong return" loading={loading} />
+              icon={Zap} color={SC_KPI_COLORS.ink} trend="up" trendValue="strong return" loading={loading} />
           </div>
 
           {/* Charts Row 1 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Monthly Incentive Trend */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur lg:col-span-2">
+            <Card className="sera-sc-panel overflow-hidden lg:col-span-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   <Activity className="w-5 h-5 text-indigo-500" /> Distributor Order Trend
@@ -851,7 +845,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
             </Card>
 
             {/* Tier Distribution */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   <Layers className="w-5 h-5 text-amber-500" /> Tier Distribution
@@ -892,7 +886,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           {/* Charts Row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Campaign ROI */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-green-500" /> Campaign ROI Analysis
@@ -915,7 +909,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
             </Card>
 
             {/* Quick Campaign Status */}
-            <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+            <Card className="sera-sc-panel overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   <Target className="w-5 h-5 text-indigo-500" /> Active Campaign Status
@@ -932,7 +926,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                         <Badge className={STATUS_STYLES.active}>{progress}%</Badge>
                       </div>
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+                        <div className="h-full rounded-full bg-[var(--sera-orange)] transition-all duration-700" style={{ width: `${progress}%` }} />
                       </div>
                       <div className="flex justify-between text-xs text-muted-foreground">
                         <span>{c.achievedCount}/{c.participatingDistributors} achieved</span>
@@ -964,7 +958,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               </Select>
               <span className="text-sm text-muted-foreground">{filteredCampaigns.length} campaigns</span>
             </div>
-            <Button size="sm" className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white" onClick={openNewCampaignDialog}>
+            <Button size="sm" className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={openNewCampaignDialog}>
               <Plus className="w-4 h-4 mr-1" /> Create Campaign
             </Button>
           </div>
@@ -976,7 +970,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           </div>
 
           {/* Campaign Types Reference */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardHeader>
               <CardTitle className="text-lg font-semibold">Campaign Type Reference</CardTitle>
               <CardDescription>Available incentive mechanics you can deploy</CardDescription>
@@ -990,7 +984,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
                   { type: 'product-mix', icon: PieChart, desc: 'Encourage ordering diverse SKUs — reward for breadth of portfolio' },
                   { type: 'tiered', icon: Layers, desc: 'Multi-tier bonus structure: Bronze → Silver → Gold → Platinum rewards' },
                 ].map(ct => (
-                  <div key={ct.type} className="p-4 bg-muted/40 rounded-xl border border-border/50 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                  <div key={ct.type} className="p-4 bg-muted/40 rounded-xl border border-border/50 hover:border-[var(--sera-orange)]/30 transition-colors">
                     <ct.icon className="w-8 h-8 text-indigo-500 mb-2" />
                     <p className="font-semibold text-sm text-foreground mb-1">{CAMPAIGN_TYPE_LABELS[ct.type]}</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">{ct.desc}</p>
@@ -1066,7 +1060,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           </div>
 
           {/* Full Leaderboard */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardContent className="p-2">
               <div className="divide-y divide-border">
                 {distributors.map((dist, index) => (
@@ -1178,7 +1172,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           </div>
 
           {/* Program Health Score */}
-          <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+          <Card className="sera-sc-panel overflow-hidden">
             <CardHeader>
               <CardTitle className="text-lg font-semibold flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-indigo-500" /> Program Health Score
@@ -1372,7 +1366,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setCampaignDialogOpen(false)}>Cancel</Button>
             <Button
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white"
+              className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
               onClick={handleSaveCampaign}
               disabled={!campaignForm.name || !campaignForm.startDate || !campaignForm.endDate}
             >

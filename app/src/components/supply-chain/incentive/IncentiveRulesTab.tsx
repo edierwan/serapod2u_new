@@ -125,7 +125,7 @@ function RuleSection({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+    <Card className="sera-sc-panel overflow-hidden">
       <button
         className="w-full flex items-center gap-4 p-5 hover:bg-muted/30 transition-colors text-left"
         onClick={() => setOpen(!open)}
@@ -342,7 +342,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-lg"
+              className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
             >
               {saving ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
               {saving ? 'Saving...' : 'Save Rules'}
@@ -359,7 +359,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
       )}
 
       {!selectedCampaignId ? (
-        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+        <Card className="sera-sc-panel overflow-hidden">
           <CardContent className="p-12 text-center">
             <div className="p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded-2xl w-fit mx-auto mb-4">
               <Settings className="w-10 h-10 text-indigo-500" />
@@ -374,7 +374,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
       ) : (
         <div className="space-y-4">
           {/* Campaign Info Banner */}
-          <div className="flex items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-950/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+          <div className="flex items-center gap-3 p-4 bg-[var(--sera-orange)]/6 rounded-xl border border-[var(--sera-orange)]/20">
             <Info className="w-5 h-5 text-indigo-500 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">Configuring: {selectedCampaign?.name}</p>
@@ -399,8 +399,8 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
                     onClick={() => setRewardRule(prev => ({ ...prev, reward_type: rt.value }))}
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
                       rewardRule.reward_type === rt.value
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20 shadow-md'
-                        : 'border-border hover:border-indigo-300 dark:hover:border-indigo-700'
+                        ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/8'
+                        : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -615,8 +615,8 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
                     onClick={() => setEligibility(prev => ({ ...prev, scope: es.value }))}
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
                       eligibility.scope === es.value
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20 shadow-md'
-                        : 'border-border hover:border-indigo-300 dark:hover:border-indigo-700'
+                        ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/8'
+                        : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                     }`}
                   >
                     <span className={`text-sm font-medium ${eligibility.scope === es.value ? 'text-indigo-700 dark:text-indigo-400' : 'text-foreground'}`}>
@@ -643,7 +643,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
                         }}
                         className={`px-4 py-2 rounded-lg border-2 text-sm font-medium capitalize transition-all ${
                           (eligibility.tier_filter || []).includes(t)
-                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700'
+                            ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/8 text-indigo-700'
                             : 'border-border text-muted-foreground'
                         }`}
                       >
@@ -721,7 +721,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
           </RuleSection>
 
           {/* Summary Card */}
-          <Card className="border-2 border-indigo-200 dark:border-indigo-800 shadow-lg bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
+          <Card className="sera-sc-panel overflow-hidden border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.04]">
             <CardContent className="p-5">
               <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-indigo-500" /> Rule Summary

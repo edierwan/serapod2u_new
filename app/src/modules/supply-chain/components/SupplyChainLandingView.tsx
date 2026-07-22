@@ -16,12 +16,12 @@ interface SupplyChainLandingViewProps {
 }
 
 const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'sc-products': { chip: 'bg-sky-50', icon: 'text-sky-600' },
-    'sc-orders': { chip: 'bg-emerald-50', icon: 'text-emerald-600' },
-    'sc-qr': { chip: 'bg-violet-50', icon: 'text-violet-600' },
-    'sc-inventory': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-    'sc-quality': { chip: 'bg-rose-50', icon: 'text-rose-600' },
-    'sc-organizations': { chip: 'bg-indigo-50', icon: 'text-indigo-600' },
+    'sc-products': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' },
+    'sc-orders': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink)]' },
+    'sc-qr': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange-deep)]' },
+    'sc-inventory': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink-soft)]' },
+    'sc-quality': { chip: 'bg-emerald-50', icon: 'text-emerald-700' },
+    'sc-organizations': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink)]' },
 }
 
 const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
