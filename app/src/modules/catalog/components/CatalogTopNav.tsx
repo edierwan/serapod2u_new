@@ -83,7 +83,7 @@ export default function CatalogTopNav({ currentView, onNavigate }: CatalogTopNav
 
     return (
         <div className="sticky top-0 z-30 bg-card border-b border-border print:hidden">
-            <div className="flex items-center h-12 px-3 gap-2">
+            <div className="sera-top-nav__inner">
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 rounded text-sm font-semibold">
                         <ShoppingCart className="h-3 w-3" />
@@ -210,7 +210,7 @@ export default function CatalogTopNav({ currentView, onNavigate }: CatalogTopNav
             )}
 
             {breadcrumbs.length > 1 && (
-                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
+                <div className="sera-top-nav__breadcrumb text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
                     {breadcrumbs.map((crumb, i) => (
                         <span key={i} className="flex items-center gap-1">
                             {i > 0 && <ChevronRight className="h-2.5 w-2.5" />}

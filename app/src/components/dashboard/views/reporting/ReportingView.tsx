@@ -65,6 +65,7 @@ import ExecutiveKpiValue from './ExecutiveKpiValue'
 import OperationsTab from './OperationsTab'
 import ProductsTab from './ProductsTab'
 import ShopReportsTab from './ShopReportsTab'
+import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 
 interface ReportingViewProps {
     userProfile: any
@@ -443,23 +444,12 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
     const periodDays = differenceInDays(new Date(dateParams.endDate), new Date(dateParams.startDate))
 
     return (
-        <div className="min-h-full">
-            <div className="p-6 lg:p-8 space-y-7">
-                {/* Header — Serapod light brand */}
-                <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-4" />
-                        <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
-                            Reporting
-                        </p>
-                        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
-                            Executive Dashboard
-                        </h1>
-                        <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)]">
-                            Real-time business intelligence & analytics
-                        </p>
-                    </div>
-
+        <div className="sera-module-landing">
+            <ModuleLightHeader
+                eyebrow="Reporting"
+                title="Executive Dashboard"
+                description="Real-time business intelligence & analytics"
+                actions={(
                     <div className="flex flex-wrap items-center gap-2.5">
                         <Select value={dateRange} onValueChange={setDateRange}>
                             <SelectTrigger className="w-[150px] h-10 bg-white border-[var(--sera-line)] text-[var(--sera-ink)]">
@@ -500,7 +490,8 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                         </Button>
                     </div>
-                </header>
+                )}
+            />
 
                 {/* Error Banner */}
                 {error && (
@@ -973,7 +964,6 @@ export default function ReportingView({ userProfile }: ReportingViewProps) {
                 <div className="text-center text-xs text-[var(--sera-muted)] pt-4 border-t border-[var(--sera-line)]">
                     <p>Last updated: {format(new Date(), 'MMMM dd, yyyy HH:mm:ss')} • Data refreshes automatically</p>
                 </div>
-            </div>
         </div>
     )
 }

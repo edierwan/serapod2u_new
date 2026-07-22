@@ -66,7 +66,7 @@ export default function RoadtourTopNav({ currentView, onNavigate }: RoadtourTopN
 
   return (
     <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
-      <div className="flex items-center h-11 px-3 gap-2">
+      <div className="sera-top-nav__inner">
         <div className="flex items-center gap-1.5 shrink-0 mr-1">
           <button onClick={() => onNavigate('roadtour')}
             className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">

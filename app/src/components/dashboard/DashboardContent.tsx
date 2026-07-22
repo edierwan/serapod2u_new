@@ -163,6 +163,7 @@ import { FollowUpPriorityQueueView } from '@/modules/roadtour/components/analyti
 import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/analytics/MonthlyKpiPerformanceReportView'
 import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
+import GlobalPageChrome from '@/components/layout/GlobalPageChrome'
 import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
@@ -830,7 +831,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isHrView = currentView === 'hr' || currentView.startsWith('hr/') || currentView.startsWith('hr-')
   const isFinanceView = currentView === 'finance' || currentView.startsWith('finance/')
   const isSettingsView = currentView === 'settings' || currentView.startsWith('settings/')
-  const isNotificationsView = currentView === 'notifications' || currentView.startsWith('notifications/')
   const isSupplyChainView = isSupplyChainViewId(currentView)
   const isLoyaltyView = isLoyaltyViewId(currentView)
   const isCrmView = isCrmViewId(currentView)
@@ -840,7 +840,17 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isRoadtourView = isRoadtourViewId(currentView)
   // Show Customer & Growth domain top-nav on ALL CG views (landing + child modules + sub-views)
   const showCustomerGrowthTopNav = isCustomerGrowthView
-  const hasModuleTopNav = isHrView || isFinanceView || isSettingsView || isNotificationsView || isSupplyChainView || isLoyaltyView || isCrmView || isMarketingView || isCatalogView || isRoadtourView || showCustomerGrowthTopNav
+  const hasRenderedTopNav =
+    isHrView ||
+    isFinanceView ||
+    isSettingsView ||
+    isSupplyChainView ||
+    isLoyaltyView ||
+    isCrmView ||
+    isMarketingView ||
+    isCatalogView ||
+    isRoadtourView ||
+    showCustomerGrowthTopNav
 
   const handleHrNavigate = (href: string) => {
     router.push(href)
@@ -892,6 +902,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       </div>
       {/* Main Content - fills remaining space */}
       <div className="flex-1 min-w-0 min-h-screen flex flex-col bg-[var(--sera-paper,#f7f8fa)]">
+        <div className="sera-top-chrome print:hidden">
         {/* HR Top Navigation — shown only on /hr/* routes */}
         {isHrView && (
           <HRTopNav currentView={currentView} onNavigate={handleHrNavigate} />
@@ -928,7 +939,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         {isRoadtourView && (
           <RoadtourTopNav currentView={currentView} onNavigate={handleViewChange} />
         )}
-        <main className={`sera-main flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4 sm:py-6 ${hasModuleTopNav ? '' : 'pt-16 lg:pt-6'} print:p-0 print:pt-0 print:overflow-visible print:h-auto`}>
+        {!hasRenderedTopNav && (
+          <GlobalPageChrome
+            currentView={currentView}
+            orgName={userProfile.organizations?.org_name}
+          />
+        )}
+        </div>
+        <main className="sera-main sera-main__scroll flex-1 overflow-y-auto print:p-0 print:pt-0 print:overflow-visible print:h-auto">
           {renderCurrentView()}
         </main>
         {/* HR AI Assistant – floating button + chat drawer */}

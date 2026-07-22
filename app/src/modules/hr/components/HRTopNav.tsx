@@ -163,7 +163,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
     return (
         <div className="sticky top-0 z-40 bg-white border-b border-[var(--sera-line)] print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
-            <div className="flex items-center h-12 px-3 gap-2">
+            <div className="sera-top-nav__inner">
                 {/* HR badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold">
@@ -422,7 +422,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
 
             {/* ─── Breadcrumb bar ──────────────────────────────────── */}
             {breadcrumbs.length > 1 && (
-                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-[var(--sera-muted)] border-t border-[var(--sera-line)]/80 bg-[var(--sera-mist)]/50">
+                <div className="sera-top-nav__breadcrumb text-[11px] text-[var(--sera-muted)] border-t border-[var(--sera-line)]/80 bg-[var(--sera-mist)]/50">
                     {breadcrumbs.map((crumb, i) => (
                         <span key={i} className="flex items-center gap-1">
                             {i > 0 && <ChevronRight className="h-2.5 w-2.5" />}

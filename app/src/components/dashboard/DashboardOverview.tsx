@@ -1,5 +1,6 @@
 'use client'
 
+import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
@@ -65,25 +66,13 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
   }
 
   return (
-    <div className="space-y-8">
-      {/* Light greeting — same language as Login form side, not a heavy banner */}
-      <header className="pt-1">
-        <div className="h-1 w-12 rounded-sm bg-[var(--sera-orange)] mb-5" />
-        <p className="text-xs font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-2">
-          Dashboard
-        </p>
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
-          {getGreeting()}
-          {userProfile.organizations?.org_name ? ',' : ''}
-        </h1>
-        {userProfile.organizations?.org_name && (
-          <p className="mt-2 text-base sm:text-lg text-[var(--sera-muted)]">
-            {userProfile.organizations.org_name}
-          </p>
-        )}
-      </header>
+    <div className="sera-module-landing">
+      <ModuleLightHeader
+        eyebrow="Dashboard"
+        title={`${getGreeting()}${userProfile.organizations?.org_name ? ',' : ''}`}
+        description={userProfile.organizations?.org_name ?? undefined}
+      />
 
-      {/* Statistics Cards */}
       <DashboardStatistics userProfile={userProfile} />
 
       {/* Action Required and Recent Activities */}

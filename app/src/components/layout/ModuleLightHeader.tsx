@@ -23,15 +23,11 @@ export default function ModuleLightHeader({ eyebrow, title, description, lead, a
         <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--sera-ink)] leading-tight">
           {title}
         </h1>
-        {description ? (
-          <p className="mt-2 text-sm sm:text-base text-[var(--sera-muted)] max-w-2xl leading-relaxed">
-            {description}
-          </p>
-        ) : null}
-        {lead ? (
-          <p className="mt-2 text-sm text-[var(--sera-muted)] max-w-2xl leading-relaxed">
-            {lead}
-          </p>
+        {(description || lead) ? (
+          <div className="mt-2 max-w-2xl space-y-2 text-sm sm:text-base text-[var(--sera-muted)] leading-relaxed">
+            {description ? <p className="m-0">{description}</p> : null}
+            {lead ? <p className="m-0">{lead}</p> : null}
+          </div>
         ) : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-end gap-2">{actions}</div> : null}

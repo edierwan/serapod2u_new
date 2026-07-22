@@ -596,34 +596,30 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.06, duration: 0.35 }}
             >
-              <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden group hover:shadow-xl transition-shadow">
-                <CardContent className="pt-5 pb-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      {card.title}
-                    </span>
+              <div className="sera-sc-kpi group">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="sera-sc-kpi__label">{card.title}</span>
                     <div
-                      className="p-2 rounded-lg transition-colors"
-                      style={{ backgroundColor: `${card.color}15`, color: card.color }}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
+                      style={{ backgroundColor: `${card.color}14`, color: card.color }}
                     >
                       {card.icon}
                     </div>
                   </div>
-                  <ExecutiveKpiValue>{card.value}</ExecutiveKpiValue>
+                  <div className="sera-sc-kpi__value">
+                    <ExecutiveKpiValue>{card.value}</ExecutiveKpiValue>
+                  </div>
                   {card.delta.delta > 0 && (
-                    <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${isGood ? 'text-emerald-500' : 'text-red-500'}`}>
+                    <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${isGood ? 'text-emerald-600' : 'text-red-600'}`}>
                       {isGood
                         ? <ArrowUpRight className="h-3.5 w-3.5" />
                         : <ArrowDownRight className="h-3.5 w-3.5" />
                       }
                       <span>{card.delta.delta.toFixed(1)}%</span>
-                      <span className="text-muted-foreground font-normal ml-0.5">vs prev</span>
+                      <span className="text-[var(--sera-muted)] font-normal ml-0.5">vs prev</span>
                     </div>
                   )}
-                </CardContent>
-                {/* Color accent bar */}
-                <div className="h-1" style={{ backgroundColor: card.color, opacity: 0.6 }} />
-              </Card>
+              </div>
             </motion.div>
           )
         })}
@@ -702,19 +698,19 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
   }
 
   const renderThroughputChart = () => (
-    <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
-      <CardHeader className="pb-2">
+    <div className="sera-sc-panel overflow-hidden">
+      <div className="border-b border-[var(--sera-line)] px-5 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
+            <h3 className="text-base font-semibold text-[var(--sera-ink)] flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-[var(--sera-orange)]" />
               Order Throughput Trend
-            </CardTitle>
-            <CardDescription>Monthly created vs completed orders</CardDescription>
+            </h3>
+            <p className="text-sm text-[var(--sera-muted)] mt-0.5">Monthly created vs completed orders</p>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
+      </div>
+      <div className="p-5">
         {throughputTrend.length === 0 ? (
           <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
             No data for trend chart
@@ -755,8 +751,8 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
             </ComposedChart>
           </ResponsiveContainer>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 
   const renderWarehouseActivity = () => {
@@ -942,17 +938,17 @@ export default function OperationsTab({ userProfile, chartGridColor, chartTickCo
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-[var(--sera-ink)] flex items-center gap-2">
+            <Activity className="h-5 w-5 text-[var(--sera-orange)]" />
             Operations Overview
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-[var(--sera-muted)] mt-0.5">
             Pipeline health, processing metrics &amp; warehouse activity
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[160px] h-9 text-sm">
+            <SelectTrigger className="w-[160px] h-9 text-sm bg-white border-[var(--sera-line)]">
               <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>

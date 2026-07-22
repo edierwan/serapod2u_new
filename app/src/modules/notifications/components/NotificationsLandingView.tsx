@@ -105,7 +105,7 @@ export default function NotificationsLandingView() {
               <button
                 type="button"
                 onClick={() => router.push(href)}
-                className="sera-module-landing__link group"
+                className="sera-module-landing__link sera-module-landing__link--text-only group"
               >
                 <span className="flex-1">{action}</span>
                 <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--sera-orange)]" />

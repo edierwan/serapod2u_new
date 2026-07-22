@@ -155,7 +155,7 @@ export default function SettingsTopNav({ currentView, onNavigate, roleLevel }: S
     return (
         <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
-            <div className="flex items-center h-12 px-3 gap-2">
+            <div className="sera-top-nav__inner">
                 {/* Settings badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300 px-2.5 py-0.5 rounded text-sm font-semibold">
@@ -390,7 +390,7 @@ export default function SettingsTopNav({ currentView, onNavigate, roleLevel }: S
 
             {/* ─── Breadcrumb bar ──────────────────────────────────── */}
             {breadcrumbs.length > 1 && (
-                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
+                <div className="sera-top-nav__breadcrumb text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
                     {breadcrumbs.map((crumb, i) => (
                         <span key={i} className="flex items-center gap-1">
                             {i > 0 && <ChevronRight className="h-2.5 w-2.5" />}

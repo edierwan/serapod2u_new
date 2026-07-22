@@ -120,7 +120,7 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
     return (
         <div className="sticky top-0 z-40 bg-white border-b border-[var(--sera-line)] print:hidden">
             {/* ─── Main Row ─────────────────────────────────────────── */}
-            <div className="flex items-center h-12 px-3 gap-2">
+            <div className="sera-top-nav__inner">
                 {/* Domain badge */}
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <button
