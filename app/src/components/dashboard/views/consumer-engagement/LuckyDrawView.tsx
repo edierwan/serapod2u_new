@@ -856,8 +856,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* PARTICIPANTS TAB */}
                 <TabsContent value="participants">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1 relative">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex-1 relative min-w-0">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <Input
                           placeholder="Search by name, phone, email, or entry number..."
@@ -866,7 +866,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                           className="pl-10"
                         />
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 shrink-0">
                         <UserCheck className="w-4 h-4" />
                         <span>{stats.totalParticipants} participants</span>
                       </div>
@@ -882,8 +882,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         </p>
                       </div>
                     ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full">
+                      <div className="border rounded-lg overflow-x-auto">
+                        <table className="w-full min-w-[720px]">
                           <thead className="bg-gray-50">
                             <tr>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 w-12">#</th>
@@ -1155,8 +1155,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                           <Trophy className="w-5 h-5 text-yellow-500" />
                           Winners ({stats.totalWinners})
                         </h4>
-                        <div className="border rounded-lg overflow-hidden">
-                          <table className="w-full">
+                        <div className="border rounded-lg overflow-x-auto">
+                          <table className="w-full min-w-[480px]">
                             <thead className="bg-yellow-50">
                               <tr>
                                 <th className="px-4 py-3 text-left text-xs font-medium">Name</th>

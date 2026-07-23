@@ -1006,7 +1006,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                     <CardDescription>Filter by status, category, or search to focus your review.</CardDescription>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="relative sm:min-w-[220px]">
+                    <div className="relative w-full sm:min-w-[220px]">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={searchTerm}
@@ -1016,7 +1016,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                       />
                     </div>
                     <Select value={sortOption} onValueChange={setSortOption}>
-                      <SelectTrigger className="sm:w-56">
+                      <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Sort" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1093,7 +1093,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                 ) : (
                   <>
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-border text-sm">
+                      <table className="min-w-[720px] w-full divide-y divide-border text-sm">
                         <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="px-4 py-3 w-[50px]">#</th>
@@ -1492,8 +1492,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="mb-4 flex gap-4">
-                <div className="flex-1">
+              <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <div className="flex-1 min-w-0">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -1508,7 +1508,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   value={redemptionStatusFilter}
                   onValueChange={(value) => setRedemptionStatusFilter(value as any)}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>

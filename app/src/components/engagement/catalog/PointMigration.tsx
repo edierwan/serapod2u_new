@@ -671,7 +671,7 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
       {uploadComplete && results.length > 0 && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle>Migration Results</CardTitle>
                 <CardDescription>
@@ -771,8 +771,8 @@ export function PointMigration({ onMigrationComplete }: PointMigrationProps) {
             </div>
 
             {/* Results Table */}
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[640px]">
                 <TableHeader>
                   <TableRow className="bg-gray-50">
                     <TableHead

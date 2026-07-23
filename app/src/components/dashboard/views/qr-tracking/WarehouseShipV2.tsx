@@ -2241,8 +2241,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Warehouse Ship</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Warehouse Ship</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Scan master cases and unique QR codes for distributor shipments
           </p>
         </div>
@@ -2917,7 +2917,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           )}
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
               <Select
                 value={historyPreset}
                 onValueChange={(value) => {
@@ -2925,7 +2925,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   setHistoryPage(1)
                 }}
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2937,9 +2937,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
-                <CalendarRange className="h-4 w-4" />
-                <span>
+              <div className="flex items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700 min-w-0">
+                <CalendarRange className="h-4 w-4 shrink-0" />
+                <span className="truncate">
                   {formatDateOnly(historyRange.start)}
                   <span className="mx-1 text-gray-400">→</span>
                   {formatDateOnly(historyRange.end)}
@@ -2948,7 +2948,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             </div>
 
             <div className="flex flex-col gap-3 w-full lg:w-auto lg:flex-row lg:items-center">
-              <div className="relative w-full lg:w-64">
+              <div className="relative w-full lg:w-64 min-w-0">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   value={historySearchInput}
@@ -2965,7 +2965,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   setHistoryPage(1)
                 }}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="Page size" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2980,7 +2980,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <Table>
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow className="bg-gray-50">
                   <TableHead 

@@ -961,14 +961,14 @@ function GoodsReceivedHistoryModal({
             )}
 
             {/* Filters */}
-            <div className="flex flex-wrap items-end gap-3 mt-2">
-              <div className="flex-1 min-w-[180px]">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-end gap-3 mt-2">
+              <div className="flex-1 min-w-0 sm:min-w-[180px]">
                 <div className="relative">
                   <Search className="h-4 w-4 text-gray-400 absolute left-2.5 top-2.5" />
                   <Input className="pl-8" placeholder={global ? 'Search Order / GRN No. / Supplier' : 'Search GRN No.'} value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
                 </div>
               </div>
-              <div className="min-w-[120px]">
+              <div className="w-full sm:w-auto sm:min-w-[120px]">
                 <label className="text-xs text-gray-500">Type</label>
                 <select className="w-full p-2 border rounded-md text-sm mt-1" value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setPage(1) }}>
                   <option value="all">All</option>
@@ -976,28 +976,30 @@ function GoodsReceivedHistoryModal({
                   <option value="full">Full</option>
                 </select>
               </div>
-              <div className="min-w-[230px]">
+              <div className="w-full sm:w-auto sm:min-w-[230px]">
                 <label className="text-xs text-gray-500">Date Range (Received Date)</label>
                 <div className="flex items-center gap-1 mt-1">
-                  <Input type="date" className="text-sm" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1) }} />
-                  <span className="text-gray-400 text-xs">–</span>
-                  <Input type="date" className="text-sm" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1) }} />
+                  <Input type="date" className="text-sm min-w-0 flex-1" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1) }} />
+                  <span className="text-gray-400 text-xs shrink-0">–</span>
+                  <Input type="date" className="text-sm min-w-0 flex-1" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1) }} />
                 </div>
               </div>
-              <div className="min-w-[140px]">
+              <div className="w-full sm:w-auto sm:min-w-[140px]">
                 <label className="text-xs text-gray-500">Received By</label>
                 <select className="w-full p-2 border rounded-md text-sm mt-1" value={receivedByFilter} onChange={(e) => { setReceivedByFilter(e.target.value); setPage(1) }}>
                   <option value="all">All</option>
                   {receivers.map((rv) => <option key={rv} value={rv}>{rv}</option>)}
                 </select>
               </div>
-              <Button variant="outline" onClick={resetFilters}><RotateCcw className="mr-2 h-4 w-4" /> Reset</Button>
-              <Button className="bg-blue-600 hover:bg-blue-700" onClick={exportCsv} disabled={filtered.length === 0}><Download className="mr-2 h-4 w-4" /> Export</Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button variant="outline" className="w-full sm:w-auto" onClick={resetFilters}><RotateCcw className="mr-2 h-4 w-4" /> Reset</Button>
+                <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto" onClick={exportCsv} disabled={filtered.length === 0}><Download className="mr-2 h-4 w-4" /> Export</Button>
+              </div>
             </div>
 
             {/* Table */}
-            <div className="border rounded-lg overflow-hidden mt-2">
-              <table className="w-full text-sm">
+            <div className="border rounded-lg overflow-x-auto mt-2">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500">
                   <tr className="text-left">
                     <th className="py-2.5 px-2 w-10"></th>
