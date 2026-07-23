@@ -419,9 +419,9 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
 
       {/* Filters */}
       <Card className="sera-sc-panel shadow-none">
-        <CardContent className="p-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[300px]">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-4">
+            <div className="w-full min-w-0 flex-1 sm:min-w-[220px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-5 h-5" />
                 <Input
@@ -437,7 +437,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
               setCategoryFilter(value)
               setBrandFilter('all') // Reset brand filter when category changes
             }}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -451,7 +451,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
             </Select>
 
             <Select value={brandFilter} onValueChange={setBrandFilter}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Brand" />
               </SelectTrigger>
               <SelectContent>
@@ -465,7 +465,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
             </Select>
 
             <Select value={manufacturerFilter} onValueChange={setManufacturerFilter}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <SelectValue placeholder="Manufacturer" />
               </SelectTrigger>
               <SelectContent>
@@ -479,7 +479,7 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
             </Select>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-full sm:w-[150px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -661,7 +661,8 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <div className="overflow-x-auto">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <TableHead>
@@ -926,9 +927,10 @@ export default function ProductsView({ userProfile, onViewChange }: ProductsView
               )}
             </TableBody>
           </Table>
+          </div>
 
           {/* Pagination */}
-          <div className="mt-6 flex items-center justify-between">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-gray-600 text-xs">
               Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, products.length)} of {products.length} items
             </p>

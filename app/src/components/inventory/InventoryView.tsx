@@ -1191,7 +1191,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       {/* Filters */}
       <Card className="sera-sc-panel shadow-none">
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="space-y-4">
             {/* Search Bar */}
             <div className="relative">
@@ -1205,7 +1205,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
             </div>
 
             {/* Filter Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label className="text-xs font-medium text-[var(--sera-ink)]/80 mb-1.5 block">Location</label>
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
@@ -1335,7 +1335,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
+          <div className="overflow-x-auto">
+          <Table className="min-w-[800px]">
             <TableHeader>
               <TableRow>
                 <TableHead
@@ -1546,9 +1547,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               )}
             </TableBody>
           </Table>
+          </div>
 
           {/* Pagination */}
-          <div className="mt-6 flex items-center justify-between">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[var(--sera-muted)] text-sm">
               {filteredInventory.length === 0
                 ? 'No items to display'

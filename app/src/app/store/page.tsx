@@ -95,16 +95,21 @@ export default async function StorefrontHomePage() {
               </div>
             </div>
 
-            <div className="store-rise store-rise-delay-3 relative mx-auto w-full max-w-md lg:max-w-none">
+            <div className="store-rise store-rise-delay-3 relative mx-auto flex w-full max-w-md justify-center lg:max-w-none lg:justify-end lg:pr-6">
               <div
-                className="pointer-events-none absolute inset-6 rounded-full opacity-60 blur-3xl"
-                style={{ background: 'radial-gradient(circle, rgba(232,93,4,0.22), transparent 70%)' }}
+                className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-80 blur-3xl lg:left-auto lg:right-[12%] lg:translate-x-0"
+                style={{
+                  background:
+                    'radial-gradient(circle, rgba(232,93,4,0.2) 0%, rgba(20,18,16,0.08) 45%, transparent 70%)',
+                }}
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/brand/serapod-device-hero.png"
-                alt="Serapod"
-                className="store-float relative z-[1] mx-auto w-full max-w-sm drop-shadow-2xl lg:max-w-md"
+                alt="Serapod Black Edition"
+                className="store-float relative z-[1] h-auto w-auto max-h-[420px] max-w-[140px] object-contain drop-shadow-[0_28px_50px_rgba(20,18,16,0.4)] sm:max-h-[480px] sm:max-w-[160px] lg:max-h-[520px] lg:max-w-[180px]"
+                width={437}
+                height={2030}
                 decoding="async"
                 fetchPriority="high"
               />

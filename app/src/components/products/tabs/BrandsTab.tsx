@@ -244,8 +244,8 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex-1 max-w-md relative">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-md sm:flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search brands..."
@@ -259,7 +259,7 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
             setEditingBrand(null)
             setDialogOpen(true)
           }}
-          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
+          className="w-full shrink-0 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white sm:w-auto"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Brand
@@ -274,8 +274,8 @@ export default function BrandsTab({ userProfile, onRefresh, refreshTrigger }: Br
         onSave={handleSave}
       />
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
+      <div className="border rounded-lg overflow-x-auto">
+        <Table className="min-w-[560px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>

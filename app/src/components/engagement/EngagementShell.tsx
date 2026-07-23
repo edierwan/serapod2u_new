@@ -78,12 +78,18 @@ export function EngagementShell({ userProfile, activeView = 'point-catalog', chi
   }
 
   return (
-    <div className="min-h-screen bg-background flex sera-shell">
-      <div className="print:hidden shrink-0 sticky top-0 h-screen h-[100dvh] self-start">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-background flex sera-shell">
+      <div className="print:hidden w-0 min-w-0 overflow-visible shrink-0 lg:w-auto lg:sticky lg:top-0 lg:h-[100dvh] lg:self-start">
         <Sidebar userProfile={userProfile} currentView={activeView} onViewChange={handleNavigate} />
       </div>
-      <div className="flex-1 overflow-hidden">
-        <main className="p-6 h-full overflow-y-auto bg-muted/10">
+      <div className="flex-1 w-full min-w-0 h-full min-h-0 flex flex-col overflow-hidden">
+        {/* Mobile hamburger clearance — Engagement routes have no GlobalPageChrome */}
+        <div className="sera-top-chrome print:hidden shrink-0 lg:hidden">
+          <div className="sera-top-nav__inner">
+            <span className="text-sm font-semibold text-[var(--sera-ink)] truncate">Engagement</span>
+          </div>
+        </div>
+        <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-muted/10 p-4 sm:p-6">
           {children}
         </main>
       </div>

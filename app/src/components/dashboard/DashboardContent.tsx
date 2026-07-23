@@ -890,8 +890,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   return (
-    <div className="min-h-screen bg-[var(--sera-paper,#f7f8fa)] flex sera-shell">
-      <div className="print:hidden shrink-0 sticky top-0 h-screen h-[100dvh] self-start">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-[var(--sera-paper,#f7f8fa)] flex sera-shell">
+      {/* Mobile: w-0 so off-canvas drawer never steals flex width. Desktop unchanged. */}
+      <div className="print:hidden w-0 min-w-0 overflow-visible shrink-0 lg:w-auto lg:sticky lg:top-0 lg:h-[100dvh] lg:self-start">
         <Sidebar
           userProfile={userProfile}
           currentView={currentView}
@@ -901,8 +902,8 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         />
       </div>
       {/* Main Content - fills remaining space */}
-      <div className="flex-1 min-w-0 min-h-screen flex flex-col bg-[var(--sera-paper,#f7f8fa)]">
-        <div className="sera-top-chrome print:hidden">
+      <div className="flex-1 w-full min-w-0 h-full min-h-0 flex flex-col overflow-hidden bg-[var(--sera-paper,#f7f8fa)]">
+        <div className="sera-top-chrome print:hidden shrink-0">
         {/* HR Top Navigation — shown only on /hr/* routes */}
         {isHrView && (
           <HRTopNav currentView={currentView} onNavigate={handleHrNavigate} />
@@ -946,7 +947,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
           />
         )}
         </div>
-        <main className="sera-main sera-main__scroll flex-1 overflow-y-auto print:p-0 print:pt-0 print:overflow-visible print:h-auto">
+        <main className="sera-main sera-main__scroll flex-1 min-h-0 overflow-y-auto overscroll-contain print:p-0 print:pt-0 print:overflow-visible print:h-auto">
           {renderCurrentView()}
         </main>
         {/* HR AI Assistant – floating button + chat drawer */}

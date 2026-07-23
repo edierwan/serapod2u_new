@@ -152,7 +152,7 @@ export default function MarketingTopNav({ currentView, onNavigate }: MarketingTo
 
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Toggle Marketing menu">
-                        <MenuIcon className="h-4 w-4" /><span>Marketing Menu</span>
+                        <MenuIcon className="h-4 w-4" /><span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>

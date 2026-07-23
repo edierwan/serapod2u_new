@@ -19,7 +19,7 @@ interface ProductManagementProps {
 }
 
 const TAB_TRIGGER_CLASS =
-  'rounded-xl border border-[var(--sera-line)] px-3 py-2 text-[11px] font-medium text-[var(--sera-muted)] transition data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-[var(--sera-orange)] data-[state=active]:text-white sm:text-sm'
+  'h-auto min-h-9 w-full whitespace-normal rounded-xl border border-[var(--sera-line)] px-2.5 py-2 text-[11px] font-medium leading-tight text-[var(--sera-muted)] transition data-[state=active]:border-[var(--sera-orange)] data-[state=active]:bg-[var(--sera-orange)] data-[state=active]:text-white sm:px-3 sm:text-sm'
 
 export default function ProductManagement({ userProfile, onViewChange }: ProductManagementProps) {
   const [activeTab, setActiveTab] = useState('categories')
@@ -50,7 +50,8 @@ export default function ProductManagement({ userProfile, onViewChange }: Product
       <Card className="sera-sc-panel overflow-hidden shadow-none">
         <CardContent className="p-4 sm:p-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 gap-2 rounded-2xl bg-transparent p-0 sm:grid-cols-6 sm:gap-3 mb-6">
+            {/* !h-auto overrides shadcn TabsList h-10 so multi-row grid never overlaps content */}
+            <TabsList className="mb-6 grid !h-auto w-full grid-cols-2 gap-2 rounded-2xl bg-transparent p-0 sm:grid-cols-3 lg:grid-cols-6 sm:gap-3">
               <TabsTrigger value="categories" className={TAB_TRIGGER_CLASS}>Categories</TabsTrigger>
               <TabsTrigger value="brands" className={TAB_TRIGGER_CLASS}>Brands</TabsTrigger>
               <TabsTrigger value="groups" className={TAB_TRIGGER_CLASS}>Groups</TabsTrigger>

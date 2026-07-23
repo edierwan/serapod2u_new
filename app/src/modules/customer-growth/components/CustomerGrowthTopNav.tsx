@@ -129,7 +129,8 @@ export default function CustomerGrowthTopNav({ currentView, onNavigate }: Custom
                         className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold hover:bg-[var(--sera-orange)]/15 transition-colors"
                     >
                         <UsersRound className="h-3 w-3" strokeWidth={1.75} />
-                        <span>Customer & Growth</span>
+                        <span className="hidden min-[420px]:inline">Customer & Growth</span>
+                        <span className="min-[420px]:hidden">C&G</span>
                     </button>
                 </div>
 

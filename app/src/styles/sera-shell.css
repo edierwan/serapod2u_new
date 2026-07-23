@@ -469,6 +469,35 @@
   gap: 0.5rem;
   padding-left: var(--sera-content-px);
   padding-right: var(--sera-content-px);
+  min-width: 0;
+}
+
+/* Clear fixed sidebar hamburger on small screens (all module chrome) */
+@media (max-width: 1023px) {
+  .sera-shell {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .sera-top-nav__inner {
+    padding-left: calc(var(--sera-content-px) + 2.75rem);
+  }
+
+  /* Drawer is fixed; never contribute width to the flex row */
+  .sera-sidebar {
+    overflow-x: hidden;
+    overflow-y: hidden;
+  }
+
+  .sera-sidebar:not(.sera-sidebar--open) {
+    pointer-events: none;
+  }
+
+  .sera-sidebar.sera-sidebar--open {
+    pointer-events: auto;
+    overflow-y: hidden;
+  }
 }
 
 .sera-top-nav__breadcrumb {
@@ -493,6 +522,20 @@
 @media (min-width: 640px) {
   .sera-main__scroll {
     padding: 1.5rem var(--sera-content-px);
+  }
+}
+
+/* Wide data tables: never blow past the viewport on phones */
+@media (max-width: 1023px) {
+  .sera-main__scroll {
+    overflow-x: hidden;
+  }
+
+  .sera-main__scroll .overflow-x-auto,
+  .sera-main__scroll [data-slot='table-container'],
+  .sera-main__scroll .relative.w-full.overflow-auto {
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
   }
 }
 
@@ -553,6 +596,14 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.8125rem;
+}
+
+@media (max-width: 1023px) {
+  .sera-sc-table-scroll {
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 .sera-sc-table thead {

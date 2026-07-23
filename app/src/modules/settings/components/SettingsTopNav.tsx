@@ -256,7 +256,7 @@ export default function SettingsTopNav({ currentView, onNavigate, roleLevel }: S
                         aria-label="Toggle Settings menu"
                     >
                         <MenuIcon className="h-4 w-4" />
-                        <span>Settings Menu</span>
+                        <span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>

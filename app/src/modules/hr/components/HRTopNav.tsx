@@ -264,7 +264,7 @@ export default function HRTopNav({ currentView, onNavigate }: HRTopNavProps) {
                         aria-label="Toggle HR menu"
                     >
                         <MenuIcon className="h-4 w-4" />
-                        <span>HR Menu</span>
+                        <span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>

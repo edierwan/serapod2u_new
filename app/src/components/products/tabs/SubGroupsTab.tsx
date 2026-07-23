@@ -278,19 +278,19 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex gap-3 flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center">
           <select
             value={selectedGroup}
             onChange={(e) => setSelectedGroup(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-auto"
           >
             <option value="">All Groups</option>
             {groups.map(group => (
               <option key={group.id} value={group.id}>{group.group_name}</option>
             ))}
           </select>
-          <div className="flex-1 max-w-md relative">
+          <div className="relative w-full sm:max-w-md sm:flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Search sub-groups..."
@@ -305,7 +305,7 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
             setEditingSubGroup(null)
             setDialogOpen(true)
           }}
-          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
+          className="w-full shrink-0 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white sm:w-auto"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Sub-Group
@@ -321,8 +321,8 @@ export default function SubGroupsTab({ userProfile, onRefresh, refreshTrigger }:
         onSave={handleSave}
       />
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
+      <div className="border rounded-lg overflow-x-auto">
+        <Table className="min-w-[560px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>

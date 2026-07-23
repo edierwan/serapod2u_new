@@ -24,6 +24,12 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Users,
   Search,
   Plus,
@@ -1389,8 +1395,8 @@ export default function UserManagementNew({
 
   return (
     <div className="sera-sc-page space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">User Management</h1>
           <p className="text-[var(--sera-muted)]">
             Manage system users and access permissions
@@ -1401,7 +1407,7 @@ export default function UserManagementNew({
             setEditingUser(null);
             setDialogOpen(true);
           }}
-          className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
+          className="w-full shrink-0 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white sm:w-auto"
           disabled={isSaving}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -1627,64 +1633,64 @@ export default function UserManagementNew({
       </Dialog>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <Card className="sera-sc-panel overflow-hidden shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-[var(--sera-muted)] mb-1">Total Users</p>
-                <p className="text-3xl font-bold text-[var(--sera-ink)]">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Total Users</p>
+                <p className="text-2xl sm:text-3xl font-bold text-[var(--sera-ink)]">
                   {stats.total}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-[var(--sera-orange)]/[0.06] flex items-center justify-center">
-                <Users className="w-6 h-6 text-[var(--sera-orange)]" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-[var(--sera-orange)]/[0.06] flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--sera-orange)]" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card className="sera-sc-panel overflow-hidden shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-[var(--sera-muted)] mb-1">Online Now</p>
-                <p className="text-3xl font-bold text-emerald-600">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Online Now</p>
+                <p className="text-2xl sm:text-3xl font-bold text-emerald-600">
                   {stats.online}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center relative">
-                <Circle className="w-6 h-6 text-emerald-600 fill-emerald-500" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-emerald-50 flex items-center justify-center relative shrink-0">
+                <Circle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600 fill-emerald-500" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card className="sera-sc-panel overflow-hidden shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-[var(--sera-muted)] mb-1">Active Users</p>
-                <p className="text-3xl font-bold text-green-600">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Active Users</p>
+                <p className="text-2xl sm:text-3xl font-bold text-green-600">
                   {stats.active}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         <Card className="sera-sc-panel overflow-hidden shadow-none">
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-[var(--sera-muted)] mb-1">Verified Users</p>
-                <p className="text-3xl font-bold text-purple-600">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-[var(--sera-muted)] mb-1">Verified Users</p>
+                <p className="text-2xl sm:text-3xl font-bold text-purple-600">
                   {stats.verified}
                 </p>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-purple-50 flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-purple-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
             </div>
           </CardContent>
@@ -1844,9 +1850,9 @@ export default function UserManagementNew({
           )}
 
           {selectedUsers.size > 0 && !deleteProgress && (
-            <div className="mb-4 flex items-center justify-between bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-[var(--sera-orange)]" />
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-3 sm:p-4">
+              <div className="flex items-center gap-2 min-w-0">
+                <CheckCircle className="w-5 h-5 text-[var(--sera-orange)] shrink-0" />
                 <span className="text-sm font-medium text-[var(--sera-ink)]">
                   {selectedUsers.size} user{selectedUsers.size > 1 ? "s" : ""}{" "}
                   selected
@@ -1857,25 +1863,27 @@ export default function UserManagementNew({
                 size="sm"
                 onClick={handleBulkDelete}
                 disabled={isSaving}
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
               >
                 {isSaving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                {canManageUserDeletion()
-                  ? selectedUsers.size === 1
-                    ? "Delete Selected User (OTP)"
-                    : "Delete One User at a Time"
-                  : `Delete ${selectedUsers.size} User${selectedUsers.size > 1 ? "s" : ""}`}
+                <span className="truncate">
+                  {canManageUserDeletion()
+                    ? selectedUsers.size === 1
+                      ? "Delete (OTP)"
+                      : "Delete One at a Time"
+                    : `Delete ${selectedUsers.size}`}
+                </span>
               </Button>
             </div>
           )}
           {filteredUsers.length > 0 ? (
             <>
-              <div className="border rounded-lg overflow-hidden">
-                <Table>
+              <div className="border rounded-lg overflow-x-auto">
+                <Table className="min-w-[720px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">

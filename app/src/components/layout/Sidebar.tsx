@@ -272,6 +272,8 @@ export default function Sidebar({
     });
   };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  /** Desktop collapse must not shrink the mobile drawer to an icon rail */
+  const displayCollapsed = isCollapsed && !isMobileMenuOpen;
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [expandedNestedMenu, setExpandedNestedMenu] = useState<string | null>(
     null,
@@ -576,13 +578,14 @@ export default function Sidebar({
       {/* Mobile Menu Button - Fixed Top Left */}
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white text-[var(--sera-ink)] rounded-lg border border-[var(--sera-line)] shadow-sm hover:border-[var(--sera-orange)]/40 transition-colors"
+        className="sera-mobile-nav-toggle lg:hidden fixed top-3 left-3 z-50 p-2 bg-white text-[var(--sera-ink)] rounded-lg border border-[var(--sera-line)] shadow-sm hover:border-[var(--sera-orange)]/40 transition-colors"
         aria-label="Toggle menu"
+        aria-expanded={isMobileMenuOpen}
       >
         {isMobileMenuOpen ? (
-          <X className="h-6 w-6" />
+          <X className="h-5 w-5" />
         ) : (
-          <Menu className="h-6 w-6" />
+          <Menu className="h-5 w-5" />
         )}
       </button>
 
@@ -599,18 +602,18 @@ export default function Sidebar({
         className={`
         sera-sidebar relative flex flex-col transition-all duration-300
         fixed lg:static inset-y-0 left-0 z-40
-        ${isCollapsed ? "w-16" : "w-64"}
-        ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+        ${displayCollapsed ? "w-16" : "w-64 max-lg:max-w-[88vw]"}
+        ${isMobileMenuOpen ? "translate-x-0 sera-sidebar--open" : "-translate-x-full lg:translate-x-0"}
       `}
       >
         {/* Header — compact brand mark */}
         <div
-          className={`border-b border-[var(--sera-line)] shrink-0 ${isCollapsed ? "px-2 py-2" : "px-3 py-2"}`}
+          className={`border-b border-[var(--sera-line)] shrink-0 ${displayCollapsed ? "px-2 py-2" : "px-3 py-2"}`}
         >
           <div
-            className={`flex items-center ${isCollapsed ? "justify-center" : "justify-center w-full"}`}
+            className={`flex items-center ${displayCollapsed ? "justify-center" : "justify-center w-full"}`}
           >
-            {!isCollapsed ? (
+            {!displayCollapsed ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src="/brand/serapod-wordmark.png"
@@ -693,7 +696,7 @@ export default function Sidebar({
                       isActive={isActive}
                       hasChildren={!!item.submenu}
                       isOpen={isMenuOpen}
-                      isCollapsed={isCollapsed}
+                      isCollapsed={displayCollapsed}
                       onClick={() => {
                         if (item.submenu) {
                           setExpandedMenu(isMenuOpen ? null : item.id);
@@ -708,7 +711,7 @@ export default function Sidebar({
                     />
 
                     {/* Submenu */}
-                    {item.submenu && isMenuOpen && !isCollapsed && (
+                    {item.submenu && isMenuOpen && !displayCollapsed && (
                       <div className="mt-1 space-y-0.5 ml-4 border-l border-[var(--sera-line)] pl-2">
                         {item.submenu.map((subitem: any) => {
                           const hasNestedSubmenu =
@@ -735,7 +738,7 @@ export default function Sidebar({
                                 isActive={isSubitemActive}
                                 hasChildren={hasNestedSubmenu}
                                 isOpen={isNestedMenuOpen}
-                                isCollapsed={isCollapsed}
+                                isCollapsed={displayCollapsed}
                                 className="py-2 h-9"
                                 onClick={() => {
                                   if (hasNestedSubmenu) {
@@ -775,7 +778,7 @@ export default function Sidebar({
                                           label={nestedItem.label}
                                           isActive={isNestedActive}
                                           hasChildren={false}
-                                          isCollapsed={isCollapsed}
+                                          isCollapsed={displayCollapsed}
                                           className="py-2 h-9"
                                           onClick={() => {
                                             const modulePath =
@@ -814,7 +817,7 @@ export default function Sidebar({
                     icon={item.icon}
                     label={tLabel(item.label)}
                     isActive={isActive}
-                    isCollapsed={isCollapsed}
+                    isCollapsed={displayCollapsed}
                     onClick={() => {
                       onViewChange(item.id);
                       setIsMobileMenuOpen(false); // Close mobile menu on navigation
@@ -828,7 +831,7 @@ export default function Sidebar({
 
         {/* User Profile + Sign Out — pinned bottom */}
         <div className="shrink-0 bg-white border-t border-[var(--sera-line)]">
-          {!isCollapsed ? (
+          {!displayCollapsed ? (
             <div className="p-3 pb-2">
               <div className="flex items-center gap-3 px-2.5 py-2">
                 <Avatar className="h-9 w-9">
@@ -877,7 +880,7 @@ export default function Sidebar({
             </div>
           )}
 
-          <div className={`px-3 pb-3 ${isCollapsed ? "pt-2" : "pt-0"}`}>
+          <div className={`px-3 pb-3 ${displayCollapsed ? "pt-2" : "pt-0"}`}>
             <button
               type="button"
               onClick={handleSignOut}
@@ -888,11 +891,11 @@ export default function Sidebar({
                 border-red-200/80 bg-red-50 text-red-700
                 hover:border-red-300 hover:bg-red-100 hover:text-red-800
                 transition-colors disabled:opacity-50
-                ${isCollapsed ? "justify-center h-10 px-0" : "justify-start h-10 px-3"}
+                ${displayCollapsed ? "justify-center h-10 px-0" : "justify-start h-10 px-3"}
               `}
             >
               <LogOut className="h-4 w-4 flex-shrink-0" />
-              {!isCollapsed && (
+              {!displayCollapsed && (
                 <span className="text-sm font-semibold">
                   {isSigningOut ? t("common.loading") : t("common.signOut")}
                 </span>

@@ -242,7 +242,7 @@ export default function LoyaltyTopNav({ currentView, onNavigate }: LoyaltyTopNav
                         aria-label="Toggle Loyalty menu"
                     >
                         <MenuIcon className="h-4 w-4" />
-                        <span>Loyalty Menu</span>
+                        <span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>

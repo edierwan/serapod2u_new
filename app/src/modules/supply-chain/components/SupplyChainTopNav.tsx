@@ -154,7 +154,8 @@ export default function SupplyChainTopNav({ currentView, onNavigate, orgTypeCode
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold">
                         <Truck className="h-3 w-3" strokeWidth={1.75} />
-                        <span>Supply Chain</span>
+                        <span className="hidden min-[400px]:inline">Supply Chain</span>
+                        <span className="min-[400px]:hidden">SC</span>
                     </div>
                 </div>
 
@@ -251,12 +252,12 @@ export default function SupplyChainTopNav({ currentView, onNavigate, orgTypeCode
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]"
+                        className="flex min-w-0 items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]"
                         aria-label="Toggle Supply Chain menu"
                     >
-                        <MenuIcon className="h-4 w-4" />
-                        <span>Supply Chain Menu</span>
-                        <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
+                        <MenuIcon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">Menu</span>
+                        <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>
 

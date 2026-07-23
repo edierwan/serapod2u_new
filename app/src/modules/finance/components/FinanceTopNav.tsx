@@ -148,7 +148,8 @@ export default function FinanceTopNav({ currentView, onNavigate }: FinanceTopNav
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1.5 bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] px-2.5 py-0.5 rounded-md text-sm font-semibold">
                         <Calculator className="h-3 w-3" strokeWidth={1.75} />
-                        <span>Finance</span>
+                        <span className="hidden min-[400px]:inline">Finance</span>
+                        <span className="min-[400px]:hidden">Fin</span>
                     </div>
                 </div>
 
@@ -244,7 +245,7 @@ export default function FinanceTopNav({ currentView, onNavigate }: FinanceTopNav
                         aria-label="Toggle Finance menu"
                     >
                         <MenuIcon className="h-4 w-4" />
-                        <span>Finance Menu</span>
+                        <span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>

@@ -110,7 +110,7 @@ export default function GlobalPageChrome({ currentView, orgName }: GlobalPageChr
   return (
     <div className="sera-global-chrome bg-white border-b border-[var(--sera-line)] print:hidden">
       <div className="sera-top-nav__inner justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0 pl-10 lg:pl-0">
+        <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-center gap-1.5 shrink-0 rounded-md bg-[var(--sera-orange)]/10 px-2.5 py-0.5 text-sm font-semibold text-[var(--sera-orange-deep)]">
             <Icon className="h-3 w-3" strokeWidth={1.75} />
             <span>{ctx.section}</span>

@@ -87,23 +87,41 @@
 
 .login-ux .login-stage3d {
   position: relative;
-  width: min(100%, 380px);
-  height: min(62vh, 560px);
+  width: min(100%, 280px);
+  height: min(68vh, 620px);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   flex-shrink: 0;
 }
 
 .login-ux .login-stage3d__glow {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  bottom: 6%;
-  height: 42%;
+  left: 5%;
+  right: 5%;
+  bottom: 4%;
+  height: 48%;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(232, 93, 4, 0.28) 0%, rgba(232, 93, 4, 0.08) 45%, transparent 72%);
-  filter: blur(12px);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(232, 93, 4, 0.38) 0%,
+    rgba(232, 93, 4, 0.12) 42%,
+    transparent 72%
+  );
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+/* Soft rim so matte-black device stays readable on dark login panel */
+.login-ux .login-stage3d__rim {
+  position: absolute;
+  inset: 8% 18% 6%;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(255, 255, 255, 0.07) 0%,
+    transparent 65%
+  );
   pointer-events: none;
 }
 
@@ -112,17 +130,20 @@
   z-index: 1;
   width: auto;
   height: 100%;
-  max-width: 100%;
+  max-width: 72%;
   object-fit: contain;
   object-position: center bottom;
-  filter: drop-shadow(0 28px 40px rgba(0, 0, 0, 0.55));
+  filter:
+    drop-shadow(0 0 1px rgba(255, 255, 255, 0.22))
+    drop-shadow(0 24px 36px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 28px rgba(232, 93, 4, 0.28));
   animation: login-float-soft 6.5s ease-in-out infinite;
 }
 
 @media (max-width: 1280px) {
   .login-ux .login-stage3d {
-    width: min(100%, 300px);
-    height: min(52vh, 440px);
+    width: min(100%, 220px);
+    height: min(56vh, 480px);
   }
 }
 

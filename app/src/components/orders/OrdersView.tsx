@@ -1216,9 +1216,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Filters and View Toggle */}
       <Card className="sera-sc-panel shadow-none">
-        <CardContent className="pt-6 space-y-4">
+        <CardContent className="p-4 sm:pt-6 space-y-4">
           {/* Filter Row */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Order Type Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
@@ -1350,8 +1350,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         ) : viewMode === 'list' ? (
           /* LIST VIEW - Table Format */
           <div className="sera-sc-panel overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="sera-sc-table">
+              <div className="overflow-x-auto sera-sc-table-scroll">
+                <table className="sera-sc-table min-w-[900px]">
                   <thead>
                     <tr>
                       <th
