@@ -462,22 +462,19 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
 
       {/* Shop Staff Detail Dialog */}
       {selectedShop && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedShop(null)}>
-          <div className="relative mx-4 w-full max-w-xl rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <div>
-                <h3 className="text-lg font-semibold">{selectedShop.shop_name}</h3>
-                <p className="text-sm text-muted-foreground">
+        <SeraModalOverlay onBackdropClick={() => setSelectedShop(null)}>
+          <SeraModalPanel className="sera-modal-panel--lg">
+            <SeraModalHeader onClose={() => setSelectedShop(null)}>
+              <div className="min-w-0 pr-2">
+                <h3 className="sera-modal-title">{selectedShop.shop_name}</h3>
+                <p className="mt-1 text-sm text-[var(--sera-muted)]">
                   {selectedShop.total_consumers} shop staff{selectedShop.total_consumers !== 1 ? 's' : ''}
                   {selectedShop.branch_name && ` · ${selectedShop.branch_name}`}
                   {selectedShop.state && ` · ${selectedShop.state}`}
                 </p>
               </div>
-              <button onClick={() => setSelectedShop(null)} className="rounded-full p-1.5 hover:bg-muted">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
+            </SeraModalHeader>
+            <SeraModalBody className="max-h-[60vh]">
               {consumersLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -517,9 +514,9 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
                   ))}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
+            </SeraModalBody>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
     </div>
   )
