@@ -7,11 +7,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2, Upload, Trash2 } from 'lucide-react'
+import { Loader2, Upload, Trash2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { compressAvatar, formatFileSize } from '@/lib/utils/imageCompression'
 import BrandLogo from '../BrandLogo'
 import { normalizePersistedBrandLogo } from '@/lib/brands/logo'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface Brand {
   id?: string
@@ -219,21 +226,15 @@ export default function BrandDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900">
-            {brand ? 'Edit Brand' : 'Add Brand'}
-          </h2>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <SeraModalOverlay onBackdropClick={() => !(isSaving || uploading) && onOpenChange(false)}>
+      <SeraModalPanel className="overflow-y-auto">
+        <SeraModalHeader
+          sticky
+          title={brand ? 'Edit Brand' : 'Add Brand'}
+          onClose={() => !(isSaving || uploading) && onOpenChange(false)}
+        />
 
-        <div className="p-6 space-y-4">
+        <SeraModalBody className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Brand Name *</Label>
             <Input
@@ -333,13 +334,14 @@ export default function BrandDialog({
           </div>
 
 
-        </div>
+        </SeraModalBody>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+        <SeraModalFooter>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isSaving || uploading}
+            className="border-[var(--sera-line)]"
           >
             Cancel
           </Button>
@@ -357,8 +359,8 @@ export default function BrandDialog({
               'Save'
             )}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }

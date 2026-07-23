@@ -1,5 +1,7 @@
 import * as React from "react"
 import { Check, Minus } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 
 export interface CheckboxProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type'> {
@@ -18,7 +20,10 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
         <input
           type="checkbox"
           ref={ref}
-          className="h-4 w-4 appearance-none border border-gray-300 rounded bg-white checked:bg-blue-600 checked:border-blue-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className={cn(
+            "h-4 w-4 appearance-none border border-[var(--sera-line,#e8eaed)] rounded bg-white checked:bg-[var(--sera-orange,#e85d04)] checked:border-[var(--sera-orange,#e85d04)] cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange,#e85d04)]/35 focus:ring-offset-2",
+            className
+          )}
           onChange={handleChange}
           {...props}
           checked={!!props.checked}

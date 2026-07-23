@@ -344,21 +344,23 @@ export default function UserDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg max-h-screen overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-[var(--sera-line)] sticky top-0 bg-white">
-          <h2 className="text-lg font-bold text-[var(--sera-ink)]">
+    <div className="sera-modal-overlay">
+      <div className="sera-modal-panel sera-modal-panel--lg overflow-y-auto" role="dialog" aria-modal="true">
+        <div className="sera-modal-header is-sticky">
+          <h2 className="sera-modal-title">
             {user ? 'Edit User' : 'Add New User'}
           </h2>
           <button
+            type="button"
             onClick={handleClose}
-            className="text-[var(--sera-muted)]/70 hover:text-[var(--sera-muted)]"
+            className="sera-modal-close"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="sera-modal-body space-y-6">
           <div className="sera-sc-page space-y-6">
             <h3 className="text-lg font-semibold text-[var(--sera-ink)]">Basic Information</h3>
 
@@ -586,11 +588,12 @@ export default function UserDialog({
           </div>
         </div>
 
-        <div className="flex gap-3 justify-end p-6 border-t border-[var(--sera-line)] sticky bottom-0 bg-white">
+        <div className="sera-modal-footer">
           <Button
             variant="outline"
             onClick={handleClose}
             disabled={isSaving}
+            className="border-[var(--sera-line)]"
           >
             Cancel
           </Button>

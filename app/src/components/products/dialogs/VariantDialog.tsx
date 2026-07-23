@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
-  X,
   Loader2,
   Plus,
   Star,
@@ -21,6 +20,13 @@ import {
   validateProductCode,
 } from '@/lib/products/product-code'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -361,14 +367,15 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900">{variant ? 'Edit Variant' : 'Add Variant'}</h2>
-          <button onClick={() => onOpenChange(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-        </div>
+    <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
+      <SeraModalPanel className="max-w-lg overflow-y-auto">
+        <SeraModalHeader
+          sticky
+          title={variant ? 'Edit Variant' : 'Add Variant'}
+          onClose={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}
+        />
 
-        <div className="p-6 space-y-5">
+        <SeraModalBody className="space-y-5">
           {/* Unified Variant Media */}
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-gray-500">(Up to {MAX_MEDIA} \u2014 images &amp; videos)</span></Label>
@@ -504,15 +511,15 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
             <Checkbox id="is_active" checked={formData.is_active !== false} onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: Boolean(checked) }))} />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
-        </div>
+        </SeraModalBody>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode}>Cancel</Button>
+        <SeraModalFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode} className="border-[var(--sera-line)]">Cancel</Button>
           <Button onClick={handleSubmit} disabled={isSaving || isValidatingProductCode} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
             {isSaving || isValidatingProductCode ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{isSaving ? 'Saving...' : 'Validating...'}</> : 'Save'}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }

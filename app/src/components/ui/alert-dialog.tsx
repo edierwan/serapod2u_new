@@ -17,7 +17,7 @@ const AlertDialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "sera-dialog-overlay fixed inset-0 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -35,7 +35,7 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        "sera-dialog-content fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[min(90vh,90dvh)] translate-x-[-50%] translate-y-[-50%] gap-4 p-6 overflow-y-auto duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]",
         className
       )}
       {...props}
@@ -78,7 +78,7 @@ const AlertDialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold", className)}
+    className={cn("sera-dialog-title text-lg font-semibold tracking-tight", className)}
     {...props}
   />
 ))
@@ -90,7 +90,7 @@ const AlertDialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AlertDialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-sm text-[var(--sera-muted,#6b7280)]", className)}
     {...props}
   />
 ))
@@ -105,7 +105,7 @@ const AlertDialogAction = React.forwardRef<
     ref={ref}
     className={cn(
         "inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed",
-        !className?.includes('bg-') && "bg-blue-600 hover:bg-blue-700 focus:ring-blue-500",
+        !className?.includes('bg-') && "bg-[var(--sera-orange,#e85d04)] hover:bg-[var(--sera-orange-deep,#c44a00)] focus:ring-[var(--sera-orange,#e85d04)]/35",
       className
     )}
     {...props}
@@ -120,7 +120,7 @@ const AlertDialogCancel = React.forwardRef<
   <AlertDialogPrimitive.Cancel
     ref={ref}
     className={cn(
-        "px-4 py-2 text-sm font-medium rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 mt-2 sm:mt-0",
+        "px-4 py-2 text-sm font-medium rounded-md border border-[var(--sera-line,#e8eaed)] text-[var(--sera-ink-soft,#2a2622)] hover:bg-[var(--sera-mist,#f2f3f5)] focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange,#e85d04)]/30 focus:ring-offset-2 mt-2 sm:mt-0",
       className
     )}
     {...props}

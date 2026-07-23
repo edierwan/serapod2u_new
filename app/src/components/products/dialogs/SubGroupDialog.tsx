@@ -7,7 +7,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface Group {
   id: string
@@ -133,21 +140,14 @@ export default function SubGroupDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-900">
-            {subgroup ? 'Edit Sub-Group' : 'Add Sub-Group'}
-          </h2>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <SeraModalOverlay onBackdropClick={() => !isSaving && onOpenChange(false)}>
+      <SeraModalPanel>
+        <SeraModalHeader
+          title={subgroup ? 'Edit Sub-Group' : 'Add Sub-Group'}
+          onClose={() => !isSaving && onOpenChange(false)}
+        />
 
-        <div className="p-6 space-y-4">
+        <SeraModalBody className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="group">Group *</Label>
             <select
@@ -157,7 +157,7 @@ export default function SubGroupDialog({
                 setFormData(prev => ({ ...prev, group_id: e.target.value }))
                 if (errors.group_id) setErrors(prev => ({ ...prev, group_id: '' }))
               }}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.group_id ? 'border-red-500' : ''}`}
+              className={`w-full px-3 py-2 border border-[var(--sera-line)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30 ${errors.group_id ? 'border-red-500' : ''}`}
             >
               <option value="">Select a group</option>
               {groups.map(group => (
@@ -201,13 +201,14 @@ export default function SubGroupDialog({
             />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
-        </div>
+        </SeraModalBody>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+        <SeraModalFooter>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isSaving}
+            className="border-[var(--sera-line)]"
           >
             Cancel
           </Button>
@@ -225,8 +226,8 @@ export default function SubGroupDialog({
               'Save'
             )}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }
