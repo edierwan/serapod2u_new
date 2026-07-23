@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ReferencePicker, type ReferenceUser } from '@/components/ui/reference-picker'
 import { ShopPicker, type ShopResult } from '@/components/ui/shop-picker'
 import { ShopRequestDialog } from '@/components/shop-requests/ShopRequestDialog'
+import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 
 interface UserProfile {
   id: string
@@ -987,8 +988,8 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="sera-sc-page flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--sera-orange)]" />
       </div>
     )
   }
@@ -996,27 +997,30 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
   const displayLastLoginIp = formatLoginIp(userProfile.last_login_ip)
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-          <p className="text-gray-600 mt-1">View and manage your personal information</p>
-        </div>
-        {!isEditing && (
-          <Button onClick={() => setIsEditing(true)} className="gap-2 bg-blue-600 hover:bg-blue-700">
-            <Edit2 className="h-4 w-4" />
-            Edit Profile
-          </Button>
-        )}
-      </div>
+    <div className="sera-sc-page mx-auto w-full max-w-6xl gap-8 pb-10 pt-4">
+      <ModuleLightHeader
+        eyebrow="Account"
+        title="My Profile"
+        description="View and manage your personal information"
+        actions={
+          !isEditing ? (
+            <Button
+              onClick={() => setIsEditing(true)}
+              className="gap-2 bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]"
+            >
+              <Edit2 className="h-4 w-4" />
+              Edit Profile
+            </Button>
+          ) : null
+        }
+      />
 
       {/* Verification Status Alert */}
       {(!userProfile.email_verified_at || !userProfile.phone_verified_at) && (
-        <Alert className="border-yellow-500 bg-yellow-50">
-          <AlertCircle className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="text-yellow-800">
-            <strong>Action Required:</strong> Please verify your {' '}
+        <Alert className="border-[var(--sera-orange)]/30 bg-[var(--sera-orange)]/[0.06]">
+          <AlertCircle className="h-4 w-4 text-[var(--sera-orange)]" />
+          <AlertDescription className="text-[var(--sera-ink-soft)]">
+            <strong className="text-[var(--sera-ink)]">Action Required:</strong> Please verify your{' '}
             {!userProfile.email_verified_at && 'email'}
             {!userProfile.email_verified_at && !userProfile.phone_verified_at && ' and '}
             {!userProfile.phone_verified_at && 'phone number'} to complete your profile setup.
@@ -1024,19 +1028,19 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         </Alert>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
         {/* Profile Information Card */}
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle>Profile Information</CardTitle>
-            <CardDescription>Your personal details and avatar</CardDescription>
+        <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+          <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+            <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Profile Information</CardTitle>
+            <CardDescription className="text-[var(--sera-muted)]">Your personal details and avatar</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 p-0 px-6 pb-6 pt-5">
             {/* Avatar Section */}
-            <div className="flex items-center gap-4">
-              <div className="relative">
+            <div className="flex flex-col gap-4 rounded-xl border border-[var(--sera-line)] bg-[var(--sera-mist)]/35 p-4 sm:flex-row sm:items-center">
+              <div className="relative shrink-0">
                 <Avatar
-                  className={`h-24 w-24 border-4 border-gray-100 ${isEditing && avatarPreview ? 'cursor-move' : isEditing ? 'cursor-pointer' : ''}`}
+                  className={`h-24 w-24 border-4 border-white shadow-sm ${isEditing && avatarPreview ? 'cursor-move' : isEditing ? 'cursor-pointer' : ''}`}
                   onClick={() => {
                     if (avatarSuppressClickRef.current) {
                       avatarSuppressClickRef.current = false
@@ -1065,7 +1069,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     />
                   ) : null}
                   {!avatarPreview && (
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-500 text-white text-3xl font-semibold">
+                    <AvatarFallback className="bg-gradient-to-br from-[var(--sera-ink)] to-[var(--sera-ink-soft)] text-3xl font-semibold text-white">
                       {getInitials(userProfile.full_name, userProfile.email)}
                     </AvatarFallback>
                   )}
@@ -1075,7 +1079,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     type="button"
                     size="sm"
                     variant="secondary"
-                    className="absolute -bottom-2 -right-2 h-10 w-10 rounded-full p-0 shadow-lg hover:bg-blue-600 hover:text-white"
+                    className="absolute -bottom-2 -right-2 h-10 w-10 rounded-full border border-[var(--sera-line)] bg-white p-0 text-[var(--sera-ink-soft)] shadow-sm hover:bg-[var(--sera-orange)] hover:text-white"
                     onClick={handleAvatarClick}
                   >
                     <Camera className="h-5 w-5" />
@@ -1089,19 +1093,24 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                   className="hidden"
                 />
               </div>
-              <div className="flex-1">
-                <h2 className="text-2xl font-semibold text-gray-900">
+              <div className="min-w-0 flex-1">
+                <h2 className="font-display text-2xl font-semibold tracking-tight text-[var(--sera-ink)]">
                   {userProfile.full_name || userProfile.email?.split('@')[0] || 'User'}
                 </h2>
-                <p className="text-sm text-gray-600">{userProfile.email}</p>
+                <p className="mt-0.5 text-sm text-[var(--sera-muted)]">{userProfile.email}</p>
+                {(userProfile.roles?.role_name || userProfile.role_code) && (
+                  <span className="mt-3 inline-flex items-center rounded-full border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--sera-orange-deep)]">
+                    {userProfile.roles?.role_name || userProfile.role_code}
+                  </span>
+                )}
                 {avatarFile && (
-                  <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+                  <p className="mt-2 flex items-center gap-1 text-xs text-emerald-600">
                     <CheckCircle className="h-3 w-3" />
                     New avatar selected
                   </p>
                 )}
                 {avatarPreview && (
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]">
                     Drag the avatar to reposition it before saving.
                   </p>
                 )}
@@ -1159,7 +1168,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         className={`mt-1 pr-10 ${validationErrors.phone ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                       />
                       <div className="absolute right-3 top-3">
-                        {phoneCheckStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                        {phoneCheckStatus === 'checking' && <Loader2 className="h-4 w-4 animate-spin text-[var(--sera-muted)]/70" />}
                         {phoneCheckStatus === 'available' && <CheckCircle className="h-4 w-4 text-green-500" />}
                         {(phoneCheckStatus === 'taken' || phoneCheckStatus === 'invalid') && <XCircle className="h-4 w-4 text-red-500" />}
                       </div>
@@ -1213,7 +1222,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                       className="mt-1"
                       maxLength={255}
                     />
-                    <p className="text-xs text-gray-500 mt-1">{formData.address.length}/255 characters</p>
+                    <p className="text-xs text-[var(--sera-muted)] mt-1">{formData.address.length}/255 characters</p>
                   </div>
 
                   <div>
@@ -1256,7 +1265,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         placeholder="Search shop or type name..."
                         maxLength={50}
                       />
-                      <p className="mt-1 text-xs text-gray-500">Selecting a shop from the list links your profile to that shop for RoadTour and staff rewards.</p>
+                      <p className="mt-1 text-xs text-[var(--sera-muted)]">Selecting a shop from the list links your profile to that shop for RoadTour and staff rewards.</p>
                     </div>
                   )}
 
@@ -1275,7 +1284,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     />
                     <Button
                       onClick={handleSave}
-                      className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+                      className="flex-1 gap-2 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)]"
                       disabled={isSaving}
                     >
                       {isSaving ? (
@@ -1303,62 +1312,62 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                 </>
               ) : (
                 <>
-                  <div className="flex items-start gap-3 text-gray-700">
-                    <User className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                    <User className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">Full Name</p>
+                        <p className="text-sm text-[var(--sera-muted)] font-medium">Full Name</p>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                         >
-                          [Edit]
+                          Edit
                         </button>
                       </div>
-                      <p className="text-base font-medium text-gray-900 mt-1">
+                      <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                         {userProfile.full_name || (
-                          <span className="text-gray-400 italic">Not set</span>
+                          <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                         )}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 text-gray-700">
-                    <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                    <Phone className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">Phone Number</p>
+                        <p className="text-sm text-[var(--sera-muted)] font-medium">Phone Number</p>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                         >
-                          [Edit]
+                          Edit
                         </button>
                       </div>
-                      <p className="text-base font-medium text-gray-900 mt-1">
+                      <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                         {userProfile.phone || (
-                          <span className="text-gray-400 italic">Not set</span>
+                          <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                         )}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 text-gray-700">
-                    <Shield className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                    <Shield className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">Reference</p>
+                        <p className="text-sm text-[var(--sera-muted)] font-medium">Reference</p>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                         >
-                          [Edit]
+                          Edit
                         </button>
                       </div>
                       {userProfile.referral_phone ? (
                         <div className="mt-1">
                           {referralDisplayName && (
-                            <p className="text-base font-medium text-gray-900">{referralDisplayName}</p>
+                            <p className="text-base font-medium text-[var(--sera-ink)]">{referralDisplayName}</p>
                           )}
-                          <p className={`text-sm ${referralDisplayName ? 'text-gray-500' : 'text-base font-medium text-gray-900'}`}>
+                          <p className={`text-sm ${referralDisplayName ? 'text-[var(--sera-muted)]' : 'text-base font-medium text-[var(--sera-ink)]'}`}>
                             {userProfile.referral_phone}
                           </p>
                           {!referralDisplayName && (
@@ -1366,68 +1375,68 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                           )}
                         </div>
                       ) : (
-                        <p className="text-base font-medium text-gray-900 mt-1">
-                          <span className="text-gray-400 italic">Not set</span>
+                        <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
+                          <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 text-gray-700">
-                    <Home className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                    <Home className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">Address</p>
+                        <p className="text-sm text-[var(--sera-muted)] font-medium">Address</p>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                         >
-                          [Edit]
+                          Edit
                         </button>
                       </div>
-                      <p className="text-base font-medium text-gray-900 mt-1">
+                      <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                         {userProfile.address || (
-                          <span className="text-gray-400 italic">Not set</span>
+                          <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                         )}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 text-gray-700">
-                    <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
+                  <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                    <MapPin className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
-                        <p className="text-sm text-gray-500 font-medium">State</p>
+                        <p className="text-sm text-[var(--sera-muted)] font-medium">State</p>
                         <button
                           onClick={() => setIsEditing(true)}
-                          className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                          className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                         >
-                          [Edit]
+                          Edit
                         </button>
                       </div>
-                      <p className="text-base font-medium text-gray-900 mt-1">
+                      <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                         {userProfile.location || (
-                          <span className="text-gray-400 italic">Not set</span>
+                          <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                         )}
                       </p>
                     </div>
                   </div>
 
                   {(!userProfile.organizations || !userProfile.organizations.org_name) && (
-                    <div className="flex items-start gap-3 text-gray-700">
-                      <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
+                    <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                      <Building2 className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm text-gray-500 font-medium">Shop Name</p>
+                          <p className="text-sm text-[var(--sera-muted)] font-medium">Shop Name</p>
                           <button
                             onClick={() => setIsEditing(true)}
-                            className="text-xs italic text-blue-600 hover:text-blue-700 hover:underline"
+                            className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline"
                           >
-                            [Edit]
+                            Edit
                           </button>
                         </div>
-                        <p className="text-base font-medium text-gray-900 mt-1">
+                        <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                           {userProfile.shop_name || (
-                            <span className="text-gray-400 italic">Not set</span>
+                            <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                           )}
                         </p>
                       </div>
@@ -1440,17 +1449,17 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
         </Card>
 
         {/* Account Information Card */}
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle>Account Information</CardTitle>
-            <CardDescription>Your account details and role</CardDescription>
+        <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+          <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+            <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Account Information</CardTitle>
+            <CardDescription className="text-[var(--sera-muted)]">Your account details and role</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-3 text-gray-700">
-              <Mail className="h-5 w-5 text-gray-400 mt-0.5" />
+          <CardContent className="space-y-4 p-0 px-6 pb-6 pt-5">
+            <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+              <Mail className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Email Address</p>
-                <p className="text-base font-medium text-gray-900 mt-1 break-all">
+                <p className="text-sm text-[var(--sera-muted)] font-medium">Email Address</p>
+                <p className="text-base font-medium text-[var(--sera-ink)] mt-1 break-all">
                   {userProfile.email}
                 </p>
                 {userProfile.email_verified_at ? (
@@ -1467,13 +1476,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               </div>
             </div>
 
-            <div className="flex items-start gap-3 text-gray-700">
-              <Phone className="h-5 w-5 text-gray-400 mt-0.5" />
+            <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+              <Phone className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Phone Verification</p>
+                <p className="text-sm text-[var(--sera-muted)] font-medium">Phone Verification</p>
                 {userProfile.phone ? (
                   <>
-                    <p className="text-base font-medium text-gray-900 mt-1">{userProfile.phone}</p>
+                    <p className="text-base font-medium text-[var(--sera-ink)] mt-1">{userProfile.phone}</p>
                     {userProfile.phone_verified_at ? (
                       <Badge variant="outline" className="mt-2 bg-green-50 text-green-700 border-green-200">
                         <CheckCircle className="h-3 w-3 mr-1" />
@@ -1487,38 +1496,38 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-gray-400 italic mt-1">No phone number set</p>
+                  <p className="text-sm text-[var(--sera-muted)]/70 italic mt-1">No phone number set</p>
                 )}
               </div>
             </div>
 
             <div className="border-t pt-4"></div>
 
-            <div className="flex items-start gap-3 text-gray-700">
-              <Shield className="h-5 w-5 text-gray-400 mt-0.5" />
+            <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+              <Shield className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Role</p>
-                <p className="text-base font-medium text-gray-900 mt-1">
+                <p className="text-sm text-[var(--sera-muted)] font-medium">Role</p>
+                <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                   {userProfile.roles?.role_name || userProfile.role_code}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-[var(--sera-muted)] mt-1">
                   Level: {userProfile.roles?.role_level || 'Unknown'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 text-gray-700">
-              <Building2 className="h-5 w-5 text-gray-400 mt-0.5" />
+            <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+              <Building2 className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Organization</p>
-                <p className="text-base font-medium text-gray-900 mt-1">
+                <p className="text-sm text-[var(--sera-muted)] font-medium">Organization</p>
+                <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                   {userProfile.organizations?.org_name || 'N/A'}
                 </p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="outline" className="text-xs">
                     {userProfile.organizations?.org_code || 'N/A'}
                   </Badge>
-                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                  <Badge variant="outline" className="text-xs bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/25">
                     {getOrgTypeName(userProfile.organizations?.org_type_code || '')}
                   </Badge>
                 </div>
@@ -1529,13 +1538,13 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             {userProfile.account_scope === 'portal' && userProfile.organization_id && (
               <>
                 {/* Department (HR Foundation) */}
-                <div className="flex items-start gap-3 text-gray-700">
-                  <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                  <Briefcase className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-gray-500 font-medium">Department</p>
+                    <p className="text-sm text-[var(--sera-muted)] font-medium">Department</p>
                     {userProfile.departments ? (
                       <>
-                        <p className="text-base font-medium text-gray-900 mt-1">
+                        <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                           {userProfile.departments.dept_name}
                         </p>
                         {userProfile.departments.dept_code && (
@@ -1545,55 +1554,55 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
                         )}
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                      <p className="text-sm text-[var(--sera-muted)]/70 italic mt-1">Not assigned</p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 text-gray-700">
-                  <Briefcase className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                  <Briefcase className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-gray-500 font-medium">Position</p>
+                    <p className="text-sm text-[var(--sera-muted)] font-medium">Position</p>
                     {userProfile.positions ? (
-                      <p className="text-base font-medium text-gray-900 mt-1">
+                      <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                         {userProfile.positions.name}
                       </p>
                     ) : (
-                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                      <p className="text-sm text-[var(--sera-muted)]/70 italic mt-1">Not assigned</p>
                     )}
                   </div>
                 </div>
 
                 {/* Reports To (HR Foundation) */}
-                <div className="flex items-start gap-3 text-gray-700">
-                  <UserCheck className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                  <UserCheck className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-gray-500 font-medium">Reports To</p>
+                    <p className="text-sm text-[var(--sera-muted)] font-medium">Reports To</p>
                     {userProfile.manager ? (
                       <>
-                        <p className="text-base font-medium text-gray-900 mt-1">
+                        <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                           {userProfile.manager.full_name || userProfile.manager.email}
                         </p>
                         {userProfile.manager.full_name && (
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-[var(--sera-muted)] mt-1">
                             {userProfile.manager.email}
                           </p>
                         )}
                       </>
                     ) : (
-                      <p className="text-sm text-gray-400 italic mt-1">Not assigned</p>
+                      <p className="text-sm text-[var(--sera-muted)]/70 italic mt-1">Not assigned</p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 text-gray-700">
-                  <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
+                <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                  <Calendar className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-gray-500 font-medium">Employment</p>
-                    <p className="text-base font-medium text-gray-900 mt-1">
+                    <p className="text-sm text-[var(--sera-muted)] font-medium">Employment</p>
+                    <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                       {userProfile.employment_type || 'Not set'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-[var(--sera-muted)] mt-1">
                       Status: {userProfile.employment_status || 'active'}
                       {userProfile.join_date ? ` · Joined ${formatDate(userProfile.join_date)}` : ''}
                     </p>
@@ -1606,50 +1615,56 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       </div>
 
       {/* Activity Information */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>Activity & Timeline</CardTitle>
-          <CardDescription>Your account activity and login history</CardDescription>
+      <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+        <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+          <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Activity & Timeline</CardTitle>
+          <CardDescription className="text-[var(--sera-muted)]">Your account activity and login history</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex items-start gap-3 text-gray-700">
-              <Calendar className="h-5 w-5 text-gray-400 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Member Since</p>
-                <p className="text-base font-medium text-gray-900 mt-1">
-                  {formatDate(userProfile.created_at)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatRelativeTime(userProfile.created_at)}
-                </p>
+        <CardContent className="p-0 px-6 pb-6 pt-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="sera-sc-kpi sera-sc-kpi--accent">
+              <div className="flex items-start gap-3">
+                <Calendar className="mt-0.5 h-5 w-5 text-[var(--sera-orange)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="sera-sc-kpi__label">Member Since</p>
+                  <p className="mt-1 text-base font-medium text-[var(--sera-ink)]">
+                    {formatDate(userProfile.created_at)}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]">
+                    {formatRelativeTime(userProfile.created_at)}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 text-gray-700">
-              <Clock className="h-5 w-5 text-gray-400 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Last Login</p>
-                <p className="text-base font-medium text-gray-900 mt-1">
-                  {formatDateTime(userProfile.last_login_at)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatRelativeTime(userProfile.last_login_at)}
-                </p>
+            <div className="sera-sc-kpi">
+              <div className="flex items-start gap-3">
+                <Clock className="mt-0.5 h-5 w-5 text-[var(--sera-orange)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="sera-sc-kpi__label">Last Login</p>
+                  <p className="mt-1 text-base font-medium text-[var(--sera-ink)]">
+                    {formatDateTime(userProfile.last_login_at)}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--sera-muted)]">
+                    {formatRelativeTime(userProfile.last_login_at)}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-start gap-3 text-gray-700">
-              <MapPin className="h-5 w-5 text-gray-400 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-500 font-medium">Last Login IP</p>
-                <p className="text-base font-medium text-gray-900 mt-1">
-                  {displayLastLoginIp ? (
-                    displayLastLoginIp
-                  ) : (
-                    <span className="text-gray-400 italic">Not available</span>
-                  )}
-                </p>
+            <div className="sera-sc-kpi">
+              <div className="flex items-start gap-3">
+                <MapPin className="mt-0.5 h-5 w-5 text-[var(--sera-orange)]" />
+                <div className="min-w-0 flex-1">
+                  <p className="sera-sc-kpi__label">Last Login IP</p>
+                  <p className="mt-1 text-base font-medium text-[var(--sera-ink)]">
+                    {displayLastLoginIp ? (
+                      displayLastLoginIp
+                    ) : (
+                      <span className="italic text-[var(--sera-muted)]/70">Not available</span>
+                    )}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1657,40 +1672,46 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       </Card>
 
       {/* Account Status Card */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle>Account Status</CardTitle>
-          <CardDescription>Current verification and account status</CardDescription>
+      <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+        <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+          <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Account Status</CardTitle>
+          <CardDescription className="text-[var(--sera-muted)]">Current verification and account status</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="flex items-center gap-3">
-              <div className={`h-4 w-4 rounded-full ${userProfile.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
+        <CardContent className="p-0 px-6 pb-6 pt-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="sera-sc-kpi">
+              <div className="flex items-center gap-3">
+              <div className={`h-2.5 w-2.5 rounded-full ${userProfile.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <div>
-                <p className="text-sm text-gray-500 font-medium">Account Status</p>
-                <p className="text-base font-medium text-gray-900">
+                <p className="sera-sc-kpi__label">Account Status</p>
+                <p className="text-base font-medium text-[var(--sera-ink)]">
                   {userProfile.is_active ? 'Active' : 'Inactive'}
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className={`h-4 w-4 rounded-full ${userProfile.is_verified ? 'bg-green-500' : 'bg-yellow-500'}`} />
-              <div>
-                <p className="text-sm text-gray-500 font-medium">Verification Status</p>
-                <p className="text-base font-medium text-gray-900">
-                  {userProfile.is_verified ? 'Verified' : 'Pending'}
-                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Calendar className="h-4 w-4 text-gray-400" />
+            <div className="sera-sc-kpi">
+              <div className="flex items-center gap-3">
+              <div className={`h-2.5 w-2.5 rounded-full ${userProfile.is_verified ? 'bg-emerald-500' : 'bg-amber-500'}`} />
               <div>
-                <p className="text-sm text-gray-500 font-medium">Last Updated</p>
-                <p className="text-base font-medium text-gray-900">
+                <p className="sera-sc-kpi__label">Verification Status</p>
+                <p className="text-base font-medium text-[var(--sera-ink)]">
+                  {userProfile.is_verified ? 'Verified' : 'Pending'}
+                </p>
+              </div>
+              </div>
+            </div>
+
+            <div className="sera-sc-kpi">
+              <div className="flex items-center gap-3">
+              <Calendar className="h-4 w-4 text-[var(--sera-orange)]" />
+              <div>
+                <p className="sera-sc-kpi__label">Last Updated</p>
+                <p className="text-base font-medium text-[var(--sera-ink)]">
                   {formatRelativeTime(userProfile.updated_at)}
                 </p>
+              </div>
               </div>
             </div>
           </div>
@@ -1698,22 +1719,27 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       </Card>
 
       {/* Bank Information Card */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+        <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Bank Information</CardTitle>
-              <CardDescription>Your bank account details for payouts and transfers</CardDescription>
+              <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Bank Information</CardTitle>
+              <CardDescription className="text-[var(--sera-muted)]">Your bank account details for payouts and transfers</CardDescription>
             </div>
             {!isEditingBank && (
-              <Button onClick={() => setIsEditingBank(true)} variant="outline" size="sm" className="gap-2">
+              <Button
+                onClick={() => setIsEditingBank(true)}
+                variant="outline"
+                size="sm"
+                className="gap-2 border-[var(--sera-line)] text-[var(--sera-ink-soft)] hover:border-[var(--sera-orange)]/30 hover:text-[var(--sera-orange)]"
+              >
                 <Edit2 className="h-4 w-4" />
                 Edit
               </Button>
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 p-0 px-6 pb-6 pt-5">
           {isEditingBank ? (
             <>
               <div>
@@ -1756,7 +1782,7 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
               <div className="flex gap-3 pt-4">
                 <Button
                   onClick={handleSaveBankDetails}
-                  className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+                  className="flex-1 gap-2 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)]"
                   disabled={isSavingBank}
                 >
                   {isSavingBank ? (
@@ -1784,35 +1810,35 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
             </>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-start gap-3 text-gray-700">
-                <User className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                <User className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm text-gray-500 font-medium">Account Holder Name</p>
-                  <p className="text-base font-medium text-gray-900 mt-1">
+                  <p className="text-sm text-[var(--sera-muted)] font-medium">Account Holder Name</p>
+                  <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                     {userProfile.bank_account_holder_name || (
-                      <span className="text-gray-400 italic">Not set</span>
+                      <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                     )}
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 text-gray-700">
-                <Landmark className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                <Landmark className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm text-gray-500 font-medium">Bank Name</p>
-                  <p className="text-base font-medium text-gray-900 mt-1">
+                  <p className="text-sm text-[var(--sera-muted)] font-medium">Bank Name</p>
+                  <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                     {userProfile.msia_banks?.short_name || (
-                      <span className="text-gray-400 italic">Not set</span>
+                      <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                     )}
                   </p>
                 </div>
               </div>
-              <div className="flex items-start gap-3 text-gray-700">
-                <CreditCard className="h-5 w-5 text-gray-400 mt-0.5" />
+              <div className="flex items-start gap-3 text-[var(--sera-ink-soft)]">
+                <CreditCard className="h-5 w-5 text-[var(--sera-muted)]/70 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm text-gray-500 font-medium">Account Number</p>
-                  <p className="text-base font-medium text-gray-900 mt-1">
+                  <p className="text-sm text-[var(--sera-muted)] font-medium">Account Number</p>
+                  <p className="text-base font-medium text-[var(--sera-ink)] mt-1">
                     {userProfile.bank_account_number || (
-                      <span className="text-gray-400 italic">Not set</span>
+                      <span className="text-[var(--sera-muted)]/70 italic">Not set</span>
                     )}
                   </p>
                 </div>
@@ -1823,29 +1849,29 @@ export default function MyProfileViewNew({ userProfile: initialProfile }: MyProf
       </Card>
 
       {/* Digital Signature Card - Visible for all users who may create/approve orders */}
-      <Card className="shadow-lg md:col-span-2">
-        <CardHeader>
-          <div className="flex items-center justify-between">
+      <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+        <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Digital Signature</CardTitle>
-              <CardDescription>Upload your signature for document acknowledgement</CardDescription>
+              <CardTitle className="font-display text-lg text-[var(--sera-ink)]">Digital Signature</CardTitle>
+              <CardDescription className="text-[var(--sera-muted)]">Upload your signature for document acknowledgement</CardDescription>
             </div>
             {userProfile.signature_url && (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                <CheckCircle className="h-3 w-3 mr-1" />
+              <Badge variant="outline" className="w-fit border-green-200 bg-green-50 text-green-700">
+                <CheckCircle className="mr-1 h-3 w-3" />
                 Uploaded
               </Badge>
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert className="border-blue-200 bg-blue-50">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription className="text-blue-800">
-              <strong>Required for Document Acknowledgement:</strong> Upload your digital signature to acknowledge Purchase Orders, Invoices, Payments, and other documents.
+        <CardContent className="space-y-4 p-0 px-6 pb-6 pt-5">
+          <Alert className="border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.06]">
+            <AlertCircle className="h-4 w-4 text-[var(--sera-orange)]" />
+            <AlertDescription className="text-[var(--sera-ink-soft)]">
+              <strong className="text-[var(--sera-ink)]">Required for Document Acknowledgement:</strong> Upload your digital signature to acknowledge Purchase Orders, Invoices, Payments, and other documents.
               <div className="mt-2 text-sm">
-                <p className="font-medium mb-1">Tips for best results:</p>
-                <ul className="list-disc list-inside space-y-1 text-xs">
+                <p className="mb-1 font-medium text-[var(--sera-ink)]">Tips for best results:</p>
+                <ul className="list-inside list-disc space-y-1 text-xs text-[var(--sera-muted)]">
                   <li>Sign on white paper with dark ink</li>
                   <li>Take a clear photo or scan the signature</li>
                   <li>Use transparent PNG format (recommended)</li>
