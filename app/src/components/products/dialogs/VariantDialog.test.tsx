@@ -6,6 +6,10 @@ import { PRODUCT_CODE_DUPLICATE_MESSAGE } from '@/lib/products/product-code'
 import { ALTERNATIVE_NAME_DUPLICATE_MESSAGE } from '@/lib/products/alternative-name'
 import VariantDialog from './VariantDialog'
 
+vi.mock('@/components/products/KkmApprovalCertificate', () => ({
+  default: ({ variantId }: { variantId?: string }) => <div data-testid="kkm-certificate">{variantId ? 'Existing certificate' : 'New certificate'}</div>,
+}))
+
 const products = [{ id: 'product-1', product_name: 'Cellera Hero', is_active: true, is_vape: true, product_code: 'CEL01' }]
 
 describe('VariantDialog Product Code', () => {
@@ -197,5 +201,38 @@ describe('VariantDialog Stock Configuration administration', () => {
 
     expect(screen.queryByRole('region', { name: 'Inventory Stock Configurations' })).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('VariantDialog KKM fields', () => {
+  afterEach(cleanup)
+
+  it('shows KKM Approval and its certificate for Vape categories without a five-character limit', () => {
+    render(
+      <VariantDialog variant={null} products={products} open isSaving={false} onOpenChange={vi.fn()} onSave={vi.fn()} />,
+    )
+
+    const kkmApproval = screen.getByLabelText(/KKM Approval/) as HTMLInputElement
+    expect(kkmApproval.maxLength).toBe(-1)
+    fireEvent.change(kkmApproval, { target: { value: 'KKM-APPROVAL-123456789' } })
+    expect(kkmApproval.value).toBe('KKM-APPROVAL-123456789')
+    expect(screen.getByTestId('kkm-certificate')).not.toBeNull()
+    expect(screen.queryByText(/Manual SKU/)).toBeNull()
+  })
+
+  it('hides KKM Approval and its certificate for non-Vape categories', () => {
+    render(
+      <VariantDialog
+        variant={null}
+        products={[{ ...products[0], id: 'food-1', product_name: 'Pet Food', is_vape: false }]}
+        open
+        isSaving={false}
+        onOpenChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByLabelText(/KKM Approval/)).toBeNull()
+    expect(screen.queryByTestId('kkm-certificate')).toBeNull()
   })
 })

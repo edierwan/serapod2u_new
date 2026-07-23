@@ -16,16 +16,20 @@ import {
   Store, Users, Scan, Crown, Eye, Filter, RotateCcw,
   Download, FileSpreadsheet, Search, Map as MapIcon,
 } from 'lucide-react'
-import { format } from 'date-fns'
 import {
-  computeNegeriDateWindow,
   buildNegeriReport,
-  NEGERI_PERIOD_OPTIONS,
   type NegeriScanRow,
   type NegeriOrgRow,
   type NegeriStateRow,
   type NegeriRegionRow,
 } from '@/lib/reporting/shop-by-negeri'
+import {
+  previousReportingPeriod,
+  reportingPeriodDateWindow,
+  reportingPeriodFilenameLabel,
+  reportingPeriodRangeLabel,
+  type ReportingPeriod,
+} from '@/lib/reporting/reporting-period'
 import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
 import MalaysiaStateMap, { type StateMapMetric } from './MalaysiaStateMap'
@@ -36,6 +40,10 @@ interface ShopByNegeriTabProps {
   chartGridColor: string
   chartTickColor: string
   isDark: boolean
+  periods: ReportingPeriod[]
+  selectedPeriod: ReportingPeriod | null
+  onPeriodChange: (key: string) => void
+  onRefreshPeriods: () => Promise<void>
 }
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444', '#14b8a6', '#f97316']
@@ -63,7 +71,10 @@ function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
 }
 
-export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTickColor, isDark }: ShopByNegeriTabProps) {
+export default function ShopByNegeriTab({
+  userProfile, chartGridColor, chartTickColor, isDark,
+  periods, selectedPeriod, onPeriodChange, onRefreshPeriods,
+}: ShopByNegeriTabProps) {
   const supabase = useMemo(() => createClient(), [])
 
   const [loading, setLoading] = useState(true)
@@ -76,12 +87,11 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
   const [regions, setRegions] = useState<NegeriRegionRow[]>([])
 
   // Draft filters (filter bar) vs applied filters (used for computation)
-  const [draftPeriod, setDraftPeriod] = useState('30')
   const [draftRegion, setDraftRegion] = useState('all')
   const [draftNegeri, setDraftNegeri] = useState('all')
   const [draftSearch, setDraftSearch] = useState('')
 
-  const [applied, setApplied] = useState({ period: '30', region: 'all', negeri: 'all', search: '' })
+  const [applied, setApplied] = useState({ region: 'all', negeri: 'all', search: '' })
   const [selectedStateId, setSelectedStateId] = useState<string | null>(null)
 
   const tooltipBg = isDark ? '#1f2937' : '#ffffff'
@@ -104,14 +114,19 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
       setStates((stateData as NegeriStateRow[]) || [])
       setRegions((regionData as NegeriRegionRow[]) || [])
 
-      // Scans over the last 12 months (covers all period presets)
-      const start = computeNegeriDateWindow('12months').start.toISOString()
+      if (!selectedPeriod) {
+        setScans([])
+        setOrgs([])
+        return
+      }
+      const previousPeriod = previousReportingPeriod(selectedPeriod)
       const { data: scanData, error: scanErr } = await supabase
         .from('consumer_qr_scans')
         .select('id, consumer_id, scanned_at, shop_id, points_amount')
         .eq('is_manual_adjustment', false)
         .not('shop_id', 'is', null)
-        .gte('scanned_at', start)
+        .gte('scanned_at', previousPeriod.startUtc)
+        .lt('scanned_at', selectedPeriod.endUtc)
         .order('scanned_at', { ascending: false })
 
       if (scanErr) {
@@ -143,7 +158,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
     } catch (err) {
       console.error('ShopByNegeriTab fetch error:', err)
     }
-  }, [supabase])
+  }, [supabase, selectedPeriod])
 
   useEffect(() => {
     setLoading(true)
@@ -152,26 +167,29 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
 
   const handleRefresh = async () => {
     setRefreshing(true)
+    await onRefreshPeriods()
     await fetchData()
     setRefreshing(false)
   }
 
   const handleApply = () => {
-    setApplied({ period: draftPeriod, region: draftRegion, negeri: draftNegeri, search: draftSearch })
+    setApplied({ region: draftRegion, negeri: draftNegeri, search: draftSearch })
     setSelectedStateId(null)
   }
 
   const handleReset = () => {
-    setDraftPeriod('30')
     setDraftRegion('all')
     setDraftNegeri('all')
     setDraftSearch('')
-    setApplied({ period: '30', region: 'all', negeri: 'all', search: '' })
+    setApplied({ region: 'all', negeri: 'all', search: '' })
     setSelectedStateId(null)
   }
 
   // ── Report computation ─────────────────────────────────────────────
-  const dateWindow = useMemo(() => computeNegeriDateWindow(applied.period), [applied.period])
+  const dateWindow = useMemo(
+    () => selectedPeriod ? reportingPeriodDateWindow(selectedPeriod) : null,
+    [selectedPeriod]
+  )
 
   const report = useMemo(() => buildNegeriReport({
     scans,
@@ -180,7 +198,7 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
     regionId: applied.region,
     negeriId: applied.negeri,
     search: applied.search,
-    window: dateWindow,
+    window: dateWindow!,
   }), [scans, orgs, states, applied, dateWindow])
 
   // Default selected state = top ranked
@@ -217,14 +235,14 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
     return states.filter((s) => s.region_id === draftRegion)
   }, [states, draftRegion])
 
-  const dateRangeLabel = `${format(dateWindow.start, 'dd MMM yyyy')} – ${format(dateWindow.end, 'dd MMM yyyy')}`
+  const dateRangeLabel = selectedPeriod ? reportingPeriodRangeLabel(selectedPeriod) : ''
 
   // ── Excel export (server-side, follows active filters) ─────────────
   const handleDownloadExcel = async () => {
     try {
       setExporting(true)
       const params = new URLSearchParams({
-        period: applied.period,
+        period: selectedPeriod!.key,
         region: applied.region,
         negeri: applied.negeri,
         search: applied.search,
@@ -237,10 +255,8 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      const from = format(computeNegeriDateWindow(applied.period).start, 'yyyy-MM-dd')
-      const to = format(computeNegeriDateWindow(applied.period).end, 'yyyy-MM-dd')
       a.href = url
-      a.download = `shop-by-negeri-report-${from}-to-${to}.xlsx`
+      a.download = `Shop_by_Negeri_${reportingPeriodFilenameLabel(selectedPeriod!)}.xlsx`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -255,7 +271,11 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
   }
 
   // ── Loading state ──────────────────────────────────────────────────
-  if (loading) {
+  if (!selectedPeriod) {
+    return <div className="rounded-xl border bg-card/80 p-10 text-center text-sm text-muted-foreground">No transaction periods available.</div>
+  }
+
+  if (loading || !dateWindow) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-12 w-full" />
@@ -297,11 +317,11 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleDownloadExcel} disabled={exporting}>
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleDownloadExcel} disabled={exporting || !selectedPeriod}>
             {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             Export Report
           </Button>
-          <Button size="sm" className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleDownloadExcel} disabled={exporting}>
+          <Button size="sm" className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleDownloadExcel} disabled={exporting || !selectedPeriod}>
             {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
             Download Excel
           </Button>
@@ -313,12 +333,12 @@ export default function ShopByNegeriTab({ userProfile, chartGridColor, chartTick
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Date Range</label>
-              <Select value={draftPeriod} onValueChange={setDraftPeriod}>
+              <label className="text-xs font-medium text-muted-foreground">Reporting Month</label>
+              <Select value={selectedPeriod.key} onValueChange={onPeriodChange}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {NEGERI_PERIOD_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  {periods.map((o) => (
+                    <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

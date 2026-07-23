@@ -38,6 +38,12 @@ import {
 } from '@/lib/inventory/stock-count-classification'
 import { stockCountRowsSignature } from '@/lib/inventory/stock-count-snapshot'
 import {
+  buildStockCountCatalogRows,
+  isStockCountCatalogRowVisible,
+  matchesStockCountSearch,
+  type StockCountCatalogRow,
+} from '@/lib/inventory/stock-count-catalog'
+import {
   buildStockCountWorksheet,
   parseStockCountWorksheet,
   buildClassificationWorksheet,
@@ -82,34 +88,8 @@ interface WarehouseLocation {
   org_name: string
 }
 
-interface CountRow {
-  inventoryId: string | null
-  stockConfigId: string
-  configCode: string
-  stockSku: string
-  configLabel: string
-  volumeMl: number | null
-  packagingVersion: string | null
-  configStatus: string
-  variantId: string
-  productName: string
-  productCode: string
-  groupId: string
-  groupName: string
-  groupDescription: string | null
-  brandLogoUrl: string | null
-  variantName: string
-  variantCode: string
-  manufacturerSku: string | null
-  manualSku: string | null
-  imageUrl: string | null
-  systemQuantity: number
+interface CountRow extends StockCountCatalogRow {
   /** Live allocated qty on this configuration — classification never auto-clears it. */
-  quantityAllocated: number
-  physicalCount: string
-  note: string
-  unitCost: number | null
-  warehouseLocation: string | null
 }
 
 interface DraftSession {
@@ -177,7 +157,6 @@ interface StockAdjustmentViewProps {
 }
 
 const ALL_GROUP_ID = 'all'
-const UNGROUPED_GROUP_ID = 'ungrouped'
 // Kept as one policy constant so this can move to organization settings later.
 const HIGH_IMPACT_VALUE_THRESHOLD = 10_000
 const todayIso = () => new Date().toISOString().slice(0, 10)
@@ -241,6 +220,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [referenceName, setReferenceName] = useState('')
   const [notes, setNotes] = useState('')
   const [rows, setRows] = useState<CountRow[]>([])
+  const [catalogRows, setCatalogRows] = useState<CountRow[]>([])
   const [drafts, setDrafts] = useState<DraftSession[]>([])
   const [staleDraftIds, setStaleDraftIds] = useState<Set<string>>(new Set())
   const [managingDrafts, setManagingDrafts] = useState(false)
@@ -356,177 +336,49 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const loadCountRows = async (warehouseId: string) => {
     try {
       setLoadingRows(true)
-      // Wildcard variant fields keep Stock Count usable before the optional Product
-      // Code migration and expose product_code automatically after it is applied.
-      const { data, error } = await (supabase as any)
-        .from('product_inventory')
-        .select(`
-          id,
-          variant_id,
-          stock_config_id,
-          organization_id,
-          quantity_on_hand,
-          quantity_allocated,
-          warehouse_location,
-          inventory_stock_configurations!product_inventory_stock_config_fk (
-            id, config_code, config_label, stock_sku, volume_ml, packaging, status
-          ),
-          product_variants!inner (
-            *,
-            products!inner (
-              id,
-              product_name,
-              is_active,
-              group_id,
-              brand_id,
-              product_groups (id, group_name, group_description),
-              brands (id, brand_name, logo_url)
-            )
-          )
-        `)
-        .eq('organization_id', warehouseId)
-        .eq('is_active', true)
-        .eq('product_variants.is_active', true)
-        .eq('product_variants.products.is_active', true)
-
-      if (error) throw error
-
-      // variantId -> display metadata shared by every configuration of that
-      // variant (product/group/brand/base cost). Kept separate from per-row
-      // fields (system quantity, warehouse location) which differ per
-      // configuration and must never leak across configs of the same variant.
-      interface VariantMeta {
-        productName: string
-        productCode: string
-        groupId: string
-        groupName: string
-        groupDescription: string | null
-        brandLogoUrl: string | null
-        variantName: string
-        variantCode: string
-        manufacturerSku: string | null
-        manualSku: string | null
-        imageUrl: string | null
-        unitCost: number | null
-      }
-      const variantMetaById = new Map<string, VariantMeta>()
-      const rowsByConfigId = new Map<string, CountRow>()
-
-      for (const item of (data || []) as any[]) {
-        const config = Array.isArray(item.inventory_stock_configurations)
-          ? item.inventory_stock_configurations[0]
-          : item.inventory_stock_configurations
-        if (!item.stock_config_id || !config) {
-          throw new Error(`Inventory row ${item.id} has no Stock Configuration ID. Stock Count cannot safely guess its configuration.`)
-        }
-        const variant = Array.isArray(item.product_variants) ? item.product_variants[0] : item.product_variants
-        const product = Array.isArray(variant?.products) ? variant.products[0] : variant?.products
-        const group = Array.isArray(product?.product_groups) ? product.product_groups[0] : product?.product_groups
-        const brand = Array.isArray(product?.brands) ? product.brands[0] : product?.brands
-        const groupId = group?.id || brand?.id || UNGROUPED_GROUP_ID
-        const groupName = group?.group_name || brand?.brand_name || 'Ungrouped'
-
-        if (!variantMetaById.has(item.variant_id)) {
-          variantMetaById.set(item.variant_id, {
-            productName: product?.product_name || 'Unnamed product',
-            productCode: variant?.product_code || '',
-            groupId,
-            groupName,
-            groupDescription: group?.group_description || null,
-            brandLogoUrl: brand?.logo_url || null,
-            variantName: variant?.variant_name || 'Unnamed variant',
-            variantCode: variant?.variant_code || '',
-            manufacturerSku: variant?.manufacturer_sku || null,
-            manualSku: variant?.manual_sku || null,
-            imageUrl: variant?.image_url || null,
-            unitCost: normalizeBaseCost(variant?.base_cost),
-          })
-        }
-        const meta = variantMetaById.get(item.variant_id)!
-
-        rowsByConfigId.set(item.stock_config_id, {
-          inventoryId: item.id,
-          stockConfigId: item.stock_config_id,
-          configCode: config.config_code,
-          stockSku: config.stock_sku,
-          configLabel: config.config_label,
-          volumeMl: config.volume_ml,
-          packagingVersion: config.packaging,
-          configStatus: config.status,
-          variantId: item.variant_id,
-          ...meta,
-          systemQuantity: Number(item.quantity_on_hand || 0),
-          quantityAllocated: Number(item.quantity_allocated || 0),
-          physicalCount: '',
-          note: '',
-          warehouseLocation: item.warehouse_location || null,
-        })
-      }
-
-      // Synthesize zero-balance rows for active/phase-out catalog
-      // configurations that have never had a movement at this warehouse
-      // (e.g. 20NB/50NB/50OB right after Enable Stock Configurations, before
-      // anything has ever moved into them). Without this, Stock Count can
-      // never show a configuration a physical count needs to be entered into.
-      const variantIds = Array.from(variantMetaById.keys())
-      if (variantIds.length > 0) {
-        const { data: catalogConfigs, error: catalogError } = await (supabase as any)
+      // The configuration catalog is authoritative. Warehouse balances are an
+      // optional LEFT JOIN overlay, so never-stocked configurations remain
+      // countable with zero quantities.
+      const [configurationResult, balanceResult] = await Promise.all([
+        (supabase as any)
           .from('inventory_stock_configurations')
-          .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, status')
-          .in('variant_id', variantIds)
-          .in('status', ['active', 'phase_out'])
-        if (catalogError) throw catalogError
+          .select(`
+            id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, status, sort_order,
+            product_variants!inner (
+              id, variant_name, alternative_name, variant_code, product_code, manufacturer_sku, manual_sku, image_url, base_cost, is_active,
+              products!inner (
+                id, product_name, is_active, group_id, brand_id,
+                product_groups (id, group_name, group_description),
+                brands (id, brand_name, logo_url)
+              )
+            )
+          `)
+          .eq('product_variants.is_active', true)
+          .eq('product_variants.products.is_active', true)
+          .order('sort_order'),
+        (supabase as any)
+          .from('product_inventory')
+          .select('id, variant_id, stock_config_id, quantity_on_hand, quantity_allocated, warehouse_location')
+          .eq('organization_id', warehouseId)
+          .eq('is_active', true),
+      ])
+      if (configurationResult.error) throw configurationResult.error
+      if (balanceResult.error) throw balanceResult.error
 
-        for (const config of (catalogConfigs || []) as any[]) {
-          if (rowsByConfigId.has(config.id)) continue
-          const meta = variantMetaById.get(config.variant_id)
-          if (!meta) continue
-          rowsByConfigId.set(config.id, {
-            inventoryId: null,
-            stockConfigId: config.id,
-            configCode: config.config_code,
-            stockSku: config.stock_sku,
-            configLabel: config.config_label,
-            volumeMl: config.volume_ml,
-            packagingVersion: config.packaging,
-            configStatus: config.status,
-            variantId: config.variant_id,
-            ...meta,
-            systemQuantity: 0,
-            quantityAllocated: 0,
-            physicalCount: '',
-            note: '',
-            warehouseLocation: null,
-          })
-        }
-      }
-
-      const nextRows = Array.from(rowsByConfigId.values())
-        .sort((a, b) => `${a.groupName} ${a.productName} ${a.variantName} ${a.configLabel}`.localeCompare(`${b.groupName} ${b.productName} ${b.variantName} ${b.configLabel}`))
-
+      const nextRows = buildStockCountCatalogRows(configurationResult.data || [], balanceResult.data || [])
+      setCatalogRows(nextRows)
       setRows(nextRows)
+      return nextRows
     } catch (error: any) {
       toast({ title: 'Inventory load failed', description: error.message, variant: 'destructive' })
+      return [] as CountRow[]
     } finally {
       setLoadingRows(false)
     }
   }
 
   const visibleRows = useMemo(
-    () => rows.filter(row => {
-      const hasActivity = row.systemQuantity !== 0 || parseCount(row.physicalCount) !== null || Boolean(row.note.trim())
-      // Legacy/Unclassified disappears from normal operational counts the
-      // moment its balance is fully classified — regardless of the "Show
-      // inactive" toggle, since it is never a configuration worth counting
-      // again once cleared.
-      if (row.configCode === LEGACY_CONFIG_CODE && !hasActivity) return false
-      // Active/phase-out configurations always show (even zero-balance) so a
-      // just-enabled target configuration is countable before anything has
-      // ever moved into it. Only truly inactive/retired zero-balance
-      // configurations are hidden by default.
-      if (row.configStatus === 'inactive' && !hasActivity) return showInactive
-      return true
-    }),
+    () => rows.filter(row => isStockCountCatalogRowVisible(row, showInactive)),
     [rows, showInactive],
   )
 
@@ -548,7 +400,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       const variance = varianceForRow(row)
       if (showVarianceOnly && (!variance || variance === 0)) return false
       if (!query) return true
-      return [row.productName, row.variantName, row.variantCode, row.stockSku, row.configLabel, row.manufacturerSku, row.manualSku].filter(Boolean).some(value => String(value).toLowerCase().includes(query))
+      return matchesStockCountSearch(row, query)
     })
   }, [visibleRows, searchTerm, selectedGroupId, showVarianceOnly])
 
@@ -629,6 +481,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           ...group.targetRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim()),
         ])
       : visibleRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim())
+  ), [isClassificationMode, classificationGroups, visibleRows])
+
+  // Snapshot the complete eligible catalog on first save, not only rows that
+  // already have a physical count. Reopening a draft then remains stable even
+  // when new variants/configurations are created later.
+  const draftScopeRows = useMemo<CountRow[]>(() => (
+    isClassificationMode
+      ? classificationGroups.flatMap(group => [group.legacyRow, ...group.targetRows])
+      : visibleRows
   ), [isClassificationMode, classificationGroups, visibleRows])
 
   const currentSignature = useMemo(() => stockCountRowsSignature(draftRows.map(row => ({
@@ -714,6 +575,19 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         setCurrentSessionId(sessionId)
       }
 
+      const { data: existingScope, error: scopeReadError } = await supabase
+        .from('stock_count_session_scope' as any)
+        .select('stock_config_id')
+        .eq('session_id', sessionId)
+        .limit(1)
+      if (scopeReadError) throw scopeReadError
+      if ((existingScope || []).length === 0 && draftScopeRows.length > 0) {
+        const { error: scopeInsertError } = await supabase
+          .from('stock_count_session_scope' as any)
+          .insert(draftScopeRows.map(row => ({ session_id: sessionId, stock_config_id: row.stockConfigId })))
+        if (scopeInsertError) throw scopeInsertError
+      }
+
       // Classification sessions always force the Legacy/Unclassified row to a
       // physical count of exactly 0 (it is never user-typed — see
       // prepare_stock_count_verification's classification guard) and only
@@ -783,6 +657,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [pendingAutoSave])
 
   const loadDraft = async (sessionId: string) => {
+    const baseCatalogRows = catalogRows.length > 0
+      ? catalogRows
+      : selectedWarehouse ? await loadCountRows(selectedWarehouse) : []
     const { data: session, error } = await supabase.from('stock_count_sessions' as any).select('id, count_date, count_type, reference_name, notes, status').eq('id', sessionId).single()
     if (error) {
       toast({ title: 'Open draft failed', description: error.message, variant: 'destructive' })
@@ -791,6 +668,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     const { data: items, error: itemError } = await supabase.from('stock_count_session_items' as any).select('stock_config_id, variant_id, physical_quantity, note').eq('session_id', sessionId)
     if (itemError) {
       toast({ title: 'Open draft failed', description: itemError.message, variant: 'destructive' })
+      return
+    }
+    const { data: scope, error: scopeError } = await supabase
+      .from('stock_count_session_scope' as any)
+      .select('stock_config_id')
+      .eq('session_id', sessionId)
+    if (scopeError) {
+      toast({ title: 'Open draft failed', description: scopeError.message, variant: 'destructive' })
       return
     }
 
@@ -805,14 +690,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
     const itemMap = new Map((items || []).map((item: any) => [item.stock_config_id, item]))
-    if (rows.some(row => itemMap.has(row.stockConfigId) && row.configStatus !== 'active' && row.systemQuantity === 0)) setShowInactive(true)
+    const scopeIds = new Set((scope || []).map((entry: any) => entry.stock_config_id))
+    const scopedCatalogRows = baseCatalogRows.filter(row => scopeIds.has(row.stockConfigId))
+    if (scopedCatalogRows.some(row => itemMap.has(row.stockConfigId) && row.configStatus !== 'active' && row.systemQuantity === 0)) setShowInactive(true)
     setCurrentSessionId((session as any).id)
     setCurrentStatus((session as any).status)
     setCountDate((session as any).count_date)
     setCountType((session as any).count_type)
     setReferenceName((session as any).reference_name || '')
     setNotes((session as any).notes || '')
-    setRows(prev => prev.map(row => {
+    setRows(scopedCatalogRows.map(row => {
       const item = itemMap.get(row.stockConfigId) as any
       return item ? { ...row, physicalCount: item.physical_quantity === null ? '' : String(item.physical_quantity), note: item.note || '' } : { ...row, physicalCount: '', note: '' }
     }))
@@ -944,7 +831,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setCountType('full_count')
     setReferenceName('')
     setNotes('')
-    setRows(prev => prev.map(row => ({ ...row, physicalCount: '', note: '' })))
+    setRows(catalogRows.map(row => ({ ...row, physicalCount: '', note: '' })))
     setLastSavedSignature(EMPTY_SIGNATURE)
     setVerification(null)
     setVerifiedSignature(null)
@@ -1084,7 +971,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         return
       }
 
-      const result = parseStockCountWorksheet(sheet, rows.map(row => ({
+      const result = parseStockCountWorksheet(sheet, visibleRows.map(row => ({
         stockConfigId: row.stockConfigId,
         variantId: row.variantId,
         stockSku: row.stockSku,

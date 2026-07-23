@@ -10,7 +10,8 @@
  *  - regions           (id, region_name)
  */
 
-import { subDays, subMonths, eachMonthOfInterval, format } from 'date-fns'
+import { subDays, subMonths } from 'date-fns'
+import { REPORTING_TIME_ZONE } from './reporting-period'
 
 // ── Row types ──────────────────────────────────────────────────────────
 export interface NegeriScanRow {
@@ -240,7 +241,7 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
     const at = scan.scanned_at
     if (!at) continue
 
-    const inCurrent = at >= startISO && at <= endISO
+    const inCurrent = at >= startISO && at < endISO
     const inPrev = at >= prevStartISO && at < prevEndISO
 
     if (inCurrent) {
@@ -362,55 +363,56 @@ export function buildNegeriReport(args: BuildNegeriReportArgs): NegeriReport {
   }
   topShops.sort((a, b) => (a.negeri === b.negeri ? b.scans - a.scans : a.negeri.localeCompare(b.negeri)))
 
-  // ── Monthly trend (12 months, respecting region/negeri filter) ───────
-  const now = window.end
-  const months = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
+  // ── Selected month trend, respecting region/negeri filter ────────────
   const monthlyTrend: MonthlyTrendRow[] = []
   const monthlyByState: MonthlyByStateRow[] = []
 
-  for (const m of months) {
-    const key = format(m, 'yyyy-MM')
-    const label = format(m, 'MMM yyyy')
+  const monthParts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric', month: '2-digit', timeZone: REPORTING_TIME_ZONE,
+  }).formatToParts(window.start)
+  const key = `${monthParts.find((part) => part.type === 'year')?.value}-${monthParts.find((part) => part.type === 'month')?.value}`
+  const label = new Intl.DateTimeFormat('en-MY', {
+    month: 'short', year: 'numeric', timeZone: REPORTING_TIME_ZONE,
+  }).format(window.start)
 
-    let mScans = 0
-    const mShops = new Set<string>()
-    const mConsumers = new Set<string>()
+  let mScans = 0
+  const mShops = new Set<string>()
+  const mConsumers = new Set<string>()
 
-    // per-state buckets for this month
-    const perState = new Map<string, { scans: number; shops: Set<string>; consumers: Set<string> }>()
+  // per-state buckets for the selected reporting month
+  const perState = new Map<string, { scans: number; shops: Set<string>; consumers: Set<string> }>()
 
-    for (const scan of scans) {
-      if (!scan.scanned_at?.startsWith(key)) continue
-      const stId = stateIdForScan(scan)
-      if (!stId || !allowedStateIds.has(stId)) continue
+  for (const scan of scans) {
+    if (!scan.scanned_at || scan.scanned_at < startISO || scan.scanned_at >= endISO) continue
+    const stId = stateIdForScan(scan)
+    if (!stId || !allowedStateIds.has(stId)) continue
 
-      mScans++
-      if (scan.shop_id) mShops.add(scan.shop_id)
-      if (scan.consumer_id) mConsumers.add(scan.consumer_id)
+    mScans++
+    if (scan.shop_id) mShops.add(scan.shop_id)
+    if (scan.consumer_id) mConsumers.add(scan.consumer_id)
 
-      let ps = perState.get(stId)
-      if (!ps) {
-        ps = { scans: 0, shops: new Set(), consumers: new Set() }
-        perState.set(stId, ps)
-      }
-      ps.scans++
-      if (scan.shop_id) ps.shops.add(scan.shop_id)
-      if (scan.consumer_id) ps.consumers.add(scan.consumer_id)
+    let ps = perState.get(stId)
+    if (!ps) {
+      ps = { scans: 0, shops: new Set(), consumers: new Set() }
+      perState.set(stId, ps)
     }
+    ps.scans++
+    if (scan.shop_id) ps.shops.add(scan.shop_id)
+    if (scan.consumer_id) ps.consumers.add(scan.consumer_id)
+  }
 
-    monthlyTrend.push({ monthKey: key, monthLabel: label, scans: mScans, shops: mShops.size, consumers: mConsumers.size })
+  monthlyTrend.push({ monthKey: key, monthLabel: label, scans: mScans, shops: mShops.size, consumers: mConsumers.size })
 
-    for (const [stId, ps] of perState.entries()) {
-      monthlyByState.push({
-        monthKey: key,
-        monthLabel: label,
-        stateId: stId,
-        negeri: stateLabel(stateMap, stId),
-        scans: ps.scans,
-        shops: ps.shops.size,
-        consumers: ps.consumers.size,
-      })
-    }
+  for (const [stId, ps] of perState.entries()) {
+    monthlyByState.push({
+      monthKey: key,
+      monthLabel: label,
+      stateId: stId,
+      negeri: stateLabel(stateMap, stId),
+      scans: ps.scans,
+      shops: ps.shops.size,
+      consumers: ps.consumers.size,
+    })
   }
 
   return { kpis, ranking, topShops, monthlyTrend, monthlyByState }
