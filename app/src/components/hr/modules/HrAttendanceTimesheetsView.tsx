@@ -163,20 +163,20 @@ export default function HrAttendanceTimesheetsView({ userProfile }: HrAttendance
 
             <Card>
                 <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <CardTitle className="text-lg">Timesheets</CardTitle>
                             <CardDescription>Weekly or monthly aggregated timesheet records.</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                             <Select value={filter} onValueChange={v => setFilter(v as typeof filter)}>
-                                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="mine">My Timesheets</SelectItem>
                                     {canManage && <SelectItem value="all">All Staff</SelectItem>}
                                 </SelectContent>
                             </Select>
-                            <Button size="sm" onClick={() => { setMonthlyPeriod(); setGenerateDialogOpen(true) }}>
+                            <Button size="sm" className="w-full sm:w-auto" onClick={() => { setMonthlyPeriod(); setGenerateDialogOpen(true) }}>
                                 <FileText className="h-4 w-4 mr-1" />Generate
                             </Button>
                         </div>
@@ -191,7 +191,7 @@ export default function HrAttendanceTimesheetsView({ userProfile }: HrAttendance
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-[640px]">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Period</TableHead>

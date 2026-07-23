@@ -165,24 +165,24 @@ export default function HrPublicHolidaysView({ canEdit }: HrPublicHolidaysViewPr
             {/* Header */}
             <Card>
                 <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <CardTitle className="text-lg flex items-center gap-2"><Calendar className="h-5 w-5" />Public Holidays</CardTitle>
                             <CardDescription>Manage public holidays for your organization. These affect leave calculations and overtime rates.</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                             <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(Number(v))}>
-                                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-full sm:w-[120px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     {yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                             {canEdit && (
                                 <>
-                                    <Button variant="outline" size="sm" onClick={() => { loadTemplates(); setTemplateYear(selectedYear); setTemplateDialogOpen(true) }}>
-                                        <Sparkles className="h-4 w-4 mr-1" />Load Malaysia Template
+                                    <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => { loadTemplates(); setTemplateYear(selectedYear); setTemplateDialogOpen(true) }}>
+                                        <Sparkles className="h-4 w-4 mr-1" /><span className="sm:hidden">MY Template</span><span className="hidden sm:inline">Load Malaysia Template</span>
                                     </Button>
-                                    <Button size="sm" onClick={openCreateDialog}>
+                                    <Button size="sm" className="w-full sm:w-auto" onClick={openCreateDialog}>
                                         <Plus className="h-4 w-4 mr-1" />Add Holiday
                                     </Button>
                                 </>
@@ -192,7 +192,7 @@ export default function HrPublicHolidaysView({ canEdit }: HrPublicHolidaysViewPr
                 </CardHeader>
                 <CardContent>
                     {/* Quick stats */}
-                    <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
                         <div className="rounded-lg border p-3">
                             <div className="text-2xl font-bold">{holidays.length}</div>
                             <div className="text-xs text-gray-500">Total holidays in {selectedYear}</div>
@@ -218,7 +218,7 @@ export default function HrPublicHolidaysView({ canEdit }: HrPublicHolidaysViewPr
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-[560px]">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[50px]">#</TableHead>

@@ -170,8 +170,8 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[200px]">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Search return no…"
@@ -182,7 +182,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                     />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[190px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-[190px]"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
                         {Object.entries(RETURN_STATUS_LABELS).map(([k, v]) => (
@@ -190,13 +190,13 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                         ))}
                     </SelectContent>
                 </Select>
-                <Button variant="outline" size="icon" onClick={loadCases} disabled={loading} title="Refresh">
+                <Button variant="outline" size="icon" className="shrink-0 self-end sm:self-auto" onClick={loadCases} disabled={loading} title="Refresh">
                     <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
                 </Button>
             </div>
 
-            <div className={`${SC_PANEL_CLASS} overflow-x-auto`}>
-                <table className="sera-sc-table w-full text-sm">
+            <div className={`${SC_PANEL_CLASS} overflow-x-auto sera-sc-table-scroll`}>
+                <table className="sera-sc-table w-full min-w-[720px] text-sm">
                     <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-3 py-2 font-medium">Return No</th>

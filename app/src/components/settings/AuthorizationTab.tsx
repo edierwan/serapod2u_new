@@ -1237,10 +1237,10 @@ export default function AuthorizationTab({ userProfile }: AuthorizationTabProps)
                                             {selectedDepartment ? `${selectedDepartment.dept_code || 'DEPT'} - ${selectedDepartment.dept_name}` : 'Select a department'}
                                         </CardDescription>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
                                         <span className="text-xs text-gray-500">Reference Role</span>
                                         <Select value={String(referenceRoleLevel)} onValueChange={(value) => setReferenceRoleLevel(Number(value))}>
-                                            <SelectTrigger className="w-[180px]">
+                                            <SelectTrigger className="w-full sm:w-[180px]">
                                                 <SelectValue placeholder="Select role" />
                                             </SelectTrigger>
                                             <SelectContent>

@@ -320,7 +320,8 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Table>
+            <div className="overflow-x-auto">
+            <Table className="min-w-[480px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>File Column</TableHead>
@@ -340,7 +341,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
                         value={mapping[h] || '__skip__'}
                         onValueChange={(v) => handleMappingChange(h, v)}
                       >
-                        <SelectTrigger className="w-[220px]">
+                        <SelectTrigger className="w-full max-w-[220px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -357,6 +358,7 @@ export default function OrganizationImport({ parentOrgs }: OrganizationImportPro
                 ))}
               </TableBody>
             </Table>
+            </div>
 
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setStep('upload')}>

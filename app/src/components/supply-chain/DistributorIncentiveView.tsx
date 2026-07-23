@@ -942,10 +942,10 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
 
         {/* ═══ CAMPAIGNS TAB ═══ */}
         <TabsContent value="campaigns" className="space-y-6 mt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                <SelectTrigger className="w-[150px]">
+                <SelectTrigger className="w-full sm:w-[150px]">
                   <SelectValue placeholder="Filter status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -958,7 +958,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               </Select>
               <span className="text-sm text-muted-foreground">{filteredCampaigns.length} campaigns</span>
             </div>
-            <Button size="sm" className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={openNewCampaignDialog}>
+            <Button size="sm" className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white w-full sm:w-auto" onClick={openNewCampaignDialog}>
               <Plus className="w-4 h-4 mr-1" /> Create Campaign
             </Button>
           </div>
@@ -997,7 +997,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
 
         {/* ═══ LEADERBOARD TAB ═══ */}
         <TabsContent value="leaderboard" className="space-y-6 mt-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-500" /> Distributor Leaderboard
@@ -1005,7 +1005,7 @@ export default function DistributorIncentiveView({ userProfile, onViewChange }: 
               <p className="text-sm text-muted-foreground">Ranked by total revenue contribution</p>
             </div>
             <Select value={leaderboardPeriod} onValueChange={setLeaderboardPeriod}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

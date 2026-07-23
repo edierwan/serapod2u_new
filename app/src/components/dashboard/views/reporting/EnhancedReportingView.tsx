@@ -202,17 +202,17 @@ export default function EnhancedReportingView({ userProfile }: ReportingViewProp
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Executive Reporting</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Executive Reporting</h2>
           <p className="text-muted-foreground">
             Overview of warehouse performance and shipment metrics
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto">
           <Select value={selectedDistributor} onValueChange={setSelectedDistributor}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="w-full sm:w-[200px]">
               <Users className="mr-2 h-4 w-4" />
               <SelectValue placeholder="All Distributors" />
             </SelectTrigger>
@@ -224,7 +224,7 @@ export default function EnhancedReportingView({ userProfile }: ReportingViewProp
             </SelectContent>
           </Select>
           <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue placeholder="Select range" />
             </SelectTrigger>
@@ -236,10 +236,10 @@ export default function EnhancedReportingView({ userProfile }: ReportingViewProp
               <SelectItem value="lastMonth">Last Month</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={fetchData}>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={fetchData}>
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
-          <Button variant="default">
+          <Button variant="default" className="w-full sm:w-auto">
             <Download className="mr-2 h-4 w-4" />
             Export Report
           </Button>

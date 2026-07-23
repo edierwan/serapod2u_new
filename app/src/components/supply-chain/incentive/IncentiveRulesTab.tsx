@@ -322,9 +322,9 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
           </h2>
           <p className="text-sm text-muted-foreground">Configure incentive calculation logic for each campaign</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
           <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
-            <SelectTrigger className="w-[280px]">
+            <SelectTrigger className="w-full sm:w-[280px]">
               <SelectValue placeholder="Select a campaign to configure..." />
             </SelectTrigger>
             <SelectContent>
@@ -342,7 +342,7 @@ export default function IncentiveRulesTab({ campaigns, loading }: IncentiveRules
             <Button
               onClick={handleSave}
               disabled={saving}
-              className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
+              className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white w-full sm:w-auto"
             >
               {saving ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
               {saving ? 'Saving...' : 'Save Rules'}

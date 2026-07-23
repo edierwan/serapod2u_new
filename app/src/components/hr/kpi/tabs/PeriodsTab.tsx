@@ -77,12 +77,12 @@ export function KPIPeriodsTab({
                     label="Upcoming" value={counts.upcoming} hint="Future periods"
                     icon={<Clock className="h-4 w-4" />} tone="emerald"
                 /></div>
-                <div className="lg:col-span-2 col-span-2 sm:col-span-4 flex items-center justify-end gap-2">
-                    <Button onClick={() => setOpenCreate(true)} className="bg-slate-900 hover:bg-slate-800 text-white">
+                <div className="lg:col-span-2 col-span-2 sm:col-span-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                    <Button onClick={() => setOpenCreate(true)} className="bg-slate-900 hover:bg-slate-800 text-white w-full sm:w-auto">
                         <Plus className="h-4 w-4 mr-1.5" />New Period
                     </Button>
                     <Select value={filter} onValueChange={setFilter}>
-                        <SelectTrigger className="w-[120px]">
+                        <SelectTrigger className="w-full sm:w-[120px]">
                             <Filter className="h-3.5 w-3.5 mr-1.5" />
                             <SelectValue />
                         </SelectTrigger>
@@ -115,7 +115,7 @@ export function KPIPeriodsTab({
                         />
                     ) : (
                         <div className="overflow-x-auto">
-                            <Table>
+                            <Table className="min-w-[720px]">
                                 <TableHeader>
                                     <TableRow className="bg-slate-50/60 hover:bg-slate-50/60 border-slate-100">
                                         <TableHead className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Name</TableHead>

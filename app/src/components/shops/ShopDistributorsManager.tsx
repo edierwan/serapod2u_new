@@ -280,14 +280,14 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Linked Distributors</CardTitle>
               <CardDescription>
                 Manage distributor relationships for {shopName}
               </CardDescription>
             </div>
-            <Button onClick={() => setDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => setDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" />
               Link Distributor
             </Button>
@@ -295,8 +295,8 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
         </CardHeader>
         <CardContent>
           {shopDistributors.length > 0 ? (
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Distributor</TableHead>

@@ -226,25 +226,25 @@ export function KPIScorecardsTab({ periodId, periodName }: { periodId: string | 
             {/* Toolbar */}
             <div className="rounded-lg border border-slate-200 bg-white shadow-[0_1px_2px_0_rgba(0,0,0,0.04)] overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="relative">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                        <div className="relative w-full sm:w-auto">
                             <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                             <Input
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
                                 placeholder="Search scorecards…"
-                                className="pl-8 h-9 w-[220px]"
+                                className="pl-8 h-9 w-full sm:w-[220px]"
                             />
                         </div>
                         <Select value={levelFilter} onValueChange={setLevelFilter}>
-                            <SelectTrigger className="w-[120px] h-9"><SelectValue placeholder="Level" /></SelectTrigger>
+                            <SelectTrigger className="w-full sm:w-[120px] h-9"><SelectValue placeholder="Level" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Levels</SelectItem>
                                 {levels.map(l => <SelectItem key={l} value={l} className="capitalize">{l}</SelectItem>)}
                             </SelectContent>
                         </Select>
                         <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="w-[120px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+                            <SelectTrigger className="w-full sm:w-[120px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">All Status</SelectItem>
                                 <SelectItem value="generated">Generated</SelectItem>
