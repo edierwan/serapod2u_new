@@ -368,9 +368,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - images, icons (public branding/static assets — must stay reachable
-     *   without auth so the image optimizer can fetch logos on public pages)
+     * - images, icons, brand, sounds (public static assets — must stay
+     *   reachable without auth; otherwise <img src="/brand/..."> gets a
+     *   307 → /login HTML response and renders as a broken image)
      */
-    '/((?!_next/static|_next/image|favicon.ico|images/|icons/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|images/|icons/|brand/|sounds/).*)',
   ],
 }
