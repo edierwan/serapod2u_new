@@ -17,9 +17,12 @@ import {
   Store, Users, Scan, Target, Crown, Eye,
   ArrowUpRight, ArrowDownRight, ChevronRight,
 } from 'lucide-react'
-import { format, subDays, subMonths, eachMonthOfInterval } from 'date-fns'
+import { format } from 'date-fns'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
-import { ReportingTabHeader, ReportingTabLoading } from './reportingChrome'
+import {
+  reportingPeriodRangeLabel,
+  type ReportingPeriod,
+} from '@/lib/reporting/reporting-period'
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface ShopPerformanceTabProps {
@@ -27,6 +30,10 @@ interface ShopPerformanceTabProps {
   chartGridColor: string
   chartTickColor: string
   isDark: boolean
+  periods: ReportingPeriod[]
+  selectedPeriod: ReportingPeriod | null
+  onPeriodChange: (key: string) => void
+  onRefreshPeriods: () => Promise<void>
 }
 
 interface ScanRow {
@@ -75,25 +82,17 @@ function formatContactLines(phone?: string | null, email?: string | null): Conta
 
 // ── Constants ──────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#e85d04',
-  success: '#059669',
-  warning: '#d97706',
-  danger: '#dc2626',
-  purple: '#7c3aed',
-  cyan: '#0891b2',
+  primary: '#3b82f6',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  purple: '#8b5cf6',
+  cyan: '#06b6d4',
   indigo: '#6366f1',
-  pink: '#db2777',
+  pink: '#ec4899',
 }
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#ef4444', '#14b8a6', '#f97316']
-
-const PERIOD_OPTIONS = [
-  { value: '7', label: 'Last 7 Days' },
-  { value: '30', label: 'Last 30 Days' },
-  { value: '90', label: 'Last 90 Days' },
-  { value: 'quarter', label: 'This Quarter' },
-  { value: '12months', label: 'Last 12 Months' },
-]
 
 // ── Helpers ────────────────────────────────────────────────────────────
 function AnimatedCounter({ value, prefix = '', suffix = '', decimals = 0 }: {
@@ -126,10 +125,12 @@ function Skeleton({ className = '' }: { className?: string }) {
 }
 
 // ── Main Component ─────────────────────────────────────────────────────
-export default function ShopPerformanceTab({ userProfile, chartGridColor, chartTickColor, isDark }: ShopPerformanceTabProps) {
+export default function ShopPerformanceTab({
+  userProfile, chartGridColor, chartTickColor, isDark,
+  periods, selectedPeriod, onPeriodChange, onRefreshPeriods,
+}: ShopPerformanceTabProps) {
   const supabase = useMemo(() => createClient(), [])
 
-  const [period, setPeriod] = useState('30')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [scans, setScans] = useState<ScanRow[]>([])
@@ -152,14 +153,22 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
   // ── Data Fetching ────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
-      // Fetch scans (last 12 months for all periods)
-      const start = subMonths(new Date(), 12).toISOString()
+      if (!selectedPeriod) {
+        setScans([])
+        setShops(new Map())
+        setShopContacts(new Map())
+        setConsumerProfiles(new Map())
+        return
+      }
+
+      // The same half-open Malaysia-time month boundary drives every metric.
       const { data: scanData, error: scanErr } = await supabase
         .from('consumer_qr_scans')
         .select('id, consumer_id, scanned_at, shop_id, collected_points, points_amount')
         .eq('is_manual_adjustment', false)
         .not('shop_id', 'is', null)
-        .gte('scanned_at', start)
+        .gte('scanned_at', selectedPeriod.startUtc)
+        .lt('scanned_at', selectedPeriod.endUtc)
         .order('scanned_at', { ascending: false })
 
       if (!scanErr && scanData) {
@@ -232,7 +241,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     } catch (err) {
       console.error('ShopPerformanceTab fetch error:', err)
     }
-  }, [supabase])
+  }, [supabase, selectedPeriod])
 
   useEffect(() => {
     setLoading(true)
@@ -241,23 +250,13 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
 
   const handleRefresh = async () => {
     setRefreshing(true)
+    await onRefreshPeriods()
     await fetchData()
     setRefreshing(false)
   }
 
   // ── Period scans ─────────────────────────────────────────────────────
-  const periodScans = useMemo(() => {
-    const now = new Date()
-    let start: Date
-    if (period === '12months') start = subMonths(now, 12)
-    else if (period === 'quarter') {
-      const q = Math.floor(now.getMonth() / 3)
-      start = new Date(now.getFullYear(), q * 3, 1)
-    }
-    else start = subDays(now, parseInt(period))
-    const sISO = start.toISOString()
-    return scans.filter(s => s.scanned_at && s.scanned_at >= sISO)
-  }, [scans, period])
+  const periodScans = scans
 
   // ── KPI ──────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -329,21 +328,32 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       .slice(0, 20)
   }, [drillShopId, periodScans, consumerProfiles])
 
-  // ── Monthly Trend for All Shops ──────────────────────────────────────
+  // ── Daily trend for selected reporting month ─────────────────────────
   const monthlyTrend = useMemo(() => {
-    const now = new Date()
-    const months = eachMonthOfInterval({ start: subMonths(now, 11), end: now })
-    return months.map(m => {
-      const key = format(m, 'yyyy-MM')
-      const mScans = scans.filter(s => s.scanned_at?.startsWith(key))
-      const shopSet = new Set(mScans.map(s => s.shop_id).filter(Boolean))
+    if (!selectedPeriod) return []
+    const days = Number(selectedPeriod.endDate.slice(-2))
+    const formatter = new Intl.DateTimeFormat('en-MY', {
+      day: 'numeric', timeZone: 'Asia/Kuala_Lumpur',
+    })
+    const byDay = new Map<number, { scans: number; shops: Set<string> }>()
+    for (const scan of scans) {
+      if (!scan.scanned_at) continue
+      const day = Number(formatter.format(new Date(scan.scanned_at)))
+      const bucket = byDay.get(day) || { scans: 0, shops: new Set<string>() }
+      bucket.scans++
+      if (scan.shop_id) bucket.shops.add(scan.shop_id)
+      byDay.set(day, bucket)
+    }
+    return Array.from({ length: days }, (_, index) => {
+      const day = index + 1
+      const bucket = byDay.get(day)
       return {
-        month: format(m, 'MMM'),
-        scans: mScans.length,
-        shops: shopSet.size,
+        month: String(day),
+        scans: bucket?.scans || 0,
+        shops: bucket?.shops.size || 0,
       }
     })
-  }, [scans])
+  }, [scans, selectedPeriod])
 
   // ── Distribution by shop size ────────────────────────────────────────
   const shopDistribution = useMemo(() => {
@@ -367,10 +377,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
     return bins.filter(b => b.count > 0)
   }, [periodScans])
 
-  const periodLabel = useMemo(
-    () => PERIOD_OPTIONS.find((option) => option.value === period)?.label || 'Selected Period',
-    [period]
-  )
+  const periodLabel = selectedPeriod?.label || 'No transaction period'
 
   const activeShopRows = useMemo(() => {
     const shopMap = new Map<string, {
@@ -482,28 +489,63 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
   }
 
   // ── Render ───────────────────────────────────────────────────────────
+  if (!selectedPeriod) {
+    return <div className="rounded-xl border bg-card/80 p-10 text-center text-sm text-muted-foreground">No transaction periods available.</div>
+  }
+
   if (loading) {
-    return <ReportingTabLoading label="Loading shop performance" />
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="border-0 bg-card/80 backdrop-blur overflow-hidden">
+              <CardContent className="pt-6 space-y-3">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-32" />
+                <Skeleton className="h-3 w-20" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   const drillShopInfo = drillShopId ? shops.get(drillShopId) : null
 
   return (
     <div className="space-y-6">
-      <ReportingTabHeader
-        icon={Store}
-        title="Shop Performance"
-        description="Overall shop activity, scans, and consumer engagement"
-        period={period}
-        onPeriodChange={setPeriod}
-        periodOptions={PERIOD_OPTIONS}
-        onRefresh={handleRefresh}
-        refreshing={refreshing}
-      />
+      {/* Period & Refresh */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Store className="h-5 w-5 text-purple-600" />
+          <h3 className="text-lg font-semibold">Shop Performance</h3>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Reporting Month</label>
+          <Select value={selectedPeriod.key} onValueChange={onPeriodChange}>
+            <SelectTrigger className="h-9 w-[190px] text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {periods.map(o => (
+                <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          </div>
+          <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">{reportingPeriodRangeLabel(selectedPeriod)}</p>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="sera-sc-panel overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-purple-400/30">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-purple-400/30">
           <button
             type="button"
             onClick={() => openDetailDialog('shops')}
@@ -521,19 +563,19 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             </CardContent>
           </button>
         </Card>
-        <Card className="sera-sc-panel overflow-hidden">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Scans</span>
               <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Scan className="h-4 w-4 text-[var(--sera-orange)] dark:text-blue-400" />
+                <Scan className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
             <ExecutiveKpiValue><AnimatedCounter value={kpis.totalScans} /></ExecutiveKpiValue>
             <p className="text-xs text-muted-foreground mt-1">across all shops</p>
           </CardContent>
         </Card>
-        <Card className="sera-sc-panel overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-green-400/30">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-xl hover:ring-2 hover:ring-green-400/30">
           <button
             type="button"
             onClick={() => openDetailDialog('consumers')}
@@ -551,7 +593,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             </CardContent>
           </button>
         </Card>
-        <Card className="sera-sc-panel overflow-hidden">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Points Issued</span>
@@ -563,7 +605,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
             <p className="text-xs text-muted-foreground mt-1">total points</p>
           </CardContent>
         </Card>
-        <Card className="sera-sc-panel overflow-hidden">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
           <CardContent className="pt-5 pb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg / Shop</span>
@@ -580,10 +622,10 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Monthly Trend */}
-        <Card className="lg:col-span-2 sera-sc-panel overflow-hidden">
+        <Card className="lg:col-span-2 border-0 shadow-lg bg-card/80 backdrop-blur">
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold">Monthly Shop Activity</CardTitle>
-            <CardDescription>Scans and active shops over last 12 months</CardDescription>
+            <CardTitle className="text-lg font-semibold">Daily Shop Activity</CardTitle>
+            <CardDescription>Scans and active shops during {selectedPeriod.label}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
@@ -607,7 +649,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
         </Card>
 
         {/* Shop Distribution Pie */}
-        <Card className="sera-sc-panel overflow-hidden">
+        <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-semibold">Shop Size Distribution</CardTitle>
             <CardDescription>Shops grouped by scan volume</CardDescription>
@@ -650,7 +692,7 @@ export default function ShopPerformanceTab({ userProfile, chartGridColor, chartT
       </div>
 
       {/* Top 10 Shops */}
-      <Card className="sera-sc-panel overflow-hidden">
+      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <div>

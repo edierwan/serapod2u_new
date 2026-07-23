@@ -1,75 +1,59 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useToast } from '@/components/ui/use-toast'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getStorageUrl } from '@/lib/utils'
 import {
-  buildAddStockMovementParams,
-  fetchExistingStockForWarehouse,
-  type ExistingStockBalance,
-} from '@/lib/inventory/add-stock-inventory'
-import { 
-  Package, 
-  Plus,
-  Factory,
-  Warehouse,
-  Save,
-  ArrowLeft,
-  CheckCircle,
-  AlertCircle,
-  ImageIcon,
-  Trash2
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  AlertTriangle, ArrowLeft, CheckCircle2, Download, Eraser, Factory, PackagePlus,
+  Search, Upload, Warehouse,
 } from 'lucide-react'
+import {
+  MANUAL_STOCK_ADDITION_REASONS,
+  additionValue,
+  buildManualStockRpcItems,
+  buildPostManualStockAdditionParams,
+  catalogRowKey,
+  configBadgeClass,
+  configurationFilterKey,
+  defaultConfigurationFilterKey,
+  filterManualStockCatalogRows,
+  isHqManualStockAdmin,
+  isSelectableManualStockConfiguration,
+  mapCatalogRowFromQuery,
+  newBalance,
+  paginateRows,
+  parseAddQuantity,
+  parseUnitCost,
+  summarizeManualStockSelection,
+  type ManualStockCatalogRow,
+  type ManualStockAdditionReason,
+} from '@/lib/inventory/add-stock-inventory'
+import {
+  buildManualStockAdditionWorksheet,
+  parseManualStockAdditionImport,
+} from '@/lib/inventory/add-stock-excel'
 
-interface Product {
-  id: string
-  product_code: string
-  product_name: string
-  brand_id: string | null
-  manufacturer_id: string | null
-  brands?: {
-    brand_name: string
-  } | null
-  organizations?: {
-    org_name: string
-  } | null
-}
-
-interface Variant {
-  id: string
-  variant_code: string
-  variant_name: string
-  suggested_retail_price: number | null
-  base_cost: number | null
-  image_url: string | null
-}
-
-interface StockItem {
-  id: string
-  product_id: string
-  product_name: string
-  variant_id: string
-  variant_name: string
-  variant_code: string
-  quantity: number
-  unit_cost: number | null
-  image_url: string | null
-}
-
-interface Manufacturer {
+interface WarehouseLocation {
   id: string
   org_code: string
   org_name: string
 }
 
-interface WarehouseLocation {
+interface Manufacturer {
   id: string
   org_code: string
   org_name: string
@@ -80,385 +64,468 @@ interface AddStockViewProps {
   onViewChange?: (view: string) => void
 }
 
+const PAGE_SIZE = 25
+
 export default function AddStockView({ userProfile, onViewChange }: AddStockViewProps) {
-  const [products, setProducts] = useState<Product[]>([])
-  const [variants, setVariants] = useState<Variant[]>([])
-  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
-  const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>([])
-  
-  const [selectedProduct, setSelectedProduct] = useState('')
-  const [selectedVariant, setSelectedVariant] = useState('')
-  const [selectedManufacturer, setSelectedManufacturer] = useState('')
-  const [selectedWarehouse, setSelectedWarehouse] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [unitCost, setUnitCost] = useState('')
-  const [warehouseLocationText, setWarehouseLocationText] = useState('')
-  const [notes, setNotes] = useState('')
-  const [stockItems, setStockItems] = useState<StockItem[]>([])
-  
-  // Existing stock info
-  const [existingStock, setExistingStock] = useState<ExistingStockBalance | null>(null)
-  const [existingStockLoading, setExistingStockLoading] = useState(false)
-  const [existingStockLoaded, setExistingStockLoaded] = useState(false)
-  const [existingStockError, setExistingStockError] = useState<string | null>(null)
-  
-  const [loading, setLoading] = useState(false)
-  const [productsLoading, setProductsLoading] = useState(true)
-  
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [warehouses, setWarehouses] = useState<WarehouseLocation[]>([])
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
+  const [selectedWarehouse, setSelectedWarehouse] = useState('')
+  const [reason, setReason] = useState<ManualStockAdditionReason | ''>('')
+  const [externalReference, setExternalReference] = useState('')
+  const [warehouseLocationText, setWarehouseLocationText] = useState('')
+  const [notes, setNotes] = useState('')
+  const [selectedManufacturer, setSelectedManufacturer] = useState('')
+
+  const [catalogRows, setCatalogRows] = useState<ManualStockCatalogRow[]>([])
+  const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [unitCosts, setUnitCosts] = useState<Record<string, string>>({})
+  const [rowNotes, setRowNotes] = useState<Record<string, string>>({})
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
+
+  const [search, setSearch] = useState('')
+  const [productLine, setProductLine] = useState('all')
+  const [manufacturerFilter, setManufacturerFilter] = useState('all')
+  const [configurationKey, setConfigurationKey] = useState('all')
+  const [activeOnly, setActiveOnly] = useState(true)
+  const [quantityOnly, setQuantityOnly] = useState(false)
+  const [page, setPage] = useState(1)
+  const [applyCostValue, setApplyCostValue] = useState('')
+
+  const [loadingCatalog, setLoadingCatalog] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [isHqAdmin, setIsHqAdmin] = useState(false)
+  const [successBatchNo, setSuccessBatchNo] = useState<string | null>(null)
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID())
+  const postingLockRef = useRef(false)
+
+  const roleLevel = Number(userProfile?.roles?.role_level)
+  const profileSaysHqAdmin = isHqManualStockAdmin(roleLevel)
+  const { hasPermission, loading: permissionLoading } = usePermissions(
+    userProfile?.roles?.role_level,
+    userProfile?.roles?.role_code,
+    userProfile?.department_id,
+  )
+  const canPost = !permissionLoading && (isHqAdmin || profileSaysHqAdmin || hasPermission('adjust_stock'))
 
   useEffect(() => {
-    if (isReady) {
-      loadProducts()
-      loadManufacturers()
-      loadWarehouseLocations()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isReady])
-
-  useEffect(() => {
-    let cancelled = false
-
-    if (selectedProduct) {
-      loadVariants(selectedProduct, () => cancelled)
-      
-      // Auto-select manufacturer based on product
-      const product = products.find(p => p.id === selectedProduct)
-      if (product?.manufacturer_id) {
-        setSelectedManufacturer(product.manufacturer_id)
-      } else {
-        setSelectedManufacturer('')
-      }
-    } else {
-      setVariants([])
-      setSelectedVariant('')
-      setSelectedManufacturer('')
-      setExistingStock(null)
-    }
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProduct])
-
-  // Existing stock is scoped to the exact warehouse + variant combination.
-  useEffect(() => {
-    let cancelled = false
-
-    const fetchExistingStock = async () => {
-      setExistingStock(null)
-      setExistingStockLoaded(false)
-      setExistingStockError(null)
-
-      if (!selectedVariant || !selectedWarehouse) {
-        setExistingStockLoading(false)
+    if (!isReady) return
+    void loadWarehouses()
+    void loadManufacturers()
+    void supabase.rpc('is_hq_admin').then(({ data, error }) => {
+      if (error) {
+        setIsHqAdmin(profileSaysHqAdmin)
         return
       }
-
-      setExistingStockLoading(true)
-
-      try {
-        const balance = await fetchExistingStockForWarehouse(
-          supabase,
-          selectedWarehouse,
-          selectedVariant
-        )
-
-        if (cancelled) return
-        setExistingStock(balance)
-        setExistingStockLoaded(true)
-      } catch (error) {
-        if (cancelled) return
-        console.error('Failed to fetch existing stock:', error)
-        setExistingStock(null)
-        setExistingStockError('Unable to load existing stock for this warehouse.')
-      } finally {
-        if (!cancelled) setExistingStockLoading(false)
-      }
-    }
-
-    fetchExistingStock()
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedVariant, selectedWarehouse, supabase])
-
-  const addItem = () => {
-    if (!selectedProduct || !selectedVariant || !quantity) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please select product, variant and enter quantity',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    const qty = parseInt(quantity)
-    if (qty <= 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Quantity must be greater than 0',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    const cost = unitCost ? parseFloat(unitCost) : null
-    if (cost !== null && cost < 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Unit cost cannot be negative',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    // Check if variant already added
-    if (stockItems.some(item => item.variant_id === selectedVariant)) {
-      toast({
-        title: 'Duplicate Item',
-        description: 'This variant is already in the list',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    const product = products.find(p => p.id === selectedProduct)
-    const variant = variants.find(v => v.id === selectedVariant)
-
-    if (!product || !variant) return
-
-    const newItem: StockItem = {
-      id: Date.now().toString(),
-      product_id: product.id,
-      product_name: product.product_name,
-      variant_id: variant.id,
-      variant_name: variant.variant_name,
-      variant_code: variant.variant_code,
-      quantity: qty,
-      unit_cost: cost,
-      image_url: variant.image_url
-    }
-
-    setStockItems([...stockItems, newItem])
-    
-    // Reset selection but keep product if desired? 
-    // Usually better to reset variant and quantity, keep product?
-    // Or reset all. Let's reset variant and quantity.
-    setSelectedVariant('')
-    setQuantity('')
-    setUnitCost('')
-    
-    toast({
-      title: 'Item Added',
-      description: `${qty} units of ${variant.variant_name} added to list`
+      setIsHqAdmin(Boolean(data) || profileSaysHqAdmin)
     })
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, profileSaysHqAdmin])
 
-  const removeItem = (itemId: string) => {
-    setStockItems(stockItems.filter(item => item.id !== itemId))
-  }
-
-  const loadProducts = async () => {
-    try {
-      setProductsLoading(true)
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          id,
-          product_code,
-          product_name,
-          brand_id,
-          manufacturer_id,
-          brands (
-            brand_name
-          ),
-          organizations:manufacturer_id (
-            org_name
-          )
-        `)
-        .eq('is_active', true)
-        .order('product_name')
-
-      if (error) throw error
-      
-      // Transform the data to handle brands and organizations array
-      const transformedData: Product[] = (data || []).map((item: any) => ({
-        id: item.id,
-        product_code: item.product_code,
-        product_name: item.product_name,
-        brand_id: item.brand_id,
-        manufacturer_id: item.manufacturer_id,
-        brands: Array.isArray(item.brands) ? item.brands[0] : item.brands,
-        organizations: Array.isArray(item.organizations) ? item.organizations[0] : item.organizations
-      }))
-      
-      setProducts(transformedData)
-    } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: `Failed to load products: ${error.message}`,
-        variant: 'destructive'
-      })
-    } finally {
-      setProductsLoading(false)
+  useEffect(() => {
+    if (!selectedWarehouse) {
+      setCatalogRows([])
+      return
     }
-  }
+    void loadCatalog(selectedWarehouse)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWarehouse])
 
-  const loadVariants = async (productId: string, isCancelled: () => boolean = () => false) => {
-    try {
-      const { data, error } = await supabase
-        .from('product_variants')
-        .select('id, variant_code, variant_name, suggested_retail_price, base_cost, image_url')
-        .eq('product_id', productId)
-        .eq('is_active', true)
-        .order('variant_name')
-
-      if (error) throw error
-      if (isCancelled()) return
-      const variantsList: Variant[] = data || []
-      setVariants(variantsList)
-      
-      // Auto-select if only one variant
-      if (variantsList.length === 1) {
-        const firstVariant = variantsList[0]
-        setSelectedVariant(firstVariant.id)
-        // Auto-fill cost if available
-        if (firstVariant.base_cost) {
-          setUnitCost(firstVariant.base_cost.toString())
-        }
-      }
-    } catch (error: any) {
-      if (isCancelled()) return
-      toast({
-        title: 'Error',
-        description: `Failed to load variants: ${error.message}`,
-        variant: 'destructive'
-      })
+  const loadWarehouses = async () => {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id, org_code, org_name')
+      .in('org_type_code', ['HQ', 'WH'])
+      .eq('is_active', true)
+      .order('org_name')
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      return
     }
+    setWarehouses(data || [])
   }
 
   const loadManufacturers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, org_code, org_name')
-        .in('org_type_code', ['MANU', 'MFG'])
-        .eq('is_active', true)
-        .order('org_name')
-
-      if (error) throw error
-      setManufacturers(data || [])
-    } catch (error: any) {
-      console.error('Failed to load manufacturers:', error)
-    }
-  }
-
-  const loadWarehouseLocations = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('organizations')
-        .select('id, org_code, org_name')
-        .in('org_type_code', ['HQ', 'WH'])
-        .eq('is_active', true)
-        .order('org_name')
-
-      if (error) throw error
-      const locationsList: WarehouseLocation[] = data || []
-      setWarehouseLocations(locationsList)
-      
-    } catch (error: any) {
-      console.error('Failed to load warehouse locations:', error)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (stockItems.length === 0) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please add at least one item to the list',
-        variant: 'destructive'
-      })
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id, org_code, org_name')
+      .eq('org_type_code', 'MFG')
+      .eq('is_active', true)
+      .order('org_name')
+    if (error) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
       return
     }
+    setManufacturers(data || [])
+  }
 
-    if (!selectedWarehouse) {
-      toast({
-        title: 'Validation Error',
-        description: 'Please select a warehouse',
-        variant: 'destructive'
-      })
-      return
-    }
-
+  const loadCatalog = async (warehouseId: string) => {
     try {
-      setLoading(true)
+      setLoadingCatalog(true)
+      const { data: configs, error } = await supabase
+        .from('inventory_stock_configurations')
+        .select(`
+          id,
+          config_label,
+          stock_sku,
+          volume_ml,
+          packaging,
+          config_code,
+          status,
+          variant_id,
+          product_variants!inner (
+            id,
+            variant_name,
+            variant_code,
+            product_id,
+            products!inner (
+              id,
+              product_code,
+              product_name,
+              is_active,
+              is_vape,
+              manufacturer_id,
+              product_groups (id, group_name),
+              organizations:manufacturer_id (id, org_name)
+            )
+          )
+        `)
+        .eq('status', 'active')
+        .order('sort_order')
 
-      // Process all items sequentially
-      for (const item of stockItems) {
-        const { error } = await supabase.rpc('record_stock_movement', buildAddStockMovementParams({
-          variantId: item.variant_id,
-          warehouseId: selectedWarehouse,
-          quantity: item.quantity,
-          unitCost: item.unit_cost,
-          manufacturerId: selectedManufacturer || null,
-          warehouseLocation: warehouseLocationText || null,
-          notes: notes || null,
-          companyId: userProfile.organizations.id,
-          createdBy: userProfile.id,
-        }) as any)
+      if (error) throw error
 
-        if (error) throw error
+      const { data: inventory, error: inventoryError } = await supabase
+        .from('product_inventory')
+        .select('variant_id, stock_config_id, quantity_on_hand, average_cost')
+        .eq('organization_id', warehouseId)
+        .eq('is_active', true)
+      if (inventoryError) throw inventoryError
+
+      const balanceByKey = new Map<string, { quantity_on_hand: number; average_cost: number | null }>()
+      for (const row of inventory || []) {
+        if (!row.stock_config_id) continue
+        balanceByKey.set(catalogRowKey(row.variant_id, row.stock_config_id), {
+          quantity_on_hand: Number(row.quantity_on_hand ?? 0),
+          average_cost: row.average_cost === null || row.average_cost === undefined
+            ? null
+            : Number(row.average_cost),
+        })
       }
 
-      toast({
-        title: 'Success',
-        description: `Successfully added ${stockItems.length} items to inventory`,
-        variant: 'default'
-      })
+      const rows: ManualStockCatalogRow[] = []
+      for (const item of configs || []) {
+        const mapped = mapCatalogRowFromQuery({
+          quantity_on_hand: 0,
+          average_cost: null,
+          inventory_stock_configurations: item,
+          product_variants: (item as any).product_variants,
+        })
+        if (!mapped) continue
+        if (!isSelectableManualStockConfiguration(mapped)) continue
+        const balance = balanceByKey.get(mapped.rowKey)
+        rows.push({
+          ...mapped,
+          currentOnHand: balance?.quantity_on_hand ?? 0,
+          averageCost: balance?.average_cost ?? null,
+        })
+      }
 
-      // Reset form
-      setSelectedProduct('')
-      setSelectedVariant('')
-      setSelectedManufacturer('')
-      setQuantity('')
-      setUnitCost('')
-      setWarehouseLocationText('')
-      setNotes('')
-      setVariants([])
-      setStockItems([])
+      rows.sort((a, b) =>
+        a.productName.localeCompare(b.productName)
+        || a.variantName.localeCompare(b.variantName)
+        || a.configLabel.localeCompare(b.configLabel),
+      )
 
-      // Optionally navigate back to inventory
-      // onViewChange?.('inventory')
-
+      setCatalogRows(rows)
+      setConfigurationKey(defaultConfigurationFilterKey(rows))
+      setPage(1)
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: `Failed to add stock: ${error.message}`,
-        variant: 'destructive'
-      })
+      toast({ title: 'Catalog error', description: error.message, variant: 'destructive' })
+      setCatalogRows([])
     } finally {
-      setLoading(false)
+      setLoadingCatalog(false)
     }
   }
 
-  const selectedVariantData = variants.find(v => v.id === selectedVariant)
-  const selectedProductData = products.find(p => p.id === selectedProduct)
-  const existingStockPending = Boolean(
-    selectedWarehouse && selectedVariant && !existingStockLoaded && !existingStockError
+  const productLines = useMemo(
+    () => Array.from(new Set(catalogRows.map((row) => row.productLine))).sort(),
+    [catalogRows],
   )
 
+  const configurationOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const row of catalogRows) {
+      map.set(configurationFilterKey(row), row.configLabel)
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [catalogRows])
+
+  const filteredRows = useMemo(
+    () => filterManualStockCatalogRows(catalogRows, {
+      search,
+      productLine,
+      manufacturerId: manufacturerFilter,
+      configurationKey,
+      activeOnly,
+      quantityOnly,
+      quantities,
+    }),
+    [catalogRows, search, productLine, manufacturerFilter, configurationKey, activeOnly, quantityOnly, quantities],
+  )
+
+  const pageRows = useMemo(
+    () => paginateRows(filteredRows, page, PAGE_SIZE),
+    [filteredRows, page],
+  )
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
+
+  const summary = useMemo(
+    () => summarizeManualStockSelection(catalogRows, selectedKeys, quantities, unitCosts),
+    [catalogRows, selectedKeys, quantities, unitCosts],
+  )
+
+  const warehouseName = warehouses.find((wh) => wh.id === selectedWarehouse)?.org_name || '—'
+  const manufacturerName = manufacturers.find((mfg) => mfg.id === selectedManufacturer)?.org_name || '—'
+
+  const reviewLines = useMemo(() => {
+    try {
+      return buildManualStockRpcItems(catalogRows, selectedKeys, quantities, unitCosts, rowNotes)
+        .map((item) => {
+          const row = catalogRows.find((entry) => entry.rowKey === catalogRowKey(item.variantId, item.stockConfigId))!
+          return { item, row }
+        })
+    } catch {
+      return []
+    }
+  }, [catalogRows, selectedKeys, quantities, unitCosts, rowNotes])
+
+  const setQuantity = (key: string, value: string) => {
+    setQuantities((prev) => ({ ...prev, [key]: value }))
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (value.trim()) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const toggleRow = (key: string, checked: boolean) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const selectAllVisible = (checked: boolean) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      for (const row of filteredRows) {
+        if (checked) next.add(row.rowKey)
+        else next.delete(row.rowKey)
+      }
+      return next
+    })
+  }
+
+  const clearQuantities = () => {
+    setQuantities({})
+    setUnitCosts({})
+    setRowNotes({})
+    setSelectedKeys(new Set())
+  }
+
+  const applyUnitCostToSelected = () => {
+    const parsed = parseUnitCost(applyCostValue)
+    if (!parsed.ok) {
+      toast({ title: 'Invalid unit cost', description: parsed.error, variant: 'destructive' })
+      return
+    }
+    if (selectedKeys.size === 0) {
+      toast({ title: 'No rows selected', description: 'Select rows before applying a unit cost.', variant: 'destructive' })
+      return
+    }
+    setUnitCosts((prev) => {
+      const next = { ...prev }
+      for (const key of selectedKeys) {
+        next[key] = parsed.value === null ? '' : String(parsed.value)
+      }
+      return next
+    })
+    toast({ title: 'Unit cost applied', description: `Updated ${selectedKeys.size} selected row(s).` })
+  }
+
+  const exportExcelTemplate = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
+      buildManualStockAdditionWorksheet(workbook, filteredRows, quantities, unitCosts, rowNotes)
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `manual-stock-addition-${selectedWarehouse || 'template'}.xlsx`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error: any) {
+      toast({ title: 'Export failed', description: error.message, variant: 'destructive' })
+    }
+  }
+
+  const importExcel = async (file: File) => {
+    try {
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
+      const buffer = await file.arrayBuffer()
+      await workbook.xlsx.load(buffer)
+      const result = await parseManualStockAdditionImport(workbook, catalogRows)
+      if (result.failed > 0 && result.updated === 0) {
+        toast({
+          title: 'Import rejected',
+          description: result.rows.find((row) => row.status === 'Failed')?.message || 'Template is invalid.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      setQuantities((prev) => {
+        const next = { ...prev }
+        result.patches.forEach((patch, key) => { next[key] = patch.quantity })
+        return next
+      })
+      setUnitCosts((prev) => {
+        const next = { ...prev }
+        result.patches.forEach((patch, key) => { next[key] = patch.unitCost })
+        return next
+      })
+      setRowNotes((prev) => {
+        const next = { ...prev }
+        result.patches.forEach((patch, key) => { next[key] = patch.rowNote })
+        return next
+      })
+      setSelectedKeys((prev) => {
+        const next = new Set(prev)
+        result.patches.forEach((_patch, key) => next.add(key))
+        return next
+      })
+
+      toast({
+        title: 'Import complete',
+        description: `Updated ${result.updated}, unchanged ${result.unchanged}, failed ${result.failed}.`,
+        variant: result.failed > 0 ? 'destructive' : 'default',
+      })
+    } catch (error: any) {
+      toast({ title: 'Import failed', description: error.message, variant: 'destructive' })
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const openReview = () => {
+    if (!canPost) {
+      toast({
+        title: 'Not authorized',
+        description: 'Manual stock addition requires HQ Admin (level 10) or adjust_stock permission.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!selectedWarehouse) {
+      toast({ title: 'Warehouse required', description: 'Select a warehouse for the whole batch.', variant: 'destructive' })
+      return
+    }
+    if (!reason) {
+      toast({ title: 'Reason required', description: 'Select an addition reason/source type.', variant: 'destructive' })
+      return
+    }
+    try {
+      buildManualStockRpcItems(catalogRows, selectedKeys, quantities, unitCosts, rowNotes)
+    } catch (error: any) {
+      toast({ title: 'Validation error', description: error.message, variant: 'destructive' })
+      return
+    }
+    if (!summary.ready) {
+      toast({
+        title: 'Not ready',
+        description: summary.errors[0] || 'Enter positive whole quantities for selected rows.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setConfirmOpen(true)
+  }
+
+  const postBatch = async () => {
+    if (postingLockRef.current || posting) return
+    postingLockRef.current = true
+    setPosting(true)
+    try {
+      const items = buildManualStockRpcItems(catalogRows, selectedKeys, quantities, unitCosts, rowNotes)
+      const params = buildPostManualStockAdditionParams({
+        requestId,
+        warehouseId: selectedWarehouse,
+        companyId: userProfile.organizations.id,
+        createdBy: userProfile.id,
+        reason,
+        externalReference,
+        manufacturerId: selectedManufacturer || null,
+        warehouseLocation: warehouseLocationText || null,
+        notes,
+        items,
+      })
+
+      const { data, error } = await supabase.rpc('post_manual_stock_addition', params as any)
+      if (error) throw error
+
+      const batchNo = (data as any)?.batch_no || null
+      setSuccessBatchNo(batchNo)
+      toast({
+        title: (data as any)?.idempotent_replay ? 'Already posted' : 'Stock added',
+        description: batchNo
+          ? `Batch ${batchNo} posted ${items.length} configuration(s).`
+          : `Posted ${items.length} configuration(s).`,
+      })
+
+      // Refresh balances and clear inputs only after confirmed success.
+      await loadCatalog(selectedWarehouse)
+      clearQuantities()
+      setExternalReference('')
+      setWarehouseLocationText('')
+      setNotes('')
+      setRequestId(crypto.randomUUID())
+      setConfirmOpen(false)
+    } catch (error: any) {
+      toast({
+        title: 'Posting failed',
+        description: error.message || 'Manual stock addition failed. Your inputs were preserved for retry.',
+        variant: 'destructive',
+      })
+    } finally {
+      setPosting(false)
+      postingLockRef.current = false
+    }
+  }
+
+  const allVisibleSelected = filteredRows.length > 0
+    && filteredRows.every((row) => selectedKeys.has(row.rowKey))
+
   return (
-    <div className="sera-sc-page space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="sera-sc-page space-y-6 pb-28">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Add Stock</h1>
-          <p className="text-[var(--sera-muted)] mt-1">Manually add stock to your inventory</p>
+          <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Manual Stock Addition</h1>
+          <p className="text-[var(--sera-muted)] mt-1">
+            Directly increases inventory for authorized manual or non-PO additions. Every posted row uses an exact stock configuration.
+          </p>
         </div>
         {onViewChange && (
           <Button variant="outline" onClick={() => onViewChange('inventory')}>
@@ -468,500 +535,401 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         )}
       </div>
 
-      {/* Info Card */}
-      <Card className="bg-gradient-to-r from-[var(--sera-orange)]/[0.06] to-[var(--sera-orange)]/[0.03] border-[var(--sera-orange)]/20">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-[var(--sera-orange)] mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm text-[var(--sera-ink)]/80">
-                <strong>Stock Addition Process:</strong> Select the product and variant you want to add stock for, 
-                specify the quantity and cost, optionally record the manufacturer. The system will automatically 
-                update inventory levels and calculate weighted average costs.
-              </p>
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-900">
+            Use ORD Receiving for stock linked to a manufacturer order. This page is for authorized manual or non-PO additions.
+          </p>
+        </CardContent>
+      </Card>
+
+      {!canPost && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4 text-sm text-red-800">
+            Your role cannot post manual stock additions. HQ Admin Level 10 (or users with adjust_stock) are authorized. Unauthorized warehouse/distributor users are blocked server-side.
+          </CardContent>
+        </Card>
+      )}
+
+      {successBatchNo && (
+        <Card className="border-emerald-200 bg-emerald-50">
+          <CardContent className="p-4 flex items-start gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-700 mt-0.5" />
+            <div className="text-sm text-emerald-900">
+              <p className="font-medium">Batch posted successfully</p>
+              <p>Generated batch reference: <span className="font-mono">{successBatchNo}</span></p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Warehouse className="w-5 h-5" />
+            Addition Context
+          </CardTitle>
+          <CardDescription>Select once for the whole batch. Inventory increases immediately on post.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Warehouse *</label>
+            <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select warehouse" />
+              </SelectTrigger>
+              <SelectContent>
+                {warehouses.map((wh) => (
+                  <SelectItem key={wh.id} value={wh.id}>{wh.org_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Addition reason / source type *</label>
+            <Select value={reason} onValueChange={(value) => setReason(value as ManualStockAdditionReason)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select reason" />
+              </SelectTrigger>
+              <SelectContent>
+                {MANUAL_STOCK_ADDITION_REASONS.map((entry) => (
+                  <SelectItem key={entry} value={entry}>{entry}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">External / supporting reference</label>
+            <Input value={externalReference} onChange={(e) => setExternalReference(e.target.value)} placeholder="PO exception, email ref, etc." />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Physical location / shelf</label>
+            <Input value={warehouseLocationText} onChange={(e) => setWarehouseLocationText(e.target.value)} placeholder="Optional shelf / bin" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2 flex items-center gap-2">
+              <Factory className="w-4 h-4" /> Manufacturer / source
+            </label>
+            <Select value={selectedManufacturer || 'none'} onValueChange={(value) => setSelectedManufacturer(value === 'none' ? '' : value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Optional" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {manufacturers.map((mfg) => (
+                  <SelectItem key={mfg.id} value={mfg.id}>{mfg.org_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="md:col-span-2 xl:col-span-1">
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Notes</label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Batch notes" />
+          </div>
+          <div className="md:col-span-2 xl:col-span-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            Auto-generated batch reference after successful posting (MSA-…). Current request id: <span className="font-mono text-xs">{requestId}</span>
           </div>
         </CardContent>
       </Card>
 
-      {/* Main Form */}
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Product Selection */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="sera-sc-panel overflow-hidden shadow-none">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5" />
-                  Product Selection
-                </CardTitle>
-                <CardDescription>Select the product and variant to add stock</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Product Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                    Product <span className="text-red-500">*</span>
-                  </label>
-                  <Select 
-                    value={selectedProduct}
-                    onValueChange={(value) => {
-                      setSelectedVariant('')
-                      setVariants([])
-                      setExistingStock(null)
-                      setExistingStockLoaded(false)
-                      setExistingStockError(null)
-                      setSelectedProduct(value)
-                    }}
-                    disabled={productsLoading}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={productsLoading ? "Loading products..." : "Select product"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map(product => (
-                        <SelectItem key={product.id} value={product.id}>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {product.product_code}
-                            </Badge>
-                            <span>{product.product_name}</span>
-                            {product.brands && (
-                              <span className="text-[var(--sera-muted)]/80 text-sm">- {product.brands.brand_name}</span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PackagePlus className="w-5 h-5" />
+            Bulk Stock Table
+          </CardTitle>
+          <CardDescription>
+            Exact stock configurations as individual rows. Legacy/Unclassified is never selectable. STD products still post their exact stock_config_id.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+            <div className="xl:col-span-2 relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+              <Input
+                className="pl-9"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+                placeholder="Search product, flavour, code or Stock SKU"
+                disabled={!selectedWarehouse}
+              />
+            </div>
+            <Select value={productLine} onValueChange={(value) => { setProductLine(value); setPage(1) }} disabled={!selectedWarehouse}>
+              <SelectTrigger><SelectValue placeholder="Product group" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All product groups</SelectItem>
+                {productLines.map((line) => <SelectItem key={line} value={line}>{line}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={manufacturerFilter} onValueChange={(value) => { setManufacturerFilter(value); setPage(1) }} disabled={!selectedWarehouse}>
+              <SelectTrigger><SelectValue placeholder="Manufacturer" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All manufacturers</SelectItem>
+                {manufacturers.map((mfg) => <SelectItem key={mfg.id} value={mfg.id}>{mfg.org_name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={configurationKey} onValueChange={(value) => { setConfigurationKey(value); setPage(1) }} disabled={!selectedWarehouse}>
+              <SelectTrigger><SelectValue placeholder="Configuration" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All configurations</SelectItem>
+                {configurationOptions.map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch checked={activeOnly} onCheckedChange={setActiveOnly} /> Active only
                 </div>
-
-                {/* Variant Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                    Variant <span className="text-red-500">*</span>
-                  </label>
-                  <Select 
-                    value={selectedVariant} 
-                    onValueChange={(value) => {
-                      setExistingStock(null)
-                      setExistingStockLoaded(false)
-                      setExistingStockError(null)
-                      setSelectedVariant(value)
-                      const variant = variants.find(v => v.id === value)
-                      if (variant?.base_cost) {
-                        setUnitCost(variant.base_cost.toString())
-                      }
-                    }}
-                    disabled={!selectedProduct || variants.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={
-                        !selectedProduct ? "Select a product first" :
-                        variants.length === 0 ? "No variants available" :
-                        "Select variant"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {variants.map(variant => {
-                        const isAdded = stockItems.some(item => item.variant_id === variant.id)
-                        return (
-                          <SelectItem key={variant.id} value={variant.id} disabled={isAdded}>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="text-xs">
-                                {variant.variant_code}
-                              </Badge>
-                              <span className={isAdded ? "text-[var(--sera-muted)]/70 line-through" : ""}>{variant.variant_name}</span>
-                              {isAdded && <span className="text-xs text-red-500 ml-2">(Added)</span>}
-                              {!isAdded && variant.suggested_retail_price && (
-                                <span className="text-[var(--sera-muted)]/80 text-sm">
-                                  - RM {variant.suggested_retail_price.toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-center gap-2 text-sm">
+                  <Switch checked={quantityOnly} onCheckedChange={(checked) => { setQuantityOnly(checked); setPage(1) }} /> Qty only
                 </div>
+              </div>
+            </div>
+          </div>
 
-                {/* Selected Product Summary */}
-                {selectedVariantData && selectedProductData && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                      <h4 className="font-semibold text-green-900 text-sm">Selected Item</h4>
-                    </div>
-                    <div className="flex gap-3">
-                      {/* Variant Image */}
-                      <div className="flex-shrink-0">
-                        <div className="w-16 h-16 rounded-lg border-2 border-green-300 overflow-hidden bg-white">
-                          {selectedVariantData.image_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={getStorageUrl(selectedVariantData.image_url) || selectedVariantData.image_url}
-                              alt={selectedVariantData.variant_name}
-                              className="w-full h-full object-cover"
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => selectAllVisible(!allVisibleSelected)} disabled={!selectedWarehouse || filteredRows.length === 0}>
+              Select all visible
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => void exportExcelTemplate()} disabled={!selectedWarehouse || filteredRows.length === 0}>
+              <Download className="w-4 h-4 mr-2" /> Export Excel Template
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={!selectedWarehouse || catalogRows.length === 0}>
+              <Upload className="w-4 h-4 mr-2" /> Import Updated Excel
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) void importExcel(file)
+              }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={clearQuantities} disabled={Object.keys(quantities).length === 0}>
+              <Eraser className="w-4 h-4 mr-2" /> Clear quantities
+            </Button>
+            <div className="flex items-center gap-2 ml-auto">
+              <Input
+                className="w-32"
+                value={applyCostValue}
+                onChange={(e) => setApplyCostValue(e.target.value)}
+                placeholder="Unit cost"
+              />
+              <Button type="button" variant="secondary" size="sm" onClick={applyUnitCostToSelected}>
+                Apply unit cost to selected rows
+              </Button>
+            </div>
+          </div>
+
+          {!selectedWarehouse ? (
+            <p className="text-sm text-slate-600">Select a warehouse to load exact stock configurations.</p>
+          ) : loadingCatalog ? (
+            <p className="text-sm text-slate-600">Loading configurations…</p>
+          ) : (
+            <>
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allVisibleSelected}
+                          onCheckedChange={(checked) => selectAllVisible(Boolean(checked))}
+                          aria-label="Select all visible"
+                        />
+                      </TableHead>
+                      <TableHead>Product / Flavour</TableHead>
+                      <TableHead>Configuration</TableHead>
+                      <TableHead>Stock SKU</TableHead>
+                      <TableHead className="text-right">Current On Hand</TableHead>
+                      <TableHead className="text-right">Add Quantity</TableHead>
+                      <TableHead className="text-right">Unit Cost</TableHead>
+                      <TableHead className="text-right">New Balance</TableHead>
+                      <TableHead className="text-right">Addition Value</TableHead>
+                      <TableHead>Optional row note</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pageRows.map((row) => {
+                      const qtyParsed = parseAddQuantity(quantities[row.rowKey] || '')
+                      const costParsed = parseUnitCost(unitCosts[row.rowKey] || '')
+                      const addQty = qtyParsed.ok ? qtyParsed.value : 0
+                      const unitCost = costParsed.ok ? costParsed.value : null
+                      const value = addQty > 0 ? additionValue(addQty, unitCost) : null
+                      return (
+                        <TableRow key={row.rowKey}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedKeys.has(row.rowKey)}
+                              onCheckedChange={(checked) => toggleRow(row.rowKey, Boolean(checked))}
+                              aria-label={`Select ${row.stockSku}`}
                             />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[var(--sera-muted)]/70">
-                              <ImageIcon className="w-6 h-6" />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Variant Details */}
-                      <div className="flex-1 grid grid-cols-2 gap-1.5 text-xs">
-                        <div>
-                          <span className="text-[var(--sera-muted)]/80">Product:</span>
-                          <p className="font-medium text-[var(--sera-ink)]">{selectedProductData.product_name}</p>
-                        </div>
-                        <div>
-                          <span className="text-[var(--sera-muted)]/80">Variant:</span>
-                          <p className="font-medium text-[var(--sera-ink)]">{selectedVariantData.variant_name}</p>
-                        </div>
-                        {selectedVariantData.base_cost && (
-                          <div>
-                            <span className="text-[var(--sera-muted)]/80">Base Cost:</span>
-                            <p className="font-medium text-[var(--sera-ink)]">RM {selectedVariantData.base_cost.toFixed(2)}</p>
-                          </div>
-                        )}
-                        {selectedVariantData.suggested_retail_price && (
-                          <div>
-                            <span className="text-[var(--sera-muted)]/80">Retail Price:</span>
-                            <p className="font-medium text-[var(--sera-ink)]">RM {selectedVariantData.suggested_retail_price.toFixed(2)}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Existing Stock Info */}
-                    <div className="mt-3 pt-3 border-t border-green-200">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Warehouse className="w-3.5 h-3.5 text-[var(--sera-orange)]" />
-                        <span className="text-xs font-medium text-[var(--sera-orange-deep)]">Existing Stock</span>
-                      </div>
-                      {!selectedWarehouse ? (
-                        <p className="text-xs text-[var(--sera-muted)]">Select a warehouse to view existing stock.</p>
-                      ) : existingStockLoading || existingStockPending ? (
-                        <p className="text-xs text-[var(--sera-orange-deep)]" role="status">Loading existing stock...</p>
-                      ) : existingStockError ? (
-                        <p className="text-xs text-red-600" role="alert">{existingStockError}</p>
-                      ) : existingStockLoaded && !existingStock ? (
-                        <p className="text-xs text-[var(--sera-muted)]">No existing stock at this warehouse.</p>
-                      ) : existingStock ? (
-                      <div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="text-[var(--sera-muted)]/80">Available:</span>
-                            <p className="font-semibold text-[var(--sera-orange)]">{existingStock.quantity_available.toLocaleString()} units</p>
-                          </div>
-                          <div>
-                            <span className="text-[var(--sera-muted)]/80">Selected Warehouse:</span>
-                            <p className="font-medium text-[var(--sera-ink)]">{existingStock.warehouse_name}</p>
-                          </div>
-                          {existingStock.warehouse_location && (
-                            <div>
-                              <span className="text-[var(--sera-muted)]/80">Location:</span>
-                              <p className="font-medium text-[var(--sera-ink)]">{existingStock.warehouse_location}</p>
-                            </div>
-                          )}
-                          {existingStock.average_cost && (
-                            <div>
-                              <span className="text-[var(--sera-muted)]/80">Avg Cost:</span>
-                              <p className="font-medium text-[var(--sera-ink)]">RM {existingStock.average_cost.toFixed(2)}</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="sera-sc-panel overflow-hidden shadow-none">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Quantity & Cost
-                </CardTitle>
-                <CardDescription>Specify how much stock you&apos;re adding</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Quantity */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                      Quantity (Units) <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      placeholder="e.g., 500"
-                    />
-                    <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Number of units to add</p>
-                  </div>
-
-                  {/* Unit Cost */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                      Unit Cost (RM)
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={unitCost}
-                      onChange={(e) => setUnitCost(e.target.value)}
-                      placeholder="e.g., 25.50"
-                    />
-                    <p className="text-xs text-[var(--sera-muted)]/80 mt-1">Cost per unit (optional)</p>
-                  </div>
-                </div>
-
-                {/* Total Cost Calculation */}
-                {quantity && unitCost && (
-                  <div className="bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-[var(--sera-ink)]/80">Total Cost:</span>
-                      <span className="text-lg font-bold text-[var(--sera-orange)]">
-                        RM {(parseInt(quantity) * parseFloat(unitCost)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--sera-muted)] mt-1">
-                      {parseInt(quantity).toLocaleString()} units × RM {parseFloat(unitCost).toFixed(2)}
-                    </p>
-                  </div>
-                )}
-
-                <Button 
-                  type="button" 
-                  onClick={addItem}
-                  disabled={!selectedProduct || !selectedVariant || !quantity}
-                  className="w-full"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item to List
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Items List */}
-            {stockItems.length > 0 && (
-              <Card className="sera-sc-panel overflow-hidden shadow-none">
-                <CardHeader>
-                  <CardTitle>Items to Add ({stockItems.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product Name</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                        <TableHead className="text-right">Cost</TableHead>
-                        <TableHead className="w-12"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {stockItems.map(item => (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-md overflow-hidden bg-[var(--sera-ink)]/[0.06] flex-shrink-0 border border-[var(--sera-line)]">
-                                {item.image_url ? (
-                                  <img
-                                    src={getStorageUrl(item.image_url) || item.image_url}
-                                    alt={item.variant_name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[var(--sera-muted)]/70">
-                                    <ImageIcon className="w-5 h-5" />
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-[var(--sera-ink)]">{item.product_name}</p>
-                                <p className="text-xs text-[var(--sera-muted)]/80">[{item.variant_name}]</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-sm">{item.quantity.toLocaleString()}</TableCell>
-                          <TableCell className="text-right text-sm">
-                            {item.unit_cost ? `RM ${item.unit_cost.toFixed(2)}` : '-'}
                           </TableCell>
                           <TableCell>
-                            <Button 
-                              type="button"
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => removeItem(item.id)}
-                              className="h-8 w-8"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </Button>
+                            <div className="font-medium text-slate-900">{row.productName}</div>
+                            <div className="text-xs text-slate-500">{row.flavour || row.variantName}</div>
+                            <div className="text-xs text-slate-400">{row.productCode}</div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
+                              {row.configLabel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.currentOnHand.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              className="w-24 ml-auto text-right"
+                              inputMode="numeric"
+                              value={quantities[row.rowKey] || ''}
+                              onChange={(e) => setQuantity(row.rowKey, e.target.value)}
+                              placeholder="0"
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              className="w-28 ml-auto text-right"
+                              inputMode="decimal"
+                              value={unitCosts[row.rowKey] || ''}
+                              onChange={(e) => setUnitCosts((prev) => ({ ...prev, [row.rowKey]: e.target.value }))}
+                              placeholder={row.averageCost != null ? String(row.averageCost) : '—'}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {addQty > 0 ? newBalance(row.currentOnHand, addQty).toLocaleString() : '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {value == null ? '—' : value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              value={rowNotes[row.rowKey] || ''}
+                              onChange={(e) => setRowNotes((prev) => ({ ...prev, [row.rowKey]: e.target.value }))}
+                              placeholder="Optional"
+                            />
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                      )
+                    })}
+                    {pageRows.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-sm text-slate-500 py-8">
+                          No configurations match the current filters.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
 
-          {/* Right Column - Additional Details */}
-          <div className="sera-sc-page space-y-6">
-            <Card className="sera-sc-panel overflow-hidden shadow-none">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Factory className="w-5 h-5" />
-                  Manufacturer
-                </CardTitle>
-                <CardDescription>Track stock source</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {selectedProduct && selectedManufacturer ? (
-                  <div className="space-y-2">
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <span className="text-xs font-medium text-green-700">Auto-selected from product</span>
-                      </div>
-                      <p className="text-sm font-semibold text-[var(--sera-ink)]">
-                        {manufacturers.find(m => m.id === selectedManufacturer)?.org_name || 'Unknown Manufacturer'}
-                      </p>
-                    </div>
-                    <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-                      <SelectTrigger className="text-sm">
-                        <SelectValue placeholder="Change manufacturer..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {manufacturers.map(mfg => (
-                          <SelectItem key={mfg.id} value={mfg.id}>
-                            {mfg.org_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-[var(--sera-muted)]/80">
-                      Manufacturer is automatically selected based on product relationship. You can change it if needed.
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select manufacturer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_none">Not specified</SelectItem>
-                        {manufacturers.map(mfg => (
-                          <SelectItem key={mfg.id} value={mfg.id}>
-                            {mfg.org_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-[var(--sera-muted)]/80 mt-2">
-                      {selectedProduct ? 'No manufacturer linked to this product' : 'Select a product first'}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="sera-sc-panel overflow-hidden shadow-none">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Warehouse className="w-5 h-5" />
-                  Warehouse Location
-                </CardTitle>
-                <CardDescription>Where is this stock stored?</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Organization/Warehouse */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                    Organization <span className="text-red-500">*</span>
-                  </label>
-                  <Select value={selectedWarehouse} onValueChange={(value) => {
-                    setExistingStock(null)
-                    setExistingStockLoaded(false)
-                    setExistingStockError(null)
-                    setSelectedWarehouse(value)
-                  }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouseLocations.map(loc => (
-                        <SelectItem key={loc.id} value={loc.id}>
-                          {loc.org_name} ({loc.org_code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="flex items-center justify-between text-sm text-slate-600">
+                <span>
+                  Showing {filteredRows.length === 0 ? 0 : ((page - 1) * PAGE_SIZE) + 1}
+                  –{Math.min(page * PAGE_SIZE, filteredRows.length)} of {filteredRows.length}
+                  {' '}(quantities preserved across pages)
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+                  <span>Page {page} / {totalPages}</span>
+                  <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
                 </div>
-
-                {/* Physical Location */}
-                <div>
-                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
-                    Physical Location
-                  </label>
-                  <Input
-                    type="text"
-                    value={warehouseLocationText}
-                    onChange={(e) => setWarehouseLocationText(e.target.value)}
-                    placeholder="e.g., Shelf A-12, Zone 3"
-                  />
-                  <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
-                    Optional: Specific shelf or zone
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="sera-sc-panel overflow-hidden shadow-none">
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any additional notes about this stock addition..."
-                  rows={4}
-                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-lg focus:ring-2 focus:ring-[var(--sera-orange)]/30 focus:border-transparent resize-none"
-                />
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Submit Button */}
-        <div className="flex justify-end gap-3 mt-6">
-          {onViewChange && (
-            <Button type="button" variant="outline" onClick={() => onViewChange('inventory')}>
-              Cancel
-            </Button>
+              </div>
+            </>
           )}
-          <Button 
-            type="submit" 
-            disabled={loading || stockItems.length === 0 || !selectedWarehouse}
-            className="bg-green-600 hover:bg-green-700"
+        </CardContent>
+      </Card>
+
+      <div className="fixed bottom-0 inset-x-0 z-20 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="mx-auto max-w-7xl px-4 py-3 flex flex-wrap items-center gap-4 justify-between">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 text-sm">
+            <div><div className="text-slate-500">Selected flavours</div><div className="font-semibold">{summary.selectedFlavours}</div></div>
+            <div><div className="text-slate-500">Selected configurations</div><div className="font-semibold">{summary.selectedConfigurations}</div></div>
+            <div><div className="text-slate-500">Total units added</div><div className="font-semibold">{summary.totalUnits.toLocaleString()}</div></div>
+            <div><div className="text-slate-500">Total addition value</div><div className="font-semibold">{summary.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
+            <div><div className="text-slate-500">Warehouse</div><div className="font-semibold truncate max-w-[10rem]">{warehouseName}</div></div>
+            <div><div className="text-slate-500">Reason</div><div className="font-semibold truncate max-w-[10rem]">{reason || '—'}</div></div>
+            <div><div className="text-slate-500">Manufacturer/source</div><div className="font-semibold truncate max-w-[10rem]">{manufacturerName}</div></div>
+            <div><div className="text-slate-500">Batch status</div><div className="font-semibold text-emerald-700">{summary.ready && selectedWarehouse && reason ? 'Ready to Post' : 'Incomplete'}</div></div>
+          </div>
+          <Button
+            type="button"
+            onClick={openReview}
+            disabled={!canPost || posting || !summary.ready || !selectedWarehouse || !reason}
+            className="bg-teal-700 hover:bg-teal-800"
           >
-            <Save className="w-4 h-4 mr-2" />
-            {loading ? 'Adding Stock...' : `Add ${stockItems.length} Items to Inventory`}
+            Review & Add Stock
           </Button>
         </div>
-      </form>
+      </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Manual Stock Addition</AlertDialogTitle>
+            <AlertDialogDescription>
+              Inventory will increase immediately. This is not a draft and does not require approval.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <div><span className="text-slate-500">Warehouse:</span> {warehouseName}</div>
+              <div><span className="text-slate-500">Reason:</span> {reason}</div>
+              <div><span className="text-slate-500">Reference:</span> {externalReference || '—'}</div>
+              <div><span className="text-slate-500">Manufacturer/source:</span> {manufacturerName}</div>
+            </div>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Configuration</TableHead>
+                    <TableHead>Stock SKU</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Current → New</TableHead>
+                    <TableHead className="text-right">Unit Cost</TableHead>
+                    <TableHead className="text-right">Value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reviewLines.map(({ item, row }) => (
+                    <TableRow key={row.rowKey}>
+                      <TableCell>{row.configLabel}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>
+                      <TableCell className="text-right">{item.quantity}</TableCell>
+                      <TableCell className="text-right">
+                        {row.currentOnHand.toLocaleString()} → {newBalance(row.currentOnHand, item.quantity).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">{item.unitCost ?? '—'}</TableCell>
+                      <TableCell className="text-right">
+                        {additionValue(item.quantity, item.unitCost)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Warning: inventory will increase immediately for every listed configuration.
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={posting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={posting}
+              onClick={(e) => {
+                e.preventDefault()
+                void postBatch()
+              }}
+            >
+              {posting ? 'Posting…' : 'Confirm & Add Stock'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

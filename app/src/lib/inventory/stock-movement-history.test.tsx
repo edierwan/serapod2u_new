@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatSignedMovementImpact,
   historicalQuantityAfter,
+  resolveStockMovementConfiguration,
   resolveStockMovementHistoryValues,
   signedMovementTotal,
 } from './stock-movement-history'
@@ -95,6 +96,101 @@ describe('stock movement historical quantities', () => {
       ...movement({ quantity_before: 25, quantity_change: -4, quantity_after: 21 }),
       movement_type: 'order_fulfillment',
     }).quantity_after).toBe(21)
+  })
+})
+
+describe('stock movement configuration labels', () => {
+  it('keeps four classification movements distinct by stock_config_id', () => {
+    const sharedMovement = {
+      variant_id: 'coffee-hazelnut',
+      reference_id: 'classification-session',
+      reference_no: 'Stock Classification 2026-07-18',
+    }
+    const configurations = [
+      { id: '20nb', config_code: '20NB', config_label: '20ml · New Box', stock_sku: 'HAZ-20NB', volume_ml: 20, packaging: 'new_box', status: 'active' },
+      { id: '50nb', config_code: '50NB', config_label: '50ml · New Box', stock_sku: 'HAZ-50NB', volume_ml: 50, packaging: 'new_box', status: 'active' },
+      { id: '50ob', config_code: '50OB', config_label: '50ml · Old Box', stock_sku: 'HAZ-50OB', volume_ml: 50, packaging: 'old_box', status: 'phase_out' },
+      { id: 'unc', config_code: 'UNCLASSIFIED', config_label: 'Unclassified (pending stock take)', stock_sku: 'HAZ-UNC', volume_ml: null, packaging: null, status: 'phase_out' },
+    ]
+    const movements = [
+      { ...sharedMovement, stock_config_id: '20nb', quantity_change: 50 },
+      { ...sharedMovement, stock_config_id: '50nb', quantity_change: 40 },
+      { ...sharedMovement, stock_config_id: '50ob', quantity_change: 30 },
+      { ...sharedMovement, stock_config_id: 'unc', quantity_change: -100 },
+    ]
+
+    const resolved = movements.map((row, index) =>
+      resolveStockMovementConfiguration(row, configurations[index]),
+    )
+
+    expect(resolved.map(row => row.configuration_display_label)).toEqual([
+      '20ml · New Box',
+      '50ml · New Box',
+      '50ml · Old Box',
+      'Legacy / Unclassified',
+    ])
+    expect(resolved.map(row => row.stock_sku)).toEqual([
+      'HAZ-20NB',
+      'HAZ-50NB',
+      'HAZ-50OB',
+      'HAZ-UNC',
+    ])
+    expect(resolved.map(row => row.stock_config_status)).toEqual([
+      'active',
+      'active',
+      'phase_out',
+      'phase_out',
+    ])
+  })
+
+  it('preserves historical null configuration identities as Legacy / Unclassified', () => {
+    expect(resolveStockMovementConfiguration({
+      stock_config_id: null,
+      quantity_change: 50,
+      config_label: '20ml · New Box',
+    })).toMatchObject({
+      configuration_display_label: 'Legacy / Unclassified',
+      is_legacy_configuration: true,
+    })
+  })
+
+  it.each([
+    'addition',
+    'warranty_bonus',
+    'allocation',
+    'deallocation',
+    'order_fulfillment',
+    'transfer_in',
+    'transfer_out',
+    'repack_in',
+    'repack_out',
+    'manual_in',
+    'manual_out',
+    'adjustment',
+    'scratch_game_in',
+    'scratch_game_out',
+    'spin_wheel_in',
+    'spin_wheel_out',
+  ])('uses persisted configuration metadata for %s movements', movementType => {
+    const resolved = resolveStockMovementConfiguration(
+      {
+        movement_type: movementType,
+        stock_config_id: 'configured-stock',
+        quantity_change: movementType.endsWith('_out') ? -10 : 10,
+      },
+      {
+        id: 'configured-stock',
+        config_code: '50OB',
+        config_label: '50ml · Old Box',
+        stock_sku: 'SKU-50OB',
+        volume_ml: 50,
+        packaging: 'old_box',
+        status: 'phase_out',
+      },
+    )
+
+    expect(resolved.configuration_display_label).toBe('50ml · Old Box')
+    expect(resolved.stock_sku).toBe('SKU-50OB')
   })
 })
 

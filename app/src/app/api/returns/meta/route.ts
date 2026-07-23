@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getReturnContext } from '@/lib/returns/server'
+import { getReturnContext, loadActiveHqReturnWarehouses } from '@/lib/returns/server'
 import { DEFAULT_RETURN_SETTINGS } from '@/lib/returns/meta'
 
 /**
@@ -22,12 +22,7 @@ export async function GET() {
         : { data: null }
 
     const [warehousesRes, reasonsRes, conditionsRes, categoriesRes, settingsRes] = await Promise.all([
-        ctx.admin
-            .from('organizations')
-            .select(orgSelect)
-            .in('org_type_code', ['WH', 'HQ', 'DIST'])
-            .eq('is_active', true)
-            .order('org_name', { ascending: true }),
+        loadActiveHqReturnWarehouses(ctx.admin, orgSelect),
         ctx.admin.from('return_reasons').select('*').eq('is_active', true).order('sort_order'),
         ctx.admin.from('return_conditions').select('*').eq('is_active', true).order('sort_order'),
         ctx.admin

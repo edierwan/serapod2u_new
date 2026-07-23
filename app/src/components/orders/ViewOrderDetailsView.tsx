@@ -69,6 +69,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [creatorSignatureFailed, setCreatorSignatureFailed] = useState(false)
   const [approverSignatureUrl, setApproverSignatureUrl] = useState<string | null>(null)
   const [approverSignatureFailed, setApproverSignatureFailed] = useState(false)
+  const [stockConfigurations, setStockConfigurations] = useState<any[]>([])
+  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null)
   const printAreaRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
@@ -166,6 +168,30 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       if (error) throw error
       if (!order) throw new Error('Order not found')
 
+      // Resolve fulfillment warehouse display name for D2H/S2D (legacy-safe).
+      const fulfillmentWarehouseId = (order as any).fulfillment_warehouse_id as string | null
+      if (fulfillmentWarehouseId) {
+        const { data: fulfillmentWarehouse } = await supabase
+          .from('organizations')
+          .select('id, org_name')
+          .eq('id', fulfillmentWarehouseId)
+          .maybeSingle()
+        ;(order as any).fulfillment_warehouse_name = fulfillmentWarehouse?.org_name || null
+      } else if (['D2H', 'S2D', 'DH'].includes(order.order_type)) {
+        const { data: inventoryOrgId } = await (supabase as any).rpc('order_inventory_organization', {
+          p_order_id: orderId,
+        })
+        if (inventoryOrgId) {
+          const { data: fulfillmentWarehouse } = await supabase
+            .from('organizations')
+            .select('id, org_name')
+            .eq('id', inventoryOrgId)
+            .maybeSingle()
+          ;(order as any).fulfillment_warehouse_id = inventoryOrgId
+          ;(order as any).fulfillment_warehouse_name = fulfillmentWarehouse?.org_name || null
+        }
+      }
+
       // Compute resolved actors (may be hydrated from API). We keep them
       // separate from the Supabase-inferred row type to avoid type conflicts.
       let resolvedCreatedByUser = order.created_by_user as OrderActor | null | undefined
@@ -211,7 +237,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           .select(`
             *,
             product:products(product_name, product_code),
-            variant:product_variants(variant_name)
+            variant:product_variants(variant_name),
+            stock_config:inventory_stock_configurations!order_items_stock_config_variant_fkey(id, config_code, config_label, stock_sku, volume_ml, packaging)
           `)
           .eq('order_id', orderId),
 
@@ -231,6 +258,51 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           .eq('doc_type', 'PAYMENT')
           .eq('status', 'acknowledged')
       ])
+
+      if (itemsResult.error) throw itemsResult.error
+
+      const itemVariantIds = Array.from(new Set((itemsResult.data || []).map((item: any) => item.variant_id)))
+      if (itemVariantIds.length > 0 && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code)) {
+        const [{ data: configs, error: configsError }, inventoryOrgResult, eligibilityResult] = await Promise.all([
+          supabase
+          .from('inventory_stock_configurations')
+          .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, allow_so, status, requires_repacking_before_sale')
+          .in('variant_id', itemVariantIds)
+          .eq('status', 'active')
+          .eq('allow_so', true)
+          .eq('requires_repacking_before_sale', false)
+          .order('sort_order'),
+          (supabase as any).rpc('order_inventory_organization', { p_order_id: orderId }),
+          supabase.from('distributor_stock_config_eligibility')
+            .select('allow_50ml_new_box')
+            .eq('distributor_org_id', order.buyer_org_id)
+            .maybeSingle(),
+        ])
+        if (configsError) throw configsError
+        const inventoryOrgId = inventoryOrgResult.data as string | null
+        const { data: balances, error: balancesError } = inventoryOrgId
+          ? await supabase.from('product_inventory')
+            .select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated, quantity_available')
+            .eq('organization_id', inventoryOrgId)
+            .in('variant_id', itemVariantIds)
+            .eq('is_active', true)
+          : { data: [], error: inventoryOrgResult.error }
+        if (balancesError) throw balancesError
+        const balanceMap = new Map((balances || []).map((balance: any) => [balance.stock_config_id, balance]))
+        const eligible50ml = eligibilityResult.data?.allow_50ml_new_box === true
+        setStockConfigurations((configs || []).filter((config: any) => config.packaging !== 'old_box').map((config: any) => {
+          const balance: any = balanceMap.get(config.id)
+          return {
+            ...config,
+            onHand: Number(balance?.quantity_on_hand || 0),
+            allocated: Number(balance?.quantity_allocated || 0),
+            available: Number(balance?.quantity_available || 0),
+            eligible: config.volume_ml === 50 ? eligible50ml : true,
+          }
+        }))
+      } else {
+        setStockConfigurations([])
+      }
 
       const itemsWithDetails = itemsResult.data || []
       const poDoc = poDocResult.data
@@ -420,11 +492,32 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
     return formatCurrencyUtil(amount)
   }
 
+  const confirmStockConfiguration = async (item: any, stockConfig: any) => {
+    if (item.stock_config_id && item.stock_config_id !== stockConfig.id) {
+      const current = item.stock_config?.config_label || 'the current configuration'
+      if (!window.confirm(`Move this line's allocation from ${current} to ${stockConfig.config_label}? This change is atomic and will not alter the order price.`)) return
+    }
+    try {
+      setConfirmingItemId(item.id)
+      const { error } = await supabase.rpc('set_order_item_stock_config', {
+        p_order_item_id: item.id,
+        p_stock_config_id: stockConfig.id,
+      })
+      if (error) throw error
+      await loadOrderData(orderData.id)
+      toast({ title: 'Configuration confirmed', description: 'The exact warehouse stock configuration is now locked to this line.' })
+    } catch (error: any) {
+      toast({ title: 'Configuration not confirmed', description: error?.message || 'Unable to confirm stock configuration.', variant: 'destructive' })
+    } finally {
+      setConfirmingItemId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--sera-orange)] mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-[var(--sera-muted)]">Loading order details...</p>
         </div>
       </div>
@@ -502,7 +595,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       case 'approved': return 'text-green-600'
       case 'closed': return 'text-[var(--sera-muted)]'
       case 'cancelled': return 'text-red-600'
-      case 'draft': return 'text-[var(--sera-muted)]/80'
+      case 'draft': return 'text-[var(--sera-muted)]'
       default: return 'text-yellow-600' // submitted/pending
     }
   }
@@ -516,14 +609,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   }
 
   return (
-    <div className="min-h-screen bg-[var(--sera-ink)]/[0.03] print:bg-white">
+    <div className="min-h-screen bg-gray-50 print:bg-white">
       {/* Action Bar */}
-      <div className="bg-white border-b border-[var(--sera-line)] mb-0 print:hidden">
+      <div className="bg-white border-b border-gray-200 mb-0 print:hidden">
         <div className="px-6 py-4 flex justify-between items-center">
           <Button
             variant="ghost"
             onClick={handleBack}
-            className="hover:bg-[var(--sera-ink)]/[0.04] -ml-2"
+            className="hover:bg-gray-100 -ml-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Orders
@@ -543,7 +636,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <Button
               onClick={() => setDocumentsDialogOpen(true)}
               variant="outline"
-              className="gap-2 border-[var(--sera-line)] hover:bg-[var(--sera-ink)]/[0.02]"
+              className="gap-2 border-gray-300 hover:bg-gray-50"
             >
               <FileText className="w-4 h-4" />
               Documents
@@ -599,8 +692,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               />
             ) : (
               <div className="h-24 flex items-center">
-                <div className="w-20 h-20 rounded-full bg-[var(--sera-ink)]/[0.06] border border-[var(--sera-line)] flex items-center justify-center print:bg-white">
-                  <span className="text-xl font-bold text-[var(--sera-muted)]/80 tracking-wide">{headerOrgInitials || '?'}</span>
+                <div className="w-20 h-20 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center print:bg-white">
+                  <span className="text-xl font-bold text-[var(--sera-muted)] tracking-wide">{headerOrgInitials || '?'}</span>
                 </div>
               </div>
             )}
@@ -608,7 +701,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Center: Headquarters Detail */}
           <div className="flex-1">
-            <h2 className="font-bold text-[var(--sera-ink)] uppercase mb-2 text-sm tracking-wide">
+            <h2 className="font-bold text-gray-900 uppercase mb-2 text-sm tracking-wide">
               {headerOrg?.org_name}
             </h2>
             <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
@@ -621,29 +714,37 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Right: PO Detail */}
           <div className="flex-shrink-0 text-right">
-            <h1 className="text-xl font-light text-[var(--sera-ink)] mb-4 uppercase tracking-wider">{docTitle}</h1>
+            <h1 className="text-xl font-light text-gray-900 mb-4 uppercase tracking-wider">{docTitle}</h1>
             <div className="text-xs space-y-2">
               <div className="flex justify-between gap-4">
-                <span className="text-[var(--sera-muted)]/80">{docNoLabel}</span>
-                <span className="font-medium text-[var(--sera-ink)]">{orderData.display_doc_no || orderData.order_no}</span>
+                <span className="text-[var(--sera-muted)]">{docNoLabel}</span>
+                <span className="font-medium text-gray-900">{orderData.display_doc_no || orderData.order_no}</span>
               </div>
               {orderData.display_doc_no && (
                 <div className="flex justify-between gap-4">
-                  <span className="text-[var(--sera-muted)]/80">Legacy#:</span>
-                  <span className="font-medium text-[var(--sera-muted)]/70 text-[10px]">{orderData.order_no}</span>
+                  <span className="text-[var(--sera-muted)]">Legacy#:</span>
+                  <span className="font-medium text-gray-400 text-[10px]">{orderData.order_no}</span>
                 </div>
               )}
               <div className="flex justify-between gap-4">
-                <span className="text-[var(--sera-muted)]/80">Date:</span>
-                <span className="font-medium text-[var(--sera-ink)]">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
+                <span className="text-[var(--sera-muted)]">Date:</span>
+                <span className="font-medium text-gray-900">{new Date(orderData.created_at).toLocaleDateString('en-MY')}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-[var(--sera-muted)]/80">By:</span>
-                <span className="font-medium text-[var(--sera-ink)]">{orderData.created_by_user?.full_name || 'Unknown'}</span>
+                <span className="text-[var(--sera-muted)]">By:</span>
+                <span className="font-medium text-gray-900">{orderData.created_by_user?.full_name || 'Unknown'}</span>
               </div>
+              {['D2H', 'S2D', 'DH'].includes(orderData.order_type) && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--sera-muted)]">Fulfilled From:</span>
+                  <span className="font-medium text-gray-900">
+                    {(orderData as any).fulfillment_warehouse_name || 'Legacy / unresolved'}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between gap-4">
-                <span className="text-[var(--sera-muted)]/80">Ledger:</span>
-                <span className="font-medium text-[var(--sera-ink)]">Stock Purchased / Inventory</span>
+                <span className="text-[var(--sera-muted)]">Ledger:</span>
+                <span className="font-medium text-gray-900">Stock Purchased / Inventory</span>
               </div>
             </div>
           </div>
@@ -653,7 +754,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         <div className="flex justify-between items-start mb-12 print:mb-6 border-t border-gray-100 pt-8 print:pt-4">
           {/* Supplier Info */}
           <div className="w-1/2">
-            <h3 className="font-bold text-[var(--sera-ink)] mb-3 text-sm">{otherOrgLabel}</h3>
+            <h3 className="font-bold text-gray-900 mb-3 text-sm">{otherOrgLabel}</h3>
             <div className="text-xs text-[var(--sera-muted)] space-y-1 leading-relaxed">
               <p className="font-bold text-gray-800 uppercase mb-1">{otherOrg?.org_name}</p>
               {/* Contact Person if available, otherwise generic */}
@@ -665,8 +766,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
           {/* Status Box */}
           <div className="w-48">
-            <div className="border border-[var(--sera-line)] p-4 text-center rounded-sm">
-              <p className="text-xs text-[var(--sera-muted)]/80 mb-1 uppercase tracking-wide">Status</p>
+            <div className="border border-gray-200 p-4 text-center rounded-sm">
+              <p className="text-xs text-[var(--sera-muted)] mb-1 uppercase tracking-wide">Status</p>
               <p className={`text-xl font-bold uppercase ${getStatusColor(orderData.payment_status || orderData.status)}`}>
                 {getDisplayStatus()}
               </p>
@@ -678,19 +779,20 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
         <div className="mb-12 print:mb-6">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[var(--sera-line)]">
-                <th className="py-2 text-left text-xs font-bold text-[var(--sera-ink)] w-12">No</th>
-                <th className="py-2 text-left text-xs font-bold text-[var(--sera-ink)]">Description</th>
-                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-24">Unit</th>
-                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-32">Price</th>
-                <th className="py-2 text-right text-xs font-bold text-[var(--sera-ink)] w-32">Amount</th>
+              <tr className="border-b border-gray-200">
+                <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
+                <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
+                <th className="py-2 text-left text-xs font-bold text-gray-900 print:hidden">Stock configuration</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {orderData.order_items?.map((item: any, index: number) => (
                 <tr key={item.id} className="break-inside-avoid page-break-inside-avoid">
                   <td className="py-3 text-xs text-[var(--sera-muted)] align-top pt-4">{index + 1}</td>
-                  <td className="py-3 text-xs text-[var(--sera-ink)] align-top pt-4">
+                  <td className="py-3 text-xs text-gray-900 align-top pt-4">
                     <p className="font-medium text-sm whitespace-nowrap">
                       {(() => {
                         // Extract product base name (e.g., "Cellera Hero")
@@ -709,18 +811,52 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                       })()}
                     </p>
                   </td>
-                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatNumber(item.qty)}</td>
-                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
-                  <td className="py-3 text-xs text-[var(--sera-ink)] text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
+                  <td className="py-3 pr-3 text-xs text-gray-900 align-top pt-4 print:hidden">
+                    {orderData.status === 'submitted' && ['D2H', 'S2D'].includes(orderData.order_type) && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code) ? (
+                      (() => {
+                        const options = stockConfigurations.filter(config => config.variant_id === item.variant_id && config.eligible)
+                        const selectable = options.filter(config => {
+                          const effectiveAvailable = config.available + (config.id === item.stock_config_id ? Number(item.qty || 0) : 0)
+                          return effectiveAvailable >= Number(item.qty || 0)
+                        })
+                        return <div className="min-w-[310px] space-y-2">
+                          <div className="font-semibold text-slate-900">Requested: {item.variant?.variant_name || 'Flavour'} · {formatNumber(item.qty)}</div>
+                          {options.map(config => {
+                            const enough = selectable.some(candidate => candidate.id === config.id)
+                            const selected = item.stock_config_id === config.id
+                            return <button
+                              key={config.id}
+                              type="button"
+                              disabled={!enough || confirmingItemId === item.id}
+                              onClick={() => confirmStockConfiguration(item, config)}
+                              className={`block w-full rounded-md border p-2 text-left transition ${selected ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06]' : enough ? 'border-slate-200 bg-white hover:border-blue-300' : 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'}`}
+                            >
+                              <div className="flex items-center justify-between gap-2"><span className="font-semibold">{config.volume_ml ? `${config.volume_ml}ml · ${config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'}</span><span className={selected ? 'text-blue-700' : 'text-slate-500'}>{selected ? (item.stock_config_confirmed_at ? 'Confirmed' : 'Allocated') : enough ? 'Available' : 'Insufficient'}</span></div>
+                              <div className="font-mono text-[11px] text-blue-700">{config.stock_sku}</div>
+                              <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-slate-600"><span>On hand {formatNumber(config.onHand)}</span><span>Allocated {formatNumber(config.allocated)}</span><span>Available {formatNumber(config.available)}</span></div>
+                              {config.volume_ml === 50 ? <div className="mt-1 text-[11px] text-emerald-700">Distributor eligible for 50ml New Box</div> : null}
+                            </button>
+                          })}
+                          {selectable.length === 0 ? <div className="rounded border border-red-200 bg-red-50 p-2 font-medium text-red-700">Insufficient available stock. Fulfilment is blocked.</div> : null}
+                          <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>{item.stock_config_confirmed_at ? 'Exact configuration confirmed for picking' : 'Confirmation required before approval'}</div>
+                        </div>
+                      })()
+                    ) : (
+                      <span>{item.stock_config ? `${item.stock_config.stock_sku} · ${item.stock_config.volume_ml ? `${item.stock_config.volume_ml}ml · ${item.stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : item.stock_config.config_label}` : (item.stock_config_id ? 'Configured stock' : 'Legacy / not assigned')}</span>
+                    )}
+                  </td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>
+                  <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.line_total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-[var(--sera-line)]">
-                <td colSpan={2} className="py-4"></td>
-                <td className="py-4 text-right text-xs font-bold text-[var(--sera-ink)]">{formatNumber(totalQuantity)}</td>
-                <td className="py-4 text-right text-xs font-bold text-[var(--sera-ink)]">Total</td>
-                <td className="py-4 text-right text-sm font-bold text-[var(--sera-ink)]">{formatCurrency(subtotal)}</td>
+              <tr className="border-t border-gray-200">
+                <td colSpan={3} className="py-4"></td>
+                <td className="py-4 text-right text-xs font-bold text-gray-900">{formatNumber(totalQuantity)}</td>
+                <td className="py-4 text-right text-xs font-bold text-gray-900">Total</td>
+                <td className="py-4 text-right text-sm font-bold text-gray-900">{formatCurrency(subtotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -733,7 +869,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
             <div>
               {headerOrg?.signature_type === 'electronic' && companySignatureUrl && !companySignatureFailed && (
                 <div className="mb-6">
-                  <p className="text-sm font-bold text-[var(--sera-ink)] mb-2">Issued by:</p>
+                  <p className="text-sm font-bold text-gray-900 mb-2">Issued by:</p>
                   <div className="flex items-start gap-4">
                     <div className="w-32 h-24 flex items-center">
                       <img
@@ -746,7 +882,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   </div>
                 </div>
               )}
-              <p className="text-[10px] text-[var(--sera-muted)]/70 mt-8">This is a computer generated document.</p>
+              <p className="text-[10px] text-gray-400 mt-8">This is a computer generated document.</p>
             </div>
 
             {/* Center: Created By */}
@@ -763,11 +899,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                 </div>
               ) : (
                 <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
-                  <span className="text-[10px] italic text-[var(--sera-muted)]/70">Signature not available</span>
+                  <span className="text-[10px] italic text-gray-400">Signature not available</span>
                 </div>
               )}
-              <div className="border-t border-[var(--sera-line)] w-48 mx-auto pt-1">
-                <p className="text-xs text-[var(--sera-muted)]/80">{orderData.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+              <div className="border-t border-gray-300 w-48 mx-auto pt-1">
+                <p className="text-xs text-[var(--sera-muted)]">{orderData.created_at ? new Date(orderData.created_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
               </div>
             </div>
 
@@ -786,11 +922,11 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                   </div>
                 ) : (
                   <div className="h-16 print:h-12 mb-2 flex items-end justify-center">
-                    <span className="text-[10px] italic text-[var(--sera-muted)]/70">Signature not available</span>
+                    <span className="text-[10px] italic text-gray-400">Signature not available</span>
                   </div>
                 )}
-                <div className="border-t border-[var(--sera-line)] w-48 mx-auto pt-1">
-                  <p className="text-xs text-[var(--sera-muted)]/80">{orderData.approved_at ? new Date(orderData.approved_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
+                <div className="border-t border-gray-300 w-48 mx-auto pt-1">
+                  <p className="text-xs text-[var(--sera-muted)]">{orderData.approved_at ? new Date(orderData.approved_at).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</p>
                 </div>
               </div>
             )}

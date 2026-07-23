@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getReturnContext, buildReturnItemRows, validateReturnSource, RETURN_ORG_SELECT } from '@/lib/returns/server'
+import { getReturnContext, buildReturnItemRows, validateReturnSource, validateReturnWarehouse, RETURN_ORG_SELECT } from '@/lib/returns/server'
 import { decorateCase } from '@/lib/returns/compute'
 import { normalizeReturnSourceType, sourceTypeForOrgTypeCode } from '@/lib/returns/constants'
 import { triggerReturnNotification } from '@/lib/returns/notifications'
@@ -110,6 +110,12 @@ export async function POST(request: NextRequest) {
 
     const settings = await loadSettings(ctx.admin)
     const warehouseId = body.return_warehouse_id || settings.default_return_warehouse_id || null
+    if (warehouseId) {
+        const warehouseCheck = await validateReturnWarehouse(ctx, warehouseId)
+        if (!warehouseCheck.ok) {
+            return NextResponse.json({ error: warehouseCheck.error }, { status: 400 })
+        }
+    }
 
     // Build worksheet item rows first so a bad payload fails before we create a
     // header (v2 quantity model: Case / Loose / Units-per-Case / Total Pcs).

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { Store, MapPin } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Store, MapPin, Loader2 } from 'lucide-react'
 import ShopPerformanceTab from './ShopPerformanceTab'
 import ShopByNegeriTab from './ShopByNegeriTab'
 import { cn } from '@/lib/utils'
+import { resolveDefaultReportingPeriod, type ReportingPeriod } from '@/lib/reporting/reporting-period'
 
 interface ShopReportsTabProps {
   userProfile: any
@@ -22,6 +23,36 @@ const REPORTS: { id: ShopReport; label: string; description: string; icon: typeo
 
 export default function ShopReportsTab({ userProfile, chartGridColor, chartTickColor, isDark }: ShopReportsTabProps) {
   const [report, setReport] = useState<ShopReport>('performance')
+  const [periods, setPeriods] = useState<ReportingPeriod[]>([])
+  const [periodKey, setPeriodKey] = useState<string | null>(null)
+  const [periodsLoading, setPeriodsLoading] = useState(true)
+  const [periodsError, setPeriodsError] = useState<string | null>(null)
+
+  const fetchPeriods = useCallback(async (preserveSelection = true) => {
+    setPeriodsLoading(true)
+    setPeriodsError(null)
+    try {
+      const response = await fetch('/api/reporting/shop-performance/periods', { cache: 'no-store' })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to load reporting periods')
+      const nextPeriods = (payload.periods || []) as ReportingPeriod[]
+      setPeriods(nextPeriods)
+      setPeriodKey((current) => {
+        if (preserveSelection && current && nextPeriods.some((period) => period.key === current)) return current
+        return resolveDefaultReportingPeriod(nextPeriods)
+      })
+    } catch (error: any) {
+      setPeriodsError(error?.message || 'Unable to load reporting periods')
+      setPeriods([])
+      setPeriodKey(null)
+    } finally {
+      setPeriodsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void fetchPeriods(false) }, [fetchPeriods])
+
+  const selectedPeriod = periods.find((period) => period.key === periodKey) || null
 
   return (
     <div className="space-y-6">
@@ -57,12 +88,28 @@ export default function ShopReportsTab({ userProfile, chartGridColor, chartTickC
         })}
       </div>
 
-      {report === 'performance' ? (
+      {periodsLoading ? (
+        <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading transaction periods...
+        </div>
+      ) : periodsError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          {periodsError}
+        </div>
+      ) : periods.length === 0 || !selectedPeriod ? (
+        <div className="rounded-xl border bg-card/80 p-10 text-center text-sm text-muted-foreground">
+          No transaction periods available.
+        </div>
+      ) : report === 'performance' ? (
         <ShopPerformanceTab
           userProfile={userProfile}
           chartGridColor={chartGridColor}
           chartTickColor={chartTickColor}
           isDark={isDark}
+          periods={periods}
+          selectedPeriod={selectedPeriod}
+          onPeriodChange={setPeriodKey}
+          onRefreshPeriods={() => fetchPeriods(true)}
         />
       ) : (
         <ShopByNegeriTab
@@ -70,6 +117,10 @@ export default function ShopReportsTab({ userProfile, chartGridColor, chartTickC
           chartGridColor={chartGridColor}
           chartTickColor={chartTickColor}
           isDark={isDark}
+          periods={periods}
+          selectedPeriod={selectedPeriod}
+          onPeriodChange={setPeriodKey}
+          onRefreshPeriods={() => fetchPeriods(true)}
         />
       )}
     </div>

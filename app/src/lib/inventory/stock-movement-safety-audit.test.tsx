@@ -8,10 +8,42 @@ const migration = repoFile('supabase/migrations/20260716_stock_movement_history_
 const report = repoFile('app/src/components/inventory/StockMovementReportView.tsx')
 const movementsApi = repoFile('app/src/app/api/movements/route.ts')
 
-const functionBodies = Array.from(
-  schema.matchAll(/CREATE FUNCTION public\.([a-zA-Z0-9_]+)\([^;]*?AS \$\$(.*?)\$\$;/gs),
-  match => ({ name: match[1], body: match[2] }),
-)
+const stockConfigMigrations = [
+  '20260717_stock_config_01_groundwork.sql',
+  '20260717_stock_config_02_core_ledger.sql',
+  '20260717_stock_config_03_ord_repack.sql',
+  '20260717_stock_config_04_stock_count.sql',
+  '20260717_stock_config_05_so_fulfilment.sql',
+  '20260717_stock_config_06_views_reports.sql',
+  '20260717_stock_config_07_reference_type_fix.sql',
+  '20260717_stock_config_08_initial_classification.sql',
+  '20260718_stock_config_09_full_count_classification_guard.sql',
+  '20260718_stock_config_10_repack_to_20nb.sql',
+  '20260718_stock_config_11_transfer_workflow.sql',
+  '20260718_stock_config_12_transfer_dispatch_lifecycle.sql',
+  '20260718_stock_config_13_manual_stock_addition.sql',
+  '20260719_stock_config_14_classification_post_grant.sql',
+  '20260719_stock_config_15_posting_statement_timeout.sql',
+  '20260719_stock_config_16_classification_allocation_legacy_guards.sql',
+  '20260719_stock_config_17_discard_stock_count_drafts.sql',
+  '20260719_stock_config_18_classification_allow_physical_variance.sql',
+  '20260719_stock_config_19_collision_safe_stock_sku_generator.sql',
+  '20260719_stock_config_20_view_contract_compatibility.sql',
+].map(name => repoFile(`supabase/migrations/${name}`))
+
+// Reconstruct the final installed definitions by applying each CREATE OR
+// REPLACE in migration order. This keeps the writer inventory deterministic
+// even when a developer's ignored staging-schema snapshot predates Migrations
+// 01-20.
+const finalFunctionBodies = new Map<string, string>()
+for (const sql of [schema, ...stockConfigMigrations]) {
+  for (const match of sql.matchAll(
+    /CREATE(?: OR REPLACE)? FUNCTION public\.([a-zA-Z0-9_]+)\([^;]*?AS \$\$(.*?)\$\$;/gs,
+  )) {
+    finalFunctionBodies.set(match[1], match[2])
+  }
+}
+const functionBodies = Array.from(finalFunctionBodies, ([name, body]) => ({ name, body }))
 
 describe('stock movement consumer audit contract', () => {
   it('routes active application closing-balance consumers through the shared helper', () => {
@@ -48,16 +80,17 @@ describe('stock movement writer audit contract', () => {
       .sort()
 
     expect(directWriters).toEqual([
+      '_stock_transfer_release_reservations',
+      '_stock_transfer_reserve_items',
       'allocate_inventory_for_order',
       'fn_test_balance_request_flow',
       'fulfill_order_inventory',
       'log_qr_receive_movement',
       'log_qr_shipment_movement',
-      'orders_approve',
       'record_stock_movement',
       'release_allocation_for_order',
+      'set_order_item_stock_config',
       'wms_record_movement_from_summary',
-      'wms_ship_manual',
     ])
   })
 
@@ -69,7 +102,13 @@ describe('stock movement writer audit contract', () => {
 
     expect(rpcWriters).toEqual([
       'delete_scratch_campaign',
+      'dispatch_stock_transfer',
+      'post_manual_stock_addition',
+      'post_stock_transfer_configured',
       'post_warehouse_receipt',
+      'receive_stock_transfer',
+      'repack_stock_v2',
+      'verify_and_post_stock_classification',
       'verify_and_post_stock_count',
       'wms_reverse_manual_movement',
       'wms_ship_mixed',

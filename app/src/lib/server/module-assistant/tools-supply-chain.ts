@@ -284,8 +284,8 @@ async function productSummary(supabase: SupabaseClient, orgId: string): Promise<
 
 async function lowStockItems(supabase: SupabaseClient, orgId: string): Promise<SCToolResult> {
   const { data, count } = await supabase
-    .from('product_inventory')
-    .select('id, variant_id, organization_id, quantity_on_hand, quantity_available, reorder_point, product_variants(variant_name, product_id, products(product_name))', { count: 'exact' })
+    .from('v_low_stock_alerts')
+    .select('id, variant_id, organization_id, quantity_on_hand, quantity_available, reorder_point, variant_name, product_name', { count: 'exact' })
     .eq('organization_id', orgId)
     .limit(200)
 
@@ -297,8 +297,8 @@ async function lowStockItems(supabase: SupabaseClient, orgId: string): Promise<S
   }).slice(0, MAX_ROWS)
 
   const rows = lowStock.map((item: any) => ({
-    product: (item.product_variants as any)?.products?.product_name ?? '—',
-    variant: (item.product_variants as any)?.variant_name ?? '—',
+    product: item.product_name ?? '—',
+    variant: item.variant_name ?? '—',
     qty_available: item.quantity_available ?? 0,
     qty_on_hand: item.quantity_on_hand ?? 0,
     reorder_point: item.reorder_point ?? 0,
@@ -438,31 +438,33 @@ async function qrCodeStats(supabase: SupabaseClient, orgId: string): Promise<SCT
 }
 
 async function inventorySummary(supabase: SupabaseClient, orgId: string): Promise<SCToolResult> {
-  const { data, count } = await supabase
+  const { data } = await supabase
     .from('product_inventory')
-    .select('id, quantity_on_hand, quantity_allocated, quantity_available, reorder_point', { count: 'exact' })
+    .select('variant_id, quantity_on_hand, quantity_allocated, quantity_available')
     .eq('organization_id', orgId)
     .limit(1000)
 
-  let totalOnHand = 0, totalAvailable = 0, lowCount = 0
+  let totalOnHand = 0, totalAvailable = 0
+  const variants = new Set<string>()
   for (const item of (data ?? [])) {
     totalOnHand += item.quantity_on_hand ?? 0
     totalAvailable += item.quantity_available ?? 0
-    if ((item.quantity_available ?? 0) <= (item.reorder_point ?? 0)) lowCount++
+    if (item.variant_id) variants.add(item.variant_id)
   }
+  const { count: lowCount } = await supabase.from('v_low_stock_alerts').select('id', { count: 'exact', head: true }).eq('organization_id', orgId)
 
   return {
     success: true,
     tool: 'inventorySummary',
-    summary: `📦 **Inventory Summary:**\n- SKUs Tracked: **${count ?? 0}**\n- Total On Hand: **${totalOnHand}** units\n- Total Available: **${totalAvailable}** units\n- Low Stock Items: **${lowCount}** ⚠️`,
-    totalCount: count ?? 0,
+    summary: `📦 **Inventory Summary:**\n- Variants Tracked: **${variants.size}**\n- Total On Hand: **${totalOnHand}** units\n- Total Available: **${totalAvailable}** units\n- Low Stock Items: **${lowCount ?? 0}** ⚠️`,
+    totalCount: variants.size,
   }
 }
 
 async function stockMovements(supabase: SupabaseClient, orgId: string): Promise<SCToolResult> {
   const { data, count } = await supabase
     .from('stock_movements')
-    .select('id, movement_type, quantity_change, reference_type, created_at', { count: 'exact' })
+    .select('id, movement_type, quantity_change, reference_type, created_at, stock_config_id, inventory_stock_configurations!stock_movements_stock_config_fk(stock_sku, volume_ml, packaging)', { count: 'exact' })
     .eq('company_id', orgId)
     .order('created_at', { ascending: false })
     .limit(15)

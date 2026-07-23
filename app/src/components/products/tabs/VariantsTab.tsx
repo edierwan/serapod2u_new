@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import VariantDialog, { type MediaItem } from '../dialogs/VariantDialog'
 import { getStorageUrl } from '@/lib/utils'
 import {
@@ -20,10 +20,19 @@ import {
   cleanAlternativeName,
   isAlternativeNameDuplicateError,
 } from '@/lib/products/alternative-name'
+import {
+  buildVariantMasterDataFilename,
+  exportVariantMasterDataBlob,
+  matchesVariantSearch,
+} from '@/lib/products/variant-master-data'
+import { uploadKkmCertificate } from '@/lib/products/kkm-certificate'
 
 interface Product {
   id: string
   product_name: string
+  is_active?: boolean
+  is_vape?: boolean
+  product_code?: string | null
 }
 
 interface Variant {
@@ -67,6 +76,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [sortColumn, setSortColumn] = useState<string>('variant_name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
@@ -87,13 +97,23 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, product_name')
+        .select('id, product_name, is_active, product_code, product_categories(is_vape)')
         .order('product_name', { ascending: true })
 
       if (error) throw error
-      setProducts((data || []) as Product[])
+      const productRows = (data || []).map((product: any) => ({
+        id: product.id,
+        product_name: product.product_name,
+        is_active: product.is_active,
+        product_code: product.product_code,
+        // Product-category Vape classification is the source of truth for KKM fields.
+        is_vape: Array.isArray(product.product_categories)
+          ? product.product_categories[0]?.is_vape === true
+          : product.product_categories?.is_vape === true,
+      }))
+      setProducts(productRows)
       if (data && data.length > 0 && !selectedProduct) {
-        setSelectedProduct((data as any[])[0].id)
+        setSelectedProduct(productRows[0].id)
       }
     } catch (error) {
       console.error('Error loading products:', error)
@@ -165,7 +185,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     return uploadData.path
   }
 
-  const handleSave = async (variantData: Partial<Variant> & { mediaItems?: MediaItem[] }) => {
+  const handleSave = async (variantData: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => {
     try {
       setIsSaving(true)
       const mediaItems = variantData.mediaItems || []
@@ -238,7 +258,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       // ── Build DB save data ───────────────────────────
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { mediaItems: _mi, imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
+      const { mediaItems: _mi, certificateFile: _cf, imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
 
       const productId = dbDataClean.product_id || (editingVariant ? editingVariant.product_id : null)
       const variantName = dbDataClean.variant_name || (editingVariant ? editingVariant.variant_name : null)
@@ -280,6 +300,20 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         const { data: inserted, error } = await (supabase as any).from('product_variants').insert([dataToSave]).select('id').single()
         if (error) throw error
         variantId = inserted.id
+        if (dbDataClean.configurationProfile) {
+          try {
+            const response = await fetch(`/api/inventory/stock-configurations/variant/${variantId}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ profile: dbDataClean.configurationProfile }),
+            })
+            if (!response.ok) {
+              const body = await response.json().catch(() => ({}))
+              toast({ title: 'Stock configuration setup warning', description: body.error || 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+            }
+          } catch {
+            toast({ title: 'Stock configuration setup warning', description: 'Variant created, but the configuration profile could not be applied automatically. Enable it manually from Edit Variant.', variant: 'destructive' })
+          }
+        }
       }
 
       // ── Sync variant_media rows ──────────────────────
@@ -301,6 +335,18 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         if (mediaError) {
           console.error('variant_media insert error:', mediaError)
           toast({ title: 'Warning', description: 'Variant saved but media sync failed. Media may need to be re-added.' })
+        }
+      }
+
+      if (variantData.certificateFile) {
+        try {
+          await uploadKkmCertificate(supabase, variantId, variantData.certificateFile)
+        } catch (certificateError: any) {
+          toast({
+            title: 'Variant saved; certificate upload failed',
+            description: certificateError?.message || 'Open Edit Variant to retry the certificate upload.',
+            variant: 'destructive',
+          })
         }
       }
 
@@ -345,9 +391,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   }
 
   const filteredVariants = variants.filter(variant => {
-    const normalizedSearch = searchQuery.toLowerCase()
-    const matchesSearch = variant.variant_name.toLowerCase().includes(normalizedSearch)
-      || variant.product_code?.toLowerCase().includes(normalizedSearch)
+    const matchesSearch = matchesVariantSearch(variant, searchQuery)
     const matchesProduct = !selectedProduct || variant.product_id === selectedProduct
     return matchesSearch && matchesProduct && variant.is_active
   })
@@ -376,6 +420,25 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
     })
     return sorted
+  }
+
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      // This is the complete filtered/sorted dataset, intentionally before pagination.
+      const blob = await exportVariantMasterDataBlob(getSortedVariants())
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = buildVariantMasterDataFilename()
+      anchor.click()
+      URL.revokeObjectURL(url)
+      toast({ title: 'Excel downloaded', description: `${getSortedVariants().length} variant(s) exported.` })
+    } catch (error: any) {
+      toast({ title: 'Excel export failed', description: error?.message || 'Please try again.', variant: 'destructive' })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const totalItems = getSortedVariants().length
@@ -409,19 +472,19 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex w-full flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-1">
           <select
             value={selectedProduct}
             onChange={(e) => setSelectedProduct(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-auto"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]"
           >
             <option value="">All Products</option>
             {products.map(product => (
               <option key={product.id} value={product.id}>{product.product_name}</option>
             ))}
           </select>
-          <div className="relative w-full sm:max-w-md sm:flex-1">
+          <div className="flex-1 max-w-md relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input
               placeholder="Search variants..."
@@ -431,9 +494,14 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             />
           </div>
         </div>
-        <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="w-full shrink-0 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white sm:w-auto">
-          <Plus className="w-4 h-4 mr-2" /> Add Variant
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} Download Excel
+          </Button>
+          <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)]">
+            <Plus className="w-4 h-4 mr-2" /> Add Variant
+          </Button>
+        </div>
       </div>
 
       <VariantDialog
@@ -444,10 +512,18 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         isSaving={isSaving}
         onOpenChange={setDialogOpen}
         onSave={handleSave}
+        canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
+        canManageCertificates={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
       />
 
-      <div className="border rounded-lg overflow-x-auto">
-        <Table className="min-w-[640px]">
+      <div className="border rounded-lg overflow-hidden">
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>
@@ -483,7 +559,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                 const mediaCount = variant.media?.length || 0
                 return (
                   <TableRow key={variant.id} className="hover:bg-gray-50">
-                    <TableCell className="text-center text-sm text-gray-500 font-medium">{startIndex + index + 1}</TableCell>
+                    <TableCell className="text-center text-sm text-[var(--sera-muted)] font-medium">{startIndex + index + 1}</TableCell>
                     <TableCell>
                       <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center">
                         {preview ? (
@@ -499,13 +575,16 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                           </div>
                         )}
                         {mediaCount > 1 && (
-                          <span className="absolute -top-1 -right-1 bg-[var(--sera-orange)] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{mediaCount}</span>
+                          <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{mediaCount}</span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{variant.variant_name}</TableCell>
-                    <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
-                    <TableCell className="text-xs font-medium text-gray-700">{variant.product_code || '-'}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{variant.variant_name}</div>
+                      {variant.alternative_name && <div className="mt-0.5 text-xs text-[var(--sera-muted)]">Alternative: {variant.alternative_name}</div>}
+                    </TableCell>
+                    <TableCell className="text-xs text-[var(--sera-muted)]">{variant.product_name}</TableCell>
+                    <TableCell className="text-xs font-medium text-[var(--sera-ink)]/80">{variant.product_code || '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.other_price ? `$${variant.other_price.toFixed(2)}` : '-'}</TableCell>
@@ -529,7 +608,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-gray-500">No variants found</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-[var(--sera-muted)]">No variants found</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -538,7 +617,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-[var(--sera-muted)]">
           Showing {totalItems > 0 ? startIndex + 1 : 0} - {Math.min(endIndex, totalItems)} of {totalItems} variants
         </div>
         {totalPages > 1 && (

@@ -12,6 +12,9 @@ export async function POST(request: Request) {
     if (typeof body?.distributorId !== 'string' || !body.distributorId) {
       return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
     }
+    if (typeof body?.fulfillmentWarehouseId !== 'string' || !body.fulfillmentWarehouseId) {
+      return NextResponse.json({ error: 'A fulfillment warehouse is required.' }, { status: 400 })
+    }
 
     const { data: requester, error: requesterError } = await supabase
       .from('users')
@@ -20,11 +23,25 @@ export async function POST(request: Request) {
       .single()
     if (requesterError || !requester?.organization_id) return NextResponse.json({ error: 'User organization not found.' }, { status: 403 })
 
-    const catalog = await resolveQuickOrderCatalog(supabase, body.distributorId, requester.organization_id)
-    return NextResponse.json({ variants: catalog.variants })
+    const catalog = await resolveQuickOrderCatalog(
+      supabase,
+      body.distributorId,
+      requester.organization_id,
+      body.fulfillmentWarehouseId,
+    )
+    return NextResponse.json({
+      variants: catalog.variants,
+      fulfillmentWarehouseId: catalog.inventoryOrganizationId,
+      fulfillmentWarehouseName: catalog.fulfillmentWarehouseName,
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to load the distributor Quick Order catalog.'
-    const status = message.includes('not available') || message.includes('not authorized') ? 403 : 500
+    const status = message.includes('not available')
+      || message.includes('not authorized')
+      || message.includes('required')
+      || message.includes('not an active warehouse')
+      ? 403
+      : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

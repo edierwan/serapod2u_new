@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     if (receiptIds.length > 0) {
       const { data: items } = await (supabase as any)
         .from('warehouse_receipt_items')
-        .select('receipt_id, variant_id, product_id, ordered_qty, previously_received, received_now, cumulative_received, extra_received, product_variants(variant_name, variant_code), products(product_name)')
+        .select('receipt_id, variant_id, product_id, stock_config_id, ordered_qty, previously_received, received_now, cumulative_received, extra_received, product_variants(variant_name, variant_code), products(product_name), inventory_stock_configurations!warehouse_receipt_items_stock_config_fk(config_label, stock_sku, volume_ml, packaging)')
         .in('receipt_id', receiptIds)
 
       for (const it of items || []) {
@@ -100,6 +100,8 @@ export async function GET(request: NextRequest) {
           cumulative_received: cumulative,
           balance: Math.max(0, ordered - cumulative),
           extra_received: it.extra_received,
+          stock_config_id: it.stock_config_id,
+          stock_config: Array.isArray(it.inventory_stock_configurations) ? it.inventory_stock_configurations[0] : it.inventory_stock_configurations,
         })
         itemsByReceipt.set(it.receipt_id, arr)
       }

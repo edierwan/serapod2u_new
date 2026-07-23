@@ -231,6 +231,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
   const [manualQty, setManualQty] = useState<number>(0)
   const [loadingManualStock, setLoadingManualStock] = useState(false)
   const [loadingVariants, setLoadingVariants] = useState(false)
+  const [pickingLines, setPickingLines] = useState<any[]>([])
   const [detailedStats, setDetailedStats] = useState({
     masterQrCount: 0,
     masterTotalUnits: 0,
@@ -479,6 +480,10 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         .select(`
           variant_id,
           manual_balance_qty,
+          stock_config_id,
+          stock_sku,
+          volume_ml,
+          packaging,
           product_variants (
             id,
             variant_code,
@@ -489,6 +494,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           )
         `)
         .eq('warehouse_id', userProfile.organization_id)
+        .is('volume_ml', null)
+        .is('packaging', null)
         .gt('manual_balance_qty', 0)
         .order('manual_balance_qty', { ascending: false })
 
@@ -505,7 +512,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         const variant = item.product_variants
         return {
           ...variant,
-          manual_balance_qty: item.manual_balance_qty
+          manual_balance_qty: item.manual_balance_qty,
+          stock_config_id: item.stock_config_id,
+          stock_sku: item.stock_sku,
         }
       }).filter(v => v.id) // Filter out any null variants
       
@@ -539,6 +548,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         .select('manual_balance_qty')
         .eq('warehouse_id', userProfile.organization_id)
         .eq('variant_id', variantId)
+        .is('volume_ml', null)
+        .is('packaging', null)
         .maybeSingle()
 
       if (error) throw error
@@ -552,6 +563,17 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
     }
   }
 
+  async function loadPickingLines(orderId: string | null) {
+    if (!orderId) { setPickingLines([]); return }
+    const { data, error } = await supabase.from('order_items').select(`
+      id, variant_id, qty, stock_config_id, stock_config_confirmed_at,
+      variant:product_variants(variant_name),
+      stock_config:inventory_stock_configurations!order_items_stock_config_variant_fkey(stock_sku, volume_ml, packaging, config_label)
+    `).eq('order_id', orderId)
+    if (error) { setPickingLines([]); return }
+    setPickingLines(data || [])
+  }
+
   const createOrLoadSession = async (distributorId: string) => {
     try {
       console.log('🔍 Creating or loading session for distributor:', distributorId)
@@ -559,7 +581,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       // Check for existing session (pending or matched status means warehouse_packed items ready to ship)
       const { data: existingSession, error: sessionError } = await supabase
         .from('qr_validation_reports')
-        .select('id, scanned_quantities, master_codes_scanned, unique_codes_scanned, distributor_org_id, validation_status')
+        .select('id, scanned_quantities, master_codes_scanned, unique_codes_scanned, distributor_org_id, validation_status, source_order_id')
         .eq('warehouse_org_id', userProfile.organization_id)
         .eq('distributor_org_id', distributorId)
         .in('validation_status', ['pending', 'matched'])
@@ -579,6 +601,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           unique: existingSession.unique_codes_scanned?.length || 0
         })
         setSessionId(existingSession.id)
+        await loadPickingLines(existingSession.source_order_id || null)
         await loadProgressFromSession(existingSession)
         return
       }
@@ -615,6 +638,14 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             id,
             qty,
             variant_id,
+            stock_config_id,
+            stock_config_confirmed_at,
+            stock_config:inventory_stock_configurations!order_items_stock_config_variant_fkey (
+              stock_sku,
+              volume_ml,
+              packaging,
+              config_label
+            ),
             product:products (
               product_name
             ),
@@ -644,6 +675,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         // Use the most recent approved order
         const sourceOrder = d2hOrders[0]
         const orderItems = sourceOrder.order_items || []
+        setPickingLines(orderItems)
         
         let totalUnits = 0
         const perVariant: any = {}
@@ -686,6 +718,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           source_order_id: null,
           scenario: 'phone_order'
         }
+        setPickingLines([])
       }
       
       // Create session with appropriate expected quantities
@@ -1144,6 +1177,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         description: 'Please select a distributor first',
         variant: 'destructive'
       })
+      return
+    }
+
+    if (pickingLines.some(line => !line.stock_config_id || !line.stock_config_confirmed_at)) {
+      toast({ title: 'Shipment blocked', description: 'Every order line must have a confirmed Stock SKU and order-item allocation before scanning.', variant: 'destructive' })
       return
     }
 
@@ -1678,6 +1716,11 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         description: 'No distributor selected',
         variant: 'destructive'
       })
+      return
+    }
+
+    if (pickingLines.some(line => !line.stock_config_id || !line.stock_config_confirmed_at)) {
+      toast({ title: 'Shipment blocked', description: 'Missing or unconfirmed order-item stock configuration. Return to the SO fulfilment screen.', variant: 'destructive' })
       return
     }
 
@@ -2271,6 +2314,23 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           </div>
         </CardContent>
       </Card>
+
+      {selectedDistributor && pickingLines.length > 0 ? (
+        <Card className={pickingLines.some(line => !line.stock_config_id || !line.stock_config_confirmed_at) ? 'border-red-300 bg-red-50' : 'border-blue-200 bg-blue-50'}>
+          <CardHeader><CardTitle className="text-base">Order-linked Picking Configuration</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {pickingLines.map(line => {
+              const config = Array.isArray(line.stock_config) ? line.stock_config[0] : line.stock_config
+              const safe = Boolean(line.stock_config_id && line.stock_config_confirmed_at && config)
+              return <div key={line.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-3 text-sm">
+                <div><p className="font-semibold">{line.variant?.variant_name || 'Order line'} · {line.qty} units</p>{config ? <p className="text-slate-600">Pick {config.volume_ml ? `${config.volume_ml}ml · ${config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'}</p> : null}</div>
+                {safe ? <Badge className="bg-blue-600 font-mono">{config.stock_sku}</Badge> : <Badge variant="destructive">Blocked: missing confirmed order-item configuration</Badge>}
+              </div>
+            })}
+            <p className="text-xs text-slate-600">QR identity does not select inventory. Shipping is reconciled to each order item’s confirmed Stock SKU.</p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Manual Stock Section */}
       {selectedDistributor && (

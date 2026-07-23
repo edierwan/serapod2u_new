@@ -5,7 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
+import {
+  X,
   Loader2,
   Plus,
   Star,
@@ -20,19 +29,18 @@ import {
   validateProductCode,
 } from '@/lib/products/product-code'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
-import {
-  SeraModalOverlay,
-  SeraModalPanel,
-  SeraModalHeader,
-  SeraModalBody,
-  SeraModalFooter,
-} from '@/components/ui/sera-modal'
+import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
+import KkmApprovalCertificate from '@/components/products/KkmApprovalCertificate'
+import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
 
 // ── Types ────────────────────────────────────────────────────────
 
 interface Product {
   id: string
   product_name: string
+  is_active?: boolean
+  is_vape?: boolean
+  product_code?: string | null
 }
 
 export interface MediaItem {
@@ -79,7 +87,9 @@ interface VariantDialogProps {
   open: boolean
   isSaving: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[] }) => void
+  onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => void
+  canManageStockConfigurations?: boolean
+  canManageCertificates?: boolean
 }
 
 const MAX_MEDIA = 10
@@ -153,7 +163,16 @@ function captureVideoThumbnail(file: File): Promise<{ blob: Blob; url: string; d
   })
 }
 
-export default function VariantDialog({ variant, products, open, isSaving, onOpenChange, onSave }: VariantDialogProps) {
+export default function VariantDialog({
+  variant,
+  products,
+  open,
+  isSaving,
+  onOpenChange,
+  onSave,
+  canManageStockConfigurations = false,
+  canManageCertificates = false,
+}: VariantDialogProps) {
   const mkInitial = useCallback(
     (): Partial<Variant> =>
       variant
@@ -198,12 +217,16 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isValidatingProductCode, setIsValidatingProductCode] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
+  const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
+  const [certificateFile, setCertificateFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
     setFormData(mkInitial())
     setErrors({})
+    setConfigurationProfile('new_standard')
+    setCertificateFile(null)
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -218,6 +241,10 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
     setMediaItems(items)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant, products])
+
+  const selectedProduct = products.find((p) => p.id === (formData.product_id || variant?.product_id)) || null
+  const isVapeCategory = selectedProduct?.is_vape === true
+  const isNewCelleraVariant = !variant && isCelleraVapeVariant(selectedProduct)
 
   const generateBarcode = useCallback(() => {
     if (!formData.product_id || !formData.variant_name) return ''
@@ -361,6 +388,8 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
+      ...(certificateFile ? { certificateFile } : {}),
+      ...(isNewCelleraVariant ? { configurationProfile } : {}),
     } as any)
   }
 
@@ -368,7 +397,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
 
   return (
     <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
-      <SeraModalPanel className="max-w-lg overflow-y-auto">
+      <SeraModalPanel className="max-w-6xl overflow-y-auto">
         <SeraModalHeader
           sticky
           title={variant ? 'Edit Variant' : 'Add Variant'}
@@ -378,11 +407,11 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         <SeraModalBody className="space-y-5">
           {/* Unified Variant Media */}
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-gray-500">(Up to {MAX_MEDIA} \u2014 images &amp; videos)</span></Label>
+            <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-[var(--sera-muted)]">(Up to {MAX_MEDIA} — images &amp; videos)</span></Label>
             <div className="flex flex-wrap gap-3">
               {mediaItems.map((item, idx) => (
                 <div key={item.id} className="relative group">
-                  <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${item.isDefault ? 'border-[var(--sera-orange)] ring-2 ring-[var(--sera-orange)]/30' : 'border-gray-200'}`}>
+                  <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${item.isDefault ? 'border-[var(--sera-orange)] ring-2 ring-[var(--sera-orange)]/30' : 'border-[var(--sera-line)]'}`}>
                     {item.type === 'video' ? (
                       <video src={item.url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
                     ) : (
@@ -394,21 +423,21 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
                   </span>
                   {item.isDefault && <div className="absolute -top-1 -right-1 bg-[var(--sera-orange)] text-white text-[10px] px-1.5 py-0.5 rounded-full">Default</div>}
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
-                    {idx > 0 && <button type="button" onClick={() => handleMoveMedia(idx, -1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move left"><span className="text-[10px] font-bold">\u2190</span></button>}
+                    {idx > 0 && <button type="button" onClick={() => handleMoveMedia(idx, -1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move left"><span className="text-[10px] font-bold">←</span></button>}
                     {!item.isDefault && <button type="button" onClick={() => handleSetDefault(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-[var(--sera-orange)]" title="Set as default"><Star className="w-3.5 h-3.5" /></button>}
                     <button type="button" onClick={() => handleRemoveMedia(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-red-600" title="Remove"><X className="w-3.5 h-3.5" /></button>
-                    {idx < mediaItems.length - 1 && <button type="button" onClick={() => handleMoveMedia(idx, 1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move right"><span className="text-[10px] font-bold">\u2192</span></button>}
+                    {idx < mediaItems.length - 1 && <button type="button" onClick={() => handleMoveMedia(idx, 1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move right"><span className="text-[10px] font-bold">→</span></button>}
                   </div>
                 </div>
               ))}
               {mediaItems.length < MAX_MEDIA && (
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-[var(--sera-orange)]/40 hover:bg-[var(--sera-orange)]/[0.05] transition-colors flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-[var(--sera-orange)]">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-[var(--sera-line)] hover:border-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.06] transition-colors flex flex-col items-center justify-center gap-1 text-[var(--sera-muted)] hover:text-[var(--sera-orange)]">
                   <Plus className="w-5 h-5" /><span className="text-[10px]">Add</span>
                 </button>
               )}
             </div>
             <input ref={fileInputRef} type="file" accept={ALL_ACCEPTED.join(',')} onChange={handleAddMedia} multiple className="hidden" />
-            <p className="text-xs text-gray-500">Images: PNG, JPG, GIF \u2264 5 MB \u00B7 Videos: MP4, WebM \u2264 50 MB (8\u201315s recommended) \u00B7 {mediaItems.length}/{MAX_MEDIA}</p>
+            <p className="text-xs text-gray-500">Images: PNG, JPG, GIF ≤ 5 MB · Videos: MP4, WebM ≤ 50 MB (8–15s recommended) · {mediaItems.length}/{MAX_MEDIA}</p>
             {errors.media && <p className="text-xs text-red-500">{errors.media}</p>}
           </div>
 
@@ -473,10 +502,55 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
             <Input id="sku" value={formData.manufacturer_sku || ''} readOnly className="bg-gray-100 cursor-not-allowed text-gray-700" />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="manual_sku">Manual SKU <span className="text-xs text-gray-500">(Optional, 5 chars max)</span></Label>
-            <Input id="manual_sku" value={formData.manual_sku || ''} onChange={(e) => setFormData((p) => ({ ...p, manual_sku: e.target.value.toUpperCase().slice(0, 5) }))} maxLength={5} placeholder="Enter custom SKU" className="uppercase" />
-          </div>
+          {isVapeCategory && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="manual_sku">KKM Approval <span className="text-xs text-gray-500">(Optional)</span></Label>
+                <Input
+                  id="manual_sku"
+                  value={formData.manual_sku || ''}
+                  onChange={(event) => setFormData((previous) => ({ ...previous, manual_sku: event.target.value }))}
+                  placeholder="Enter KKM approval/reference number"
+                />
+              </div>
+              <KkmApprovalCertificate
+                variantId={variant?.id}
+                canManage={canManageCertificates}
+                pendingFile={certificateFile}
+                onPendingFileChange={setCertificateFile}
+                kkmApproval={formData.manual_sku}
+              />
+            </>
+          )}
+
+          {variant?.id ? (
+            <VariantStockConfigurationsPanel
+              variantId={variant.id}
+              product={selectedProduct}
+              canManage={canManageStockConfigurations}
+            />
+          ) : null}
+
+          {isNewCelleraVariant ? (
+            <div className="space-y-2 rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4">
+              <Label className="text-sm font-semibold">Stock Configuration Setup Profile</Label>
+              <p className="text-xs text-slate-600">Choose how this Cellera flavour's inventory stock configurations are set up once created.</p>
+              <RadioGroup value={configurationProfile} onValueChange={(value) => setConfigurationProfile(value as 'new_standard' | 'transition')} className="space-y-2">
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="new_standard" id="profile-new-standard" className="mt-1" />
+                  <Label htmlFor="profile-new-standard" className="font-normal cursor-pointer">
+                    <span className="font-medium">New Standard Product</span> — 20ml New Box only (default)
+                  </Label>
+                </div>
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="transition" id="profile-transition" className="mt-1" />
+                  <Label htmlFor="profile-transition" className="font-normal cursor-pointer">
+                    <span className="font-medium">Existing / Transition Product</span> — 20ml New Box, 50ml New Box, and 50ml Old Box
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -514,7 +588,7 @@ export default function VariantDialog({ variant, products, open, isSaving, onOpe
         </SeraModalBody>
 
         <SeraModalFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode} className="border-[var(--sera-line)]">Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={isSaving || isValidatingProductCode} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
             {isSaving || isValidatingProductCode ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{isSaving ? 'Saving...' : 'Validating...'}</> : 'Save'}
           </Button>

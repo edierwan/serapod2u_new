@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { filterQuickOrderCatalogRows, validateQuickOrderCatalogItems } from './quick-order-catalog'
+import {
+  filterQuickOrderCatalogRows,
+  resolveSellableAvailability,
+  resolveUnclassifiedVariantIds,
+  UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
+  validateQuickOrderCatalogItems,
+} from './quick-order-catalog'
 import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
 
 const row = (id: string, productName: string, groupName: string, options: Record<string, unknown> = {}) => ({
@@ -42,17 +48,21 @@ describe('D2H Quick Order Vape catalog', () => {
   stock.set('no-stock', 0)
   const catalog = filterQuickOrderCatalogRows(rows, stock)
 
-  it('includes Cellera Hero, Cellera Zero, S.Box, and S.Line', () => {
-    expect(catalog.map(item => item.product_name)).toEqual(['Cellera Hero', 'Cellera Zero', 'S.Box', 'S.Line'])
+  it('includes active Product Master variants even when no sellable stock is available', () => {
+    expect(catalog.map(item => item.product_name)).toEqual(['Cellera Hero', 'Cellera Zero', 'S.Box', 'S.Line', 'No Stock'])
+    expect(catalog.find(item => item.id === 'no-stock')).toMatchObject({
+      available_qty: 0,
+      inventory_classification: 'classified',
+    })
   })
 
-  it('excludes non-Vape, inactive, discontinued, unavailable, and unpriced products', () => {
-    expect(catalog.map(item => item.id)).toEqual(['hero', 'zero', 'sbox', 'sline'])
+  it('excludes non-Vape, inactive, discontinued, and unpriced products', () => {
+    expect(catalog.map(item => item.id)).toEqual(['hero', 'zero', 'sbox', 'sline', 'no-stock'])
   })
 
   it('derives only Vape catalog groups and counts', () => {
     const counts = catalog.reduce<Record<string, number>>((result, item) => ({ ...result, [item.group_name]: (result[item.group_name] || 0) + 1 }), {})
-    expect(counts).toEqual({ Cartridge: 2, Device: 2 })
+    expect(counts).toEqual({ Cartridge: 3, Device: 2 })
   })
 
   it('includes Alternative Name in the authorized catalog used by paste matching', () => {
@@ -78,6 +88,52 @@ describe('D2H Quick Order Vape catalog', () => {
   it('preserves authoritative Quick catalog stock and price validation', () => {
     expect(validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 10 }], catalog)[0])
       .toMatchObject({ availableQuantity: 10, distributorPrice: 32 })
-    expect(() => validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 11 }], catalog)).toThrow('Insufficient stock')
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'hero', quantity: 11 }], catalog, 'Serapod Warehouse Alma'))
+      .toThrow('Insufficient available stock at Serapod Warehouse Alma')
+  })
+
+  it('keeps an unclassified variant matchable but blocks D2H submission', () => {
+    const unclassifiedCatalog = filterQuickOrderCatalogRows(
+      [row('guava', 'Cellera Hero', 'Cartridge')],
+      new Map([['guava', 0]]),
+      new Set(['guava']),
+    )
+
+    expect(matchPastedOrder('CELLERA HERO FLAVOUR - 300', unclassifiedCatalog)[0]).toMatchObject({
+      selectedVariantId: 'guava',
+      inventoryOutcome: 'inventory_unclassified',
+    })
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'guava', quantity: 300 }], unclassifiedCatalog))
+      .toThrow(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)
+  })
+
+  it('detects only positive Legacy/Unclassified inventory balances', () => {
+    const configurations = [
+      { id: 'legacy', config_code: 'UNCLASSIFIED', volume_ml: null, packaging: null, status: 'phase_out', allow_so: false, requires_repacking_before_sale: false },
+      { id: '20nb', config_code: '20NB', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+    ]
+    const inventory = [
+      { variant_id: 'guava', stock_config_id: 'legacy', quantity_on_hand: 300, quantity_available: 300 },
+      { variant_id: 'mango', stock_config_id: 'legacy', quantity_on_hand: 0, quantity_available: 0 },
+      { variant_id: 'mango', stock_config_id: '20nb', quantity_on_hand: 20, quantity_available: 20 },
+    ]
+
+    expect([...resolveUnclassifiedVariantIds(inventory, configurations)]).toEqual(['guava'])
+  })
+
+  it('uses one eligible configuration per line and never exposes old-box stock', () => {
+    const inventory = [
+      { variant_id: 'hero', stock_config_id: '20nb', quantity_available: 8 },
+      { variant_id: 'hero', stock_config_id: '50nb', quantity_available: 12 },
+      { variant_id: 'hero', stock_config_id: '50ob', quantity_available: 99 },
+    ]
+    const configurations = [
+      { id: '20nb', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+      { id: '50nb', volume_ml: 50, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+      { id: '50ob', volume_ml: 50, packaging: 'old_box', status: 'active', allow_so: false, requires_repacking_before_sale: true },
+    ]
+
+    expect(resolveSellableAvailability(inventory, configurations, false).get('hero')).toBe(8)
+    expect(resolveSellableAvailability(inventory, configurations, true).get('hero')).toBe(12)
   })
 })

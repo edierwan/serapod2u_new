@@ -5,6 +5,13 @@ import {
     type StockCountVerificationErrorCode,
 } from './stock-count-verification-errors'
 import { normalizeBaseCost, sumStockCountImpacts } from './stock-count-costing'
+import { stockCountRowsSignature } from './stock-count-snapshot'
+import {
+    CLASSIFICATION_LEGACY_CONFIG_CODE,
+    CLASSIFICATION_TARGET_CONFIG_CODES,
+    evaluateClassificationPostable,
+    type ClassificationLiveLegacyBalance,
+} from './stock-count-classification'
 
 export interface StockCountPreflightSuccess {
     ok: true
@@ -14,6 +21,11 @@ export interface StockCountPreflightSuccess {
     recipients: string[]
     provider: any
     authoritativeBaseCosts: Record<string, number | null>
+    // Signature of the *persisted* counted rows. The client computes the same
+    // signature over the rows currently on screen; a mismatch means the draft
+    // was saved from a different (stale) state than what the user is reviewing,
+    // and posting must be blocked before a code is issued.
+    persistedSignature: string
     summary: {
         totalVariantsCounted: number
         varianceItems: number
@@ -22,23 +34,40 @@ export interface StockCountPreflightSuccess {
     }
 }
 
-export type StockCountPreflightResult = StockCountPreflightSuccess | { ok: false; code: StockCountVerificationErrorCode }
+export type StockCountPreflightResult =
+    | StockCountPreflightSuccess
+    | { ok: false; code: StockCountVerificationErrorCode; message?: string }
 
 interface StockCountSessionItem {
+    stock_config_id: string | null
     variant_id: string
     physical_quantity: number | null
     adjustment_quantity: number | null
     unit_cost: number | null
+    note?: string | null
+    inventory_stock_configurations?: { config_code?: string | null } | Array<{ config_code?: string | null }> | null
 }
 
 export interface StockCountPreflightDependencies {
     loadAccessibleSession: (sessionId: string) => Promise<any | null>
     loadVariantBaseCosts: (variantIds: string[]) => Promise<Array<{ id: string; base_cost: number | string | null }>>
+    loadClassificationLiveLegacy: (
+        warehouseId: string,
+        variantIds: string[],
+    ) => Promise<ClassificationLiveLegacyBalance[]>
+    loadVariantLabels: (variantIds: string[]) => Promise<Array<{ id: string; variant_name: string | null; product_name: string | null }>>
     checkPermission: (userId: string, permission: string) => Promise<{ allowed: boolean; context: { organization_id: string | null } | null }>
     loadEvent: () => Promise<any | null>
     loadSetting: (orgId: string) => Promise<any | null>
     loadUsers: (ids: string[]) => Promise<any[]>
     loadProvider: (orgId: string) => Promise<any | null>
+}
+
+function configCodeOf(item: StockCountSessionItem): string | null {
+    const cfg = Array.isArray(item.inventory_stock_configurations)
+        ? item.inventory_stock_configurations[0]
+        : item.inventory_stock_configurations
+    return cfg?.config_code ? String(cfg.config_code) : null
 }
 
 function providerLooksUsable(provider: any): boolean {
@@ -69,8 +98,41 @@ export async function evaluateStockCountPreflight(
         : []
     const counted = items.filter((item) => item.physical_quantity !== null)
     if (!counted.length) return { ok: false, code: 'invalid_count_data' }
+    if (counted.some((item) => !item.stock_config_id)) return { ok: false, code: 'configuration_identity_missing' }
     const varianceItems = counted.filter((item) => Number(item.adjustment_quantity || 0) !== 0)
     if (varianceItems.length && !isValidStockCountPostingNote(session.notes)) return { ok: false, code: 'posting_note_required' }
+
+    // Initial Configuration Classification: revalidate live Legacy balances and
+    // refuse allocated>0 / already-fully-classified before a code is requested.
+    // Target totals above/below Legacy are genuine physical-count variance.
+    if (session.count_type === 'initial_configuration_classification') {
+        const variantIds = Array.from(new Set(counted.map((item) => item.variant_id)))
+        const [liveRows, labels] = await Promise.all([
+            deps.loadClassificationLiveLegacy(session.warehouse_organization_id, variantIds),
+            deps.loadVariantLabels(variantIds),
+        ])
+        const liveByVariant = new Map(liveRows.map((row) => [row.variantId, row]))
+        const labelByVariant = new Map(labels.map((row) => [row.id, row]))
+        const flavours = variantIds.map((variantId) => {
+            const variantItems = counted.filter((item) => item.variant_id === variantId)
+            const requestedTotal = variantItems
+                .filter((item) => (CLASSIFICATION_TARGET_CONFIG_CODES as readonly string[]).includes(configCodeOf(item) || ''))
+                .reduce((sum, item) => sum + Number(item.physical_quantity || 0), 0)
+            const hasLegacyRow = variantItems.some((item) => configCodeOf(item) === CLASSIFICATION_LEGACY_CONFIG_CODE)
+            const label = labelByVariant.get(variantId)
+            return {
+                variantId,
+                productName: label?.product_name || 'Unknown product',
+                variantName: label?.variant_name || 'Unknown flavour',
+                requestedTotal,
+                selected: hasLegacyRow,
+            }
+        })
+        const classificationGate = evaluateClassificationPostable(flavours, liveByVariant)
+        if (!classificationGate.ok) {
+            return { ok: false, code: classificationGate.code, message: classificationGate.message }
+        }
+    }
 
     // Master-data Base Cost is authoritative for Stock Count. The draft's
     // unit_cost may be stale (or may have come from legacy average-cost logic),
@@ -109,6 +171,14 @@ export async function evaluateStockCountPreflight(
         recipients,
         provider,
         authoritativeBaseCosts: Object.fromEntries(baseCosts),
+        persistedSignature: stockCountRowsSignature(items.map((item) => ({
+            stockConfigId: item.stock_config_id ?? null,
+            variantId: item.variant_id,
+            physicalCount: item.physical_quantity === null || item.physical_quantity === undefined
+                ? null
+                : Number(item.physical_quantity),
+            note: typeof item.note === 'string' ? item.note : '',
+        }))),
         summary: {
             totalVariantsCounted: counted.length,
             varianceItems: varianceItems.length,
@@ -126,14 +196,76 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
         loadAccessibleSession: async (sessionId) => {
             const { data } = await supabase.from('stock_count_sessions').select(`
                 id, warehouse_organization_id, count_date, count_type, reference_name, notes, status,
-                stock_count_session_items(variant_id, physical_quantity, adjustment_quantity, unit_cost)
+                stock_count_session_items(stock_config_id, variant_id, physical_quantity, adjustment_quantity, unit_cost, note)
             `).eq('id', sessionId).maybeSingle()
-            return data || null
+            if (!data || data.count_type !== 'initial_configuration_classification') return data || null
+            const items = Array.isArray(data.stock_count_session_items) ? data.stock_count_session_items : []
+            const configIds = Array.from(new Set(items.map((item: any) => item.stock_config_id).filter(Boolean)))
+            if (!configIds.length) return data
+            const { data: configs } = await admin
+                .from('inventory_stock_configurations')
+                .select('id, config_code')
+                .in('id', configIds)
+            const codeById = new Map((configs || []).map((row: any) => [row.id, row.config_code]))
+            return {
+                ...data,
+                stock_count_session_items: items.map((item: any) => ({
+                    ...item,
+                    inventory_stock_configurations: item.stock_config_id
+                        ? { config_code: codeById.get(item.stock_config_id) || null }
+                        : null,
+                })),
+            }
         },
         loadVariantBaseCosts: async (variantIds) => {
             if (!variantIds.length) return []
             const { data } = await admin.from('product_variants').select('id,base_cost').in('id', variantIds)
             return data || []
+        },
+        loadClassificationLiveLegacy: async (warehouseId, variantIds) => {
+            if (!variantIds.length) return []
+            const { data: configs } = await admin
+                .from('inventory_stock_configurations')
+                .select('id, variant_id, config_code, stock_sku, product_variants!inner(variant_name, products!inner(product_name))')
+                .in('variant_id', variantIds)
+                .eq('config_code', CLASSIFICATION_LEGACY_CONFIG_CODE)
+            const configRows = (configs || []) as any[]
+            if (!configRows.length) return []
+            const configIds = configRows.map((row) => row.id)
+            const { data: inventory } = await admin
+                .from('product_inventory')
+                .select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated')
+                .eq('organization_id', warehouseId)
+                .eq('is_active', true)
+                .in('stock_config_id', configIds)
+            const invByConfig = new Map((inventory || []).map((row: any) => [row.stock_config_id, row]))
+            return configRows.map((cfg) => {
+                const inv = invByConfig.get(cfg.id)
+                const variant = Array.isArray(cfg.product_variants) ? cfg.product_variants[0] : cfg.product_variants
+                const product = Array.isArray(variant?.products) ? variant.products[0] : variant?.products
+                return {
+                    variantId: cfg.variant_id,
+                    productName: product?.product_name || 'Unknown product',
+                    variantName: variant?.variant_name || 'Unknown flavour',
+                    liveOnHand: Number(inv?.quantity_on_hand || 0),
+                    liveAllocated: Number(inv?.quantity_allocated || 0),
+                } satisfies ClassificationLiveLegacyBalance
+            })
+        },
+        loadVariantLabels: async (variantIds) => {
+            if (!variantIds.length) return []
+            const { data } = await admin
+                .from('product_variants')
+                .select('id, variant_name, products!inner(product_name)')
+                .in('id', variantIds)
+            return (data || []).map((row: any) => {
+                const product = Array.isArray(row.products) ? row.products[0] : row.products
+                return {
+                    id: row.id,
+                    variant_name: row.variant_name || null,
+                    product_name: product?.product_name || null,
+                }
+            })
         },
         checkPermission: (userId, permission) => checkPermissionForUser(userId, permission) as any,
         loadEvent: async () => {
