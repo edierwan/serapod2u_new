@@ -133,7 +133,7 @@ export default function StoreAccountClient() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--sera-orange)]" />
       </div>
     )
   }
@@ -141,7 +141,7 @@ export default function StoreAccountClient() {
   if (!profile) {
     return (
       <div className="max-w-xl mx-auto px-4 py-12 text-center">
-        <p className="text-gray-500">Unable to load profile. Please try logging in again.</p>
+        <p className="text-[var(--sera-muted)]">Unable to load profile. Please try logging in again.</p>
         <Button variant="outline" className="mt-4" onClick={() => router.push('/login')}>
           Go to Login
         </Button>
@@ -156,13 +156,13 @@ export default function StoreAccountClient() {
       {/* Back button */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
+        className="flex items-center gap-1 text-sm text-[var(--sera-muted)] hover:text-[var(--sera-ink)]/80 mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
         Back
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">My Account</h1>
+      <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] mb-8">My Account</h1>
 
       {/* Messages */}
       {message && (
@@ -179,7 +179,7 @@ export default function StoreAccountClient() {
 
       {/* Avatar */}
       <div className="flex items-center gap-4 mb-8">
-        <div className="relative h-20 w-20 rounded-full bg-gray-100 overflow-hidden flex-shrink-0">
+        <div className="relative h-20 w-20 rounded-full bg-[var(--sera-mist)] overflow-hidden flex-shrink-0">
           {profile.avatarUrl ? (
             <Image
               src={profile.avatarUrl}
@@ -189,14 +189,14 @@ export default function StoreAccountClient() {
               unoptimized
             />
           ) : (
-            <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600">
+            <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)]">
               <User className="h-8 w-8 text-white" />
             </div>
           )}
         </div>
         <div>
-          <p className="font-semibold text-gray-900">{profile.fullName || 'User'}</p>
-          <p className="text-sm text-gray-500">{profile.email}</p>
+          <p className="font-semibold text-[var(--sera-ink)]">{profile.fullName || 'User'}</p>
+          <p className="text-sm text-[var(--sera-muted)]">{profile.email}</p>
         </div>
       </div>
 
@@ -204,7 +204,7 @@ export default function StoreAccountClient() {
       <div className="space-y-5">
         {/* Full Name */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <User className="h-4 w-4" /> Full Name
           </Label>
           <Input
@@ -217,20 +217,20 @@ export default function StoreAccountClient() {
 
         {/* Email (read-only) */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <Mail className="h-4 w-4" /> Email
           </Label>
           <Input
             value={profile.email}
             disabled
-            className="h-11 rounded-xl bg-gray-50 text-gray-500"
+            className="h-11 rounded-xl bg-[var(--sera-mist)] text-[var(--sera-muted)]"
           />
-          <p className="text-xs text-gray-400">Email cannot be changed.</p>
+          <p className="text-xs text-[var(--sera-muted)]/70">Email cannot be changed.</p>
         </div>
 
         {/* Phone */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <Phone className="h-4 w-4" /> Phone
           </Label>
           <Input
@@ -243,7 +243,7 @@ export default function StoreAccountClient() {
 
         {/* Address */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <MapPin className="h-4 w-4" /> Address
           </Label>
           <Input
@@ -256,7 +256,7 @@ export default function StoreAccountClient() {
 
         {/* Location */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <MapPin className="h-4 w-4" /> Location / City
           </Label>
           <Input
@@ -269,9 +269,9 @@ export default function StoreAccountClient() {
 
         {/* Shop Name (for shoppers) */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+          <Label className="text-sm font-medium text-[var(--sera-ink)]/80 flex items-center gap-1.5">
             <Store className="h-4 w-4" /> Shop Name
-            <span className="text-xs text-gray-400 font-normal">(optional)</span>
+            <span className="text-xs text-[var(--sera-muted)]/70 font-normal">(optional)</span>
           </Label>
           <Input
             value={shopName}
@@ -291,7 +291,7 @@ export default function StoreAccountClient() {
         <Button
           onClick={handleSave}
           disabled={isSaving}
-          className="w-full h-11 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold"
+          className="w-full h-11 rounded-xl bg-gradient-to-r from-[var(--sera-orange)] to-[var(--sera-orange-deep)] hover:from-[var(--sera-orange-deep)] hover:to-[var(--sera-orange-deep)] text-white font-semibold"
         >
           {isSaving ? (
             <>

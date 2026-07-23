@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import StorefrontNavbar from '@/components/storefront/StorefrontNavbar'
 import StorefrontFooter from '@/components/storefront/StorefrontFooter'
 import { CartProvider } from '@/lib/storefront/cart-context'
+import './store.css'
 
 export const metadata: Metadata = {
   title: {
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 export default function StorefrontLayout({ children }: { children: React.ReactNode }) {
   return (
     <CartProvider>
-      <div className="min-h-screen flex flex-col bg-white text-gray-900">
+      <div className="sera-store min-h-screen flex flex-col">
         <StorefrontNavbar />
         <main className="flex-1">
           {children}

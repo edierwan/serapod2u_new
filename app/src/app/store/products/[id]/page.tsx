@@ -25,11 +25,10 @@ export default async function ProductDetailPage({ params }: PageProps) {
   if (!product) return notFound()
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 sm:py-10">
       <Link
         href="/store/products"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-6"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm text-[var(--sera-muted)] transition-colors hover:text-[var(--sera-orange)]"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to products

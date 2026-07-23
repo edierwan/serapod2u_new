@@ -82,7 +82,7 @@ function SideBannerCard({ banner }: { banner: HeroBanner }) {
       {/* Content overlay */}
       <div className="relative h-full flex flex-col justify-end p-4">
         {banner.badge_text && (
-          <span className="inline-block w-fit px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white bg-blue-600/80 backdrop-blur-sm rounded-full mb-1.5">
+          <span className="inline-block w-fit px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white bg-[var(--sera-orange)]/85 backdrop-blur-sm rounded-full mb-1.5">
             {banner.badge_text}
           </span>
         )}
@@ -92,12 +92,12 @@ function SideBannerCard({ banner }: { banner: HeroBanner }) {
           </h3>
         )}
         {banner.subtitle && (
-          <p className="text-[11px] text-gray-200 mt-0.5 line-clamp-1">
+          <p className="text-[11px] text-white/55 mt-0.5 line-clamp-1">
             {banner.subtitle}
           </p>
         )}
         {banner.link_url && banner.link_text && (
-          <span className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-blue-300 group-hover:text-blue-200 transition-colors">
+          <span className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-[var(--sera-orange)] group-hover:text-[#ff8a3d] transition-colors">
             {banner.link_text}
             <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
           </span>
@@ -161,14 +161,14 @@ export default function SplitHeroLayout({
 
   return (
     <section
-      className="bg-gray-50"
+      className="bg-[var(--sera-mist)]"
       role="region"
       aria-label="Store promotions"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className={`grid gap-3 ${hasSides ? 'lg:grid-cols-[2fr_1fr]' : 'grid-cols-1'}`}>
           {/* Main carousel (left) */}
-          <div className="relative rounded-xl overflow-hidden bg-gray-900 min-h-[280px] sm:min-h-[380px] lg:min-h-[420px]">
+          <div className="relative rounded-xl overflow-hidden bg-[var(--sera-ink)] min-h-[280px] sm:min-h-[380px] lg:min-h-[420px]">
             {/* Gradient animation */}
             <div
               className="absolute inset-0 opacity-30 pointer-events-none z-[1]"
@@ -214,7 +214,7 @@ export default function SplitHeroLayout({
                               {banner.badge_text && (
                                 <motion.span
                                   variants={prefersReducedMotion ? undefined : textItem}
-                                  className="inline-block px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-blue-400 bg-blue-500/10 backdrop-blur-sm rounded-full mb-3 border border-blue-400/20"
+                                  className="inline-block px-2.5 py-0.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-[var(--sera-orange)] bg-[var(--sera-orange)]/15 backdrop-blur-sm rounded-full mb-3 border border-[var(--sera-orange)]/25"
                                 >
                                   {banner.badge_text}
                                 </motion.span>
@@ -227,7 +227,7 @@ export default function SplitHeroLayout({
                                 >
                                   {banner.title.split(',').map((part, i, arr) =>
                                     i === arr.length - 1 && arr.length > 1 ? (
-                                      <span key={i} className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-400">
+                                      <span key={i} className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--sera-orange)] to-[#ff8a3d]">
                                         {part}
                                       </span>
                                     ) : (
@@ -240,7 +240,7 @@ export default function SplitHeroLayout({
                               {banner.subtitle && (
                                 <motion.p
                                   variants={prefersReducedMotion ? undefined : textItem}
-                                  className="mt-3 text-sm sm:text-base text-gray-300 max-w-md leading-relaxed"
+                                  className="mt-3 text-sm sm:text-base text-white/65 max-w-md leading-relaxed"
                                 >
                                   {banner.subtitle}
                                 </motion.p>
@@ -250,7 +250,7 @@ export default function SplitHeroLayout({
                                 <motion.div variants={prefersReducedMotion ? undefined : textItem} className="mt-5 flex flex-wrap gap-2">
                                   <Link
                                     href={banner.link_url}
-                                    className="group/cta inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-500 hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-600/25 transition-all duration-200"
+                                    className="group/cta inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-[var(--sera-orange)] rounded-xl hover:bg-[var(--sera-orange-deep)] hover:scale-[1.02] hover:shadow-lg hover:shadow-[var(--sera-orange)]/25 transition-all duration-200"
                                   >
                                     {banner.link_text || 'Shop Now'}
                                     <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover/cta:translate-x-0.5" />

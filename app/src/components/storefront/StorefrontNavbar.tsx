@@ -5,8 +5,9 @@ import Image from 'next/image'
 import { useState, useEffect, useRef } from 'react'
 import { ShoppingCart, Search, User, Menu, X, LogOut, Package, ChevronDown } from 'lucide-react'
 import { useCart } from '@/lib/storefront/cart-context'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import StoreBrandMark from '@/components/storefront/StoreBrandMark'
 
 interface UserInfo {
   id: string
@@ -17,6 +18,15 @@ interface UserInfo {
   org_type_code: string | null
 }
 
+const NAV_LINKS = [
+  { href: '/store', label: 'Home', match: (path: string) => path === '/store' },
+  {
+    href: '/store/products',
+    label: 'Products',
+    match: (path: string) => path.startsWith('/store/products'),
+  },
+]
+
 export default function StorefrontNavbar() {
   const { totalItems, clearCart } = useCart()
   const [searchOpen, setSearchOpen] = useState(false)
@@ -25,10 +35,18 @@ export default function StorefrontNavbar() {
   const [user, setUser] = useState<UserInfo | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
   const [loadingAuth, setLoadingAuth] = useState(true)
+  const [scrolled, setScrolled] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const pathname = usePathname()
 
-  // Check auth state
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -63,7 +81,6 @@ export default function StorefrontNavbar() {
     }
     checkAuth()
 
-    // Listen for auth changes
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
@@ -81,7 +98,6 @@ export default function StorefrontNavbar() {
     return () => { subscription.unsubscribe() }
   }, [])
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -105,7 +121,7 @@ export default function StorefrontNavbar() {
     try {
       const supabase = createClient()
       await supabase.auth.signOut()
-      clearCart() // Clear cart on logout to avoid stale items for next user
+      clearCart()
       setUser(null)
       setShowDropdown(false)
       router.push('/store')
@@ -121,65 +137,85 @@ export default function StorefrontNavbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-100 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link href="/store" className="flex items-center gap-2 flex-shrink-0">
-            <div className="h-8 w-8 bg-gradient-to-br from-gray-900 to-gray-700 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">S</span>
-            </div>
-            <span className="text-lg font-semibold text-gray-900 hidden sm:block">
-              Serapod2U
-            </span>
+    <header
+      className={`sticky top-0 z-50 border-b backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 ${
+        scrolled
+          ? 'border-[var(--sera-line)] bg-[var(--sera-surface)]/92 shadow-[0_10px_32px_-18px_rgba(20,18,16,0.4)]'
+          : 'border-transparent bg-[var(--sera-paper)]/88'
+      }`}
+    >
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="flex h-[4.25rem] items-center gap-4 lg:gap-6">
+          <Link href="/store" className="flex flex-shrink-0 items-center group" aria-label="Serapod Store home">
+            <StoreBrandMark
+              className="h-7 w-auto transition-transform duration-300 group-hover:scale-[1.02] sm:h-8"
+              priority
+            />
           </Link>
 
-          {/* Desktop Search */}
-          <div className="hidden md:flex flex-1 max-w-lg mx-8">
-            <form onSubmit={handleSearch} className="w-full relative">
+          <nav className="ml-2 hidden items-center gap-1 lg:flex" aria-label="Primary">
+            {NAV_LINKS.map((link) => {
+              const active = link.match(pathname || '')
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`relative rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? 'text-[var(--sera-ink)]'
+                      : 'text-[var(--sera-muted)] hover:text-[var(--sera-ink)]'
+                  }`}
+                >
+                  {link.label}
+                  {active && (
+                    <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-[var(--sera-orange)]" />
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="mx-auto hidden min-w-0 max-w-md flex-1 md:block lg:mx-0 lg:max-w-sm xl:max-w-md">
+            <form onSubmit={handleSearch} className="relative w-full">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search products..."
-                className="w-full h-10 pl-10 pr-4 rounded-full border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 transition-all"
+                className="h-10 w-full rounded-xl border border-[var(--sera-line)] bg-[var(--sera-surface)] pl-10 pr-4 text-sm text-[var(--sera-ink)] placeholder:text-[var(--sera-muted)]/70 transition-all focus:border-[var(--sera-orange)]/40 focus:bg-[var(--sera-surface)] focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/20"
               />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sera-muted)]" />
             </form>
           </div>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-2">
-            {/* Mobile search toggle */}
+          <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
             <button
               onClick={() => setSearchOpen(!searchOpen)}
-              className="md:hidden p-2 text-gray-600 hover:text-gray-900 transition-colors"
+              className="rounded-xl p-2.5 text-[var(--sera-muted)] transition-colors hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)] md:hidden"
               aria-label="Search"
             >
               <Search className="h-5 w-5" />
             </button>
 
-            {/* Cart */}
             <Link
               href="/store/cart"
-              className="relative p-2 text-gray-600 hover:text-gray-900 transition-colors"
+              className="relative rounded-xl p-2.5 text-[var(--sera-muted)] transition-colors hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]"
               aria-label="Cart"
             >
               <ShoppingCart className="h-5 w-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 h-5 w-5 flex items-center justify-center rounded-full bg-gray-900 text-white text-[10px] font-bold">
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--sera-orange)] px-1 text-[10px] font-bold text-white">
                   {totalItems > 99 ? '99+' : totalItems}
                 </span>
               )}
             </Link>
 
-            {/* Auth: Avatar dropdown or Login button */}
             {!loadingAuth && (
               user ? (
                 <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
-                    className="flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-2 rounded-full p-1 transition-colors hover:bg-[var(--sera-mist)]"
                     aria-label="User menu"
                   >
                     {user.avatar_url ? (
@@ -188,25 +224,23 @@ export default function StorefrontNavbar() {
                         alt={user.full_name || 'User'}
                         width={32}
                         height={32}
-                        className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                        className="h-8 w-8 rounded-full border border-[var(--sera-line)] object-cover"
                         unoptimized
                       />
                     ) : (
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-xs font-bold text-white">
                         {getInitials(user.full_name, user.email)}
                       </div>
                     )}
-                    <span className="hidden sm:block text-sm font-medium text-gray-700 max-w-[120px] truncate">
+                    <span className="hidden max-w-[120px] truncate text-sm font-medium text-[var(--sera-ink-soft)] sm:block">
                       {user.full_name || user.email.split('@')[0]}
                     </span>
-                    <ChevronDown className="hidden sm:block h-4 w-4 text-gray-400" />
+                    <ChevronDown className="hidden h-4 w-4 text-[var(--sera-muted)] sm:block" />
                   </button>
 
-                  {/* Dropdown Menu */}
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
-                      {/* User Info Header */}
-                      <div className="px-4 py-3 border-b border-gray-100">
+                    <div className="absolute right-0 z-50 mt-2 w-64 animate-in fade-in slide-in-from-top-2 rounded-2xl border border-[var(--sera-line)] bg-[var(--sera-surface)] py-2 shadow-lg duration-150">
+                      <div className="border-b border-[var(--sera-line)] px-4 py-3">
                         <div className="flex items-center gap-3">
                           {user.avatar_url ? (
                             <Image
@@ -218,44 +252,42 @@ export default function StorefrontNavbar() {
                               unoptimized
                             />
                           ) : (
-                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white text-sm font-bold">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-sm font-bold text-white">
                               {getInitials(user.full_name, user.email)}
                             </div>
                           )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-[var(--sera-ink)]">
                               {user.full_name || 'User'}
                             </p>
-                            <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                            <p className="truncate text-xs text-[var(--sera-muted)]">{user.email}</p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Menu Items */}
                       <div className="py-1">
                         <Link
                           href="/store/account"
                           onClick={() => setShowDropdown(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--sera-ink-soft)] transition-colors hover:bg-[var(--sera-mist)]"
                         >
-                          <User className="h-4 w-4 text-gray-400" />
+                          <User className="h-4 w-4 text-[var(--sera-muted)]" />
                           My Account
                         </Link>
                         <Link
                           href="/store/orders"
                           onClick={() => setShowDropdown(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--sera-ink-soft)] transition-colors hover:bg-[var(--sera-mist)]"
                         >
-                          <Package className="h-4 w-4 text-gray-400" />
+                          <Package className="h-4 w-4 text-[var(--sera-muted)]" />
                           My Purchases
                         </Link>
                       </div>
 
-                      {/* Logout */}
-                      <div className="border-t border-gray-100 py-1">
+                      <div className="border-t border-[var(--sera-line)] py-1">
                         <button
                           onClick={handleSignOut}
-                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors"
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50"
                         >
                           <LogOut className="h-4 w-4" />
                           Logout
@@ -267,7 +299,7 @@ export default function StorefrontNavbar() {
               ) : (
                 <Link
                   href="/login"
-                  className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-gray-900 rounded-full hover:bg-gray-800 transition-colors"
+                  className="hidden items-center gap-1.5 rounded-xl bg-[var(--sera-orange)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--sera-orange-deep)] sm:inline-flex"
                 >
                   <User className="h-4 w-4" />
                   Login
@@ -275,10 +307,9 @@ export default function StorefrontNavbar() {
               )
             )}
 
-            {/* Mobile menu */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-gray-600 hover:text-gray-900 transition-colors"
+              className="rounded-xl p-2.5 text-[var(--sera-muted)] transition-colors hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)] md:hidden"
               aria-label="Menu"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -286,9 +317,8 @@ export default function StorefrontNavbar() {
           </div>
         </div>
 
-        {/* Mobile search bar */}
         {searchOpen && (
-          <div className="md:hidden pb-3">
+          <div className="pb-3 md:hidden">
             <form onSubmit={handleSearch} className="relative">
               <input
                 type="text"
@@ -296,36 +326,46 @@ export default function StorefrontNavbar() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search products..."
                 autoFocus
-                className="w-full h-10 pl-10 pr-4 rounded-full border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                className="h-10 w-full rounded-xl border border-[var(--sera-line)] bg-[var(--sera-paper)] pl-10 pr-4 text-sm text-[var(--sera-ink)] placeholder:text-[var(--sera-muted)]/70 focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25"
               />
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sera-muted)]" />
             </form>
           </div>
         )}
 
-        {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 py-3 space-y-2">
-            <Link href="/store" onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">Home</Link>
-            <Link href="/store/products" onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">All Products</Link>
+          <div className="space-y-1 border-t border-[var(--sera-line)] py-3 md:hidden">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block rounded-xl px-3 py-2.5 text-sm font-medium ${
+                  link.match(pathname || '')
+                    ? 'bg-[var(--sera-mist)] text-[var(--sera-ink)]'
+                    : 'text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]'
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
             {user ? (
               <>
                 <Link href="/store/account" onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">My Account</Link>
+                  className="block rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]">My Account</Link>
                 <Link href="/store/orders" onClick={() => setMobileMenuOpen(false)}
-                  className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">My Purchases</Link>
+                  className="block rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]">My Purchases</Link>
                 <button onClick={() => { handleSignOut(); setMobileMenuOpen(false) }}
-                  className="block w-full text-left px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg">Logout</button>
+                  className="block w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50">Logout</button>
               </>
             ) : (
               <Link href="/login" onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg">Login</Link>
+                className="block rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]">Login</Link>
             )}
           </div>
         )}
       </div>
+      <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-[var(--sera-orange)]/70 to-transparent opacity-80" />
     </header>
   )
 }

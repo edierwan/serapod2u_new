@@ -1,6 +1,7 @@
 import { listProducts, listCategories } from '@/lib/storefront/products'
 import StorefrontProductCard from '@/components/storefront/ProductCard'
 import ProductListingControls from '@/components/storefront/ListingControls'
+import StoreReveal from '@/components/storefront/StoreReveal'
 import { Package } from 'lucide-react'
 import type { Metadata } from 'next'
 
@@ -38,43 +39,47 @@ export default async function ProductsPage({ searchParams }: PageProps) {
   const totalPages = Math.ceil(total / limit)
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          {params.search ? `Results for "${params.search}"` : 'All Products'}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {total} product{total !== 1 ? 's' : ''} found
-        </p>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 sm:py-10">
+      <StoreReveal>
+        <div className="mb-8">
+          <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] sm:text-3xl">
+            {params.search ? `Results for "${params.search}"` : 'All Products'}
+          </h1>
+          <p className="mt-1 text-sm text-[var(--sera-muted)]">
+            {total} product{total !== 1 ? 's' : ''} found
+          </p>
+        </div>
+      </StoreReveal>
 
-      {/* Controls */}
-      <ProductListingControls
-        categories={categories}
-        currentCategory={params.category}
-        currentSort={sort}
-        currentSearch={params.search}
-      />
+      <StoreReveal delay={80}>
+        <ProductListingControls
+          categories={categories}
+          currentCategory={params.category}
+          currentSort={sort}
+          currentSearch={params.search}
+        />
+      </StoreReveal>
 
-      {/* Product Grid */}
       {products.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 mt-6">
-          {products.map((product) => (
-            <StorefrontProductCard key={product.id} product={product} />
+        <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map((product, i) => (
+            <StoreReveal key={product.id} delay={Math.min((i % 8) * 50, 350)}>
+              <StorefrontProductCard product={product} />
+            </StoreReveal>
           ))}
         </div>
       ) : (
-        <div className="text-center py-20">
-          <Package className="h-16 w-16 text-gray-200 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-700">No products found</h3>
-          <p className="text-sm text-gray-400 mt-1">Try adjusting your search or filters</p>
-        </div>
+        <StoreReveal>
+          <div className="py-20 text-center">
+            <Package className="mx-auto mb-4 h-16 w-16 text-[var(--sera-muted)]/30" />
+            <h3 className="font-display text-lg font-semibold text-[var(--sera-ink)]">No products found</h3>
+            <p className="mt-1 text-sm text-[var(--sera-muted)]">Try adjusting your search or filters</p>
+          </div>
+        </StoreReveal>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-10">
+        <div className="mt-10 flex items-center justify-center gap-2">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
             const searchParams = new URLSearchParams()
             if (params.search) searchParams.set('search', params.search)
@@ -87,10 +92,10 @@ export default async function ProductsPage({ searchParams }: PageProps) {
               <a
                 key={page}
                 href={href}
-                className={`h-9 min-w-[36px] px-3 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
+                className={`flex h-9 min-w-[36px] items-center justify-center rounded-xl px-3 text-sm font-medium transition-colors ${
                   page === currentPage
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    ? 'bg-[var(--sera-ink)] text-white'
+                    : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]'
                 }`}
               >
                 {page}

@@ -164,12 +164,12 @@ export default function CheckoutPage() {
   if (items.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        <ShoppingBag className="h-20 w-20 text-gray-200 mx-auto mb-6" />
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Nothing to checkout</h1>
-        <p className="text-gray-500 mb-8">Add some products to your cart first.</p>
+        <ShoppingBag className="h-20 w-20 text-[var(--sera-muted)]/40 mx-auto mb-6" />
+        <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] mb-2">Nothing to checkout</h1>
+        <p className="text-[var(--sera-muted)] mb-8">Add some products to your cart first.</p>
         <Link
           href="/store/products"
-          className="inline-flex items-center gap-2 h-11 px-6 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition"
+          className="inline-flex items-center gap-2 h-11 px-6 bg-[var(--sera-ink)] text-white rounded-xl text-sm font-semibold hover:bg-[var(--sera-ink-soft)] transition"
         >
           Browse Products
         </Link>
@@ -182,13 +182,13 @@ export default function CheckoutPage() {
       {/* Back */}
       <Link
         href="/store/cart"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-[var(--sera-muted)] hover:text-[var(--sera-ink)] transition-colors mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to cart
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Checkout</h1>
+      <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] mb-2">Checkout</h1>
 
       {landingAttribution && (
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
@@ -203,8 +203,8 @@ export default function CheckoutPage() {
           {/* ── Left: Form ── */}
           <div className="lg:col-span-3 space-y-6">
             {/* Contact */}
-            <fieldset className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <legend className="text-sm font-semibold text-gray-900 px-1">Contact Information</legend>
+            <fieldset className="bg-white rounded-xl border border-[var(--sera-line)] p-5 shadow-sm">
+              <legend className="text-sm font-semibold text-[var(--sera-ink)] px-1">Contact Information</legend>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <InputField
                   icon={<User className="h-4 w-4" />}
@@ -237,8 +237,8 @@ export default function CheckoutPage() {
             </fieldset>
 
             {/* Shipping */}
-            <fieldset className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-              <legend className="text-sm font-semibold text-gray-900 px-1">Shipping Address</legend>
+            <fieldset className="bg-white rounded-xl border border-[var(--sera-line)] p-5 shadow-sm">
+              <legend className="text-sm font-semibold text-[var(--sera-ink)] px-1">Shipping Address</legend>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                 <InputField
                   icon={<MapPin className="h-4 w-4" />}
@@ -264,13 +264,13 @@ export default function CheckoutPage() {
                   required
                 />
                 <div className="flex flex-col">
-                  <label className="text-xs font-medium text-gray-500 mb-1">State *</label>
+                  <label className="text-xs font-medium text-[var(--sera-muted)] mb-1">State *</label>
                   <select
                     name="state"
                     value={form.state}
                     onChange={handleChange}
                     required
-                    className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    className="h-10 rounded-lg border border-[var(--sera-line)] bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
                   >
                     <option value="">Select state</option>
                     {MY_STATES.map((s) => (
@@ -295,43 +295,43 @@ export default function CheckoutPage() {
 
           {/* ── Right: Order Summary ── */}
           <div className="lg:col-span-2">
-            <div className="sticky top-24 bg-gray-50 rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Order Summary</h3>
+            <div className="sticky top-24 bg-[var(--sera-mist)] rounded-xl border border-[var(--sera-line)] p-5">
+              <h3 className="text-sm font-semibold text-[var(--sera-ink)] mb-4">Order Summary</h3>
               <div className="space-y-3 max-h-60 overflow-y-auto">
                 {items.map((item) => (
                   <div key={item.variantId} className="flex items-start gap-3">
-                    <div className="flex-none w-10 h-10 rounded-lg bg-white border border-gray-100 overflow-hidden flex items-center justify-center">
+                    <div className="flex-none w-10 h-10 rounded-lg bg-white border border-[var(--sera-line)] overflow-hidden flex items-center justify-center">
                       {item.imageUrl ? (
                         <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <ShoppingBag className="h-4 w-4 text-gray-200" />
+                        <ShoppingBag className="h-4 w-4 text-[var(--sera-muted)]/40" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900 line-clamp-1">
+                      <p className="text-xs font-medium text-[var(--sera-ink)] line-clamp-1">
                         {item.productName}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-[var(--sera-muted)]/70">
                         {item.variantName} × {item.quantity}
                       </p>
                     </div>
-                    <p className="text-xs font-semibold text-gray-900 flex-none">
+                    <p className="text-xs font-semibold text-[var(--sera-ink)] flex-none">
                       {item.price ? formatPrice(item.price * item.quantity) : '-'}
                     </p>
                   </div>
                 ))}
               </div>
 
-              <div className="border-t border-gray-200 mt-4 pt-4 space-y-2">
-                <div className="flex justify-between text-sm text-gray-600">
+              <div className="border-t border-[var(--sera-line)] mt-4 pt-4 space-y-2">
+                <div className="flex justify-between text-sm text-[var(--sera-muted)]">
                   <span>Subtotal</span>
                   <span>{formatPrice(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm text-gray-600">
+                <div className="flex justify-between text-sm text-[var(--sera-muted)]">
                   <span>Shipping</span>
-                  <span className="text-gray-400">Free</span>
+                  <span className="text-[var(--sera-muted)]/70">Free</span>
                 </div>
-                <div className="border-t border-gray-200 pt-3 flex justify-between text-base font-bold text-gray-900">
+                <div className="border-t border-[var(--sera-line)] pt-3 flex justify-between text-base font-bold text-[var(--sera-ink)]">
                   <span>Total</span>
                   <span>{formatPrice(subtotal)}</span>
                 </div>
@@ -348,7 +348,7 @@ export default function CheckoutPage() {
               <button
                 type="submit"
                 disabled={!isValid || submitting}
-                className="mt-6 w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mt-6 w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? (
                   <>
@@ -363,7 +363,7 @@ export default function CheckoutPage() {
                 )}
               </button>
 
-              <p className="mt-3 text-[10px] text-gray-400 flex items-center justify-center gap-1">
+              <p className="mt-3 text-[10px] text-[var(--sera-muted)]/70 flex items-center justify-center gap-1">
                 <Lock className="h-3 w-3" />
                 Secured payment via payment gateway
               </p>
@@ -402,13 +402,13 @@ function InputField({
 }) {
   return (
     <div className={`flex flex-col ${className || ''}`}>
-      <label htmlFor={name} className="text-xs font-medium text-gray-500 mb-1">
+      <label htmlFor={name} className="text-xs font-medium text-[var(--sera-muted)] mb-1">
         {label}
         {required && ' *'}
       </label>
       <div className="relative">
         {icon && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">{icon}</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--sera-muted)]/70">{icon}</span>
         )}
         <input
           id={name}
@@ -419,7 +419,7 @@ function InputField({
           required={required}
           inputMode={inputMode}
           maxLength={maxLength}
-          className={`w-full h-10 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-shadow ${
+          className={`w-full h-10 rounded-lg border border-[var(--sera-line)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 transition-shadow ${
             icon ? 'pl-10' : 'pl-3'
           } pr-3`}
         />
