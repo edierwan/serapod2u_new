@@ -17,6 +17,12 @@ import {
 } from "@/components/ui/select"
 import { formatNumber } from "./catalog-utils"
 import { describeReportStatusRule, isReportRowActive, type ReportStatusRule } from "@/lib/engagement/report-status-settings"
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+} from "@/components/ui/sera-modal"
 
 interface ShopSummary {
   shop_id: string

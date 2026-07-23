@@ -7,6 +7,14 @@
 
 import { useState } from 'react';
 import { FileCheck, Upload, AlertCircle } from 'lucide-react';
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal';
+import { Button } from '@/components/ui/button';
 
 interface AcknowledgeDocumentButtonProps {
   documentId: string;
@@ -112,60 +120,72 @@ export default function AcknowledgeDocumentButton({
 
       {/* Payment Proof Dialog */}
       {showPaymentProofDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Payment Proof Required
-            </h3>
-
-            <p className="text-sm text-gray-600 mb-4">
-              Please provide the payment proof URL before acknowledging this invoice.
-            </p>
-
-            {error && (
-              <div className="mb-4 flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Payment Proof URL
-              </label>
-              <input
-                type="url"
-                value={paymentProofUrl}
-                onChange={(e) => setPaymentProofUrl(e.target.value)}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Upload your payment advice to storage and paste the URL here
+        <SeraModalOverlay onBackdropClick={() => {
+          if (!isAcknowledging) {
+            setShowPaymentProofDialog(false);
+            setError(null);
+          }
+        }}>
+          <SeraModalPanel>
+            <SeraModalHeader
+              title="Payment Proof Required"
+              onClose={() => {
+                if (!isAcknowledging) {
+                  setShowPaymentProofDialog(false);
+                  setError(null);
+                }
+              }}
+            />
+            <SeraModalBody className="space-y-4">
+              <p className="text-sm text-[var(--sera-muted)]">
+                Please provide the payment proof URL before acknowledging this invoice.
               </p>
-            </div>
 
-            <div className="flex gap-3">
-              <button
+              {error && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-[var(--sera-ink)] mb-2">
+                  Payment Proof URL
+                </label>
+                <input
+                  type="url"
+                  value={paymentProofUrl}
+                  onChange={(e) => setPaymentProofUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 border border-[var(--sera-line)] rounded-lg focus:ring-2 focus:ring-[var(--sera-orange)]/30 focus:border-[var(--sera-orange)]"
+                />
+                <p className="text-xs text-[var(--sera-muted)] mt-1">
+                  Upload your payment advice to storage and paste the URL here
+                </p>
+              </div>
+            </SeraModalBody>
+            <SeraModalFooter>
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowPaymentProofDialog(false);
                   setError(null);
                 }}
                 disabled={isAcknowledging}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                className="border-[var(--sera-line)]"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleAcknowledge}
                 disabled={isAcknowledging || !paymentProofUrl}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
               >
                 {isAcknowledging ? 'Processing...' : 'Acknowledge'}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </SeraModalFooter>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
     </>
   );
