@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -11,7 +12,13 @@ export function SeraModalOverlay({
   onBackdropClick,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { onBackdropClick?: () => void }) {
-  return (
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const overlay = (
     <div
       className={cn('sera-modal-overlay', className)}
       onClick={(e) => {
@@ -22,6 +29,10 @@ export function SeraModalOverlay({
       {children}
     </div>
   )
+
+  // Portal to body so sticky module top-navs (z-40) never cover the modal.
+  if (!mounted || typeof document === 'undefined') return null
+  return createPortal(overlay, document.body)
 }
 
 export function SeraModalPanel({

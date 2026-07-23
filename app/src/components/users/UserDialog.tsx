@@ -12,6 +12,10 @@ import { Upload, X, Loader2, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+} from '@/components/ui/sera-modal'
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-US', {
@@ -344,8 +348,8 @@ export default function UserDialog({
   if (!open) return null
 
   return (
-    <div className="sera-modal-overlay">
-      <div className="sera-modal-panel sera-modal-panel--lg overflow-y-auto" role="dialog" aria-modal="true">
+    <SeraModalOverlay onBackdropClick={() => !isSaving && handleClose()}>
+      <SeraModalPanel className="sera-modal-panel--lg overflow-y-auto">
         <div className="sera-modal-header is-sticky">
           <h2 className="sera-modal-title">
             {user ? 'Edit User' : 'Add New User'}
@@ -612,7 +616,7 @@ export default function UserDialog({
             )}
           </Button>
         </div>
-      </div>
-    </div>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }
