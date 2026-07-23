@@ -4,7 +4,7 @@ FROM node:22.21.1-alpine AS base
 FROM base AS deps
 WORKDIR /app
 COPY app/package.json app/package-lock.json ./
-RUN npm ci --include=dev && npm cache clean --force
+RUN npm ci --include=dev
 
 # Build the application
 FROM base AS builder

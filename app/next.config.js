@@ -138,6 +138,8 @@ const nextConfig = {
 
   experimental: {
     optimizeCss: true,
+    // Keep production builds responsive on the shared staging VPS.
+    cpus: 2,
   },
 
   async headers() {

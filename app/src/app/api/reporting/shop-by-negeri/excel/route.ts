@@ -3,12 +3,19 @@ import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
 import { format } from 'date-fns'
 import {
-  computeNegeriDateWindow,
   buildNegeriReport,
   type NegeriScanRow,
   type NegeriOrgRow,
   type NegeriStateRow,
 } from '@/lib/reporting/shop-by-negeri'
+import {
+  previousReportingPeriod,
+  reportingPeriodDateWindow,
+  reportingPeriodFilenameLabel,
+  reportingPeriodFromKey,
+  reportingPeriodRangeLabel,
+} from '@/lib/reporting/reporting-period'
+import { fetchAccessibleReportingPeriods } from '@/lib/reporting/reporting-period-source'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +41,7 @@ function fmtGrowth(value: number | null): string {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const period = searchParams.get('period') || '30'
+    const periodKey = searchParams.get('period') || ''
     const region = searchParams.get('region') || 'all'
     const negeri = searchParams.get('negeri') || 'all'
     const search = searchParams.get('search') || ''
@@ -45,6 +52,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const selectedPeriod = reportingPeriodFromKey(periodKey)
+    if (!selectedPeriod) {
+      return NextResponse.json({ error: 'Invalid reporting month' }, { status: 400 })
+    }
+
+    // Validate against the same accessible transaction-derived source used by
+    // the selector. The client cannot request arbitrary month boundaries.
+    const availablePeriods = await fetchAccessibleReportingPeriods(supabase)
+    if (!availablePeriods.some((period) => period.key === periodKey)) {
+      return NextResponse.json({ error: 'Reporting month is not available' }, { status: 400 })
+    }
+
     // Reference data
     const [{ data: stateData }, { data: regionData }] = await Promise.all([
       supabase.from('states').select('id, state_name, region_id').order('state_name'),
@@ -53,14 +72,14 @@ export async function GET(request: Request) {
     const states = (stateData as NegeriStateRow[]) || []
     const regions = (regionData as { id: string; region_name: string }[]) || []
 
-    // Scans over last 12 months (covers all presets + previous-period growth)
-    const startISO = computeNegeriDateWindow('12months').start.toISOString()
+    const previousPeriod = previousReportingPeriod(selectedPeriod)
     const { data: scanData, error: scanErr } = await supabase
       .from('consumer_qr_scans')
       .select('id, consumer_id, scanned_at, shop_id, points_amount')
       .eq('is_manual_adjustment', false)
       .not('shop_id', 'is', null)
-      .gte('scanned_at', startISO)
+      .gte('scanned_at', previousPeriod.startUtc)
+      .lt('scanned_at', selectedPeriod.endUtc)
       .order('scanned_at', { ascending: false })
 
     if (scanErr) {
@@ -82,7 +101,7 @@ export async function GET(request: Request) {
       if (orgData) orgs.push(...(orgData as NegeriOrgRow[]))
     }
 
-    const dateWindow = computeNegeriDateWindow(period)
+    const dateWindow = reportingPeriodDateWindow(selectedPeriod)
     const report = buildNegeriReport({
       scans,
       orgs,
@@ -94,8 +113,7 @@ export async function GET(request: Request) {
       topShopsPerState: 10,
     })
 
-    const fromLabel = format(dateWindow.start, 'yyyy-MM-dd')
-    const toLabel = format(dateWindow.end, 'yyyy-MM-dd')
+    const rangeLabel = reportingPeriodRangeLabel(selectedPeriod)
     const regionName = region === 'all' ? 'All Regions' : (regions.find((r) => r.id === region)?.region_name || region)
     const negeriName = negeri === 'all' ? 'All States' : (states.find((s) => s.id === negeri)?.state_name || negeri)
 
@@ -113,7 +131,8 @@ export async function GET(request: Request) {
     styleHeader(summary.getRow(1))
     summary.addRows([
       { metric: 'Report', value: 'Shop by Negeri' },
-      { metric: 'Date Range', value: `${fromLabel} to ${toLabel}` },
+      { metric: 'Reporting Month', value: selectedPeriod.label },
+      { metric: 'Reporting Period', value: rangeLabel },
       { metric: 'Region Type', value: regionName },
       { metric: 'Negeri / State', value: negeriName },
       { metric: 'Search Keyword', value: search || '—' },
@@ -201,7 +220,7 @@ export async function GET(request: Request) {
     }
 
     const buffer = await wb.xlsx.writeBuffer()
-    const filename = `shop-by-negeri-report-${fromLabel}-to-${toLabel}.xlsx`
+    const filename = `Shop_by_Negeri_${reportingPeriodFilenameLabel(selectedPeriod)}.xlsx`
 
     return new Response(buffer, {
       status: 200,
