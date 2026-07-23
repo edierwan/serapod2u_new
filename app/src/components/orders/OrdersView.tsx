@@ -39,6 +39,13 @@ import {
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface UserProfile {
   id: string
@@ -1844,14 +1851,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Order Type Selection Dialog */}
       {showOrderTypeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Select Order Type</h3>
-            <p className="text-sm text-[var(--sera-muted)] mb-6">
-              Choose the type of order you want to create:
-            </p>
+        <SeraModalOverlay onBackdropClick={() => setShowOrderTypeDialog(false)}>
+          <SeraModalPanel>
+            <SeraModalHeader
+              title="Select Order Type"
+              onClose={() => setShowOrderTypeDialog(false)}
+            />
+            <SeraModalBody className="space-y-3">
+              <p className="text-sm text-[var(--sera-muted)] -mt-1 mb-2">
+                Choose the type of order you want to create:
+              </p>
 
-            <div className="space-y-3">
               {canCreateH2M ? (
                 <button
                   onClick={() => handleOrderTypeSelection('regular')}
@@ -1896,18 +1906,17 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                   </div>
                 </div>
               </button>
-            </div>
-
-            <div className="mt-6 flex justify-end">
+            </SeraModalBody>
+            <SeraModalFooter>
               <Button
                 variant="ghost"
                 onClick={() => setShowOrderTypeDialog(false)}
               >
                 Cancel
               </Button>
-            </div>
-          </div>
-        </div>
+            </SeraModalFooter>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
     </div>
   )

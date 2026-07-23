@@ -10,7 +10,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Building2, Plus, Trash2, Star, StarOff, Loader2, X } from 'lucide-react'
+import { Building2, Plus, Trash2, Star, StarOff, Loader2 } from 'lucide-react'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface DistributorShop {
   id: string
@@ -389,22 +396,18 @@ export default function DistributorShopsManager({ distributorId, distributorName
       </Card>
 
       {dialogOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Link Shop to Distributor</h2>
-                <p className="text-sm text-gray-600">Add a new shop relationship for this distributor</p>
-              </div>
-              <button
-                onClick={() => setDialogOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <SeraModalOverlay onBackdropClick={() => !isSaving && setDialogOpen(false)}>
+          <SeraModalPanel className="sera-modal-panel--lg overflow-y-auto">
+            <SeraModalHeader
+              sticky
+              title="Link Shop to Distributor"
+              onClose={() => !isSaving && setDialogOpen(false)}
+            />
+            <p className="px-5 -mt-2 mb-0 text-sm text-[var(--sera-muted)] sm:px-[1.35rem]">
+              Add a new shop relationship for this distributor
+            </p>
 
-            <div className="p-6 space-y-4">
+            <SeraModalBody className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="shop_id">Shop *</Label>
                 <Select
@@ -508,16 +511,16 @@ export default function DistributorShopsManager({ distributorId, distributorName
                   </p>
                 </div>
               </div>
-            </div>
+            </SeraModalBody>
 
-            <div className="flex gap-3 justify-end p-6 border-t border-gray-200 sticky bottom-0 bg-white">
-              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSaving}>
+            <SeraModalFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSaving} className="border-[var(--sera-line)]">
                 Cancel
               </Button>
               <Button
                 onClick={handleAddShop}
                 disabled={isSaving || !formData.shop_id}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
               >
                 {isSaving ? (
                   <>
@@ -528,9 +531,9 @@ export default function DistributorShopsManager({ distributorId, distributorName
                   'Link Shop'
                 )}
               </Button>
-            </div>
-          </div>
-        </div>
+            </SeraModalFooter>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
     </div>
   )

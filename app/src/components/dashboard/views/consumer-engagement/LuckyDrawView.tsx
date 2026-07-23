@@ -967,12 +967,12 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* PRIZES TAB */}
                 <TabsContent value="prizes">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h3 className="text-lg font-semibold">Campaign Prizes</h3>
                         <p className="text-sm text-gray-600">Manage prizes for {selectedCampaign?.campaign_name}</p>
                       </div>
-                      <Button onClick={() => {
+                      <Button className="w-full sm:w-auto" onClick={() => {
                         setEditingPrizeIndex(null)
                         setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
                         setPrizeImageFile(null)

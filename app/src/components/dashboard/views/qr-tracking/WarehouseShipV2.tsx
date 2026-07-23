@@ -2439,18 +2439,18 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       {shipmentProgress && (
         <Card className="border-green-200 bg-green-50">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-green-900">
-                <Truck className="h-5 w-5" />
-                Current Ship Progress: Distributor: {shipmentProgress.distributor_name}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <CardTitle className="flex items-center gap-2 text-green-900 text-base sm:text-lg">
+                <Truck className="h-5 w-5 shrink-0" />
+                <span className="min-w-0">Current Ship Progress: Distributor: {shipmentProgress.distributor_name}</span>
               </CardTitle>
               {(masterCasesCount > 0 || looseItemsCount > 0 || manualQty > 0) && (
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     onClick={handleCancelShipment}
                     disabled={canceling || confirming || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
                     variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 w-full sm:w-auto"
                   >
                     {canceling ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -2462,7 +2462,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   <Button
                     onClick={handleConfirmShipment}
                     disabled={confirming || canceling || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
                   >
                     {confirming ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -2805,13 +2805,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {scannedCodes.map((code, index) => (
-                    <div key={index} className={`p-3 flex items-center justify-between hover:bg-gray-50 ${
+                    <div key={index} className={`p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between hover:bg-gray-50 ${
                       code.status === 'error' ? 'bg-red-50' : 
                       code.status === 'duplicate' ? 'bg-orange-50' : 
                       'bg-green-50'
                     }`}>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">
                             #{code.sequence_number}
                           </Badge>

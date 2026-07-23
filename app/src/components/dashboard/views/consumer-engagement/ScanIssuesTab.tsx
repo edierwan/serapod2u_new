@@ -29,6 +29,12 @@ import {
     Eye,
     X,
 } from 'lucide-react'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+} from '@/components/ui/sera-modal'
 
 type Issue = {
     id: string
@@ -579,20 +585,21 @@ export default function ScanIssuesTab() {
 
             {/* Templates modal */}
             {templatesOpen && (
-                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => { setTemplatesOpen(false); setEditingTemplate(null) }}>
-                    <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold">Message Templates</h3>
-                            <Button size="sm" variant="ghost" onClick={() => { setTemplatesOpen(false); setEditingTemplate(null) }}><X className="h-4 w-4" /></Button>
-                        </div>
+                <SeraModalOverlay onBackdropClick={() => { setTemplatesOpen(false); setEditingTemplate(null) }}>
+                    <SeraModalPanel className="sera-modal-panel--xl overflow-y-auto">
+                        <SeraModalHeader
+                            title="Message Templates"
+                            onClose={() => { setTemplatesOpen(false); setEditingTemplate(null) }}
+                        />
+                        <SeraModalBody>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 {templates.map((t) => (
-                                    <div key={t.id} className={`border rounded p-2 cursor-pointer ${editingTemplate?.id === t.id ? 'border-blue-400 bg-blue-50' : ''}`} onClick={() => { setEditingTemplate(t); setEditingBody(t.body) }}>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-sm font-medium">{t.template_name}</div>
-                                                <div className="text-[11px] text-gray-500">{t.template_key} · {t.recipient_type}</div>
+                                    <div key={t.id} className={`border rounded p-2 cursor-pointer ${editingTemplate?.id === t.id ? 'border-[var(--sera-orange)]/50 bg-[var(--sera-orange)]/[0.06]' : 'border-[var(--sera-line)]'}`} onClick={() => { setEditingTemplate(t); setEditingBody(t.body) }}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-medium truncate">{t.template_name}</div>
+                                                <div className="text-[11px] text-[var(--sera-muted)]">{t.template_key} · {t.recipient_type}</div>
                                             </div>
                                             <Badge className={t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}>{t.is_active ? 'Active' : 'Inactive'}</Badge>
                                         </div>
@@ -603,24 +610,25 @@ export default function ScanIssuesTab() {
                                 {editingTemplate ? (
                                     <>
                                         <div className="mb-2 text-sm font-medium">{editingTemplate.template_name}</div>
-                                        <textarea value={editingBody} onChange={(e) => setEditingBody(e.target.value)} rows={12} className="w-full border rounded p-2 text-sm font-mono" />
-                                        <div className="text-[11px] text-gray-500 mt-1">Variables: <code>{'{{name}} {{consumer_phone}} {{qr_code}} {{order_no}} {{product_name}} {{issue_type}} {{error_message}} {{scan_time}} {{issue_no}} {{rescan_link}}'}</code></div>
+                                        <textarea value={editingBody} onChange={(e) => setEditingBody(e.target.value)} rows={12} className="w-full border border-[var(--sera-line)] rounded p-2 text-sm font-mono" />
+                                        <div className="text-[11px] text-[var(--sera-muted)] mt-1">Variables: <code>{'{{name}} {{consumer_phone}} {{qr_code}} {{order_no}} {{product_name}} {{issue_type}} {{error_message}} {{scan_time}} {{issue_no}} {{rescan_link}}'}</code></div>
                                         <div className="mt-3 bg-green-50 border border-green-200 rounded p-3">
-                                            <div className="text-[10px] text-gray-500 mb-1">WhatsApp preview</div>
+                                            <div className="text-[10px] text-[var(--sera-muted)] mb-1">WhatsApp preview</div>
                                             <pre className="text-xs whitespace-pre-wrap font-sans">{editingBody}</pre>
                                         </div>
-                                        <div className="flex gap-2 mt-3">
-                                            <Button size="sm" onClick={saveTemplate}>Save</Button>
+                                        <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                                            <Button size="sm" className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={saveTemplate}>Save</Button>
                                             <Button size="sm" variant="outline" onClick={() => setEditingTemplate(null)}>Cancel</Button>
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="text-sm text-gray-500">Select a template on the left to edit.</div>
+                                    <div className="text-sm text-[var(--sera-muted)]">Select a template on the left to edit.</div>
                                 )}
                             </div>
                         </div>
-                    </div>
-                </div>
+                        </SeraModalBody>
+                    </SeraModalPanel>
+                </SeraModalOverlay>
             )}
         </div>
     )

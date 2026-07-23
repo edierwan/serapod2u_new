@@ -52,6 +52,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ShopDistributorsManager from '@/components/shops/ShopDistributorsManager'
 import DistributorShopsManager from '@/components/distributors/DistributorShopsManager'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+} from '@/components/ui/sera-modal'
 
 interface UserProfile {
   id: string
@@ -1668,64 +1674,62 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       {/* Shop Distributors Manager Modal */}
       {selectedShopForDistributors && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center">
+        <SeraModalOverlay onBackdropClick={() => {
+          setSelectedShopForDistributors(null)
+          checkShopDistributorLinks()
+        }}>
+          <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+            <SeraModalHeader
+              onClose={() => {
+                setSelectedShopForDistributors(null)
+                checkShopDistributorLinks()
+              }}
+            >
               <div>
-                <h2 className="text-2xl font-bold">Manage Distributors</h2>
-                <p className="text-[var(--sera-muted)]">
+                <h2 className="sera-modal-title">Manage Distributors</h2>
+                <p className="mt-1 text-sm text-[var(--sera-muted)]">
                   {selectedShopForDistributors.org_name} ({selectedShopForDistributors.org_code})
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedShopForDistributors(null)
-                  checkShopDistributorLinks() // Refresh links when modal closes
-                }}
-              >
-                ✕ Close
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
+            </SeraModalHeader>
+            <SeraModalBody className="flex-1 overflow-auto">
               <ShopDistributorsManager
                 shopId={selectedShopForDistributors.id}
                 shopName={selectedShopForDistributors.org_name}
               />
-            </div>
-          </div>
-        </div>
+            </SeraModalBody>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
 
       {/* Distributor Shops Manager Modal */}
       {selectedDistributorForShops && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center">
+        <SeraModalOverlay onBackdropClick={() => {
+          setSelectedDistributorForShops(null)
+          checkDistributorShopLinks()
+        }}>
+          <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+            <SeraModalHeader
+              onClose={() => {
+                setSelectedDistributorForShops(null)
+                checkDistributorShopLinks()
+              }}
+            >
               <div>
-                <h2 className="text-2xl font-bold">Manage Shops</h2>
-                <p className="text-[var(--sera-muted)]">
+                <h2 className="sera-modal-title">Manage Shops</h2>
+                <p className="mt-1 text-sm text-[var(--sera-muted)]">
                   {selectedDistributorForShops.org_name} ({selectedDistributorForShops.org_code})
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedDistributorForShops(null)
-                  checkDistributorShopLinks() // Refresh links when modal closes
-                }}
-              >
-                ✕ Close
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
+            </SeraModalHeader>
+            <SeraModalBody className="flex-1 overflow-auto">
               <DistributorShopsManager
                 distributorId={selectedDistributorForShops.id}
                 distributorName={selectedDistributorForShops.org_name}
               />
-            </div>
-          </div>
-        </div>
+            </SeraModalBody>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
 
       {/* Delete Dependencies Modal */}

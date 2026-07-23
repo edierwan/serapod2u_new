@@ -1253,6 +1253,16 @@
   max-width: 56rem;
 }
 
+.sera-modal-panel--2xl {
+  max-width: min(72rem, calc(100vw - 2rem));
+}
+
+.sera-modal-panel--scroll {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .sera-modal-header {
   position: relative;
   display: flex;

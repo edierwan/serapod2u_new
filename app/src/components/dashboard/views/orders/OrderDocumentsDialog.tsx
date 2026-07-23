@@ -1,11 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Download, FileText, Printer } from 'lucide-react'
+import { Download, FileText, Printer } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 import { Document } from '@/types/order'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface OrderDocumentsDialogProps {
   orderId: string
@@ -392,46 +399,40 @@ export default function OrderDocumentsDialog({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Order Documents</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              View and download all related documents for {orderNo}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+    <SeraModalOverlay onBackdropClick={onClose}>
+      <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+        <SeraModalHeader onClose={onClose} className="items-center">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-8">
+            <div className="min-w-0">
+              <h2 className="sera-modal-title">Order Documents</h2>
+              <p className="mt-1 text-sm text-[var(--sera-muted)]">
+                View and download all related documents for {orderNo}
+              </p>
+            </div>
             <Button
               onClick={() => window.print()}
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto shrink-0 border-[var(--sera-line)]"
             >
               <Printer className="w-4 h-4 mr-2" />
               Print
             </Button>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
-        </div>
+        </SeraModalHeader>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2 px-6 pt-4 border-b">
+        <div className="flex items-center gap-2 px-5 pt-3 border-b border-[var(--sera-line)] overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    ? 'border-[var(--sera-orange)] text-[var(--sera-orange)] font-semibold'
+                    : 'border-transparent text-[var(--sera-muted)] hover:text-[var(--sera-ink)]'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -443,12 +444,12 @@ export default function OrderDocumentsDialog({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4 animate-pulse" />
-                <p className="text-gray-600">Loading documents...</p>
+                <FileText className="w-12 h-12 text-[var(--sera-muted)] mx-auto mb-4 animate-pulse" />
+                <p className="text-[var(--sera-muted)]">Loading documents...</p>
               </div>
             </div>
           ) : (
@@ -456,21 +457,20 @@ export default function OrderDocumentsDialog({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
-          <p className="text-sm text-gray-600">
+        <SeraModalFooter className="sm:!justify-between">
+          <p className="text-sm text-[var(--sera-muted)] w-full sm:w-auto">
             Document generated on {new Date().toLocaleDateString('en-MY')}
           </p>
           <Button
             onClick={() => handleDownload(activeTab)}
             disabled={downloading === activeTab}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white w-full sm:w-auto"
           >
             <Download className="w-4 h-4 mr-2" />
             {downloading === activeTab ? 'Downloading...' : 'Download Order PDF'}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }
