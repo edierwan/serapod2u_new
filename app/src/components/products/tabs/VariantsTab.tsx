@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Loader2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import VariantDialog, { type MediaItem } from '../dialogs/VariantDialog'
 import { getStorageUrl } from '@/lib/utils'
 import {
@@ -20,6 +20,12 @@ import {
   cleanAlternativeName,
   isAlternativeNameDuplicateError,
 } from '@/lib/products/alternative-name'
+import {
+  buildVariantMasterDataFilename,
+  exportVariantMasterDataBlob,
+  matchesVariantSearch,
+} from '@/lib/products/variant-master-data'
+import { uploadKkmCertificate } from '@/lib/products/kkm-certificate'
 
 interface Product {
   id: string
@@ -70,6 +76,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [sortColumn, setSortColumn] = useState<string>('variant_name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
@@ -90,13 +97,23 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, product_name, is_active, is_vape, product_code')
+        .select('id, product_name, is_active, product_code, product_categories(is_vape)')
         .order('product_name', { ascending: true })
 
       if (error) throw error
-      setProducts((data || []) as Product[])
+      const productRows = (data || []).map((product: any) => ({
+        id: product.id,
+        product_name: product.product_name,
+        is_active: product.is_active,
+        product_code: product.product_code,
+        // Product-category Vape classification is the source of truth for KKM fields.
+        is_vape: Array.isArray(product.product_categories)
+          ? product.product_categories[0]?.is_vape === true
+          : product.product_categories?.is_vape === true,
+      }))
+      setProducts(productRows)
       if (data && data.length > 0 && !selectedProduct) {
-        setSelectedProduct((data as any[])[0].id)
+        setSelectedProduct(productRows[0].id)
       }
     } catch (error) {
       console.error('Error loading products:', error)
@@ -168,7 +185,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
     return uploadData.path
   }
 
-  const handleSave = async (variantData: Partial<Variant> & { mediaItems?: MediaItem[] }) => {
+  const handleSave = async (variantData: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => {
     try {
       setIsSaving(true)
       const mediaItems = variantData.mediaItems || []
@@ -241,7 +258,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       // ── Build DB save data ───────────────────────────
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { mediaItems: _mi, imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
+      const { mediaItems: _mi, certificateFile: _cf, imageFile: _if, animationFile: _af, imageFiles: _ifs, existingImageUrls: _eu, defaultImageIndex: _di, media: _m, ...dbDataClean } = variantData as any
 
       const productId = dbDataClean.product_id || (editingVariant ? editingVariant.product_id : null)
       const variantName = dbDataClean.variant_name || (editingVariant ? editingVariant.variant_name : null)
@@ -321,6 +338,18 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         }
       }
 
+      if (variantData.certificateFile) {
+        try {
+          await uploadKkmCertificate(supabase, variantId, variantData.certificateFile)
+        } catch (certificateError: any) {
+          toast({
+            title: 'Variant saved; certificate upload failed',
+            description: certificateError?.message || 'Open Edit Variant to retry the certificate upload.',
+            variant: 'destructive',
+          })
+        }
+      }
+
       toast({
         title: 'Success',
         description: editingVariant ? 'Variant updated successfully' : 'Variant created successfully'
@@ -362,9 +391,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   }
 
   const filteredVariants = variants.filter(variant => {
-    const normalizedSearch = searchQuery.toLowerCase()
-    const matchesSearch = variant.variant_name.toLowerCase().includes(normalizedSearch)
-      || variant.product_code?.toLowerCase().includes(normalizedSearch)
+    const matchesSearch = matchesVariantSearch(variant, searchQuery)
     const matchesProduct = !selectedProduct || variant.product_id === selectedProduct
     return matchesSearch && matchesProduct && variant.is_active
   })
@@ -393,6 +420,25 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
       return sortDirection === 'asc' ? (aValue || 0) - (bValue || 0) : (bValue || 0) - (aValue || 0)
     })
     return sorted
+  }
+
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      // This is the complete filtered/sorted dataset, intentionally before pagination.
+      const blob = await exportVariantMasterDataBlob(getSortedVariants())
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = buildVariantMasterDataFilename()
+      anchor.click()
+      URL.revokeObjectURL(url)
+      toast({ title: 'Excel downloaded', description: `${getSortedVariants().length} variant(s) exported.` })
+    } catch (error: any) {
+      toast({ title: 'Excel export failed', description: error?.message || 'Please try again.', variant: 'destructive' })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const totalItems = getSortedVariants().length
@@ -426,8 +472,8 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex gap-3 flex-1">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-1">
           <select
             value={selectedProduct}
             onChange={(e) => setSelectedProduct(e.target.value)}
@@ -448,9 +494,14 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
             />
           </div>
         </div>
-        <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-2" /> Add Variant
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} Download Excel
+          </Button>
+          <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-blue-600 hover:bg-blue-700">
+            <Plus className="w-4 h-4 mr-2" /> Add Variant
+          </Button>
+        </div>
       </div>
 
       <VariantDialog
@@ -462,6 +513,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         onOpenChange={setDialogOpen}
         onSave={handleSave}
         canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
+        canManageCertificates={
           userProfile?.organizations?.org_type_code === 'HQ' &&
           [1, 10].includes(Number(userProfile?.roles?.role_level))
         }
@@ -524,7 +579,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{variant.variant_name}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{variant.variant_name}</div>
+                      {variant.alternative_name && <div className="mt-0.5 text-xs text-gray-500">Alternative: {variant.alternative_name}</div>}
+                    </TableCell>
                     <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
                     <TableCell className="text-xs font-medium text-gray-700">{variant.product_code || '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>

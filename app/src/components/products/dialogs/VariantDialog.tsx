@@ -23,6 +23,7 @@ import {
 } from '@/lib/products/product-code'
 import { cleanAlternativeName } from '@/lib/products/alternative-name'
 import VariantStockConfigurationsPanel from '@/components/products/VariantStockConfigurationsPanel'
+import KkmApprovalCertificate from '@/components/products/KkmApprovalCertificate'
 import { isCelleraVapeVariant } from '@/lib/inventory/cellera-variant'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -79,8 +80,9 @@ interface VariantDialogProps {
   open: boolean
   isSaving: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[] }) => void
+  onSave: (data: Partial<Variant> & { mediaItems?: MediaItem[]; certificateFile?: File | null }) => void
   canManageStockConfigurations?: boolean
+  canManageCertificates?: boolean
 }
 
 const MAX_MEDIA = 10
@@ -162,6 +164,7 @@ export default function VariantDialog({
   onOpenChange,
   onSave,
   canManageStockConfigurations = false,
+  canManageCertificates = false,
 }: VariantDialogProps) {
   const mkInitial = useCallback(
     (): Partial<Variant> =>
@@ -208,6 +211,7 @@ export default function VariantDialog({
   const [isValidatingProductCode, setIsValidatingProductCode] = useState(false)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([])
   const [configurationProfile, setConfigurationProfile] = useState<'new_standard' | 'transition'>('new_standard')
+  const [certificateFile, setCertificateFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -215,6 +219,7 @@ export default function VariantDialog({
     setFormData(mkInitial())
     setErrors({})
     setConfigurationProfile('new_standard')
+    setCertificateFile(null)
     const items: MediaItem[] = []
     if (variant?.media && variant.media.length > 0) {
       items.push(...variant.media.map((m) => ({ ...m, file: null, thumbnailFile: null })))
@@ -231,6 +236,7 @@ export default function VariantDialog({
   }, [open, variant, products])
 
   const selectedProduct = products.find((p) => p.id === (formData.product_id || variant?.product_id)) || null
+  const isVapeCategory = selectedProduct?.is_vape === true
   const isNewCelleraVariant = !variant && isCelleraVapeVariant(selectedProduct)
 
   const generateBarcode = useCallback(() => {
@@ -375,6 +381,7 @@ export default function VariantDialog({
       variant_code: variant?.variant_code || generateVariantCode(),
       barcode: variant ? formData.barcode : generateBarcode(),
       mediaItems: mediaItems.map((m, i) => ({ ...m, sort_order: i } as any)),
+      ...(certificateFile ? { certificateFile } : {}),
       ...(isNewCelleraVariant ? { configurationProfile } : {}),
     } as any)
   }
@@ -487,10 +494,26 @@ export default function VariantDialog({
             <Input id="sku" value={formData.manufacturer_sku || ''} readOnly className="bg-gray-100 cursor-not-allowed text-gray-700" />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="manual_sku">Manual SKU <span className="text-xs text-gray-500">(Optional, 5 chars max)</span></Label>
-            <Input id="manual_sku" value={formData.manual_sku || ''} onChange={(e) => setFormData((p) => ({ ...p, manual_sku: e.target.value.toUpperCase().slice(0, 5) }))} maxLength={5} placeholder="Enter custom SKU" className="uppercase" />
-          </div>
+          {isVapeCategory && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="manual_sku">KKM Approval <span className="text-xs text-gray-500">(Optional)</span></Label>
+                <Input
+                  id="manual_sku"
+                  value={formData.manual_sku || ''}
+                  onChange={(event) => setFormData((previous) => ({ ...previous, manual_sku: event.target.value }))}
+                  placeholder="Enter KKM approval/reference number"
+                />
+              </div>
+              <KkmApprovalCertificate
+                variantId={variant?.id}
+                canManage={canManageCertificates}
+                pendingFile={certificateFile}
+                onPendingFileChange={setCertificateFile}
+                kkmApproval={formData.manual_sku}
+              />
+            </>
+          )}
 
           {variant?.id ? (
             <VariantStockConfigurationsPanel

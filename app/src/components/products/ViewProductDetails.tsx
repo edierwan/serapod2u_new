@@ -20,6 +20,7 @@ import {
   cleanAlternativeName,
   isAlternativeNameDuplicateError,
 } from '@/lib/products/alternative-name'
+import { uploadKkmCertificate } from '@/lib/products/kkm-certificate'
 import { 
   ArrowLeft,
   Package,
@@ -88,7 +89,8 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           ),
           product_categories (
             category_name,
-            category_code
+            category_code,
+            is_vape
           ),
           manufacturers:organizations!products_manufacturer_id_fkey (
             org_name,
@@ -232,7 +234,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       }
 
       const manualSku = typeof variantData.manual_sku === 'string'
-        ? variantData.manual_sku.trim().toUpperCase().slice(0, 5)
+        ? variantData.manual_sku.trim()
         : editingVariant?.manual_sku ?? null
       const productCode = normalizeProductCode(variantData.product_code)
       
@@ -253,6 +255,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         product_id: product.id
       }
       
+      let savedVariantId = editingVariant?.id as string | undefined
       if (isEditing) {
         // Update existing variant
         const { error } = await supabase
@@ -261,6 +264,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           .eq('id', editingVariant.id)
         
         if (error) throw error
+        savedVariantId = editingVariant.id
         
         toast({
           title: 'Variant Updated',
@@ -275,6 +279,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           .single()
 
         if (error) throw error
+        savedVariantId = inserted.id
 
         if (variantData.configurationProfile && inserted?.id) {
           try {
@@ -295,6 +300,18 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
           title: 'Variant Created',
           description: `"${variantData.variant_name}" has been created successfully.`
         })
+      }
+
+      if (variantData.certificateFile && savedVariantId) {
+        try {
+          await uploadKkmCertificate(supabase, savedVariantId, variantData.certificateFile)
+        } catch (certificateError: any) {
+          toast({
+            title: 'Variant saved; certificate upload failed',
+            description: certificateError?.message || 'Open Edit Variant to retry the certificate upload.',
+            variant: 'destructive',
+          })
+        }
       }
       
       // Refresh product details
@@ -1076,10 +1093,20 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         open={showVariantDialog}
         onOpenChange={setShowVariantDialog}
         variant={editingVariant}
-        products={product ? [{ id: product.id, product_name: product.product_name, is_active: product.is_active, is_vape: product.is_vape, product_code: product.product_code }] : []}
+        products={product ? [{
+          id: product.id,
+          product_name: product.product_name,
+          is_active: product.is_active,
+          is_vape: product.product_categories?.is_vape === true,
+          product_code: product.product_code,
+        }] : []}
         onSave={handleSaveVariant}
         isSaving={savingVariant}
         canManageStockConfigurations={
+          userProfile?.organizations?.org_type_code === 'HQ' &&
+          [1, 10].includes(Number(userProfile?.roles?.role_level))
+        }
+        canManageCertificates={
           userProfile?.organizations?.org_type_code === 'HQ' &&
           [1, 10].includes(Number(userProfile?.roles?.role_level))
         }
