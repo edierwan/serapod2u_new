@@ -1,0 +1,37 @@
+# Dependencies and framework build output
+node_modules/
+.next/
+.turbo/
+
+# Local environment and editor state
+.env*
+.DS_Store
+.vscode/
+*.tsbuildinfo
+
+# Logs, test output, and local artifacts
+*.log
+logs/
+coverage/
+test-results/
+playwright-report/
+tmp/
+temp/
+uploads/
+
+# Database/schema exports and development-only material
+*.dump
+*.sql
+docs/
+scripts/
+phone-list-output.txt
+
+# Container/deployment files not copied into the application image
+Dockerfile
+.dockerignore
+.gitignore
+.vercelignore
+.nvmrc
+.node-version
+vercel.json
+vitest.config.ts
