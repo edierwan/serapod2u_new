@@ -128,24 +128,24 @@ import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopN
 import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
-import { isLoyaltyViewId } from '@/modules/loyalty/loyaltyNav'
+import { isLoyaltyViewId, loyaltyHrefForView } from '@/modules/loyalty/loyaltyNav'
 // CRM Module Components
 import CrmLandingView from '@/modules/crm/components/CrmLandingView'
 import CrmTopNav from '@/modules/crm/components/CrmTopNav'
-import { isCrmViewId } from '@/modules/crm/crmNav'
+import { isCrmViewId, crmHrefForView } from '@/modules/crm/crmNav'
 // Marketing Module Components
 import MarketingLandingView from '@/modules/marketing/components/MarketingLandingView'
 import MarketingTopNav from '@/modules/marketing/components/MarketingTopNav'
 import LandingPagesAdminView from '@/modules/marketing/components/LandingPagesAdminView'
-import { isMarketingViewId } from '@/modules/marketing/marketingNav'
+import { isMarketingViewId, marketingHrefForView } from '@/modules/marketing/marketingNav'
 // Catalog Module Components
 import CatalogLandingView from '@/modules/catalog/components/CatalogLandingView'
 import CatalogTopNav from '@/modules/catalog/components/CatalogTopNav'
-import { isCatalogViewId } from '@/modules/catalog/catalogNav'
+import { isCatalogViewId, catalogHrefForView } from '@/modules/catalog/catalogNav'
 // Customer & Growth Module Components
 import CustomerGrowthLandingView from '@/modules/customer-growth/components/CustomerGrowthLandingView'
 import CustomerGrowthTopNav from '@/modules/customer-growth/components/CustomerGrowthTopNav'
-import { isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
+import { ecommerceHrefForView, isCustomerGrowthViewId, isEcommerceViewId } from '@/modules/customer-growth/customerGrowthNav'
 import HeroBannersUnifiedView from '@/modules/ecommerce/components/HeroBannersUnifiedView'
 import StoreOrdersView from '@/modules/ecommerce/components/StoreOrdersView'
 // RoadTour Module Components
@@ -165,7 +165,7 @@ import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/a
 import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import GlobalPageChrome from '@/components/layout/GlobalPageChrome'
-import { isRoadtourViewId } from '@/modules/roadtour/roadtourNav'
+import { isRoadtourViewId, roadtourHrefForView } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -388,6 +388,23 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         router.push(`/supply-chain/${orgPath}`)
         return
       }
+    }
+
+    // ── Customer & Growth module deep links (RoadTour / CRM / Marketing / …) ──
+    // Mirror Supply Chain: same views and components; only the URL is synced so
+    // refresh + back/forward keep the active subpage. No UI/design changes.
+    const moduleHref =
+      roadtourHrefForView(view) ||
+      crmHrefForView(view) ||
+      marketingHrefForView(view) ||
+      loyaltyHrefForView(view) ||
+      catalogHrefForView(view) ||
+      ecommerceHrefForView(view)
+
+    if (moduleHref) {
+      setCurrentView(view)
+      router.push(moduleHref)
+      return
     }
 
     setCurrentView(view)
