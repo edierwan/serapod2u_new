@@ -400,7 +400,7 @@ export default function OrderDocumentsDialog({
 
   return (
     <SeraModalOverlay onBackdropClick={onClose}>
-      <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+      <SeraModalPanel className="sera-modal-panel--scroll">
         <SeraModalHeader onClose={onClose} className="items-center">
           <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-8">
             <div className="min-w-0">

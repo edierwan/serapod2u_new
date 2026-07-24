@@ -1702,7 +1702,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           setSelectedShopForDistributors(null)
           checkShopDistributorLinks()
         }}>
-          <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+          <SeraModalPanel className="sera-modal-panel--scroll">
             <SeraModalHeader
               onClose={() => {
                 setSelectedShopForDistributors(null)
@@ -1732,7 +1732,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           setSelectedDistributorForShops(null)
           checkDistributorShopLinks()
         }}>
-          <SeraModalPanel className="sera-modal-panel--2xl sera-modal-panel--scroll">
+          <SeraModalPanel className="sera-modal-panel--scroll">
             <SeraModalHeader
               onClose={() => {
                 setSelectedDistributorForShops(null)

@@ -463,7 +463,7 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
       {/* Shop Staff Detail Dialog */}
       {selectedShop && (
         <SeraModalOverlay onBackdropClick={() => setSelectedShop(null)}>
-          <SeraModalPanel className="sera-modal-panel--lg">
+          <SeraModalPanel>
             <SeraModalHeader onClose={() => setSelectedShop(null)}>
               <div className="min-w-0 pr-2">
                 <h3 className="sera-modal-title">{selectedShop.shop_name}</h3>

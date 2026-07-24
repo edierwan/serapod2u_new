@@ -1245,22 +1245,62 @@
   animation: sera-modal-rise-in 200ms ease-out;
 }
 
+/* Grow with content (forms stay ~md; wide tables expand up to viewport). */
+.sera-modal-panel--auto {
+  width: var(--sera-modal-auto-w, min(28rem, calc(100vw - 2rem)));
+  max-width: min(72rem, calc(100vw - 2rem));
+  height: var(--sera-modal-auto-h, auto);
+  max-height: min(90vh, 90dvh);
+  transition: width 120ms ease, height 120ms ease;
+}
+
+.sera-modal-panel--sm {
+  width: 100%;
+  max-width: 24rem;
+  height: auto;
+}
+
+.sera-modal-panel--md {
+  width: 100%;
+  max-width: 28rem;
+  height: auto;
+}
+
 .sera-modal-panel--lg {
+  width: 100%;
   max-width: 42rem;
+  height: auto;
 }
 
 .sera-modal-panel--xl {
+  width: 100%;
   max-width: 56rem;
+  height: auto;
 }
 
 .sera-modal-panel--2xl {
+  width: 100%;
   max-width: min(72rem, calc(100vw - 2rem));
+  height: auto;
+}
+
+.sera-modal-panel--full {
+  width: calc(100vw - 2rem);
+  max-width: calc(100vw - 2rem);
+  height: min(90vh, 90dvh);
+  max-height: min(90vh, 90dvh);
 }
 
 .sera-modal-panel--scroll {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.sera-modal-panel--auto .sera-modal-body,
+.sera-modal-panel--scroll .sera-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .sera-modal-header {
@@ -1408,5 +1448,9 @@
   .sera-modal-overlay,
   .sera-modal-panel {
     animation: none;
+  }
+
+  .sera-modal-panel--auto {
+    transition: none;
   }
 }

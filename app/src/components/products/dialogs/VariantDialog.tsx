@@ -397,7 +397,7 @@ export default function VariantDialog({
 
   return (
     <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
-      <SeraModalPanel className="max-w-6xl overflow-y-auto">
+      <SeraModalPanel className="overflow-y-auto">
         <SeraModalHeader
           sticky
           title={variant ? 'Edit Variant' : 'Add Variant'}

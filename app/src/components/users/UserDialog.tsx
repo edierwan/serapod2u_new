@@ -349,7 +349,7 @@ export default function UserDialog({
 
   return (
     <SeraModalOverlay onBackdropClick={() => !isSaving && handleClose()}>
-      <SeraModalPanel className="sera-modal-panel--lg overflow-y-auto">
+      <SeraModalPanel className="overflow-y-auto">
         <div className="sera-modal-header is-sticky">
           <h2 className="sera-modal-title">
             {user ? 'Edit User' : 'Add New User'}

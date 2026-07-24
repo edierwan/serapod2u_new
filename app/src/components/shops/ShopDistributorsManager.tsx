@@ -397,7 +397,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
 
       {dialogOpen && (
         <SeraModalOverlay onBackdropClick={() => !isSaving && setDialogOpen(false)}>
-          <SeraModalPanel className="sera-modal-panel--lg overflow-y-auto">
+          <SeraModalPanel className="overflow-y-auto">
             <SeraModalHeader
               sticky
               title="Link Distributor to Shop"

@@ -586,7 +586,7 @@ export default function ScanIssuesTab() {
             {/* Templates modal */}
             {templatesOpen && (
                 <SeraModalOverlay onBackdropClick={() => { setTemplatesOpen(false); setEditingTemplate(null) }}>
-                    <SeraModalPanel className="sera-modal-panel--xl overflow-y-auto">
+                    <SeraModalPanel className="overflow-y-auto">
                         <SeraModalHeader
                             title="Message Templates"
                             onClose={() => { setTemplatesOpen(false); setEditingTemplate(null) }}
