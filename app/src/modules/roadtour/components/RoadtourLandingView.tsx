@@ -12,10 +12,10 @@ interface RoadtourLandingViewProps {
 }
 
 const cardAccents: Record<string, { chip: string; icon: string }> = {
-    'rt-campaigns': { chip: 'bg-sky-50', icon: 'text-sky-600' },
-    'rt-field': { chip: 'bg-emerald-50', icon: 'text-emerald-600' },
-    'rt-analytics': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-    'rt-settings': { chip: 'bg-violet-50', icon: 'text-violet-600' },
+    'rt-campaigns': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' },
+    'rt-field': { chip: 'bg-[var(--sera-mist)]', icon: 'text-[var(--sera-ink-soft)]' },
+    'rt-analytics': { chip: 'bg-[var(--sera-orange)]/[0.06]', icon: 'text-[var(--sera-orange-deep)]' },
+    'rt-settings': { chip: 'bg-[var(--sera-mist)]', icon: 'text-[var(--sera-muted)]' },
 }
 
 const defaultAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }

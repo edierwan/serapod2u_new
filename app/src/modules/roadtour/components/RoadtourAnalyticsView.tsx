@@ -499,9 +499,10 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
   const totalScanPages = Math.max(1, Math.ceil(data.recentScansTotal / scansPerPage))
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       <div>
-        <h3 className="text-xl font-semibold flex items-center gap-2"><BarChart3 className="h-5 w-5 text-primary" />RoadTour Analytics</h3>
+        <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--sera-ink)]"><BarChart3 className="h-5 w-5 text-[var(--sera-orange)]" />RoadTour Analytics</h3>
         <p className="text-sm text-muted-foreground mt-1">Monitor campaign performance, visits, and rewards distribution.</p>
       </div>
 
@@ -533,7 +534,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
             setDateTo('')
             setRunFilter('all')
           }}
-          className="text-sm text-primary hover:underline self-start md:self-auto"
+          className="text-sm text-[var(--sera-orange)] hover:underline hover:text-[var(--sera-orange-deep)] self-start md:self-auto"
         >
           Clear filters
         </button>
@@ -543,7 +544,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
         <Card>
           <CardContent className="pt-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-100"><MapIcon className="h-5 w-5 text-blue-600" /></div>
+            <div className="p-2 rounded-lg bg-[var(--sera-orange)]/10"><MapIcon className="h-5 w-5 text-[var(--sera-orange)]" /></div>
             <div><p className="text-2xl font-bold">{data.activeCampaigns}</p><p className="text-xs text-muted-foreground">Active Campaigns</p></div>
           </CardContent>
         </Card>
@@ -555,7 +556,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         </Card>
         <Card>
           <CardContent className="pt-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-violet-100"><QrCode className="h-5 w-5 text-violet-600" /></div>
+            <div className="p-2 rounded-lg bg-[var(--sera-mist)]"><QrCode className="h-5 w-5 text-[var(--sera-ink-soft)]" /></div>
             <div><p className="text-2xl font-bold">{data.totalQrCodes}</p><p className="text-xs text-muted-foreground">QR Codes</p></div>
           </CardContent>
         </Card>
@@ -567,7 +568,7 @@ export function RoadtourAnalyticsView({ userProfile, onViewChange }: RoadtourAna
         </Card>
         <Card>
           <CardContent className="pt-4 flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-pink-100"><Star className="h-5 w-5 text-pink-600" /></div>
+            <div className="p-2 rounded-lg bg-[var(--sera-mist)]"><Star className="h-5 w-5 text-[var(--sera-muted)]" /></div>
             <div>
               <p className="text-2xl font-bold">{data.totalPointsAwarded.toLocaleString()}</p>
               <p className="text-xs text-muted-foreground">Points Awarded</p>

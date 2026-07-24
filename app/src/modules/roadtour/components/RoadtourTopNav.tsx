@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { Map, ChevronDown, ChevronRight, Menu as MenuIcon } from 'lucide-react'
 import {
   roadtourNavGroups,
@@ -17,7 +16,6 @@ interface RoadtourTopNavProps {
 }
 
 export default function RoadtourTopNav({ currentView, onNavigate }: RoadtourTopNavProps) {
-  const router = useRouter()
   const [openGroupId, setOpenGroupId] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -61,103 +59,149 @@ export default function RoadtourTopNav({ currentView, onNavigate }: RoadtourTopN
       onNavigate(childId)
       setOpenGroupId(null)
       setMobileMenuOpen(false)
-    }, [onNavigate]
+    },
+    [onNavigate]
   )
 
   return (
-    <div className="sticky top-0 z-40 bg-card border-b border-border print:hidden">
+    <div className="sticky top-0 z-40 border-b border-[var(--sera-line)] bg-white print:hidden">
       <div className="sera-top-nav__inner">
-        <div className="flex items-center gap-1.5 shrink-0 mr-1">
-          <button onClick={() => onNavigate('roadtour')}
-            className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded text-sm font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors">
+        <div className="mr-1 flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onNavigate('roadtour')}
+            className="flex items-center gap-1.5 rounded-md bg-[var(--sera-orange)]/10 px-2.5 py-0.5 text-sm font-semibold text-[var(--sera-orange-deep)] transition-colors hover:bg-[var(--sera-orange)]/15"
+          >
             <Map className="h-3 w-3" />
             <span>RoadTour</span>
           </button>
         </div>
 
         {/* Desktop */}
-        <div ref={dropdownRef} className="hidden md:flex items-center flex-1 min-w-0 relative">
-          <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide" role="menubar">
+        <div ref={dropdownRef} className="relative hidden min-w-0 flex-1 items-center md:flex">
+          <nav className="scrollbar-hide flex items-center gap-0.5 overflow-x-auto" role="menubar">
             {roadtourNavGroups.map((group) => {
               const active = isGroupActive(group)
               const open = openGroupId === group.id
               const Icon = group.icon
               return (
-                <button key={group.id}
-                  ref={(el) => { buttonRefs.current[group.id] = el }}
-                  role="menuitem" aria-haspopup="true" aria-expanded={open}
+                <button
+                  key={group.id}
+                  type="button"
+                  ref={(el) => {
+                    buttonRefs.current[group.id] = el
+                  }}
+                  role="menuitem"
+                  aria-haspopup="true"
+                  aria-expanded={open}
                   onClick={() => setOpenGroupId(open ? null : group.id)}
                   className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md whitespace-nowrap transition-colors',
-                    active ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                    open && !active && 'bg-accent text-accent-foreground'
-                  )}>
-                  <Icon className="h-3.5 w-3.5" />{group.label}
+                    'flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                      : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]',
+                    open && !active && 'bg-[var(--sera-mist)] text-[var(--sera-ink)]'
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {group.label}
                   <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
                 </button>
               )
             })}
           </nav>
 
-          {openGroupId && (() => {
-            const group = roadtourNavGroups.find((g) => g.id === openGroupId)
-            if (!group) return null
-            return (
-              <div role="menu"
-                className="absolute min-w-[200px] bg-popover border border-border rounded-lg shadow-lg py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100"
-                style={{ left: dropdownStyle.left, top: dropdownStyle.top + 4 }}>
-                {group.children.map((child) => {
-                  const ChildIcon = child.icon
-                  const childActive = isChildActive(child)
-                  return (
-                    <button key={child.id} role="menuitem" onClick={() => handleNav(child.id)}
-                      className={cn(
-                        'w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors',
-                        childActive ? 'bg-blue-50 text-blue-700 font-semibold dark:bg-blue-900/30 dark:text-blue-300' : 'text-foreground hover:bg-accent'
-                      )}>
-                      <ChildIcon className="h-3.5 w-3.5 shrink-0" /><span>{child.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })()}
+          {openGroupId &&
+            (() => {
+              const group = roadtourNavGroups.find((g) => g.id === openGroupId)
+              if (!group) return null
+              return (
+                <div
+                  role="menu"
+                  className="absolute z-50 min-w-[200px] animate-in rounded-lg border border-[var(--sera-line)] bg-white py-1 shadow-sm duration-100 fade-in-0 zoom-in-95"
+                  style={{ left: dropdownStyle.left, top: dropdownStyle.top + 4 }}
+                >
+                  {group.children.map((child) => {
+                    const ChildIcon = child.icon
+                    const childActive = isChildActive(child)
+                    return (
+                      <button
+                        key={child.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => handleNav(child.id)}
+                        className={cn(
+                          'flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors',
+                          childActive
+                            ? 'bg-[var(--sera-orange)]/10 font-semibold text-[var(--sera-orange-deep)]'
+                            : 'text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]'
+                        )}
+                      >
+                        <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                        <span>{child.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })()}
         </div>
 
         {/* Mobile */}
-        <div className="flex md:hidden flex-1 min-w-0">
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent">
-            <MenuIcon className="h-4 w-4" /><span>Menu</span>
+        <div className="flex min-w-0 flex-1 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] hover:text-[var(--sera-ink)]"
+          >
+            <MenuIcon className="h-4 w-4" />
+            <span>Menu</span>
             <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
           </button>
         </div>
       </div>
 
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-border bg-card max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[60vh] overflow-y-auto border-t border-[var(--sera-line)] bg-white md:hidden">
           {roadtourNavGroups.map((group) => {
             const active = isGroupActive(group)
             const open = openGroupId === group.id
             const Icon = group.icon
             return (
               <div key={group.id}>
-                <button onClick={() => setOpenGroupId(open ? null : group.id)}
-                  className={cn('w-full flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
-                    active ? 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200' : 'text-foreground hover:bg-accent')}>
-                  <Icon className="h-4 w-4" /><span className="flex-1 text-left">{group.label}</span>
+                <button
+                  type="button"
+                  onClick={() => setOpenGroupId(open ? null : group.id)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-ink)]'
+                      : 'text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="flex-1 text-left">{group.label}</span>
                   <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
                 </button>
                 {open && (
-                  <div className="bg-accent/30">
+                  <div className="bg-[var(--sera-mist)]/50">
                     {group.children.map((child) => {
                       const ChildIcon = child.icon
                       const childActive = isChildActive(child)
                       return (
-                        <button key={child.id} onClick={() => handleNav(child.id)}
-                          className={cn('w-full flex items-center gap-2.5 pl-10 pr-4 py-2 text-sm transition-colors',
-                            childActive ? 'bg-blue-50 text-blue-700 font-semibold dark:bg-blue-900/30 dark:text-blue-300' : 'text-muted-foreground hover:bg-accent')}>
-                          <ChildIcon className="h-3.5 w-3.5 shrink-0" /><span>{child.label}</span>
+                        <button
+                          key={child.id}
+                          type="button"
+                          onClick={() => handleNav(child.id)}
+                          className={cn(
+                            'flex w-full items-center gap-2.5 py-2 pl-10 pr-4 text-sm transition-colors',
+                            childActive
+                              ? 'bg-[var(--sera-orange)]/10 font-semibold text-[var(--sera-orange-deep)]'
+                              : 'text-[var(--sera-muted)] hover:bg-[var(--sera-mist)]'
+                          )}
+                        >
+                          <ChildIcon className="h-3.5 w-3.5 shrink-0" />
+                          <span>{child.label}</span>
                         </button>
                       )
                     })}

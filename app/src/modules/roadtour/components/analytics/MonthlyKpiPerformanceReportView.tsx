@@ -27,11 +27,11 @@ import { EmptyBlock, KpiCard, LoadingBlock, PageHeader, formatNumber } from './s
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
-const TEAM_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899']
+const TEAM_COLORS = ['#e85d04', '#10b981', '#f59e0b', '#6b7280', '#ef4444', '#e85d04', '#ec4899']
 
 const STATUS_PILL_STYLE: Record<KpiPerformanceStatus, string> = {
     achieved: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-    on_track: 'bg-sky-100 text-sky-700 border border-sky-200',
+    on_track: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)] border border-[var(--sera-line)]',
     at_risk: 'bg-amber-100 text-amber-800 border border-amber-200',
     needs_focus: 'bg-rose-100 text-rose-700 border border-rose-200',
 }
@@ -363,7 +363,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
-                    <div className="flex items-center gap-1.5 text-xs text-blue-700">
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--sera-orange-deep)]">
                         <Info className="h-3.5 w-3.5" />
                         Period auto: {period.label} (Calendar Month). Month options are limited to configured KPI Plan months — monthly report includes all campaigns under the selected event, including those created mid-month. Multiple campaigns per shop are supported: each scan counts for the campaign/QR AM at scan time. For shop recovery or AM takeover, create a new Campaign under the same Event; historical scans stay with the original campaign/AM.
                     </div>
@@ -462,7 +462,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                 <YAxis tick={{ fontSize: 11 }} />
                                                 <Tooltip formatter={(value: any) => Number(value).toLocaleString()} />
                                                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                                                <Bar dataKey="target" name="Team Target (Scans)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="target" name="Team Target (Scans)" fill="#e85d04" radius={[4, 4, 0, 0]} />
                                                 <Bar dataKey="actual" name="Actual Scans" fill="#10b981" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
@@ -653,7 +653,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                         </li>
                                     ))}
                                 </ul>
-                                <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800 flex items-center gap-2">
+                                <div className="mt-3 rounded-md border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.08] px-3 py-2 text-xs text-[var(--sera-ink-soft)] flex items-center gap-2">
                                     <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                                     Plan status: {report.cycle.status} · Period {report.cycle.period_label}
                                 </div>

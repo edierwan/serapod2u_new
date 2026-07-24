@@ -93,7 +93,7 @@ interface ScanEvent {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-const REGION_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#a855f7', '#06b6d4', '#ef4444', '#84cc16', '#f97316']
+const REGION_COLORS = ['#e85d04', '#f59e0b', '#10b981', '#2a2622', '#e85d04', '#ef4444', '#84cc16', '#f97316']
 
 function formatLocalIsoDate(date: Date): string {
     const year = date.getFullYear()
@@ -143,7 +143,7 @@ function formatShortDate(iso: string): string {
 const initialsFor = (name: string | undefined | null) =>
     (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
 
-const AVATAR_COLORS = ['bg-blue-100 text-blue-700', 'bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700', 'bg-emerald-100 text-emerald-700', 'bg-purple-100 text-purple-700', 'bg-sky-100 text-sky-700', 'bg-pink-100 text-pink-700']
+const AVATAR_COLORS = ['bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]', 'bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700', 'bg-emerald-100 text-emerald-700', 'bg-[var(--sera-mist)] text-[var(--sera-charcoal)]', 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)]', 'bg-[var(--sera-mist)] text-pink-700']
 const colorFor = (key: string) => AVATAR_COLORS[Math.abs([...key].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length]
 
 function uniqueTextParts(parts: Array<string | null | undefined>) {
@@ -611,7 +611,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     }
 
     const whatsappStatusConfig: Record<string, { icon: any; className: string; label: string }> = {
-        sent: { icon: CheckCircle2, className: 'text-blue-600', label: 'WhatsApp sent' },
+        sent: { icon: CheckCircle2, className: 'text-[var(--sera-orange)]', label: 'WhatsApp sent' },
         delivered: { icon: CheckCircle2, className: 'text-emerald-600', label: 'WhatsApp delivered' },
         failed: { icon: XCircle, className: 'text-red-600', label: 'WhatsApp failed' },
         pending: { icon: Clock, className: 'text-amber-600', label: 'WhatsApp pending' },
@@ -645,12 +645,13 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const lastUpdatedLabel = lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
     return (
-        <div className="space-y-5">
+        <div className="sera-sc-page space-y-5">
             {/* Header */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
-                        <MapPin className="h-5 w-5 text-primary" />
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl">
+                        <MapPin className="h-5 w-5 text-[var(--sera-orange)]" />
                         Visit Tracking
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -734,8 +735,8 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             {/* KPI Cards */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
                 <KpiCard
-                    icon={<Footprints className="h-5 w-5 text-blue-600" />}
-                    iconBg="bg-blue-100"
+                    icon={<Footprints className="h-5 w-5 text-[var(--sera-orange)]" />}
+                    iconBg="bg-[var(--sera-orange)]/10"
                     label="Total Visits"
                     value={metrics.total.toString()}
                     trend={metrics.trendVisits}
@@ -764,8 +765,8 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     sub={`${metrics.locationIssuePct.toFixed(1)}% of total visits`}
                 />
                 <KpiCard
-                    icon={<Route className="h-5 w-5 text-purple-600" />}
-                    iconBg="bg-purple-100"
+                    icon={<Route className="h-5 w-5 text-[var(--sera-ink-soft)]" />}
+                    iconBg="bg-[var(--sera-mist)]"
                     label="Estimated Distance"
                     value={`${metrics.totalKm.toFixed(1)} km`}
                     sub="Total route distance"
@@ -791,7 +792,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                 <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
                                 <Tooltip />
-                                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                                <Line type="monotone" dataKey="value" stroke="#e85d04" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -833,7 +834,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 <Card>
                     <CardHeader className="pb-2 flex flex-row items-center justify-between">
                         <CardTitle className="text-base">Top References</CardTitle>
-                        <button className="text-xs text-blue-600 hover:underline">View all</button>
+                        <button className="text-xs text-[var(--sera-orange)] hover:underline hover:text-[var(--sera-orange-deep)]">View all</button>
                     </CardHeader>
                     <CardContent>
                         {topReferences.length === 0 ? (

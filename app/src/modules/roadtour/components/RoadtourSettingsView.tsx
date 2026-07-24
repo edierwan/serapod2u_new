@@ -276,10 +276,11 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
     )
 
     return (
-        <div className="space-y-6">
+        <div className="sera-sc-page space-y-6">
             <div>
-                <h3 className="text-xl font-semibold flex items-center gap-2">
-                    <Settings className="h-5 w-5 text-primary" />
+                <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--sera-ink)]">
+                    <Settings className="h-5 w-5 text-[var(--sera-orange)]" />
                     RoadTour Settings
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -343,13 +344,13 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                                 toneClass={toneClass(whatsappLabel.tone)}
                             />
                             <StatusRow
-                                icon={<MapPin className="h-4 w-4 text-blue-600" />}
+                                icon={<MapPin className="h-4 w-4 text-[var(--sera-orange)]" />}
                                 label="Geolocation Capture"
                                 value="Enabled"
                                 toneClass={toneClass('emerald')}
                             />
                             <StatusRow
-                                icon={<ShieldCheck className="h-4 w-4 text-indigo-600" />}
+                                icon={<ShieldCheck className="h-4 w-4 text-[var(--sera-orange)]" />}
                                 label="Secure Claim Mode"
                                 value="Login + Shop Context Required"
                                 toneClass={toneClass('emerald')}
@@ -358,9 +359,9 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                         </CardContent>
                     </Card>
 
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 flex items-start gap-3">
-                        <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-                        <div className="text-sm text-blue-900">
+                    <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4 flex items-start gap-3">
+                        <Info className="h-4 w-4 text-[var(--sera-orange)] mt-0.5 shrink-0" />
+                        <div className="text-sm text-[var(--sera-ink)]">
                             QR mode, duplicate reward rules, and official visit rules are now system-locked for the first production rollout.
                             Reach out to the platform team if your campaign needs a different policy.
                         </div>
@@ -380,7 +381,7 @@ export function RoadtourSettingsView({ userProfile }: RoadtourSettingsViewProps)
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
-                                <ClipboardList className="h-5 w-5 text-sky-600" />
+                                <ClipboardList className="h-5 w-5 text-[var(--sera-muted)]" />
                                 Claim WhatsApp Alerts
                             </CardTitle>
                             <CardDescription>

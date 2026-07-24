@@ -175,7 +175,7 @@ export function ShopImpactDetailView({ userProfile }: Props) {
                                                             <TableCell>{row.visit_date}</TableCell>
                                                             <TableCell className="text-right">{row.before_scans}</TableCell>
                                                             <TableCell className="text-right">{row.after_scans}</TableCell>
-                                                            <TableCell className={`text-right font-semibold ${row.scan_lift_percent === null ? 'text-violet-600' : row.scan_lift_percent >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                                            <TableCell className={`text-right font-semibold ${row.scan_lift_percent === null ? 'text-[var(--sera-ink-soft)]' : row.scan_lift_percent >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                                                                 {row.status === 'newly_activated' ? 'NEW' : formatLiftPercent(row.scan_lift_percent)}
                                                             </TableCell>
                                                             <TableCell>{row.last_scan_after_at ? new Date(row.last_scan_after_at).toLocaleString() : '—'}</TableCell>
@@ -272,7 +272,7 @@ function ShopSnapshotPanel({ row, windowDays, onClose }: { row: VisitImpactRow |
                 </div>
                 <div className="flex flex-col gap-2 pt-2 border-t">
                     <Button disabled title="Coming soon" className="w-full"><Calendar className="h-4 w-4 mr-1.5" />Create Follow-Up Task</Button>
-                    <button disabled className="text-xs text-muted-foreground hover:underline disabled:opacity-60">View Full Shop History</button>
+                    <button disabled className="text-xs text-muted-foreground hover:underline hover:text-[var(--sera-orange-deep)] disabled:opacity-60">View Full Shop History</button>
                 </div>
             </CardContent>
         </Card>

@@ -23,8 +23,8 @@ import { ImpactMetricDrilldownDialog, type ImpactDrilldownMetric } from './Impac
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
 const STATUS_COLORS: Record<string, string> = {
-    Improved: '#10b981', Maintained: '#0ea5e9', Dropped: '#f59e0b',
-    'Newly Activated': '#8b5cf6', 'No Response': '#ef4444',
+    Improved: '#10b981', Maintained: '#e85d04', Dropped: '#f59e0b',
+    'Newly Activated': '#6b7280', 'No Response': '#ef4444',
 }
 
 export function PostVisitImpactReportView({ userProfile }: Props) {

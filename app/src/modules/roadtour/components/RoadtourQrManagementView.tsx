@@ -330,7 +330,8 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
         <div className="space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><QrCode className="h-5 w-5 text-primary" />QR Management</h3>
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl"><QrCode className="h-5 w-5 text-[var(--sera-orange)]" />QR Management</h3>
                     <p className="text-sm text-muted-foreground mt-1">QR records are created automatically when campaigns are activated and references are assigned.</p>
                 </div>
                 <Button variant="outline" onClick={loadData} className="gap-2 w-full sm:w-auto"><RefreshCcw className="h-4 w-4" />Refresh</Button>
@@ -389,7 +390,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                 <TableRow key={group.key}>
                                     <TableCell>
                                         {group.qr_codes.length > 1 ? (
-                                            <button type="button" onClick={() => openPreviewGroup(group)} className="font-medium text-primary hover:underline">
+                                            <button type="button" onClick={() => openPreviewGroup(group)} className="font-medium text-[var(--sera-orange)] hover:underline hover:text-[var(--sera-orange-deep)]">
                                                 Show ({group.qr_codes.length})
                                             </button>
                                         ) : (
@@ -412,7 +413,7 @@ export function RoadtourQrManagementView({ userProfile, onViewChange }: Roadtour
                                         <div className="flex gap-1 justify-end">
                                             <Button size="sm" variant="ghost" onClick={() => openPreviewGroup(group)} title="Preview"><Eye className="h-4 w-4" /></Button>
                                             <Button size="sm" variant="ghost" onClick={() => sendGroupQr(group)} title="Send using Notification Types routing" disabled={sendingGroupKey === group.key}>
-                                                {sendingGroupKey === group.key ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : <Send className="h-4 w-4 text-blue-600" />}
+                                                {sendingGroupKey === group.key ? <Loader2 className="h-4 w-4 animate-spin text-[var(--sera-orange)]" /> : <Send className="h-4 w-4 text-[var(--sera-orange)]" />}
                                             </Button>
                                             {group.status === 'active' && (
                                                 <Button size="sm" variant="ghost" onClick={() => revokeGroup(group)} title="Revoke" disabled={revokingGroupKey === group.key}>

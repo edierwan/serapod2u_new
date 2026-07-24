@@ -116,7 +116,7 @@ export function RoadtourWhatsAppMonitoringView({ userProfile, onViewChange }: Ro
     useEffect(() => { loadData() }, [loadData])
 
     const statusConfig: Record<string, { icon: any; color: string; badge: string }> = {
-        sent: { icon: Send, color: 'text-blue-600', badge: 'bg-blue-100 text-blue-700' },
+        sent: { icon: Send, color: 'text-[var(--sera-orange)]', badge: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]' },
         delivered: { icon: CheckCircle2, color: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700' },
         failed: { icon: XCircle, color: 'text-red-600', badge: 'bg-red-100 text-red-700' },
         pending: { icon: Clock, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-700' },
@@ -125,11 +125,12 @@ export function RoadtourWhatsAppMonitoringView({ userProfile, onViewChange }: Ro
     if (loading) return <SeraLoadingState variant="page" />
 
     return (
-        <div className="space-y-6">
+        <div className="sera-sc-page space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold flex items-center gap-2">
-                        <Smartphone className="h-5 w-5 text-primary" />WhatsApp Monitoring
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--sera-ink)]">
+                        <Smartphone className="h-5 w-5 text-[var(--sera-orange)]" />WhatsApp Monitoring
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">Track WhatsApp QR delivery status and activity.</p>
                 </div>
@@ -142,7 +143,7 @@ export function RoadtourWhatsAppMonitoringView({ userProfile, onViewChange }: Ro
             <div className="grid gap-4 md:grid-cols-4">
                 <Card>
                     <CardContent className="pt-4 flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-blue-100"><MessageSquare className="h-5 w-5 text-blue-600" /></div>
+                        <div className="p-2 rounded-lg bg-[var(--sera-orange)]/10"><MessageSquare className="h-5 w-5 text-[var(--sera-orange)]" /></div>
                         <div><p className="text-2xl font-bold">{stats.total}</p><p className="text-xs text-muted-foreground">Total Messages</p></div>
                     </CardContent>
                 </Card>

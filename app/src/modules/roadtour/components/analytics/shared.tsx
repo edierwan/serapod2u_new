@@ -1,7 +1,6 @@
 'use client'
 
 import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Loader2 } from 'lucide-react'
 import type { ImpactStatus, FollowUpPriority } from '@/modules/roadtour/types/analytics'
 
@@ -10,23 +9,26 @@ export function KpiCard({ label, value, sub, icon: Icon, accent, onClick }: {
     value: React.ReactNode
     sub?: React.ReactNode
     icon?: any
-    accent?: 'blue' | 'green' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate'
+    accent?: 'blue' | 'green' | 'violet' | 'amber' | 'rose' | 'cyan' | 'slate' | 'orange'
     onClick?: () => void
 }) {
+    // Map legacy blue/violet/cyan accents onto Serapod orange/charcoal family.
+    // Keep semantic green/amber/rose for status meaning.
     const accentMap: Record<string, string> = {
-        blue: 'bg-blue-50 text-blue-700',
+        orange: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
+        blue: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
+        cyan: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
+        violet: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)]',
         green: 'bg-emerald-50 text-emerald-700',
-        violet: 'bg-violet-50 text-violet-700',
         amber: 'bg-amber-50 text-amber-700',
         rose: 'bg-rose-50 text-rose-700',
-        cyan: 'bg-cyan-50 text-cyan-700',
-        slate: 'bg-slate-50 text-slate-700',
+        slate: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)]',
     }
-    const accentClass = accent ? accentMap[accent] : 'bg-muted text-foreground'
+    const accentClass = accent ? accentMap[accent] : 'bg-[var(--sera-mist)] text-[var(--sera-ink)]'
     const isInteractive = typeof onClick === 'function'
     return (
         <Card
-            className={`p-4 flex items-start gap-3 ${isInteractive ? 'cursor-pointer transition-colors hover:border-primary/30 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2' : ''}`}
+            className={`sera-sc-kpi flex items-start gap-3 border-[var(--sera-line)] p-4 shadow-none ${isInteractive ? 'cursor-pointer transition-colors hover:border-[var(--sera-orange)]/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/30 focus-visible:ring-offset-2' : ''}`}
             onClick={onClick}
             onKeyDown={isInteractive ? (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -43,9 +45,9 @@ export function KpiCard({ label, value, sub, icon: Icon, accent, onClick }: {
                 </div>
             )}
             <div className="min-w-0">
-                <div className="text-xs font-medium text-muted-foreground truncate">{label}</div>
-                <div className="text-xl sm:text-2xl font-bold text-foreground truncate">{value}</div>
-                {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+                <div className="sera-sc-kpi__label truncate">{label}</div>
+                <div className="font-display text-xl font-semibold tracking-tight text-[var(--sera-ink)] truncate sm:text-2xl">{value}</div>
+                {sub && <div className="mt-0.5 text-[11px] text-[var(--sera-muted)]">{sub}</div>}
             </div>
         </Card>
     )
@@ -53,8 +55,8 @@ export function KpiCard({ label, value, sub, icon: Icon, accent, onClick }: {
 
 export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
     return (
-        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" />
+        <div className="flex items-center justify-center gap-2 py-16 text-[var(--sera-muted)]">
+            <Loader2 className="h-5 w-5 animate-spin text-[var(--sera-orange)]" />
             <span className="text-sm">{label}</span>
         </div>
     )
@@ -62,18 +64,18 @@ export function LoadingBlock({ label = 'Loading…' }: { label?: string }) {
 
 export function EmptyBlock({ title, description }: { title: string; description?: string }) {
     return (
-        <div className="text-center py-12 px-6 text-muted-foreground">
-            <div className="text-base font-medium text-foreground">{title}</div>
-            {description && <p className="text-sm mt-1 max-w-md mx-auto">{description}</p>}
+        <div className="px-6 py-12 text-center text-[var(--sera-muted)]">
+            <div className="font-display text-base font-semibold text-[var(--sera-ink)]">{title}</div>
+            {description && <p className="mx-auto mt-1 max-w-md text-sm">{description}</p>}
         </div>
     )
 }
 
 const STATUS_STYLE: Record<ImpactStatus, string> = {
     improved: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-    maintained: 'bg-sky-100 text-sky-700 border border-sky-200',
+    maintained: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)] border border-[var(--sera-line)]',
     dropped: 'bg-rose-100 text-rose-700 border border-rose-200',
-    newly_activated: 'bg-violet-100 text-violet-700 border border-violet-200',
+    newly_activated: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] border border-[var(--sera-orange)]/25',
     no_response: 'bg-amber-100 text-amber-800 border border-amber-200',
 }
 
@@ -87,7 +89,7 @@ const STATUS_LABEL: Record<ImpactStatus, string> = {
 
 export function StatusPill({ status }: { status: ImpactStatus }) {
     return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[status]}`}>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[status]}`}>
             {STATUS_LABEL[status]}
         </span>
     )
@@ -96,7 +98,7 @@ export function StatusPill({ status }: { status: ImpactStatus }) {
 const PRIORITY_STYLE: Record<FollowUpPriority, string> = {
     high: 'bg-rose-100 text-rose-700 border border-rose-200',
     medium: 'bg-amber-100 text-amber-700 border border-amber-200',
-    low: 'bg-slate-100 text-slate-700 border border-slate-200',
+    low: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)] border border-[var(--sera-line)]',
     healthy: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
 }
 
@@ -106,7 +108,7 @@ const PRIORITY_LABEL: Record<FollowUpPriority, string> = {
 
 export function PriorityPill({ priority }: { priority: FollowUpPriority }) {
     return (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_STYLE[priority]}`}>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLE[priority]}`}>
             {PRIORITY_LABEL[priority]}
         </span>
     )
@@ -125,10 +127,19 @@ export function formatNumber(v: number | null | undefined): string {
 
 export function PageHeader({ overline, title, description }: { overline?: string; title: string; description?: string }) {
     return (
-        <div>
-            {overline && <div className="text-xs font-semibold uppercase tracking-wide text-blue-600 mb-1">{overline}</div>}
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{title}</h1>
-            {description && <p className="text-sm sm:text-base text-muted-foreground mt-1 max-w-3xl">{description}</p>}
-        </div>
+        <header className="min-w-0">
+            <div className="sera-sc-header__bar mb-4 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+            {overline && (
+                <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--sera-muted)]">
+                    {overline}
+                </p>
+            )}
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-[var(--sera-ink)] sm:text-3xl">
+                {title}
+            </h1>
+            {description && (
+                <p className="mt-1.5 max-w-3xl text-sm text-[var(--sera-muted)] sm:text-base">{description}</p>
+            )}
+        </header>
     )
 }

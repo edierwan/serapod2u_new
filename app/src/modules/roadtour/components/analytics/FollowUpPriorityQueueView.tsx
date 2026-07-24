@@ -247,7 +247,7 @@ export function FollowUpPriorityQueueView({ userProfile }: Props) {
                                         <li><span className="font-semibold text-rose-700">No Scan in Selected Window:</span> Immediate follow-up required. Priority: High</li>
                                         <li><span className="font-semibold text-amber-700">No Scan Yet:</span> Follow up before the selected window closes. Priority: Medium</li>
                                         <li><span className="font-semibold text-rose-700">Scan Drop &gt; 50%:</span> Address issues and re-engage. Priority: High</li>
-                                        <li><span className="font-semibold text-violet-700">Newly Activated:</span> Nurture early engagement. Priority: Medium</li>
+                                        <li><span className="font-semibold text-[var(--sera-ink-soft)]">Newly Activated:</span> Nurture early engagement. Priority: Medium</li>
                                         <li><span className="font-semibold text-emerald-700">Follow-Up Due Today:</span> Schedule visit or call today. Priority: High</li>
                                     </ul>
                                 </CardContent>

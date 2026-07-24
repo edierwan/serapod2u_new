@@ -99,7 +99,7 @@ const statusColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-700',
     active: 'bg-emerald-100 text-emerald-700',
     paused: 'bg-amber-100 text-amber-700',
-    completed: 'bg-blue-100 text-blue-700',
+    completed: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
     archived: 'bg-slate-100 text-slate-600',
 }
 
@@ -861,7 +861,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
     if (loading) return <SeraLoadingState variant="page" />
 
     return (
-        <div className="space-y-4 sm:space-y-6">
+        <div className="sera-sc-page space-y-4 sm:space-y-6">
             <AlertDialog open={deleteEventDialogOpen} onOpenChange={setDeleteEventDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
@@ -886,14 +886,15 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2"><MapIcon className="h-5 w-5 text-primary" />RoadTour Campaigns</h3>
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl"><MapIcon className="h-5 w-5 text-[var(--sera-orange)]" />RoadTour Campaigns</h3>
                     <p className="text-sm text-muted-foreground mt-1">Create, manage, and assign references to road tour campaigns.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={openCreateEvent} className="gap-2">
                         <MapIcon className="h-4 w-4" />Create RoadTour Event
                     </Button>
-                    <Button onClick={openCreate} className="gap-2" disabled={runs.length === 0}>
+                    <Button onClick={openCreate} className="gap-2 bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]" disabled={runs.length === 0}>
                         <Plus className="h-4 w-4" />Create Campaign
                     </Button>
                 </div>
@@ -920,10 +921,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                     </CardContent>
                 </Card>
             ) : (
-                <Card className="border-blue-100 bg-blue-50/30">
+                <Card className="border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.04]">
                     <CardContent className="py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-3 flex-wrap">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]">
                                 <MapIcon className="h-4 w-4" />
                             </div>
                             <div className="min-w-[220px]">
@@ -979,11 +980,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     <ShieldCheck className="h-3.5 w-3.5" />
                                     Duplicate protection: {DUPLICATE_POLICY_LABEL[selectedRun.duplicate_policy]}
                                 </div>
-                                <div className="flex items-center gap-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5">
+                                <div className="flex items-center gap-2 text-[var(--sera-orange-deep)] bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/25 rounded-full px-3 py-1.5">
                                     <Gift className="h-3.5 w-3.5" />
                                     Reward release: {POINT_RELEASE_RULE_LABEL[selectedRun.point_release_rule]}
                                     {selectedRun.point_release_rule === 'product_qr_scan_target_once' && selectedRun.required_product_qr_scans && selectedRun.product_qr_counting_period ? (
-                                        <span className="text-blue-600">
+                                        <span className="text-[var(--sera-orange)]">
                                             ({selectedRun.required_product_qr_scans} unique scans, {PRODUCT_QR_COUNTING_PERIOD_LABEL[selectedRun.product_qr_counting_period]})
                                         </span>
                                     ) : null}
@@ -1084,7 +1085,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         <TableCell>
                                             {(c._managers && c._managers.length > 0) ? (
                                                 <button
-                                                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                                    className="text-sm text-[var(--sera-orange)] hover:text-[var(--sera-ink-soft)] hover:underline hover:text-[var(--sera-orange-deep)] cursor-pointer"
                                                     onClick={() => openManagers(c.id, c.name)}
                                                 >
                                                     Show ({c._managers.length})
@@ -1124,10 +1125,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                         {/* COLUMN 1: Event + Campaign Details */}
                         <div className="space-y-6 lg:col-span-4">
                             {/* Section 0 — RoadTour Event */}
-                            <Card className="border-blue-200 bg-blue-50/30">
+                            <Card className="border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.04]">
                                 <CardHeader className="pb-3">
                                     <CardTitle className="flex items-center gap-2 text-sm">
-                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700"><MapIcon className="h-3.5 w-3.5" /></span>
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]"><MapIcon className="h-3.5 w-3.5" /></span>
                                         RoadTour Event
                                     </CardTitle>
                                 </CardHeader>
@@ -1148,7 +1149,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                             </Button>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-700">
+                                    <div className="flex items-start gap-2 rounded-md border border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.06] px-3 py-2 text-[11px] text-[var(--sera-orange-deep)]">
                                         <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                                         <span>If only one active event exists, it will be auto-selected.</span>
                                     </div>
@@ -1159,10 +1160,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             </Card>
 
                             {/* Section 1 — Campaign Details */}
-                            <Card className="border-blue-100">
+                            <Card className="border-[var(--sera-orange)]/20">
                                 <CardHeader className="pb-3">
                                     <CardTitle className="flex items-center gap-2 text-sm">
-                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">1</span>
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] text-xs font-semibold">1</span>
                                         Campaign Details
                                     </CardTitle>
                                 </CardHeader>
@@ -1235,10 +1236,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                             </Card>
 
                             {/* Section 2 — Targeting */}
-                            <Card className="border-blue-100">
+                            <Card className="border-[var(--sera-orange)]/20">
                                 <CardHeader className="pb-3">
                                     <CardTitle className="flex items-center gap-2 text-sm">
-                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">2</span>
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] text-xs font-semibold">2</span>
                                         Targeting
                                     </CardTitle>
                                 </CardHeader>
@@ -1253,7 +1254,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                                     type="button"
                                                     onClick={() => setFormRegions((prev) => prev.includes(s) ? prev.filter((r) => r !== s) : [...prev, s])}
                                                     className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition ${selected
-                                                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                                        ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]'
                                                         : 'border-border bg-background hover:bg-muted'
                                                         }`}
                                                 >
@@ -1264,7 +1265,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                         })}
                                     </div>
                                     <div className="flex items-center justify-between pt-1">
-                                        <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                                        <span className="inline-flex items-center gap-1 text-xs text-[var(--sera-orange)]">
                                             <CheckCircle2 className="h-3.5 w-3.5" />
                                             {formRegions.length} region{formRegions.length === 1 ? '' : 's'} selected
                                         </span>
@@ -1272,7 +1273,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                             <button
                                                 type="button"
                                                 onClick={() => setFormRegions([])}
-                                                className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                                                className="text-xs text-muted-foreground hover:text-foreground hover:underline hover:text-[var(--sera-orange-deep)]"
                                             >
                                                 Clear all
                                             </button>
@@ -1284,11 +1285,11 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                         {/* COLUMN 2: References + Notes */}
                         <div className="space-y-6 lg:col-span-5">
-                            <Card className="border-blue-100">
+                            <Card className="border-[var(--sera-orange)]/20">
                                 <CardHeader className="pb-3">
                                     <CardTitle className="flex items-center justify-between text-sm">
                                         <span className="flex items-center gap-2">
-                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">3</span>
+                                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] text-xs font-semibold">3</span>
                                             References
                                         </span>
                                         <Badge variant="outline" className="text-[11px]">{formReferenceIds.length} selected</Badge>
@@ -1318,9 +1319,9 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                                             key={ref.id}
                                                             type="button"
                                                             onClick={() => toggleFormReference(ref.id)}
-                                                            className="flex w-full items-center gap-3 px-3 py-3 text-left bg-blue-50/40 hover:bg-blue-50"
+                                                            className="flex w-full items-center gap-3 px-3 py-3 text-left bg-[var(--sera-orange)]/[0.06] hover:bg-[var(--sera-orange)]/[0.06]"
                                                         >
-                                                            <div className="flex h-4 w-4 items-center justify-center rounded border-2 border-blue-600 bg-blue-600">
+                                                            <div className="flex h-4 w-4 items-center justify-center rounded border-2 border-[var(--sera-orange)] bg-[var(--sera-orange)]">
                                                                 <CheckCircle2 className="h-3 w-3 text-white" />
                                                             </div>
                                                             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">{initials}</div>
@@ -1360,10 +1361,10 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                 </CardContent>
                             </Card>
 
-                            <Card className="border-blue-100">
+                            <Card className="border-[var(--sera-orange)]/20">
                                 <CardHeader className="pb-3">
                                     <CardTitle className="flex items-center gap-2 text-sm">
-                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">4</span>
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] text-xs font-semibold">4</span>
                                         Notes
                                     </CardTitle>
                                 </CardHeader>
@@ -1398,7 +1399,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                                     <div>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <MapIcon className="h-3.5 w-3.5 text-blue-500" />
+                                            <MapIcon className="h-3.5 w-3.5 text-[var(--sera-orange)]" />
                                             RoadTour Event
                                         </div>
                                         <p className="mt-1 text-sm font-semibold">
@@ -1408,7 +1409,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                                     <div>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Gift className="h-3.5 w-3.5 text-blue-500" />
+                                            <Gift className="h-3.5 w-3.5 text-[var(--sera-orange)]" />
                                             Reward Mode
                                         </div>
                                         <p className="mt-1 text-sm font-semibold">{formRewardMode === 'survey_submit' ? 'Survey Submit' : 'Direct Scan'}</p>
@@ -1417,7 +1418,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                     {formRewardMode === 'survey_submit' && (
                                         <div>
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                <ClipboardList className="h-3.5 w-3.5 text-sky-500" />
+                                                <ClipboardList className="h-3.5 w-3.5 text-[var(--sera-muted)]" />
                                                 Survey Template
                                             </div>
                                             <p className="mt-1 text-sm font-semibold">
@@ -1428,7 +1429,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
 
                                     <div>
                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Globe className="h-3.5 w-3.5 text-indigo-500" />
+                                            <Globe className="h-3.5 w-3.5 text-[var(--sera-ink-soft)]" />
                                             Regions
                                         </div>
                                         <p className="mt-1 text-2xl font-bold">{formRegions.length} <span className="text-sm font-normal text-muted-foreground">selected</span></p>
@@ -1540,7 +1541,7 @@ export function RoadtourCampaignsView({ userProfile, onViewChange }: RoadtourCam
                                                     <p className="text-sm font-medium">{am.full_name}</p>
                                                     <p className="text-xs text-muted-foreground">{am.email} · {am.phone}</p>
                                                 </div>
-                                                <Plus className="h-4 w-4 text-primary" />
+                                                <Plus className="h-4 w-4 text-[var(--sera-orange)]" />
                                             </button>
                                         ))}
                                 </div>

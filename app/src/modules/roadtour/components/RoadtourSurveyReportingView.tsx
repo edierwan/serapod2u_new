@@ -38,7 +38,7 @@ interface TemplateField {
 interface TemplateRow { id: string; name: string; description: string | null; is_active: boolean }
 
 const DONUT_COLORS = ['#10b981', '#ef4444', '#94a3b8']
-const BAR_COLOR = '#3b82f6'
+const BAR_COLOR = '#e85d04'
 
 function formatLocalIsoDate(date: Date): string {
     const year = date.getFullYear()
@@ -318,7 +318,7 @@ export function RoadtourSurveyReportingView({ userProfile, onNavigateTemplates }
     }
 
     if (loading && templates.length === 0) {
-        return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+        return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-[var(--sera-orange)]" /></div>
     }
 
     if (templates.length === 0) {
@@ -337,11 +337,12 @@ export function RoadtourSurveyReportingView({ userProfile, onNavigateTemplates }
     }
 
     return (
-        <div className="space-y-5">
+        <div className="sera-sc-page space-y-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
-                        <BarChart3 className="h-5 w-5 text-primary" />
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl">
+                        <BarChart3 className="h-5 w-5 text-[var(--sera-orange)]" />
                         Survey Reporting
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -564,9 +565,9 @@ export function RoadtourSurveyReportingView({ userProfile, onNavigateTemplates }
 
 function KpiCard({ icon, label, value, accent, valueClass }: { icon: React.ReactNode; label: string; value: string; accent: string; valueClass?: string }) {
     const accentMap: Record<string, string> = {
-        blue: 'bg-blue-50 text-blue-700',
+        blue: 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]',
         emerald: 'bg-emerald-50 text-emerald-700',
-        violet: 'bg-violet-50 text-violet-700',
+        violet: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)]',
         amber: 'bg-amber-50 text-amber-700',
         slate: 'bg-slate-50 text-slate-600',
     }

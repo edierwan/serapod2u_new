@@ -426,7 +426,7 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
     // Field builder view
     if (editingTemplate) {
         return (
-            <div className="space-y-6">
+            <div className="sera-sc-page space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-2">
@@ -622,7 +622,8 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" />Survey Templates</h3>
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--sera-ink)]"><ClipboardList className="h-5 w-5 text-[var(--sera-orange)]" />Survey Templates</h3>
                     <p className="text-sm text-muted-foreground mt-1">Create and manage survey templates for RoadTour campaigns.</p>
                 </div>
                 <Button onClick={openCreateTemplate} className="gap-2"><Plus className="h-4 w-4" />Create Template</Button>

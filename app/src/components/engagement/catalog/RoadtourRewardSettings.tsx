@@ -188,11 +188,11 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                 <Alert className={
                     alert.type === 'error' ? 'border-red-200 bg-red-50' :
                         alert.type === 'success' ? 'border-green-200 bg-green-50' :
-                            'border-blue-200 bg-blue-50'
+                            'border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.06]'
                 }>
                     {alert.type === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                     {alert.type === 'error' && <AlertCircle className="h-4 w-4 text-red-600" />}
-                    {alert.type === 'info' && <Info className="h-4 w-4 text-blue-600" />}
+                    {alert.type === 'info' && <Info className="h-4 w-4 text-[var(--sera-orange)]" />}
                     <AlertDescription>{alert.message}</AlertDescription>
                 </Alert>
             )}
@@ -219,7 +219,7 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                     <div className="grid gap-6 md:grid-cols-2">
                         <div className="space-y-2">
                             <Label>Estimated Cost Per Reward</Label>
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">RM {estimatedCost.toFixed(2)}</div>
+                            <div className="rounded-lg border border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.06] px-4 py-3 text-sm font-semibold text-[var(--sera-orange-deep)]">RM {estimatedCost.toFixed(2)}</div>
                         </div>
                         <div className="space-y-2">
                             <Label>Reward Mode</Label>
@@ -266,15 +266,15 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                 </CardContent>
             </Card>
 
-            <Card className="border-blue-200 bg-blue-50/50">
+            <Card className="border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.06]/50">
                 <CardContent className="pt-6">
                     <div className="flex items-start gap-3">
                         <div className="rounded-full bg-blue-100 p-2">
-                            <Coins className="h-5 w-5 text-blue-600" />
+                            <Coins className="h-5 w-5 text-[var(--sera-orange)]" />
                         </div>
                         <div className="space-y-2 text-sm">
-                            <p className="font-medium text-blue-900">Why RoadTour rewards live here now</p>
-                            <ul className="space-y-1 text-blue-800/80">
+                            <p className="font-medium text-[var(--sera-ink)]">Why RoadTour rewards live here now</p>
+                            <ul className="space-y-1 text-[var(--sera-ink-soft)]/80">
                                 <li>• Point value, reward points, and registration bonus are managed in one place</li>
                                 <li>• Budget estimation stays aligned with your main point configuration</li>
                                 <li>• RoadTour operational controls remain under the RoadTour module</li>
