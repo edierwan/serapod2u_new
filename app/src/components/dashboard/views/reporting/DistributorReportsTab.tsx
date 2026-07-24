@@ -206,9 +206,9 @@ function RankBadge({ rank }: { rank: number }) {
 function InsightCardComponent({ insight }: { insight: InsightCardType }) {
   const Icon = ICON_MAP[insight.icon] || Target
   return (
-    <Card className="sera-sc-panel overflow-hidden hover:shadow-lg transition-all duration-300 overflow-hidden group">
+    <Card className="sera-sc-panel relative overflow-hidden group transition-all duration-300 hover:shadow-lg">
       <div className="absolute top-0 left-0 h-full w-1 opacity-80" style={{ backgroundColor: insight.color }} />
-      <CardContent className="pt-5 pb-4 pl-5">
+      <CardContent className="pb-4 pl-5 pt-5">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg shrink-0" style={{ backgroundColor: `${insight.color}15` }}>
             <Icon className="w-4 h-4" style={{ color: insight.color }} />
