@@ -278,7 +278,7 @@ export default function DistributorShopsManager({ distributorId, distributorName
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -294,7 +294,7 @@ export default function DistributorShopsManager({ distributorId, distributorName
                 Manage shop relationships for {distributorName}
               </CardDescription>
             </div>
-            <Button onClick={() => setDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
+            <Button onClick={() => setDialogOpen(true)} className="w-full sm:w-auto bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
               <Plus className="w-4 h-4 mr-2" />
               Link Shop
             </Button>
@@ -317,7 +317,7 @@ export default function DistributorShopsManager({ distributorId, distributorName
                 </TableHeader>
                 <TableBody>
                   {distributorShops.map((ds) => (
-                    <TableRow key={ds.id} className={ds.is_preferred ? 'bg-blue-50' : ''}>
+                    <TableRow key={ds.id} className={ds.is_preferred ? 'bg-[var(--sera-orange)]/[0.06]' : ''}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-pink-50 flex items-center justify-center flex-shrink-0">
@@ -386,7 +386,7 @@ export default function DistributorShopsManager({ distributorId, distributorName
               <p className="text-gray-600 mb-4">
                 Link shops to enable ordering from this distributor
               </p>
-              <Button onClick={() => setDialogOpen(true)}>
+              <Button onClick={() => setDialogOpen(true)} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 Link First Shop
               </Button>

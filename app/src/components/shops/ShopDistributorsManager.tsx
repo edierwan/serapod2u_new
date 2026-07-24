@@ -278,7 +278,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -294,7 +294,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
                 Manage distributor relationships for {shopName}
               </CardDescription>
             </div>
-            <Button onClick={() => setDialogOpen(true)} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
+            <Button onClick={() => setDialogOpen(true)} className="w-full sm:w-auto bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
               <Plus className="w-4 h-4 mr-2" />
               Link Distributor
             </Button>
@@ -317,7 +317,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
                 </TableHeader>
                 <TableBody>
                   {shopDistributors.map((sd) => (
-                    <TableRow key={sd.id} className={sd.is_preferred ? 'bg-blue-50' : ''}>
+                    <TableRow key={sd.id} className={sd.is_preferred ? 'bg-[var(--sera-orange)]/[0.06]' : ''}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
@@ -386,7 +386,7 @@ export default function ShopDistributorsManager({ shopId, shopName }: ShopDistri
               <p className="text-gray-600 mb-4">
                 Link distributors to enable ordering for this shop
               </p>
-              <Button onClick={() => setDialogOpen(true)}>
+              <Button onClick={() => setDialogOpen(true)} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 Link First Distributor
               </Button>
