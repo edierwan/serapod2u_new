@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { roadtourNavGroups } from '../roadtourNav'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, pickLandingAccent, roadtourLandingAccents } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface RoadtourLandingViewProps {
@@ -11,14 +12,7 @@ interface RoadtourLandingViewProps {
     onViewChange: (viewId: string) => void
 }
 
-const cardAccents: Record<string, { chip: string; icon: string }> = {
-    'rt-campaigns': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' },
-    'rt-field': { chip: 'bg-[var(--sera-mist)]', icon: 'text-[var(--sera-ink-soft)]' },
-    'rt-analytics': { chip: 'bg-[var(--sera-orange)]/[0.06]', icon: 'text-[var(--sera-orange-deep)]' },
-    'rt-settings': { chip: 'bg-[var(--sera-mist)]', icon: 'text-[var(--sera-muted)]' },
-}
-
-const defaultAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultAccent = landingAccents.orange
 
 export function RoadtourLandingView({ onViewChange }: RoadtourLandingViewProps) {
     return (
@@ -31,7 +25,7 @@ export function RoadtourLandingView({ onViewChange }: RoadtourLandingViewProps) 
 
             <div className="sera-module-landing__grid">
                 {roadtourNavGroups.map((group) => {
-                    const accent = cardAccents[group.id] || defaultAccent
+                    const accent = pickLandingAccent(roadtourLandingAccents, group.id, defaultAccent)
                     const Icon = group.icon
 
                     return (

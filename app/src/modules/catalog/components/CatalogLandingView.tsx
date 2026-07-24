@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { catalogNavGroups, type CatalogNavGroup } from '@/modules/catalog/catalogNav'
 import CatalogHeroBanner from './CatalogHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { catalogLandingAccents, landingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface CatalogLandingViewProps {
@@ -13,11 +14,7 @@ interface CatalogLandingViewProps {
     hideHeroBanner?: boolean
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'cat-products': { chip: 'bg-indigo-50', icon: 'text-indigo-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-sky-50', icon: 'text-sky-600' }
+const defaultIconAccent = landingAccents.indigo
 
 export default function CatalogLandingView({ userName, bannerImageUrl, onViewChange, hideHeroBanner }: CatalogLandingViewProps) {
     return (
@@ -27,7 +24,7 @@ export default function CatalogLandingView({ userName, bannerImageUrl, onViewCha
             <div className="sera-module-landing__grid">
                 {catalogNavGroups.map((group: CatalogNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(catalogLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

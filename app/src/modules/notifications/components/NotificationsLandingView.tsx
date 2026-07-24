@@ -6,6 +6,7 @@ import { ArrowRight, Bell, Megaphone, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, type LandingAccent } from '@/lib/landing-accents'
 
 interface NotificationsCardItem {
   id: string
@@ -13,7 +14,7 @@ interface NotificationsCardItem {
   description: string
   href: string
   icon: React.ComponentType<{ className?: string }>
-  accent: { chip: string; icon: string }
+  accent: LandingAccent
 }
 
 const notificationCards: NotificationsCardItem[] = [
@@ -23,7 +24,7 @@ const notificationCards: NotificationsCardItem[] = [
     description: 'Monitor WhatsApp delivery activity, failed notifications, provider status, and recovery actions.',
     href: '/notifications/whatsapp-activity-recovery',
     icon: AlertTriangle,
-    accent: { chip: 'bg-amber-50', icon: 'text-amber-600' },
+    accent: landingAccents.amber,
   },
   {
     id: 'notification-providers',
@@ -31,7 +32,7 @@ const notificationCards: NotificationsCardItem[] = [
     description: 'Configure SMS, Email, and WhatsApp providers used by the system.',
     href: '/notifications/providers',
     icon: Bell,
-    accent: { chip: 'bg-violet-50', icon: 'text-violet-600' },
+    accent: landingAccents.violet,
   },
   {
     id: 'notification-types',
@@ -39,7 +40,7 @@ const notificationCards: NotificationsCardItem[] = [
     description: 'Manage notification event categories and delivery channel rules.',
     href: '/notifications/types',
     icon: Megaphone,
-    accent: { chip: 'bg-rose-50', icon: 'text-rose-600' },
+    accent: landingAccents.rose,
   },
 ]
 

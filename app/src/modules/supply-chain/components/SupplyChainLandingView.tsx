@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { filterSupplyChainNavForUser, type SupplyChainNavGroup } from '@/modules/supply-chain/supplyChainNav'
 import SupplyChainHeroBanner from './SupplyChainHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, pickLandingAccent, supplyChainLandingAccents } from '@/lib/landing-accents'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -15,16 +16,7 @@ interface SupplyChainLandingViewProps {
     roleLevel?: number
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'sc-products': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' },
-    'sc-orders': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink)]' },
-    'sc-qr': { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange-deep)]' },
-    'sc-inventory': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink-soft)]' },
-    'sc-quality': { chip: 'bg-emerald-50', icon: 'text-emerald-700' },
-    'sc-organizations': { chip: 'bg-[var(--sera-ink)]/5', icon: 'text-[var(--sera-ink)]' },
-}
-
-const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultIconAccent = landingAccents.orange
 
 export default function SupplyChainLandingView({ userName, bannerImageUrl, onViewChange, orgTypeCode, roleLevel }: SupplyChainLandingViewProps) {
     const filteredGroups = filterSupplyChainNavForUser(orgTypeCode, roleLevel)
@@ -36,7 +28,7 @@ export default function SupplyChainLandingView({ userName, bannerImageUrl, onVie
             <div className="sera-module-landing__grid">
                 {filteredGroups.map((group: SupplyChainNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(supplyChainLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

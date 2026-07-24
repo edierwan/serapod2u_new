@@ -5,19 +5,10 @@ import { ArrowRight } from 'lucide-react'
 import { settingsNavGroups, type SettingsNavGroup } from '@/modules/settings/settingsNav'
 import SettingsHeroBanner from './SettingsHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, pickLandingAccent, settingsLandingAccents } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'settings-profile': { chip: 'bg-sky-50', icon: 'text-sky-600' },
-    'settings-organization': { chip: 'bg-violet-50', icon: 'text-violet-600' },
-    'settings-notifications': { chip: 'bg-rose-50', icon: 'text-rose-600' },
-    'settings-preferences': { chip: 'bg-teal-50', icon: 'text-teal-600' },
-    'settings-authorization': { chip: 'bg-indigo-50', icon: 'text-indigo-600' },
-    'settings-ai': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-    'settings-danger-zone': { chip: 'bg-red-50', icon: 'text-red-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultIconAccent = landingAccents.orange
 
 interface SettingsLandingViewProps {
     userName?: string | null
@@ -42,7 +33,7 @@ export default function SettingsLandingView({ userName, roleLevel, bannerImageUr
             <div className="sera-module-landing__grid">
                 {visibleGroups.map((group: SettingsNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(settingsLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

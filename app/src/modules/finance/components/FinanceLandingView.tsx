@@ -6,6 +6,7 @@ import { financeNavGroups, type FinanceNavGroup } from '@/modules/finance/financ
 import FinanceHeroBanner from './FinanceHeroBanner'
 import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { financeLandingAccents, landingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -23,16 +24,7 @@ const cardDescriptions: Record<string, { description: string; status: 'live' | '
     'finance-settings': { description: 'Default posting accounts, currency, fiscal year periods, posting rules, and permissions.', status: 'live' },
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'finance-gl': { chip: 'bg-emerald-50', icon: 'text-emerald-600' },
-    'finance-ar': { chip: 'bg-sky-50', icon: 'text-sky-600' },
-    'finance-ap': { chip: 'bg-orange-50', icon: 'text-orange-600' },
-    'finance-cash': { chip: 'bg-indigo-50', icon: 'text-indigo-600' },
-    'finance-reports': { chip: 'bg-violet-50', icon: 'text-violet-600' },
-    'finance-settings': { chip: 'bg-slate-100', icon: 'text-slate-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultIconAccent = landingAccents.emerald
 
 function StatusBadge({ status }: { status: 'live' | 'coming-soon' | 'placeholder' }) {
     if (status === 'live') return null
@@ -70,7 +62,7 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                 {financeNavGroups.map((group: FinanceNavGroup) => {
                     const Icon = group.icon
                     const meta = cardDescriptions[group.id]
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(financeLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

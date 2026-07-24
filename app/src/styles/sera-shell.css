@@ -892,6 +892,12 @@
   min-width: 0;
 }
 
+.sera-module-landing__card--with-actions .sera-module-landing__card-head {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.125rem;
+  border-bottom: 1px solid var(--sera-line);
+}
+
 .sera-module-landing__card-icon {
   display: flex;
   height: var(--sera-card-icon-col);

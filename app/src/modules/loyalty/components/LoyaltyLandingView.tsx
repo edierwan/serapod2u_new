@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { loyaltyNavGroups, type LoyaltyNavGroup } from '@/modules/loyalty/loyaltyNav'
 import LoyaltyHeroBanner from './LoyaltyHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, loyaltyLandingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface LoyaltyLandingViewProps {
@@ -13,11 +14,7 @@ interface LoyaltyLandingViewProps {
     hideHeroBanner?: boolean
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'ly-rewards': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-violet-50', icon: 'text-violet-600' }
+const defaultIconAccent = landingAccents.amber
 
 export default function LoyaltyLandingView({ userName, bannerImageUrl, onViewChange, hideHeroBanner }: LoyaltyLandingViewProps) {
     return (
@@ -27,7 +24,7 @@ export default function LoyaltyLandingView({ userName, bannerImageUrl, onViewCha
             <div className="sera-module-landing__grid">
                 {loyaltyNavGroups.map((group: LoyaltyNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(loyaltyLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

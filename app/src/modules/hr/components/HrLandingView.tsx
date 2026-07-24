@@ -6,6 +6,7 @@ import { hrNavGroups, type HrNavGroup } from '@/modules/hr/hrNav'
 import HrHeroBanner from './HrHeroBanner'
 import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { hrLandingAccents, landingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface HrLandingViewProps {
@@ -22,16 +23,7 @@ const cardDescriptions: Record<string, string> = {
     'hr-settings': 'Configure departments, positions, approval rules, permissions, and accounting.',
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'hr-people': { chip: 'bg-sky-50', icon: 'text-sky-600' },
-    'hr-attendance': { chip: 'bg-teal-50', icon: 'text-teal-600' },
-    'hr-leave': { chip: 'bg-violet-50', icon: 'text-violet-600' },
-    'hr-payroll': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-    'hr-performance': { chip: 'bg-rose-50', icon: 'text-rose-600' },
-    'hr-settings': { chip: 'bg-slate-100', icon: 'text-slate-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultIconAccent = landingAccents.orange
 
 export default function HrLandingView({ userName, bannerImageUrl }: HrLandingViewProps) {
     const router = useRouter()
@@ -51,7 +43,7 @@ export default function HrLandingView({ userName, bannerImageUrl }: HrLandingVie
                 {hrNavGroups.map((group: HrNavGroup) => {
                     const Icon = group.icon
                     const description = cardDescriptions[group.id]
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(hrLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

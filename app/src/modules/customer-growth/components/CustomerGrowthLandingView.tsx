@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { customerGrowthNavGroups, type CustomerGrowthNavGroup } from '@/modules/customer-growth/customerGrowthNav'
 import CustomerGrowthHeroBanner from './CustomerGrowthHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { customerGrowthLandingAccents, landingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface CustomerGrowthLandingViewProps {
@@ -12,15 +13,7 @@ interface CustomerGrowthLandingViewProps {
     onViewChange: (view: string) => void
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'cg-crm': { chip: 'bg-teal-50', icon: 'text-teal-600' },
-    'cg-marketing': { chip: 'bg-rose-50', icon: 'text-rose-600' },
-    'cg-loyalty': { chip: 'bg-amber-50', icon: 'text-amber-600' },
-    'cg-catalog': { chip: 'bg-indigo-50', icon: 'text-indigo-600' },
-    'cg-ecommerce': { chip: 'bg-violet-50', icon: 'text-violet-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-[var(--sera-orange)]/10', icon: 'text-[var(--sera-orange)]' }
+const defaultIconAccent = landingAccents.orange
 
 export default function CustomerGrowthLandingView({ userName, bannerImageUrl, onViewChange }: CustomerGrowthLandingViewProps) {
     return (
@@ -30,7 +23,7 @@ export default function CustomerGrowthLandingView({ userName, bannerImageUrl, on
             <div className="sera-module-landing__grid">
                 {customerGrowthNavGroups.map((group: CustomerGrowthNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(customerGrowthLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

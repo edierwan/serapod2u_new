@@ -28,7 +28,7 @@ export default function ModuleLandingCard({
   className,
 }: ModuleLandingCardProps) {
   return (
-    <div className={cn('sera-module-landing__card', className)}>
+    <div className={cn('sera-module-landing__card', children && 'sera-module-landing__card--with-actions', className)}>
       <div className="sera-module-landing__card-head">
         <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
           <Icon className="h-4 w-4" strokeWidth={1.75} />

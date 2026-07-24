@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { marketingNavGroups, type MarketingNavGroup } from '@/modules/marketing/marketingNav'
 import MarketingHeroBanner from './MarketingHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { landingAccents, marketingLandingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface MarketingLandingViewProps {
@@ -13,11 +14,7 @@ interface MarketingLandingViewProps {
     hideHeroBanner?: boolean
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'mkt-campaigns': { chip: 'bg-rose-50', icon: 'text-rose-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-pink-50', icon: 'text-pink-600' }
+const defaultIconAccent = landingAccents.rose
 
 export default function MarketingLandingView({ userName, bannerImageUrl, onViewChange, hideHeroBanner }: MarketingLandingViewProps) {
     return (
@@ -27,7 +24,7 @@ export default function MarketingLandingView({ userName, bannerImageUrl, onViewC
             <div className="sera-module-landing__grid">
                 {marketingNavGroups.map((group: MarketingNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(marketingLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard

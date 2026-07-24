@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react'
 import { crmNavGroups, type CrmNavGroup } from '@/modules/crm/crmNav'
 import CrmHeroBanner from './CrmHeroBanner'
 import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
+import { crmLandingAccents, landingAccents, pickLandingAccent } from '@/lib/landing-accents'
 import { cn } from '@/lib/utils'
 
 interface CrmLandingViewProps {
@@ -13,11 +14,7 @@ interface CrmLandingViewProps {
     hideHeroBanner?: boolean
 }
 
-const iconAccents: Record<string, { chip: string; icon: string }> = {
-    'crm-support': { chip: 'bg-teal-50', icon: 'text-teal-600' },
-}
-
-const defaultIconAccent = { chip: 'bg-cyan-50', icon: 'text-cyan-600' }
+const defaultIconAccent = landingAccents.teal
 
 export default function CrmLandingView({ userName, bannerImageUrl, onViewChange, hideHeroBanner }: CrmLandingViewProps) {
     return (
@@ -27,7 +24,7 @@ export default function CrmLandingView({ userName, bannerImageUrl, onViewChange,
             <div className="sera-module-landing__grid">
                 {crmNavGroups.map((group: CrmNavGroup) => {
                     const Icon = group.icon
-                    const accent = iconAccents[group.id] || defaultIconAccent
+                    const accent = pickLandingAccent(crmLandingAccents, group.id, defaultIconAccent)
 
                     return (
                         <ModuleLandingCard
