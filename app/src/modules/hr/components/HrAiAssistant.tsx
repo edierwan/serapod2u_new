@@ -14,29 +14,18 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Bot,
-  Send,
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
   XCircle,
   Loader2,
-  Sparkles,
   ChevronDown,
   ChevronRight,
   Wrench,
   ExternalLink,
-  Wifi,
-  WifiOff,
-  Zap,
+  MessageSquare,
 } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { HrAuditResult, AiResponse } from '@/lib/ai/types'
@@ -482,18 +471,23 @@ export default function HrAiAssistant() {
 
   // ── Status chip renderer ─────────────────────────────────────────
 
+  const statusClass: Record<ConnectionStatus, string> = {
+    online: 'sera-ai-assistant-status--online',
+    offline: 'sera-ai-assistant-status--offline',
+    connecting: 'sera-ai-assistant-status--connecting',
+  }
+
   const StatusChip = () => {
-    const configs: Record<ConnectionStatus, { label: string; icon: typeof Wifi; cls: string }> = {
-      online: { label: 'AI Online', icon: Wifi, cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-      offline: { label: 'DB Mode', icon: Zap, cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-      connecting: { label: 'Connecting', icon: Loader2, cls: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400' },
+    const labels: Record<ConnectionStatus, string> = {
+      online: 'Online',
+      offline: 'DB Mode',
+      connecting: 'Connecting',
     }
-    const cfg = configs[status]
-    const Icon = cfg.icon
     return (
-      <span className={cn('inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full', cfg.cls)}>
-        <Icon className={cn('h-2.5 w-2.5', status === 'connecting' && 'animate-spin')} />
-        {cfg.label}
+      <span className={cn('sera-ai-assistant-status', statusClass[status])}>
+        <span className="sera-ai-assistant-status__dot" />
+        {labels[status]}
+        {status === 'connecting' && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
       </span>
     )
   }
@@ -502,84 +496,63 @@ export default function HrAiAssistant() {
     <>
       {/* ── Floating Button ─────────────────────────────────────── */}
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          'fixed bottom-6 right-6 z-50 flex items-center justify-center',
-          'h-14 w-14 rounded-full shadow-lg transition-all duration-300',
-          'bg-gradient-to-br from-violet-600 to-blue-600 text-white',
-          'hover:shadow-xl hover:scale-105 active:scale-95',
-          'print:hidden',
+          'sera-ai-assistant-fab relative fixed bottom-6 right-6 z-50 print:hidden',
           open && 'scale-0 opacity-0 pointer-events-none',
         )}
         aria-label="HR Assistant"
         title="HR Assistant"
       >
-        <Bot className="h-6 w-6" />
+        <MessageSquare className="h-5 w-5" strokeWidth={1.85} aria-hidden />
+        <span className="sr-only">Ask AI</span>
         {lastAudit && lastAudit.summary.missing > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--sera-orange)] px-1 text-[10px] font-bold text-white">
             {lastAudit.summary.missing}
           </span>
         )}
       </button>
 
-      {/* ── Drawer / Sheet ──────────────────────────────────────── */}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="right"
-          className="w-full sm:w-[440px] md:w-[480px] p-0 flex flex-col"
+          className="sera-ai-assistant-sheet w-full sm:w-[440px] md:w-[480px] p-0 flex flex-col gap-0"
         >
-          {/* Header */}
-          <SheetHeader className="px-4 py-3 border-b border-border bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-white">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <SheetTitle className="text-sm font-semibold">HR Assistant</SheetTitle>
-                  <p className="text-[11px] text-muted-foreground">AI-powered HR helper</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <StatusChip />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={runAudit}
-                  disabled={auditLoading}
-                  className="h-7 px-2 text-xs"
-                >
-                  {auditLoading ? (
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                  )}
-                  Audit
-                </Button>
-              </div>
+          <header className="sera-ai-assistant-header">
+            <div className="sera-ai-assistant-header__brand">
+              <h2 className="sera-ai-assistant-header__title">HR Assistant</h2>
+              <p className="sera-ai-assistant-header__subtitle">AI-powered HR helper</p>
             </div>
-          </SheetHeader>
+            <div className="sera-ai-assistant-header__actions">
+              <StatusChip />
+              <button
+                type="button"
+                onClick={runAudit}
+                disabled={auditLoading}
+                className="sera-ai-assistant-audit-btn inline-flex items-center"
+              >
+                {auditLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Audit
+              </button>
+            </div>
+          </header>
 
-          {/* Chat Area */}
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-4">
-              {/* Welcome message when empty */}
+          <ScrollArea className="sera-ai-assistant-body">
+            <div className="sera-ai-assistant-chat">
               {messages.length === 0 && (
-                <div className="space-y-4">
-                  <div className="text-center space-y-2 py-4">
-                    <div className="flex justify-center">
-                      <div className="flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-br from-violet-100 to-blue-100 dark:from-violet-900/40 dark:to-blue-900/40">
-                        <Bot className="h-6 w-6 text-violet-600 dark:text-violet-400" />
-                      </div>
-                    </div>
-                    <h3 className="text-sm font-semibold">HR Assistant</h3>
-                    <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                <div>
+                  <div className="sera-ai-assistant-welcome">
+                    <h3 className="sera-ai-assistant-welcome__title">HR Assistant</h3>
+                    <p className="sera-ai-assistant-welcome__desc">
                       Tanya apa sahaja tentang HR — pekerja, jabatan, gaji, cuti dan banyak lagi. I understand BM and English.
                     </p>
                   </div>
-
-                  {/* Welcome suggestion chips */}
-                  <div className="flex flex-wrap gap-1.5 justify-center">
+                  <div className="sera-ai-assistant-prompts">
                     {[
                       'Baki cuti saya?',
                       'Cuti umum tahun ini?',
@@ -588,11 +561,11 @@ export default function HrAiAssistant() {
                     ].map((q) => (
                       <button
                         key={q}
+                        type="button"
                         onClick={() => sendMessage(q)}
                         disabled={loading}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors"
+                        className="sera-ai-assistant-prompt"
                       >
-                        <Zap className="h-3 w-3" />
                         {q}
                       </button>
                     ))}
@@ -603,13 +576,13 @@ export default function HrAiAssistant() {
               {/* Messages */}
               {messages.map((msg) => (
                 <div key={msg.id}>
-                  <div className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+                  <div className={cn('sera-ai-assistant-msg-row', msg.role === 'user' ? 'sera-ai-assistant-msg-row--user' : 'sera-ai-assistant-msg-row--assistant')}>
                     <div
                       className={cn(
-                        'max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm',
+                        'sera-ai-assistant-bubble',
                         msg.role === 'user'
-                          ? 'bg-blue-600 text-white rounded-br-sm'
-                          : 'bg-muted rounded-bl-sm',
+                          ? 'sera-ai-assistant-bubble--user'
+                          : 'sera-ai-assistant-bubble--assistant',
                       )}
                     >
                       {/* Mode badge */}
@@ -649,7 +622,7 @@ export default function HrAiAssistant() {
                                   executeAction(action.key, action.label)
                                 }
                               }}
-                              className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                              className="sera-ai-assistant-action-link"
                               disabled={loading}
                             >
                               <Wrench className="h-3 w-3" />
@@ -663,15 +636,15 @@ export default function HrAiAssistant() {
 
                   {/* Suggestion chips (below assistant message) */}
                   {msg.role === 'assistant' && msg.suggestions && msg.suggestions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+                    <div className="sera-ai-assistant-chips">
                       {msg.suggestions.map((s, si) => (
                         <button
                           key={si}
+                          type="button"
                           onClick={() => sendMessage(s.label)}
                           disabled={loading}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-colors disabled:opacity-50"
+                          className="sera-ai-assistant-chip sera-ai-assistant-chip--sm"
                         >
-                          <Zap className="h-2.5 w-2.5" />
                           {s.label}
                         </button>
                       ))}
@@ -682,9 +655,9 @@ export default function HrAiAssistant() {
 
               {/* Loading indicator — only shows before first token arrives */}
               {loading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-xl px-4 py-3 rounded-bl-sm">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="sera-ai-assistant-msg-row sera-ai-assistant-msg-row--assistant">
+                  <div className="sera-ai-assistant-bubble sera-ai-assistant-bubble--loading">
+                    <div className="flex items-center gap-2">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       <span className="streaming-dots">Thinking</span>
                     </div>
@@ -697,41 +670,37 @@ export default function HrAiAssistant() {
             </div>
           </ScrollArea>
 
-          {/* Input area */}
-          <div className="border-t border-border p-3 bg-card">
-            {/* Retry AI connection — only show if user specifically wants AI */}
+          <footer className="sera-ai-assistant-footer">
             {status === 'offline' && messages.length > 2 && (
-              <button
-                onClick={retryConnection}
-                className="text-[11px] text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
-              >
+              <button type="button" onClick={retryConnection} className="sera-ai-assistant-retry">
                 <RefreshCw className="h-3 w-3" />
                 Try AI mode
               </button>
             )}
-            <div className="flex items-center gap-2">
+            <div className="sera-ai-assistant-composer">
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Tanya tentang HR… / Ask about HR…"
-                className="flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-violet-500/50"
+                className="sera-ai-assistant-input"
                 disabled={loading}
               />
-              <Button
-                size="icon"
+              <button
+                type="button"
                 onClick={() => sendMessage(input)}
                 disabled={!input.trim() || loading}
-                className="h-9 w-9 shrink-0 bg-violet-600 hover:bg-violet-700"
+                className="sera-ai-assistant-send"
+                aria-label="Send message"
               >
-                <Send className="h-4 w-4" />
-              </Button>
+                Send
+              </button>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
-              AI + DB tools • Data organisasi anda sahaja
+            <p className="sera-ai-assistant-footer-note">
+              Data organisasi sahaja · AI + DB tools
             </p>
-          </div>
+          </footer>
         </SheetContent>
       </Sheet>
     </>
@@ -741,16 +710,21 @@ export default function HrAiAssistant() {
 // ─── Mode Badge ────────────────────────────────────────────────────
 
 function ModeBadge({ mode }: { mode: AssistantResponse['mode'] }) {
-  const configs: Record<string, { label: string; cls: string }> = {
-    tool: { label: 'DB Query', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    'ai+tool': { label: 'AI + DB', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' },
-    ai: { label: 'AI', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-    offline: { label: 'Offline', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  const modeClass: Record<string, string> = {
+    tool: 'sera-ai-assistant-mode--tool',
+    'ai+tool': 'sera-ai-assistant-mode--ai-tool',
+    ai: 'sera-ai-assistant-mode--ai',
+    offline: 'sera-ai-assistant-mode--offline',
   }
-  const cfg = configs[mode] ?? configs.ai
+  const labels: Record<string, string> = {
+    tool: 'DB Query',
+    'ai+tool': 'AI + DB',
+    ai: 'AI',
+    offline: 'Offline',
+  }
   return (
-    <span className={cn('inline-block text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded', cfg.cls)}>
-      {cfg.label}
+    <span className={cn('sera-ai-assistant-mode', modeClass[mode] ?? modeClass.ai)}>
+      {labels[mode] ?? labels.ai}
     </span>
   )
 }
@@ -771,11 +745,11 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
   const hasSettingsLinks = card.rows.some((r) => r.settingsLink)
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card text-card-foreground overflow-hidden">
-      <div className="flex items-center justify-between px-2.5 py-1.5 text-xs font-medium bg-accent/30">
+    <div className="sera-ai-assistant-data-card">
+      <div className="sera-ai-assistant-data-card__head">
         <span>{card.title}</span>
         {card.deepLink && (
-          <a href={card.deepLink} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5">
+          <a href={card.deepLink} className="sera-ai-assistant-data-card__link">
             <ExternalLink className="h-2.5 w-2.5" />
             View
           </a>
@@ -783,34 +757,29 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
       </div>
       {headers.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
+          <table>
             <thead>
-              <tr className="border-b border-border/50">
+              <tr>
                 {headers.map((h) => (
-                  <th key={h} className="px-2 py-1 text-left font-medium text-muted-foreground capitalize">
+                  <th key={h} className="capitalize">
                     {h.replace(/([A-Z])/g, ' $1').trim()}
                   </th>
                 ))}
                 {hasSettingsLinks && (
-                  <th className="px-2 py-1 text-left font-medium text-muted-foreground">Action</th>
+                  <th>Action</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row, ri) => (
-                <tr key={ri} className="border-b border-border/20 last:border-0">
+                <tr key={ri}>
                   {headers.map((h) => (
-                    <td key={h} className="px-2 py-1 whitespace-nowrap">
-                      {String(row[h] ?? '—')}
-                    </td>
+                    <td key={h}>{String(row[h] ?? '—')}</td>
                   ))}
                   {hasSettingsLinks && (
-                    <td className="px-2 py-1 whitespace-nowrap">
+                    <td>
                       {row.settingsLink ? (
-                        <a
-                          href={row.settingsLink}
-                          className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5 text-[10px] font-medium"
-                        >
+                        <a href={row.settingsLink} className="sera-ai-assistant-data-card__link">
                           <Wrench className="h-2.5 w-2.5" />
                           {row.settingsLabel ?? 'Fix'}
                         </a>
@@ -825,8 +794,9 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
       )}
       {card.rows.length > 5 && (
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
-          className="w-full text-center text-[10px] text-muted-foreground hover:text-foreground py-1 border-t border-border/20"
+          className="sera-ai-assistant-data-card__expand"
         >
           {expanded ? 'Show less' : `Show all ${card.rows.length} rows`}
         </button>
@@ -918,7 +888,7 @@ function AuditCard({
                               e.stopPropagation()
                               if (window.confirm(`Apply fix: "${check.label}"?`)) onAction(check.fix_key!, check.label)
                             }}
-                            className="mt-0.5 text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                            className="sera-ai-assistant-action-link mt-0.5"
                           >
                             <Wrench className="h-2.5 w-2.5" />
                             Fix this
