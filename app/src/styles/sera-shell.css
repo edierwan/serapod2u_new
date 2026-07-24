@@ -887,15 +887,16 @@
 
 .sera-module-landing__card-head {
   display: flex;
-  align-items: flex-start;
+  /* Center icon against the full title + description block (handles multi-line copy). */
+  align-items: center;
   gap: var(--sera-card-col-gap);
   min-width: 0;
 }
 
 .sera-module-landing__card--with-actions .sera-module-landing__card-head {
-  padding-bottom: 0.75rem;
-  margin-bottom: 0.125rem;
-  border-bottom: 1px solid var(--sera-line);
+  padding-bottom: 0.85rem;
+  margin-bottom: 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--sera-line) 100%, var(--sera-ink) 8%);
 }
 
 .sera-module-landing__card-icon {
@@ -913,7 +914,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  justify-content: center;
 }
 
 .sera-module-landing__card-title-row {
@@ -921,8 +923,6 @@
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  /* Match icon box height so the title sits on the icon’s vertical center */
-  min-height: var(--sera-card-icon-col);
 }
 
 .sera-module-landing__card-title {

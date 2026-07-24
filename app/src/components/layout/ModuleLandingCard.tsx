@@ -15,8 +15,8 @@ export interface ModuleLandingCardProps {
 }
 
 /**
- * Unified landing card — icon vertically centered with the title;
- * description and child links share the same text column.
+ * Unified landing card — icon vertically centered with the full
+ * title + description block; child links sit below the separator.
  */
 export default function ModuleLandingCard({
   icon: Icon,
