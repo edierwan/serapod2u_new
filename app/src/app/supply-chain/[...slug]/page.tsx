@@ -9,7 +9,7 @@ interface SupplyChainSubPageProps {
 export default async function SupplyChainSubPage({ params }: SupplyChainSubPageProps) {
     const { userProfile, canViewSupplyChain } = await getSupplyChainPageContext()
     const { slug = [] } = await params
-    const { initialView, initialOrgId } = resolveSupplyChainSlug(slug)
+    const { initialView, initialOrgId, initialOrderId, initialProductId } = resolveSupplyChainSlug(slug)
 
     const orgType = userProfile.organizations?.org_type_code
     const roleLevel = userProfile.roles?.role_level
@@ -26,5 +26,13 @@ export default async function SupplyChainSubPage({ params }: SupplyChainSubPageP
         )
     }
 
-    return <DashboardContent userProfile={userProfile} initialView={initialView} initialOrgId={initialOrgId} />
+    return (
+        <DashboardContent
+            userProfile={userProfile}
+            initialView={initialView}
+            initialOrgId={initialOrgId}
+            initialOrderId={initialOrderId}
+            initialProductId={initialProductId}
+        />
+    )
 }

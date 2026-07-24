@@ -231,6 +231,7 @@ const _allSupplyChainViewIds = new Set<string>([
     'view-product', 'edit-product', 'add-product',
     'create-order', 'view-order', 'track-order',
     'manufacturer-scan-2',
+    'manufacturer-quality-issues',
     'inventory',
     // Organization views (moved from sidebar to Supply Chain)
     'organizations', 'add-organization', 'edit-organization', 'edit-organization-hq', 'view-organization',
@@ -244,8 +245,14 @@ export function isSupplyChainViewId(viewId: string): boolean {
 export const supplyChainViewToPath: Record<string, string> = {
     'products': 'products',
     'product-management': 'products/master-data',
+    'add-product': 'products/new',
     'orders': 'orders',
     'distributor-order': 'orders/distributor',
+    'distributor-incentive': 'orders/incentive',
+    'shop-order': 'orders/shop',
+    'create-order': 'orders/new',
+    'qr-batches': 'qr/batches',
+    'manufacturer-scan-2': 'qr/manufacturer',
     'warehouse-receive-2': 'qr/receive',
     'warehouse-ship-v2': 'qr/ship',
     'inventory': 'inventory',
@@ -256,6 +263,10 @@ export const supplyChainViewToPath: Record<string, string> = {
     'stock-transfer': 'inventory/transfer',
     'stock-movements': 'inventory/movements',
     'repack-stock': 'inventory/repack',
+    'return-product': 'returns',
+    'return-settings': 'returns/settings',
+    'return-reporting': 'returns/reporting',
+    'manufacturer-quality-issues': 'quality/manufacturer-issues',
 }
 
 export const supplyChainPathToView: Record<string, string> = {
@@ -272,10 +283,20 @@ export const supplyChainPathToView: Record<string, string> = {
     'settings': 'inventory-settings',
     'products': 'products',
     'products/master-data': 'product-management',
+    'products/new': 'add-product',
     'orders': 'orders',
     'orders/distributor': 'distributor-order',
+    'orders/incentive': 'distributor-incentive',
+    'orders/shop': 'shop-order',
+    'orders/new': 'create-order',
+    'qr/batches': 'qr-batches',
+    'qr/manufacturer': 'manufacturer-scan-2',
     'qr/receive': 'warehouse-receive-2',
     'qr/ship': 'warehouse-ship-v2',
+    'returns': 'return-product',
+    'returns/settings': 'return-settings',
+    'returns/reporting': 'return-reporting',
+    'quality/manufacturer-issues': 'manufacturer-quality-issues',
     'organizations': 'organizations',
     'organizations/new': 'add-organization',
 }
@@ -290,7 +311,7 @@ export const supplyChainPathToView: Record<string, string> = {
  *   edit-organization    → /supply-chain/organizations/<id>/edit
  *
  * Returns null for views that are not URL-addressable here (caller falls back
- * to its existing in-memory navigation, e.g. edit-organization-hq → Settings).
+ * to its existing in-memory behaviour, e.g. edit-organization-hq → Settings).
  */
 export function supplyChainOrganizationPath(view: string, orgId?: string | null): string | null {
     if (view === 'organizations') return 'organizations'
@@ -302,21 +323,59 @@ export function supplyChainOrganizationPath(view: string, orgId?: string | null)
     return null
 }
 
+/** Product detail/edit deep links under /supply-chain/products/... */
+export function supplyChainProductPath(view: string, productId?: string | null): string | null {
+    if (view === 'add-product') return 'products/new'
+    const id = String(productId || '').trim()
+    if (!id) return null
+    if (view === 'view-product') return `products/${id}`
+    if (view === 'edit-product') return `products/${id}/edit`
+    return null
+}
+
+/** Order detail/track deep links under /supply-chain/orders/... */
+export function supplyChainOrderPath(view: string, orderId?: string | null): string | null {
+    if (view === 'create-order') return 'orders/new'
+    const id = String(orderId || '').trim()
+    if (!id) return null
+    if (view === 'view-order') return `orders/${id}`
+    if (view === 'track-order') return `orders/${id}/track`
+    return null
+}
+
+const PRODUCT_PATH_RESERVED = new Set(['new', 'master-data'])
+const ORDER_PATH_RESERVED = new Set(['new', 'distributor', 'incentive', 'shop'])
+
 /**
- * Resolve a Supply Chain catch-all slug into a view id (and optional org id).
- * Handles Organizations deep links plus the existing static path map.
+ * Resolve a Supply Chain catch-all slug into a view id (and optional entity ids).
+ * Handles Organizations / Products / Orders deep links plus the static path map.
  */
-export function resolveSupplyChainSlug(slug: string[]): { initialView: string; initialOrgId?: string } {
+export function resolveSupplyChainSlug(slug: string[]): {
+    initialView: string
+    initialOrgId?: string
+    initialOrderId?: string
+    initialProductId?: string
+} {
     if (slug[0] === 'organizations') {
-        // /organizations
         if (slug.length === 1) return { initialView: 'organizations' }
-        // /organizations/new (reserved keyword; org ids are UUIDs)
         if (slug[1] === 'new') return { initialView: 'add-organization' }
-        // /organizations/<id> or /organizations/<id>/edit
         const initialOrgId = slug[1]
         const initialView = slug[2] === 'edit' ? 'edit-organization' : 'view-organization'
         return { initialView, initialOrgId }
     }
+
+    if (slug[0] === 'products' && slug[1] && !PRODUCT_PATH_RESERVED.has(slug[1])) {
+        const initialProductId = slug[1]
+        const initialView = slug[2] === 'edit' ? 'edit-product' : 'view-product'
+        return { initialView, initialProductId }
+    }
+
+    if (slug[0] === 'orders' && slug[1] && !ORDER_PATH_RESERVED.has(slug[1])) {
+        const initialOrderId = slug[1]
+        const initialView = slug[2] === 'track' ? 'track-order' : 'view-order'
+        return { initialView, initialOrderId }
+    }
+
     const path = slug.join('/')
     const initialView = supplyChainPathToView[path] || supplyChainPathToView[slug[0] || ''] || 'supply-chain'
     return { initialView }

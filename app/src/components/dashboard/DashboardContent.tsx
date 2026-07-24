@@ -125,7 +125,7 @@ import ReturnSettingsView from '@/components/supply-chain/returns/ReturnSettings
 import ReturnReportingView from '@/components/supply-chain/returns/ReturnReportingView'
 import SupplyChainLandingView from '@/modules/supply-chain/components/SupplyChainLandingView'
 import SupplyChainTopNav from '@/modules/supply-chain/components/SupplyChainTopNav'
-import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath } from '@/modules/supply-chain/supplyChainNav'
+import { canAccessSupplyChainView, isSupplyChainViewId, supplyChainViewToPath, supplyChainOrganizationPath, supplyChainProductPath, supplyChainOrderPath } from '@/modules/supply-chain/supplyChainNav'
 import LoyaltyLandingView from '@/modules/loyalty/components/LoyaltyLandingView'
 import LoyaltyTopNav from '@/modules/loyalty/components/LoyaltyTopNav'
 import { isLoyaltyViewId, loyaltyHrefForView } from '@/modules/loyalty/loyaltyNav'
@@ -206,9 +206,11 @@ interface DashboardContentProps {
   initialTargetId?: string
   /** Organization id parsed from a Supply Chain deep link (e.g. /supply-chain/organizations/<id>/edit) */
   initialOrgId?: string
+  /** Product id parsed from /supply-chain/products/<id>[/edit] */
+  initialProductId?: string
 }
 
-export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId, initialProductId }: DashboardContentProps) {
   const router = useRouter()
   const { hasPermission } = usePermissions(
     userProfile.roles.role_level,
@@ -310,6 +312,19 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     }
   }, [initialOrgId])
 
+  // Seed product / order ids from Supply Chain deep links the same way.
+  useEffect(() => {
+    if (initialProductId && typeof window !== 'undefined') {
+      sessionStorage.setItem('selectedProductId', initialProductId)
+    }
+  }, [initialProductId])
+
+  useEffect(() => {
+    if (initialOrderId && typeof window !== 'undefined') {
+      sessionStorage.setItem('viewOrderId', initialOrderId)
+    }
+  }, [initialOrderId])
+
   const handleViewChange = (view: string) => {
     // Don't clear org selection for edit/view flows
     if (view !== 'edit-organization' && view !== 'edit-organization-hq' && view !== 'view-organization') {
@@ -388,6 +403,54 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         router.push(`/supply-chain/${orgPath}`)
         return
       }
+    }
+
+    // ── Products detail/edit (id in URL + sessionStorage) ──
+    if (view === 'view-product' || view === 'edit-product' || view === 'add-product') {
+      const productId = typeof window !== 'undefined' ? sessionStorage.getItem('selectedProductId') : null
+      const productPath = supplyChainProductPath(view, productId)
+      if (productPath) {
+        setCurrentView(view)
+        router.push(`/supply-chain/${productPath}`)
+        return
+      }
+    }
+
+    // ── Orders detail/track (id in URL + sessionStorage) ──
+    if (view === 'view-order' || view === 'track-order' || view === 'create-order') {
+      const orderId = typeof window !== 'undefined' ? sessionStorage.getItem('viewOrderId') : null
+      const orderPath = supplyChainOrderPath(view, orderId)
+      if (orderPath) {
+        setCurrentView(view)
+        router.push(`/supply-chain/${orderPath}`)
+        return
+      }
+    }
+
+    // ── Shell secondary pages ──
+    if (view === 'reporting') {
+      setCurrentView(view)
+      router.push('/reporting')
+      return
+    }
+    if (view === 'my-profile') {
+      setCurrentView(view)
+      router.push('/my-profile')
+      return
+    }
+    if (view === 'users') {
+      setCurrentView(view)
+      router.push('/users')
+      return
+    }
+    if (view === 'user-profile') {
+      const targetId =
+        (typeof window !== 'undefined' ? sessionStorage.getItem('selectedUserId') : null) ||
+        initialTargetId ||
+        userProfile.id
+      setCurrentView(view)
+      router.push(`/users/${targetId}`)
+      return
     }
 
     // ── Customer & Growth module deep links (RoadTour / CRM / Marketing / …) ──
