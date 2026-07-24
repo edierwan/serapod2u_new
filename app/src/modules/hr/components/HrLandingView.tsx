@@ -5,6 +5,7 @@ import { ArrowRight } from 'lucide-react'
 import { hrNavGroups, type HrNavGroup } from '@/modules/hr/hrNav'
 import HrHeroBanner from './HrHeroBanner'
 import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
+import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
 import { cn } from '@/lib/utils'
 
 interface HrLandingViewProps {
@@ -53,22 +54,14 @@ export default function HrLandingView({ userName, bannerImageUrl }: HrLandingVie
                     const accent = iconAccents[group.id] || defaultIconAccent
 
                     return (
-                        <div
+                        <ModuleLandingCard
                             key={group.id}
-                            className="sera-module-landing__card"
+                            icon={Icon}
+                            accent={accent}
+                            title={group.label}
+                            description={description}
                         >
-                            <div className="sera-module-landing__card-head">
-                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </div>
-                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
-                            </div>
-
-                            {description && (
-                                <p className="sera-module-landing__card-desc">{description}</p>
-                            )}
-
-                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
+                            <ul className="m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     return (
@@ -86,7 +79,7 @@ export default function HrLandingView({ userName, bannerImageUrl }: HrLandingVie
                                     )
                                 })}
                             </ul>
-                        </div>
+                        </ModuleLandingCard>
                     )
                 })}
             </div>

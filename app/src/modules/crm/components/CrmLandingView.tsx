@@ -3,6 +3,7 @@
 import { ArrowRight } from 'lucide-react'
 import { crmNavGroups, type CrmNavGroup } from '@/modules/crm/crmNav'
 import CrmHeroBanner from './CrmHeroBanner'
+import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
 import { cn } from '@/lib/utils'
 
 interface CrmLandingViewProps {
@@ -29,20 +30,14 @@ export default function CrmLandingView({ userName, bannerImageUrl, onViewChange,
                     const accent = iconAccents[group.id] || defaultIconAccent
 
                     return (
-                        <div
+                        <ModuleLandingCard
                             key={group.id}
-                            className="sera-module-landing__card"
+                            icon={Icon}
+                            accent={accent}
+                            title={group.label}
+                            description={group.description}
                         >
-                            <div className="sera-module-landing__card-head">
-                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </div>
-                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
-                            </div>
-
-                            <p className="sera-module-landing__card-desc">{group.description}</p>
-
-                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
+                            <ul className="m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     return (
@@ -60,7 +55,7 @@ export default function CrmLandingView({ userName, bannerImageUrl, onViewChange,
                                     )
                                 })}
                             </ul>
-                        </div>
+                        </ModuleLandingCard>
                     )
                 })}
             </div>

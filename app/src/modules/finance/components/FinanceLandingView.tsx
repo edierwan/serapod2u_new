@@ -5,6 +5,7 @@ import { ArrowRight, AlertCircle, Construction } from 'lucide-react'
 import { financeNavGroups, type FinanceNavGroup } from '@/modules/finance/financeNav'
 import FinanceHeroBanner from './FinanceHeroBanner'
 import SetupReadinessBanner from '@/components/shared/SetupReadinessBanner'
+import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
@@ -72,23 +73,15 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                     const accent = iconAccents[group.id] || defaultIconAccent
 
                     return (
-                        <div
+                        <ModuleLandingCard
                             key={group.id}
-                            className="sera-module-landing__card"
+                            icon={Icon}
+                            accent={accent}
+                            title={group.label}
+                            description={meta?.description}
+                            titleExtra={meta ? <StatusBadge status={meta.status} /> : null}
                         >
-                            <div className="sera-module-landing__card-head">
-                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </div>
-                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
-                                {meta && <StatusBadge status={meta.status} />}
-                            </div>
-
-                            {meta && (
-                                <p className="sera-module-landing__card-desc">{meta.description}</p>
-                            )}
-
-                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
+                            <ul className="m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     const isComingSoon = meta && meta.status !== 'live'
@@ -114,7 +107,7 @@ export default function FinanceLandingView({ userName, bannerImageUrl }: Finance
                                     )
                                 })}
                             </ul>
-                        </div>
+                        </ModuleLandingCard>
                     )
                 })}
             </div>

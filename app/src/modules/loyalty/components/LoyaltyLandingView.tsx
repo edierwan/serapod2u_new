@@ -3,6 +3,7 @@
 import { ArrowRight } from 'lucide-react'
 import { loyaltyNavGroups, type LoyaltyNavGroup } from '@/modules/loyalty/loyaltyNav'
 import LoyaltyHeroBanner from './LoyaltyHeroBanner'
+import ModuleLandingCard from '@/components/layout/ModuleLandingCard'
 import { cn } from '@/lib/utils'
 
 interface LoyaltyLandingViewProps {
@@ -29,17 +30,14 @@ export default function LoyaltyLandingView({ userName, bannerImageUrl, onViewCha
                     const accent = iconAccents[group.id] || defaultIconAccent
 
                     return (
-                        <div key={group.id} className="sera-module-landing__card">
-                            <div className="sera-module-landing__card-head">
-                                <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </div>
-                                <h2 className="sera-module-landing__card-title flex-1">{group.label}</h2>
-                            </div>
-
-                            <p className="sera-module-landing__card-desc">{group.description}</p>
-
-                            <ul className="sera-module-landing__card-actions m-0 p-0 list-none">
+                        <ModuleLandingCard
+                            key={group.id}
+                            icon={Icon}
+                            accent={accent}
+                            title={group.label}
+                            description={group.description}
+                        >
+                            <ul className="m-0 p-0 list-none">
                                 {group.children.map((child) => {
                                     const ChildIcon = child.icon
                                     return (
@@ -57,7 +55,7 @@ export default function LoyaltyLandingView({ userName, bannerImageUrl, onViewCha
                                     )
                                 })}
                             </ul>
-                        </div>
+                        </ModuleLandingCard>
                     )
                 })}
             </div>

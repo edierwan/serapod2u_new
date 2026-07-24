@@ -14,7 +14,10 @@ export interface ModuleLandingCardProps {
   className?: string
 }
 
-/** Unified landing card — same structure and left alignment on every module hub */
+/**
+ * Unified landing card — icon vertically centered with the title;
+ * description and child links share the same text column.
+ */
 export default function ModuleLandingCard({
   icon: Icon,
   accent,
@@ -26,17 +29,20 @@ export default function ModuleLandingCard({
 }: ModuleLandingCardProps) {
   return (
     <div className={cn('sera-module-landing__card', className)}>
-      <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
-        <Icon className="h-4 w-4" strokeWidth={1.75} />
+      <div className="sera-module-landing__card-head">
+        <div className={cn('sera-module-landing__card-icon', accent.chip, accent.icon)}>
+          <Icon className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <div className="sera-module-landing__card-copy">
+          <div className="sera-module-landing__card-title-row">
+            <h2 className="sera-module-landing__card-title">{title}</h2>
+            {titleExtra}
+          </div>
+          {description ? (
+            <p className="sera-module-landing__card-desc">{description}</p>
+          ) : null}
+        </div>
       </div>
-      <div className="sera-module-landing__card-title-row">
-        <h2 className="sera-module-landing__card-title">{title}</h2>
-        {titleExtra}
-      </div>
-
-      {description ? (
-        <p className="sera-module-landing__card-desc">{description}</p>
-      ) : null}
 
       {children ? (
         <div className="sera-module-landing__card-actions">{children}</div>
