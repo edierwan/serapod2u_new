@@ -1,0 +1,190 @@
+/* Serapod Storefront — brand tokens & motion (visual only) */
+.sera-store {
+  --sera-ink: #141210;
+  --sera-ink-soft: #2a2622;
+  --sera-orange: #e85d04;
+  --sera-orange-deep: #c44a00;
+  /* Soft stone palette — reduces harsh pure white */
+  --sera-mist: #e4e5e8;
+  --sera-stone: #ececed;
+  --sera-line: #d8dade;
+  --sera-muted: #5f6570;
+  --sera-paper: #e9eaed;
+  --sera-surface: #f3f3f4;
+  --font-display: var(--font-sera-display), 'Syne', sans-serif;
+  --font-body: var(--font-sera-body), 'Manrope', sans-serif;
+  font-family: var(--font-body);
+  color: var(--sera-ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 93, 4, 0.05), transparent 50%),
+    var(--sera-paper);
+}
+
+.sera-store .font-display {
+  font-family: var(--font-display);
+}
+
+/* Soft section surfaces */
+.sera-store .store-surface {
+  background: var(--sera-surface);
+}
+
+.sera-store .store-surface-raised {
+  background: var(--sera-surface);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 18px 40px -28px rgba(20, 18, 16, 0.28);
+}
+
+/* ── Page-load motion ─────────────────────────────────────────── */
+
+@keyframes store-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes store-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes store-bar {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(1.1); opacity: 0.85; }
+}
+
+@keyframes store-glow {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes store-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes store-sheen {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.sera-store .store-rise {
+  animation: store-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sera-store .store-rise-delay-1 { animation-delay: 0.08s; }
+.sera-store .store-rise-delay-2 { animation-delay: 0.16s; }
+.sera-store .store-rise-delay-3 { animation-delay: 0.24s; }
+.sera-store .store-rise-delay-4 { animation-delay: 0.32s; }
+.sera-store .store-rise-delay-5 { animation-delay: 0.4s; }
+
+.sera-store .store-fade {
+  animation: store-fade 1s ease both;
+}
+
+.sera-store .store-accent-bar {
+  transform-origin: left center;
+  animation: store-bar 3.2s ease-in-out infinite;
+}
+
+.sera-store .store-glow {
+  animation: store-glow 6s ease-in-out infinite;
+}
+
+.sera-store .store-float {
+  animation: store-float 5.5s ease-in-out infinite;
+}
+
+.sera-store .store-sheen {
+  background-size: 200% 200%;
+  animation: store-sheen 12s ease-in-out infinite;
+}
+
+/* ── Scroll reveal ────────────────────────────────────────────── */
+
+.sera-store .store-reveal {
+  opacity: 0;
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.sera-store .store-reveal--up {
+  transform: translateY(28px);
+}
+
+.sera-store .store-reveal--fade {
+  transform: none;
+}
+
+.sera-store .store-reveal--left {
+  transform: translateX(-28px);
+}
+
+.sera-store .store-reveal--right {
+  transform: translateX(28px);
+}
+
+.sera-store .store-reveal--scale {
+  transform: scale(0.94);
+}
+
+.sera-store .store-reveal.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Featured product card hover lift */
+.sera-store .store-featured-card {
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease,
+    border-color 0.25s ease;
+}
+
+.sera-store .store-featured-card:hover {
+  transform: translateY(-4px);
+}
+
+.sera-store .store-category-card {
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease,
+    border-color 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.sera-store .store-category-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px -24px rgba(20, 18, 16, 0.28);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sera-store .store-rise,
+  .sera-store .store-fade,
+  .sera-store .store-accent-bar,
+  .sera-store .store-glow,
+  .sera-store .store-float,
+  .sera-store .store-sheen {
+    animation: none !important;
+  }
+
+  .sera-store .store-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .sera-store .store-featured-card:hover,
+  .sera-store .store-category-card:hover {
+    transform: none;
+  }
+}

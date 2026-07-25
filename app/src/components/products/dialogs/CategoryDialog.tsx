@@ -6,8 +6,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Loader2, Upload } from 'lucide-react'
+import { Loader2, Upload } from 'lucide-react'
 import SafeImage from '@/components/shared/SafeImage'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface Category {
   id?: string
@@ -86,7 +93,6 @@ export default function CategoryDialog({
   }
 
   const generateCategoryCode = (): string => {
-    // Generate code from category name: CAT-NAME-TIMESTAMP
     const timestamp = Date.now().toString().slice(-6)
     const nameCode = formData.category_name?.substring(0, 3).toUpperCase() || 'CAT'
     return `${nameCode}-${timestamp}`
@@ -140,21 +146,14 @@ export default function CategoryDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-900">
-            {category ? 'Edit Category' : 'Add Category'}
-          </h2>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <SeraModalOverlay onBackdropClick={() => !isSaving && onOpenChange(false)}>
+      <SeraModalPanel>
+        <SeraModalHeader
+          title={category ? 'Edit Category' : 'Add Category'}
+          onClose={() => !isSaving && onOpenChange(false)}
+        />
 
-        <div className="p-6 space-y-4">
+        <SeraModalBody className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Category Name *</Label>
             <Input
@@ -181,15 +180,14 @@ export default function CategoryDialog({
             />
           </div>
 
-          {/* Category Image Upload */}
           <div className="space-y-2">
             <Label>Category Image</Label>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-[var(--sera-muted)]">
               This image will be shown as the category avatar on your storefront.
             </p>
             {formData.image_url ? (
               <div className="relative group">
-                <div className="w-24 h-24 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                <div className="w-24 h-24 rounded-xl overflow-hidden border border-[var(--sera-line)] bg-[var(--sera-mist)]">
                   <SafeImage
                     src={formData.image_url}
                     alt="Category"
@@ -202,7 +200,7 @@ export default function CategoryDialog({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] font-medium"
                   >
                     Change
                   </button>
@@ -224,7 +222,7 @@ export default function CategoryDialog({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                className="w-full h-20 border-2 border-dashed border-[var(--sera-line)] rounded-xl flex items-center justify-center gap-2 text-[var(--sera-muted)] hover:border-[var(--sera-orange)]/40 hover:text-[var(--sera-orange)] transition-colors"
               >
                 {uploading ? (
                   <>
@@ -270,7 +268,7 @@ export default function CategoryDialog({
             />
             <div className="grid gap-1.5 leading-none">
               <Label htmlFor="hide_price" className="font-normal cursor-pointer">Hide Price</Label>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-[var(--sera-muted)]">
                 If enabled, prices will be hidden in the mobile app for products in this category.
               </p>
             </div>
@@ -284,20 +282,21 @@ export default function CategoryDialog({
             />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
-        </div>
+        </SeraModalBody>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+        <SeraModalFooter>
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isSaving}
+            className="border-[var(--sera-line)]"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             {isSaving ? (
               <>
@@ -308,8 +307,8 @@ export default function CategoryDialog({
               'Save'
             )}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }

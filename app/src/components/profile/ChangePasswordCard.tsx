@@ -163,17 +163,17 @@ export default function ChangePasswordCard({ userEmail, userPhone }: ChangePassw
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Key className="w-5 h-5" />
+    <Card className="sera-sc-panel overflow-hidden border-[var(--sera-line)] shadow-none">
+      <CardHeader className="space-y-1.5 border-b border-[var(--sera-line)] bg-[var(--sera-mist)]/40 p-0 px-6 py-5">
+        <CardTitle className="font-display flex items-center gap-2 text-lg text-[var(--sera-ink)]">
+          <Key className="h-5 w-5 text-[var(--sera-orange)]" />
           Change Password
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-[var(--sera-muted)]">
           Update your password to keep your account secure
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 p-0 px-6 pb-6 pt-5">
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="currentPassword">Current Password <span className="text-red-500">*</span></Label>
@@ -197,7 +197,7 @@ export default function ChangePasswordCard({ userEmail, userPhone }: ChangePassw
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-[var(--sera-muted)]">
               Enter your current password to verify your identity
             </p>
           </div>
@@ -230,22 +230,22 @@ export default function ChangePasswordCard({ userEmail, userPhone }: ChangePassw
                   <div className="flex items-center gap-2 text-xs">
                     <div className={`h-1.5 flex-1 rounded-full ${
                       passwordData.newPassword.length < 6 ? 'bg-red-200' :
-                      passwordData.newPassword.length < 8 ? 'bg-yellow-200' :
-                      passwordData.newPassword.length < 12 ? 'bg-blue-200' :
-                      'bg-green-200'
+                      passwordData.newPassword.length < 8 ? 'bg-amber-200' :
+                      passwordData.newPassword.length < 12 ? 'bg-[var(--sera-orange)]/20' :
+                      'bg-emerald-200'
                     }`}>
                       <div className={`h-full rounded-full transition-all ${
                         passwordData.newPassword.length < 6 ? 'bg-red-500 w-1/4' :
-                        passwordData.newPassword.length < 8 ? 'bg-yellow-500 w-2/4' :
-                        passwordData.newPassword.length < 12 ? 'bg-blue-500 w-3/4' :
-                        'bg-green-500 w-full'
+                        passwordData.newPassword.length < 8 ? 'bg-amber-500 w-2/4' :
+                        passwordData.newPassword.length < 12 ? 'bg-[var(--sera-orange)] w-3/4' :
+                        'bg-emerald-500 w-full'
                       }`} />
                     </div>
                     <span className={`font-medium ${
                       passwordData.newPassword.length < 6 ? 'text-red-600' :
-                      passwordData.newPassword.length < 8 ? 'text-yellow-600' :
-                      passwordData.newPassword.length < 12 ? 'text-blue-600' :
-                      'text-green-600'
+                      passwordData.newPassword.length < 8 ? 'text-amber-600' :
+                      passwordData.newPassword.length < 12 ? 'text-[var(--sera-orange)]' :
+                      'text-emerald-600'
                     }`}>
                       {passwordData.newPassword.length < 6 ? 'Weak' :
                        passwordData.newPassword.length < 8 ? 'Fair' :
@@ -294,12 +294,12 @@ export default function ChangePasswordCard({ userEmail, userPhone }: ChangePassw
           </div>
         </div>
         
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-900">
-              <p className="font-semibold mb-1">Password Requirements</p>
-              <ul className="space-y-1 text-blue-800">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--sera-orange)]" />
+            <div className="text-sm text-[var(--sera-ink-soft)]">
+              <p className="mb-1 font-semibold text-[var(--sera-ink)]">Password Requirements</p>
+              <ul className="space-y-1 text-[var(--sera-muted)]">
                 <li>• Minimum 6 characters (8+ recommended)</li>
                 <li>• Must be different from current password</li>
                 <li>• Will be synced with Supabase Auth</li>
@@ -324,7 +324,7 @@ export default function ChangePasswordCard({ userEmail, userPhone }: ChangePassw
           <Button 
             onClick={handleChangePassword} 
             disabled={loading || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
           >
             <Key className="w-4 h-4 mr-2" />
             {loading ? 'Changing Password...' : 'Change Password'}

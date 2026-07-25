@@ -544,21 +544,21 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
     return (
         <Card>
             <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <CardTitle className="text-base font-semibold">People</CardTitle>
                         <CardDescription className="text-xs">Employees and reporting lines • {filteredUsers.length} of {users.length}</CardDescription>
                     </div>
                     {canEdit && (
-                        <Button size="sm" onClick={() => { resetAddForm(); setAddMode('link'); loadUnlinkedUsers(); setAddDialogOpen(true) }}>
+                        <Button size="sm" className="w-full sm:w-auto shrink-0" onClick={() => { resetAddForm(); setAddMode('link'); loadUnlinkedUsers(); setAddDialogOpen(true) }}>
                             <Plus className="h-4 w-4 mr-1" /> Add Employee
                         </Button>
                     )}
                 </div>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="flex flex-col md:flex-row gap-3">
-                    <div className="relative flex-1">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1 min-w-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <Input
                             placeholder="Search employees..."
@@ -570,7 +570,7 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                     {mounted && (
                         <>
                             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                                <SelectTrigger className="w-[220px]">
+                                <SelectTrigger className="w-full sm:w-[220px]">
                                     <SelectValue placeholder="Filter by department" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -583,7 +583,7 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                                 </SelectContent>
                             </Select>
                             <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[160px]">
+                                <SelectTrigger className="w-full sm:w-[160px]">
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -601,11 +601,11 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                         <div className="text-sm font-medium text-blue-900">
                             {selectedUsers.size} selected
                         </div>
-                        <div className="flex flex-wrap items-end gap-3">
-                            <div className="space-y-1">
+                        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-end gap-3 w-full">
+                            <div className="space-y-1 w-full sm:w-auto">
                                 <label className="text-xs font-medium text-blue-800">Department</label>
                                 <Select value={bulkDepartment} onValueChange={setBulkDepartment}>
-                                    <SelectTrigger className="w-[200px]">
+                                    <SelectTrigger className="w-full sm:w-[200px]">
                                         <SelectValue placeholder="No change" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -619,10 +619,10 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1 w-full sm:w-auto">
                                 <label className="text-xs font-medium text-blue-800">Position</label>
                                 <Select value={bulkPosition} onValueChange={setBulkPosition}>
-                                    <SelectTrigger className="w-[200px]">
+                                    <SelectTrigger className="w-full sm:w-[200px]">
                                         <SelectValue placeholder="No change" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -636,10 +636,10 @@ export default function HrPeopleView({ organizationId, canEdit }: HrPeopleViewPr
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1 w-full sm:w-auto">
                                 <label className="text-xs font-medium text-blue-800">Reports To</label>
                                 <Select value={bulkManager} onValueChange={setBulkManager}>
-                                    <SelectTrigger className="w-[200px]">
+                                    <SelectTrigger className="w-full sm:w-[200px]">
                                         <SelectValue placeholder="No change" />
                                     </SelectTrigger>
                                     <SelectContent>

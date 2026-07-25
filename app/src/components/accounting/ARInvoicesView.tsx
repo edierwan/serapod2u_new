@@ -152,12 +152,12 @@ export default function ARInvoicesView({ userProfile }: ARInvoicesViewProps) {
                 Sales invoices from D2H (Direct-to-Hub) orders. Auto-generated from S* document flow.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={invoices.length === 0}>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={invoices.length === 0} className="flex-1 sm:flex-none">
                 <Download className="h-4 w-4 mr-1.5" />
                 CSV
               </Button>
-              <Button variant="outline" size="sm" onClick={loadInvoices} disabled={loading}>
+              <Button variant="outline" size="sm" onClick={loadInvoices} disabled={loading} className="flex-1 sm:flex-none">
                 <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
@@ -166,10 +166,10 @@ export default function ARInvoicesView({ userProfile }: ARInvoicesViewProps) {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3 mb-5 p-3 bg-muted/50 rounded-lg border">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <div className="flex-1 min-w-[160px]">
-              <div className="relative">
+          <div className="mb-5 flex flex-col gap-3 rounded-lg border bg-muted/50 p-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex items-center gap-2 min-w-0 w-full sm:flex-1 sm:min-w-[160px]">
+              <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="relative flex-1 min-w-0">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   value={search}
@@ -179,11 +179,11 @@ export default function ARInvoicesView({ userProfile }: ARInvoicesViewProps) {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0) }} className="h-8 w-32 text-sm" />
+            <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
+              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0) }} className="h-8 min-w-0 flex-1 text-sm sm:w-32 sm:flex-none" />
               <span className="text-xs text-muted-foreground">to</span>
-              <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0) }} className="h-8 w-32 text-sm" />
+              <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0) }} className="h-8 min-w-0 flex-1 text-sm sm:w-32 sm:flex-none" />
             </div>
           </div>
 
@@ -199,8 +199,8 @@ export default function ARInvoicesView({ userProfile }: ARInvoicesViewProps) {
             </div>
           ) : (
             <>
-              <div className="rounded-lg border overflow-hidden">
-                <Table>
+              <div className="rounded-lg border overflow-x-auto">
+                <Table className="min-w-[640px]">
                   <TableHeader>
                     <TableRow className="bg-muted/30">
                       <TableHead>Document #</TableHead>

@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader';
 
 interface PointCatalogViewNewProps {
     userProfile: any;
@@ -342,25 +343,20 @@ export default function PointCatalogViewNew({ userProfile, onViewChange }: Point
         : 100;
 
     return (
-        <div className="p-6 space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-2">
-                        <Trophy className="h-8 w-8 text-yellow-500" />
-                        Point Rewards Catalog
-                    </h1>
-                    <p className="text-gray-600 mt-1">
-                        {isShop ? 'View your points and available rewards' : 'Manage point rewards and prizes'}
-                    </p>
-                </div>
-                {isAdmin && (
-                    <Button onClick={() => setShowForm(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Reward
-                    </Button>
-                )}
-            </div>
+        <div className="sera-sc-page">
+            <SupplyChainPageHeader
+                eyebrow="Customer & Growth"
+                title="Point Rewards Catalog"
+                description={isShop ? 'View your points and available rewards' : 'Manage point rewards and prizes'}
+                actions={
+                    isAdmin ? (
+                        <Button onClick={() => setShowForm(true)} className="bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Reward
+                        </Button>
+                    ) : undefined
+                }
+            />
 
             {/* Alert */}
             {alert && (

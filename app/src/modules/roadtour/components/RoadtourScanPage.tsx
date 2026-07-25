@@ -12,6 +12,13 @@ import {
     AlertCircle, CheckCircle2, Eye, EyeOff, Gift, Loader2, Map, MapPin,
     QrCode, Star, User, XCircle
 } from 'lucide-react'
+import {
+    SeraModalOverlay,
+    SeraModalPanel,
+    SeraModalHeader,
+    SeraModalBody,
+    SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 type ScanStep = 'loading' | 'invalid' | 'expired' | 'ready' | 'complete-profile' | 'shop-select' | 'survey' | 'done' | 'duplicate'
 
@@ -570,7 +577,7 @@ export default function RoadtourScanPage() {
     const primaryColor = '#e97b2d'
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-[var(--sera-paper,#fafbfc)]">
             {/* ======================== BRANDED HEADER ======================== */}
             <div
                 className="relative w-full overflow-hidden"
@@ -601,7 +608,7 @@ export default function RoadtourScanPage() {
                 {step === 'loading' && (
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
                         <Loader2 className="h-8 w-8 animate-spin mx-auto" style={{ color: primaryColor }} />
-                        <p className="text-sm text-gray-500 mt-3">Validating QR code...</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-3">Validating QR code...</p>
                     </div>
                 )}
 
@@ -610,7 +617,7 @@ export default function RoadtourScanPage() {
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-red-100">
                         <XCircle className="h-12 w-12 text-red-500 mx-auto" />
                         <h2 className="text-lg font-semibold mt-3">Invalid QR Code</h2>
-                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-1">{errorMsg}</p>
                     </div>
                 )}
 
@@ -619,7 +626,7 @@ export default function RoadtourScanPage() {
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
                         <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
                         <h2 className="text-lg font-semibold mt-3">QR Code Expired</h2>
-                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-1">{errorMsg}</p>
                     </div>
                 )}
 
@@ -630,12 +637,12 @@ export default function RoadtourScanPage() {
                             style={{ backgroundColor: `${primaryColor}15` }}>
                             <Gift className="h-7 w-7" style={{ color: primaryColor }} />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-800">RoadTour Rewards</h2>
-                        <p className="text-sm text-gray-500 mt-1 mb-4">Claim your bonus points from this visit</p>
+                        <h2 className="text-xl font-bold text-[var(--sera-ink)]">RoadTour Rewards</h2>
+                        <p className="text-sm text-[var(--sera-muted)] mt-1 mb-4">Claim your bonus points from this visit</p>
 
                         <div className="py-3 mb-4">
                             <p className="text-4xl font-bold" style={{ color: primaryColor }}>{qr.default_points}</p>
-                            <p className="text-sm text-gray-500 mt-0.5">bonus points</p>
+                            <p className="text-sm text-[var(--sera-muted)] mt-0.5">bonus points</p>
                         </div>
 
                         {errorMsg && (
@@ -668,23 +675,23 @@ export default function RoadtourScanPage() {
                             <MapPin className="h-5 w-5" style={{ color: primaryColor }} />
                             <h2 className="text-lg font-semibold">Select Shop</h2>
                         </div>
-                        <p className="text-sm text-gray-500 mb-3">Please select the shop you are visiting.</p>
+                        <p className="text-sm text-[var(--sera-muted)] mb-3">Please select the shop you are visiting.</p>
                         <input
                             type="text"
                             placeholder="Search shops..."
                             value={shopSearch}
                             onChange={(e) => setShopSearch(e.target.value)}
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            className="w-full px-4 py-2.5 border border-[var(--sera-line)] rounded-xl text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
                         />
                         <div className="max-h-60 overflow-y-auto space-y-1 mb-4">
                             {filteredShops.slice(0, 50).map((s) => (
                                 <button key={s.id} onClick={() => setSelectedShopId(s.id)}
-                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${selectedShopId === s.id ? 'bg-orange-50 text-orange-800 font-medium border border-orange-300' : 'hover:bg-gray-50 border border-transparent'}`}>
+                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${selectedShopId === s.id ? 'bg-[var(--sera-orange)]/[0.06] text-orange-800 font-medium border border-[var(--sera-orange)]/40' : 'hover:bg-[var(--sera-paper,#fafbfc)] border border-transparent'}`}>
                                     {s.name}
-                                    {s.branch ? <span className="block text-xs text-gray-500">{s.branch}</span> : null}
+                                    {s.branch ? <span className="block text-xs text-[var(--sera-muted)]">{s.branch}</span> : null}
                                 </button>
                             ))}
-                            {filteredShops.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No shops found.</p>}
+                            {filteredShops.length === 0 && <p className="text-sm text-[var(--sera-muted)]/70 text-center py-4">No shops found.</p>}
                         </div>
                         <button
                             onClick={handleShopSelected}
@@ -701,11 +708,11 @@ export default function RoadtourScanPage() {
                 {step === 'complete-profile' && (
                     <div className="bg-white rounded-2xl shadow-sm p-6">
                         <div className="text-center mb-4">
-                            <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center bg-orange-50">
+                            <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center bg-[var(--sera-orange)]/[0.06]">
                                 <AlertCircle className="h-7 w-7" style={{ color: primaryColor }} />
                             </div>
-                            <h2 className="text-lg font-bold text-gray-800">Complete Your Profile</h2>
-                            <p className="text-sm text-gray-500 mt-1">Update your shop details before collecting points</p>
+                            <h2 className="text-lg font-bold text-[var(--sera-ink)]">Complete Your Profile</h2>
+                            <p className="text-sm text-[var(--sera-muted)] mt-1">Update your shop details before collecting points</p>
                         </div>
 
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl mb-4">
@@ -728,24 +735,24 @@ export default function RoadtourScanPage() {
 
                         <div className="space-y-3 mb-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Shop Name</label>
+                                <label className="block text-sm font-medium text-[var(--sera-ink-soft)] mb-1">Shop Name</label>
                                 <input
                                     type="text"
                                     value={profileShopName}
                                     onChange={(e) => setProfileShopName(e.target.value)}
                                     placeholder="Enter your shop name"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    className="w-full px-4 py-3 border border-[var(--sera-line)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
                                     disabled={profileSaving}
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+                                <label className="block text-sm font-medium text-[var(--sera-ink-soft)] mb-1">Reference</label>
                                 <input
                                     type="text"
                                     value={profileReference}
                                     onChange={(e) => setProfileReference(e.target.value)}
                                     placeholder="Enter reference phone / code"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    className="w-full px-4 py-3 border border-[var(--sera-line)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
                                     disabled={profileSaving}
                                 />
                             </div>
@@ -754,7 +761,7 @@ export default function RoadtourScanPage() {
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setStep('ready')}
-                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-[var(--sera-line)] text-[var(--sera-ink-soft)] hover:bg-[var(--sera-paper,#fafbfc)]"
                                 disabled={profileSaving}
                             >
                                 Cancel
@@ -782,9 +789,9 @@ export default function RoadtourScanPage() {
                             <QrCode className="h-5 w-5" style={{ color: primaryColor }} />
                             <h2 className="text-lg font-semibold">Quick Survey</h2>
                         </div>
-                        <p className="text-sm text-gray-500 mb-4">Please complete this short survey to claim your reward.</p>
+                        <p className="text-sm text-[var(--sera-muted)] mb-4">Please complete this short survey to claim your reward.</p>
                         {prefillShop && (
-                            <div className="mb-4 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+                            <div className="mb-4 rounded-xl border border-orange-200 bg-[var(--sera-orange)]/[0.06] px-3 py-2 text-sm text-orange-800">
                                 Survey prefilled from shop: <span className="font-semibold">{prefillShop.name}</span>{prefillShop.branch ? ` (${prefillShop.branch})` : ''}
                             </div>
                         )}
@@ -792,11 +799,11 @@ export default function RoadtourScanPage() {
 
                         {surveyFields.map((f) => (
                             <div key={f.id} className="mb-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                <label className="block text-sm font-medium text-[var(--sera-ink-soft)] mb-1">
                                     {f.label} {f.is_required && <span className="text-red-500">*</span>}
                                 </label>
                                 {getRoadtourShopSurveyField(f.field_key) && (
-                                    <p className="mb-2 text-xs text-gray-500">Prefilled from the linked shop master data. You can update it before submitting.</p>
+                                    <p className="mb-2 text-xs text-[var(--sera-muted)]">Prefilled from the linked shop master data. You can update it before submitting.</p>
                                 )}
                                 {f.field_type === 'text' && (
                                     <input type="text" value={surveyAnswers[f.field_key] || ''}
@@ -812,7 +819,7 @@ export default function RoadtourScanPage() {
                                     <div className="flex gap-3">
                                         {['yes', 'no'].map(v => (
                                             <button key={v} onClick={() => setSurveyAnswers({ ...surveyAnswers, [f.field_key]: v })}
-                                                className={`px-4 py-2 rounded-lg text-sm font-medium border ${surveyAnswers[f.field_key] === v ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium border ${surveyAnswers[f.field_key] === v ? 'border-orange-400 bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]' : 'border-[var(--sera-line)] hover:bg-[var(--sera-paper,#fafbfc)]'}`}>
                                                 {v === 'yes' ? 'Yes' : 'No'}
                                             </button>
                                         ))}
@@ -836,7 +843,7 @@ export default function RoadtourScanPage() {
                                                     const next = active ? sel.filter(s => s !== String(opt)) : [...sel, String(opt)]
                                                     setSurveyAnswers({ ...surveyAnswers, [f.field_key]: next.join(',') })
                                                 }}
-                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border ${active ? 'border-orange-400 bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]' : 'border-[var(--sera-line)] hover:bg-[var(--sera-paper,#fafbfc)]'}`}>
                                                     {String(opt)}
                                                 </button>
                                             )
@@ -895,12 +902,12 @@ export default function RoadtourScanPage() {
                                 <p className="text-3xl font-bold text-emerald-600 mt-2">
                                     {roadtourMilestone.current_valid_product_scan_count}/{roadtourMilestone.required_product_qr_scans}
                                 </p>
-                                <p className="text-sm text-gray-500 mt-2">
+                                <p className="text-sm text-[var(--sera-muted)] mt-2">
                                     {roadtourMilestone.reward_status === 'awarded'
                                         ? `${roadtourMilestone.campaign_reward_points} RoadTour points have been awarded after completing the Product QR requirement.`
                                         : `You will be entitled to ${roadtourMilestone.campaign_reward_points} points after scanning ${roadtourMilestone.required_product_qr_scans} unique Product QR codes.`}
                                 </p>
-                                <p className="text-xs text-gray-400 mt-2">
+                                <p className="text-xs text-[var(--sera-muted)]/70 mt-2">
                                     {roadtourMilestone.remaining_product_qr_scans > 0
                                         ? `${roadtourMilestone.remaining_product_qr_scans} more Product QR scan${roadtourMilestone.remaining_product_qr_scans === 1 ? '' : 's'} to unlock this RoadTour reward.`
                                         : 'Milestone completed. Your reward will be reflected in your points balance.'}
@@ -910,7 +917,7 @@ export default function RoadtourScanPage() {
                             <>
                                 <h2 className="text-xl font-bold mt-3">Reward Claimed!</h2>
                                 <p className="text-3xl font-bold text-emerald-600 mt-2">+{rewardPoints} points</p>
-                                <p className="text-sm text-gray-500 mt-2">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
+                                <p className="text-sm text-[var(--sera-muted)] mt-2">Thank you for participating in our RoadTour campaign. Your bonus points have been credited.</p>
                             </>
                         )}
                     </div>
@@ -921,13 +928,13 @@ export default function RoadtourScanPage() {
                     <div className="bg-white rounded-2xl shadow-sm p-8 text-center border border-amber-100">
                         <AlertCircle className="h-12 w-12 text-amber-500 mx-auto" />
                         <h2 className="text-lg font-semibold mt-3">Already Claimed</h2>
-                        <p className="text-sm text-gray-500 mt-1">{errorMsg}</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-1">{errorMsg}</p>
                     </div>
                 )}
 
                 {/* Geolocation indicator */}
                 {qr?.require_geolocation && step === 'ready' && (
-                    <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400">
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-[var(--sera-muted)]/70">
                         <MapPin className="h-3 w-3" />
                         {geolocation
                             ? getRoadtourLocationStatusLabel(geolocation.status, Boolean(geolocation.lat != null && geolocation.lng != null))
@@ -938,79 +945,63 @@ export default function RoadtourScanPage() {
 
             {/* ======================== LOGIN MODAL ======================== */}
             {showLoginModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
-                        {/* Close button */}
-                        <button onClick={() => setShowLoginModal(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-
+                <SeraModalOverlay onBackdropClick={() => !loginLoading && setShowLoginModal(false)}>
+                    <SeraModalPanel className="max-w-sm">
+                        <SeraModalHeader
+                            sticky
+                            title="Collect Points"
+                            onClose={() => !loginLoading && setShowLoginModal(false)}
+                        />
+                        <SeraModalBody className="space-y-4">
                         <div className="text-center">
-                            <div className="w-14 h-14 rounded-full mx-auto mb-2 flex items-center justify-center"
+                            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full"
                                 style={{ backgroundColor: `${primaryColor}10` }}>
                                 <Gift className="h-6 w-6" style={{ color: primaryColor }} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-800">Collect Points</h3>
-                            <p className="text-sm text-gray-500">Enter your credentials to collect points</p>
+                            <p className="text-sm text-[var(--sera-muted)]">Enter your credentials to collect points</p>
                         </div>
 
                         {loginError && (
-                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                            <div className="rounded-xl border border-red-200 bg-red-50 p-3">
                                 <p className="text-sm text-red-700">{loginError}</p>
                             </div>
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Email or Phone</label>
+                            <label className="mb-1 block text-sm font-medium text-[var(--sera-ink-soft)]">Email or Phone</label>
                             <input
                                 type="text"
                                 value={loginEmail}
                                 onChange={(e) => setLoginEmail(e.target.value)}
                                 placeholder="Enter your email or phone"
-                                className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                className="w-full rounded-xl border border-[var(--sera-line)] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30"
                                 disabled={loginLoading}
                                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                            <label className="mb-1 block text-sm font-medium text-[var(--sera-ink-soft)]">Password</label>
                             <div className="relative">
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     value={loginPassword}
                                     onChange={(e) => setLoginPassword(e.target.value)}
                                     placeholder="Enter your password"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    className="w-full rounded-xl border border-[var(--sera-line)] px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30"
                                     disabled={loginLoading}
                                     onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                                 />
                                 <button type="button" onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--sera-muted)]/70">
                                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                 </button>
                             </div>
                         </div>
 
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowLoginModal(false)}
-                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
-                                disabled={loginLoading}
-                            >
-                                Back
-                            </button>
-                            <button
-                                onClick={handleLogin}
-                                disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
-                                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                                style={{ backgroundColor: primaryColor }}
-                            >
-                                {loginLoading ? 'Collecting...' : 'Collect Points'}
-                            </button>
-                        </div>
-
                         <div className="text-center space-y-1">
                             <button
+                                type="button"
                                 onClick={() => { setShowLoginModal(false); setShowForgotPassword(true); setForgotEmail(loginEmail); }}
                                 className="text-sm font-medium hover:underline"
                                 style={{ color: primaryColor }}
@@ -1019,6 +1010,7 @@ export default function RoadtourScanPage() {
                             </button>
                             <br />
                             <button
+                                type="button"
                                 onClick={() => { setShowLoginModal(false); setShowRegisterInfo(true); }}
                                 className="text-sm font-medium hover:underline"
                                 style={{ color: primaryColor }}
@@ -1026,31 +1018,54 @@ export default function RoadtourScanPage() {
                                 Do not have account? Register here
                             </button>
                         </div>
-                    </div>
-                </div>
+                        </SeraModalBody>
+                        <SeraModalFooter>
+                            <button
+                                type="button"
+                                onClick={() => setShowLoginModal(false)}
+                                className="flex-1 rounded-xl border border-[var(--sera-line)] py-3 text-sm font-semibold text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]"
+                                disabled={loginLoading}
+                            >
+                                Back
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleLogin}
+                                disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
+                                className="flex-1 rounded-xl py-3 text-sm font-semibold text-white disabled:opacity-50"
+                                style={{ backgroundColor: primaryColor }}
+                            >
+                                {loginLoading ? 'Collecting...' : 'Collect Points'}
+                            </button>
+                        </SeraModalFooter>
+                    </SeraModalPanel>
+                </SeraModalOverlay>
             )}
 
             {/* ======================== REGISTRATION INFO MODAL ======================== */}
             {showRegisterInfo && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
-                        <button onClick={() => setShowRegisterInfo(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-
+                <SeraModalOverlay onBackdropClick={() => setShowRegisterInfo(false)}>
+                    <SeraModalPanel className="max-w-sm">
+                        <SeraModalHeader
+                            sticky
+                            title="Create Account"
+                            onClose={() => setShowRegisterInfo(false)}
+                        />
+                        <SeraModalBody className="space-y-4">
                         <div className="text-center">
-                            <h3 className="text-lg font-bold text-gray-800">Create Account</h3>
-                            <p className="text-sm text-gray-500 mt-2">
+                            <p className="mt-2 text-sm text-[var(--sera-muted)]">
                                 To register, please visit our main site and scan any product QR code, then tap &quot;Register&quot; on the product page.
                             </p>
-                            <p className="text-sm text-gray-500 mt-2">
+                            <p className="mt-2 text-sm text-[var(--sera-muted)]">
                                 Once registered, come back here to claim your RoadTour bonus points!
                             </p>
                         </div>
-
-                        <div className="flex gap-3">
+                        </SeraModalBody>
+                        <SeraModalFooter>
                             <button
+                                type="button"
                                 onClick={() => { setShowRegisterInfo(false); setShowLoginModal(true); }}
-                                className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                className="flex-1 rounded-xl border border-[var(--sera-line)] py-3 text-sm font-semibold text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]"
                             >
                                 Back to Login
                             </button>
@@ -1058,30 +1073,32 @@ export default function RoadtourScanPage() {
                                 href="https://serapod2u.com"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex-1 py-3 rounded-xl text-sm font-semibold text-white text-center"
+                                className="flex-1 rounded-xl py-3 text-center text-sm font-semibold text-white"
                                 style={{ backgroundColor: primaryColor }}
                             >
                                 Go to Serapod2U
                             </a>
-                        </div>
-                    </div>
-                </div>
+                        </SeraModalFooter>
+                    </SeraModalPanel>
+                </SeraModalOverlay>
             )}
 
             {/* ======================== FORGOT PASSWORD MODAL ======================== */}
             {showForgotPassword && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 relative">
-                        <button onClick={() => setShowForgotPassword(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-
-                        <h3 className="text-lg font-bold text-gray-800 text-center">Reset Password</h3>
-
+                <SeraModalOverlay onBackdropClick={() => setShowForgotPassword(false)}>
+                    <SeraModalPanel className="max-w-sm">
+                        <SeraModalHeader
+                            sticky
+                            title="Reset Password"
+                            onClose={() => setShowForgotPassword(false)}
+                        />
+                        <SeraModalBody className="space-y-4">
                         {forgotSent ? (
-                            <div className="text-center space-y-2">
-                                <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
-                                <p className="text-sm text-gray-600">Password reset email sent! Check your inbox.</p>
+                            <div className="space-y-2 text-center">
+                                <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
+                                <p className="text-sm text-[var(--sera-muted)]">Password reset email sent! Check your inbox.</p>
                                 <button
+                                    type="button"
                                     onClick={() => { setShowForgotPassword(false); setForgotSent(false); setShowLoginModal(true); }}
                                     className="text-sm font-medium hover:underline"
                                     style={{ color: primaryColor }}
@@ -1091,34 +1108,39 @@ export default function RoadtourScanPage() {
                             </div>
                         ) : (
                             <>
-                                <p className="text-sm text-gray-500 text-center">Enter your email to receive a password reset link.</p>
+                                <p className="text-center text-sm text-[var(--sera-muted)]">Enter your email to receive a password reset link.</p>
                                 <input
                                     type="email"
                                     value={forgotEmail}
                                     onChange={(e) => setForgotEmail(e.target.value)}
                                     placeholder="Enter your email"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                                    className="w-full rounded-xl border border-[var(--sera-line)] px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/30"
                                 />
-                                <div className="flex gap-3">
+                            </>
+                        )}
+                        </SeraModalBody>
+                        {!forgotSent && (
+                        <SeraModalFooter>
                                     <button
+                                        type="button"
                                         onClick={() => { setShowForgotPassword(false); setShowLoginModal(true); }}
-                                        className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                        className="flex-1 rounded-xl border border-[var(--sera-line)] py-3 text-sm font-semibold text-[var(--sera-ink-soft)] hover:bg-[var(--sera-mist)]"
                                     >
                                         Back
                                     </button>
                                     <button
+                                        type="button"
                                         onClick={handleForgotPassword}
                                         disabled={forgotSending || !forgotEmail.trim()}
-                                        className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                                        className="flex-1 rounded-xl py-3 text-sm font-semibold text-white disabled:opacity-50"
                                         style={{ backgroundColor: primaryColor }}
                                     >
                                         {forgotSending ? 'Sending...' : 'Send Reset Link'}
                                     </button>
-                                </div>
-                            </>
+                        </SeraModalFooter>
                         )}
-                    </div>
-                </div>
+                    </SeraModalPanel>
+                </SeraModalOverlay>
             )}
 
             {/* ======================== SUCCESS ANIMATION ======================== */}

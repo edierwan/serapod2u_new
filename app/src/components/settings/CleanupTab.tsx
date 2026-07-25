@@ -516,8 +516,8 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                   </div>
 
                   {/* Filters */}
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="relative flex-1 min-w-[200px]">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 items-stretch sm:items-center">
+                    <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input
                         placeholder="Search files, exports..."
@@ -527,7 +527,7 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                       />
                     </div>
                     <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as FilterCategory)}>
-                      <SelectTrigger className="w-[150px]">
+                      <SelectTrigger className="w-full sm:w-[150px]">
                         <Filter className="w-4 h-4 mr-2" />
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
@@ -539,7 +539,7 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                       </SelectContent>
                     </Select>
                     <Select value={confidenceFilter} onValueChange={(v) => setConfidenceFilter(v as FilterConfidence)}>
-                      <SelectTrigger className="w-[150px]">
+                      <SelectTrigger className="w-full sm:w-[150px]">
                         <SelectValue placeholder="Confidence" />
                       </SelectTrigger>
                       <SelectContent>
@@ -679,7 +679,7 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
         <TabsContent value="runtime" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="w-5 h-5 text-green-600" />
@@ -689,9 +689,9 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                     Track actual API, RPC, and page usage to validate what&apos;s being used in production
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                   <Select value={runtimeDays} onValueChange={setRuntimeDays}>
-                    <SelectTrigger className="w-[120px]">
+                    <SelectTrigger className="w-full sm:w-[120px]">
                       <Clock className="w-4 h-4 mr-2" />
                       <SelectValue />
                     </SelectTrigger>
@@ -705,7 +705,7 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                   <Button
                     onClick={handleGenerateRuntime}
                     disabled={isGeneratingRuntime}
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
                   >
                     {isGeneratingRuntime ? (
                       <>
@@ -905,8 +905,8 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                   </div>
 
                   {/* Filters */}
-                  <div className="flex gap-3 items-center">
-                    <div className="relative flex-1">
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    <div className="relative flex-1 min-w-0">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input
                         placeholder="Search candidates..."
@@ -916,7 +916,7 @@ export default function CleanupTab({ userProfile }: CleanupTabProps) {
                       />
                     </div>
                     <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as FilterCategory)}>
-                      <SelectTrigger className="w-[150px]">
+                      <SelectTrigger className="w-full sm:w-[150px]">
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
                       <SelectContent>

@@ -4,28 +4,17 @@
  * Module AI Assistant – Generic Floating Button + Chat Drawer
  *
  * Reusable AI assistant for Finance, Supply Chain, and Customer & Growth modules.
- * Each module passes its own config (title, color, system prompt context, API endpoint).
+ * Each module passes its own config (title, API context, suggestions).
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  Bot,
-  Send,
   RefreshCw,
   Loader2,
-  Sparkles,
-  Wifi,
-  WifiOff,
-  Zap,
   ExternalLink,
+  MessageSquare,
 } from 'lucide-react'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
@@ -63,13 +52,6 @@ export interface ModuleAiAssistantConfig {
   title: string
   /** Subtitle text */
   subtitle: string
-  /** Gradient colors for the floating button and header */
-  gradientFrom: string
-  gradientTo: string
-  /** Accent color classes for chips/badges */
-  accentBg: string
-  accentText: string
-  accentBorder: string
   /** Placeholder text for input */
   placeholder: string
   /** Welcome message */
@@ -86,11 +68,6 @@ export const financeAssistantConfig: ModuleAiAssistantConfig = {
   moduleId: 'finance',
   title: 'Finance Assistant',
   subtitle: 'AI-powered finance helper',
-  gradientFrom: 'from-emerald-600',
-  gradientTo: 'to-teal-600',
-  accentBg: 'bg-emerald-50 dark:bg-emerald-950/30',
-  accentText: 'text-emerald-700 dark:text-emerald-300',
-  accentBorder: 'border-emerald-200 dark:border-emerald-800',
   placeholder: 'Ask about finance… / Tanya tentang kewangan…',
   welcomeMessage: 'Ask me anything about finance — GL journals, invoices, payments, reports and more. I understand BM and English.',
   quickSuggestions: [
@@ -106,11 +83,6 @@ export const supplyChainAssistantConfig: ModuleAiAssistantConfig = {
   moduleId: 'supply-chain',
   title: 'Supply Chain Assistant',
   subtitle: 'AI-powered supply chain helper',
-  gradientFrom: 'from-orange-600',
-  gradientTo: 'to-amber-600',
-  accentBg: 'bg-orange-50 dark:bg-orange-950/30',
-  accentText: 'text-orange-700 dark:text-orange-300',
-  accentBorder: 'border-orange-200 dark:border-orange-800',
   placeholder: 'Ask about supply chain… / Tanya tentang rantaian bekalan…',
   welcomeMessage: 'Ask me anything about supply chain — products, orders, inventory, QR tracking and more. I understand BM and English.',
   quickSuggestions: [
@@ -126,11 +98,6 @@ export const customerGrowthAssistantConfig: ModuleAiAssistantConfig = {
   moduleId: 'customer-growth',
   title: 'Customer & Growth Assistant',
   subtitle: 'AI-powered CRM & marketing helper',
-  gradientFrom: 'from-pink-600',
-  gradientTo: 'to-rose-600',
-  accentBg: 'bg-pink-50 dark:bg-pink-950/30',
-  accentText: 'text-pink-700 dark:text-pink-300',
-  accentBorder: 'border-pink-200 dark:border-pink-800',
   placeholder: 'Ask about customers… / Tanya tentang pelanggan…',
   welcomeMessage: 'Ask me anything about CRM, marketing, loyalty programs and more. I understand BM and English.',
   quickSuggestions: [
@@ -140,6 +107,50 @@ export const customerGrowthAssistantConfig: ModuleAiAssistantConfig = {
     'Points distributed?',
   ],
   toggleEvent: 'customer-growth-ai-assistant-toggle',
+}
+
+// ─── Shared UI helpers ─────────────────────────────────────────────
+
+const STATUS_CLASS: Record<ConnectionStatus, string> = {
+  online: 'sera-ai-assistant-status--online',
+  offline: 'sera-ai-assistant-status--offline',
+  connecting: 'sera-ai-assistant-status--connecting',
+}
+
+const MODE_CLASS: Record<string, string> = {
+  tool: 'sera-ai-assistant-mode--tool',
+  'ai+tool': 'sera-ai-assistant-mode--ai-tool',
+  ai: 'sera-ai-assistant-mode--ai',
+  offline: 'sera-ai-assistant-mode--offline',
+}
+
+function StatusChip({ status }: { status: ConnectionStatus }) {
+  const labels: Record<ConnectionStatus, string> = {
+    online: 'Online',
+    offline: 'Offline',
+    connecting: 'Connecting',
+  }
+  return (
+    <span className={cn('sera-ai-assistant-status', STATUS_CLASS[status])}>
+      <span className="sera-ai-assistant-status__dot" />
+      {labels[status]}
+      {status === 'connecting' && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+    </span>
+  )
+}
+
+function ModeBadge({ mode }: { mode: AssistantResponse['mode'] }) {
+  const labels: Record<string, string> = {
+    tool: 'DB Query',
+    'ai+tool': 'AI + DB',
+    ai: 'AI',
+    offline: 'Offline',
+  }
+  return (
+    <span className={cn('sera-ai-assistant-mode', MODE_CLASS[mode] ?? MODE_CLASS.ai)}>
+      {labels[mode] ?? labels.ai}
+    </span>
+  )
 }
 
 // ─── Component ─────────────────────────────────────────────────────
@@ -159,33 +170,27 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const retryCountRef = useRef(0)
 
-  // ── Autoscroll
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  // ── Focus input when opening
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 200)
   }, [open])
 
-  // ── Listen for toggle event from top nav
   useEffect(() => {
     const handler = () => setOpen((prev) => !prev)
     window.addEventListener(config.toggleEvent, handler)
     return () => window.removeEventListener(config.toggleEvent, handler)
   }, [config.toggleEvent])
 
-  // ── Health poll (every 60s)
   useEffect(() => {
     let mounted = true
     const check = async () => {
       try {
         const res = await fetch('/api/ai/health')
         const json = await res.json()
-        if (mounted) {
-          setStatus(json.ok ? 'online' : 'offline')
-        }
+        if (mounted) setStatus(json.ok ? 'online' : 'offline')
       } catch {
         if (mounted) setStatus('offline')
       }
@@ -202,7 +207,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
     ])
   }
 
-  // ── Send message (streaming SSE endpoint)
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || loading) return
@@ -236,7 +240,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
         })
 
         if (!res.ok || !res.body) {
-          // Fallback to batch endpoint
           const batchRes = await fetch('/api/module-assistant/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -258,7 +261,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
           return
         }
 
-        // Parse SSE stream
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
@@ -283,7 +285,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
               const parsed = JSON.parse(jsonStr)
 
               if ('t' in parsed) {
-                // Token event
                 streamingText += parsed.t
                 if (!gotFirstToken) {
                   gotFirstToken = true
@@ -298,7 +299,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                   )
                 }
               } else if ('reply' in parsed && 'suggestions' in parsed) {
-                // Fast-path or done with full response
                 retryCountRef.current = 0
                 setStatus(parsed.mode === 'offline' ? 'offline' : 'online')
                 setMessages((prev) => {
@@ -317,7 +317,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                 })
                 setLoading(false)
               } else if ('reply' in parsed && 'metrics' in parsed) {
-                // Stream done
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId
@@ -336,7 +335,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                 }
                 setLoading(false)
               } else if ('mode' in parsed && 'lang' in parsed) {
-                // Meta event
                 metaData = parsed
               }
             } catch { /* malformed JSON — skip */ }
@@ -355,7 +353,6 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
     [loading, messages, config.moduleId],
   )
 
-  // ── Retry connection
   const retryConnection = useCallback(async () => {
     if (retryCountRef.current >= 3) {
       pushError('Max retries reached. Please try again later.')
@@ -397,111 +394,54 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
     [input, sendMessage],
   )
 
-  // ── Status chip
-  const StatusChip = () => {
-    const configs: Record<ConnectionStatus, { label: string; icon: typeof Wifi; cls: string }> = {
-      online: { label: 'AI Online', icon: Wifi, cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-      offline: { label: 'Offline', icon: WifiOff, cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
-      connecting: { label: 'Connecting', icon: Loader2, cls: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400' },
-    }
-    const cfg = configs[status]
-    const Icon = cfg.icon
-    return (
-      <span className={cn('inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full', cfg.cls)}>
-        <Icon className={cn('h-2.5 w-2.5', status === 'connecting' && 'animate-spin')} />
-        {cfg.label}
-      </span>
-    )
-  }
-
-  // ── Mode badge
-  const ModeBadge = ({ mode }: { mode: AssistantResponse['mode'] }) => {
-    const configs: Record<string, { label: string; cls: string }> = {
-      tool: { label: 'DB Query', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-      'ai+tool': { label: 'AI + DB', cls: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' },
-      ai: { label: 'AI', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-      offline: { label: 'Offline', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
-    }
-    const cfg = configs[mode] ?? configs.ai
-    return (
-      <span className={cn('inline-block text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded', cfg.cls)}>
-        {cfg.label}
-      </span>
-    )
-  }
-
   return (
     <>
-      {/* Floating Button */}
       <button
+        type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          'fixed bottom-6 right-6 z-50 flex items-center justify-center',
-          'h-14 w-14 rounded-full shadow-lg transition-all duration-300',
-          `bg-gradient-to-br ${config.gradientFrom} ${config.gradientTo} text-white`,
-          'hover:shadow-xl hover:scale-105 active:scale-95',
-          'print:hidden',
+          'sera-ai-assistant-fab fixed bottom-6 right-6 z-50 print:hidden',
           open && 'scale-0 opacity-0 pointer-events-none',
         )}
         aria-label={config.title}
         title={config.title}
       >
-        <Bot className="h-6 w-6" />
+        <MessageSquare className="h-5 w-5" strokeWidth={1.85} aria-hidden />
+        <span className="sr-only">Ask AI</span>
       </button>
 
-      {/* Drawer */}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="right"
-          className="w-full sm:w-[440px] md:w-[480px] p-0 flex flex-col"
+          className="sera-ai-assistant-sheet w-full sm:w-[440px] md:w-[480px] p-0 flex flex-col gap-0"
         >
-          {/* Header */}
-          <SheetHeader className={cn('px-4 py-3 border-b border-border', config.accentBg)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className={cn('flex items-center justify-center h-8 w-8 rounded-lg text-white', `bg-gradient-to-br ${config.gradientFrom} ${config.gradientTo}`)}>
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <SheetTitle className="text-sm font-semibold">{config.title}</SheetTitle>
-                  <p className="text-[11px] text-muted-foreground">{config.subtitle}</p>
-                </div>
-              </div>
-              <StatusChip />
+          <header className="sera-ai-assistant-header">
+            <div className="sera-ai-assistant-header__brand">
+              <h2 className="sera-ai-assistant-header__title">{config.title}</h2>
+              <p className="sera-ai-assistant-header__subtitle">{config.subtitle}</p>
             </div>
-          </SheetHeader>
+            <div className="sera-ai-assistant-header__actions">
+              <StatusChip status={status} />
+            </div>
+          </header>
 
-          {/* Chat Area */}
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-4">
-              {/* Welcome */}
+          <ScrollArea className="sera-ai-assistant-body">
+            <div className="sera-ai-assistant-chat">
               {messages.length === 0 && (
-                <div className="space-y-4">
-                  <div className="text-center space-y-2 py-4">
-                    <div className="flex justify-center">
-                      <div className={cn('flex items-center justify-center h-12 w-12 rounded-full', config.accentBg)}>
-                        <Bot className={cn('h-6 w-6', config.accentText)} />
-                      </div>
-                    </div>
-                    <h3 className="text-sm font-semibold">{config.title}</h3>
-                    <p className="text-xs text-muted-foreground max-w-xs mx-auto">
-                      {config.welcomeMessage}
-                    </p>
+                <div>
+                  <div className="sera-ai-assistant-welcome">
+                    <h3 className="sera-ai-assistant-welcome__title">{config.title}</h3>
+                    <p className="sera-ai-assistant-welcome__desc">{config.welcomeMessage}</p>
                   </div>
-
-                  <div className="flex flex-wrap gap-1.5 justify-center">
+                  <div className="sera-ai-assistant-prompts">
                     {config.quickSuggestions.map((q) => (
                       <button
                         key={q}
+                        type="button"
                         onClick={() => sendMessage(q)}
                         disabled={loading}
-                        className={cn(
-                          'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors',
-                          config.accentBorder, config.accentText, config.accentBg,
-                          'hover:opacity-80',
-                        )}
+                        className="sera-ai-assistant-prompt"
                       >
-                        <Zap className="h-3 w-3" />
                         {q}
                       </button>
                     ))}
@@ -509,25 +449,12 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                 </div>
               )}
 
-              {/* Messages */}
               {messages.map((msg) => (
                 <div key={msg.id}>
-                  <div className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
-                    <div
-                      className={cn(
-                        'max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm',
-                        msg.role === 'user'
-                          ? 'bg-blue-600 text-white rounded-br-sm'
-                          : 'bg-muted rounded-bl-sm',
-                      )}
-                    >
-                      {msg.mode && msg.role === 'assistant' && (
-                        <div className="mb-1">
-                          <ModeBadge mode={msg.mode} />
-                        </div>
-                      )}
+                  <div className={cn('sera-ai-assistant-msg-row', msg.role === 'user' ? 'sera-ai-assistant-msg-row--user' : 'sera-ai-assistant-msg-row--assistant')}>
+                    <div className={cn('sera-ai-assistant-bubble', msg.role === 'user' ? 'sera-ai-assistant-bubble--user' : 'sera-ai-assistant-bubble--assistant')}>
+                      {msg.mode && msg.role === 'assistant' && <ModeBadge mode={msg.mode} />}
                       <MarkdownLite text={msg.content} />
-
                       {msg.cards && msg.cards.length > 0 && (
                         <div className="mt-2 space-y-2">
                           {msg.cards.map((card, ci) => (
@@ -538,20 +465,16 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                     </div>
                   </div>
 
-                  {/* Suggestion chips */}
                   {msg.role === 'assistant' && msg.suggestions && msg.suggestions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
+                    <div className="sera-ai-assistant-chips">
                       {msg.suggestions.map((s, si) => (
                         <button
                           key={si}
+                          type="button"
                           onClick={() => sendMessage(s.label)}
                           disabled={loading}
-                          className={cn(
-                            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors disabled:opacity-50',
-                            config.accentBorder, config.accentText, config.accentBg,
-                          )}
+                          className="sera-ai-assistant-chip sera-ai-assistant-chip--sm"
                         >
-                          <Zap className="h-2.5 w-2.5" />
                           {s.label}
                         </button>
                       ))}
@@ -560,11 +483,10 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
                 </div>
               ))}
 
-              {/* Loading — only before first token arrives */}
               {loading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted rounded-xl px-4 py-3 rounded-bl-sm">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="sera-ai-assistant-msg-row sera-ai-assistant-msg-row--assistant">
+                  <div className="sera-ai-assistant-bubble sera-ai-assistant-bubble--loading">
+                    <div className="flex items-center gap-2">
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       <span>Thinking</span>
                     </div>
@@ -576,50 +498,42 @@ export default function ModuleAiAssistant({ config }: ModuleAiAssistantProps) {
             </div>
           </ScrollArea>
 
-          {/* Input */}
-          <div className="border-t border-border p-3 bg-card">
+          <footer className="sera-ai-assistant-footer">
             {status === 'offline' && messages.length > 2 && (
-              <button
-                onClick={retryConnection}
-                className="text-[11px] text-muted-foreground hover:text-foreground mb-2 flex items-center gap-1"
-              >
+              <button type="button" onClick={retryConnection} className="sera-ai-assistant-retry">
                 <RefreshCw className="h-3 w-3" />
                 Retry AI connection
               </button>
             )}
-            <div className="flex items-center gap-2">
+            <div className="sera-ai-assistant-composer">
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={config.placeholder}
-                className={cn(
-                  'flex-1 bg-muted rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted-foreground',
-                  'focus:ring-2 focus:ring-violet-500/50',
-                )}
+                className="sera-ai-assistant-input"
                 disabled={loading}
               />
-              <Button
-                size="icon"
+              <button
+                type="button"
                 onClick={() => sendMessage(input)}
                 disabled={!input.trim() || loading}
-                className={cn('h-9 w-9 shrink-0', `bg-gradient-to-br ${config.gradientFrom} ${config.gradientTo}`, 'hover:opacity-90')}
+                className="sera-ai-assistant-send"
+                aria-label="Send message"
               >
-                <Send className="h-4 w-4" />
-              </Button>
+                Send
+              </button>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
-              AI + DB tools • Your organization data only
+            <p className="sera-ai-assistant-footer-note">
+              Organization data only · AI + DB tools
             </p>
-          </div>
+          </footer>
         </SheetContent>
       </Sheet>
     </>
   )
 }
-
-// ─── Data Card ─────────────────────────────────────────────────────
 
 function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]; deepLink?: string } }) {
   const [expanded, setExpanded] = useState(false)
@@ -627,11 +541,11 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
   const headers = card.rows.length > 0 ? Object.keys(card.rows[0]) : []
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card text-card-foreground overflow-hidden">
-      <div className="flex items-center justify-between px-2.5 py-1.5 text-xs font-medium bg-accent/30">
+    <div className="sera-ai-assistant-data-card">
+      <div className="sera-ai-assistant-data-card__head">
         <span>{card.title}</span>
         {card.deepLink && (
-          <a href={card.deepLink} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5">
+          <a href={card.deepLink} className="sera-ai-assistant-data-card__link">
             <ExternalLink className="h-2.5 w-2.5" />
             View
           </a>
@@ -639,11 +553,11 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
       </div>
       {headers.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
+          <table>
             <thead>
-              <tr className="border-b border-border/50">
+              <tr>
                 {headers.map((h) => (
-                  <th key={h} className="px-2 py-1 text-left font-medium text-muted-foreground capitalize">
+                  <th key={h} className="capitalize">
                     {h.replace(/([A-Z])/g, ' $1').trim()}
                   </th>
                 ))}
@@ -651,11 +565,9 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
             </thead>
             <tbody>
               {visibleRows.map((row, ri) => (
-                <tr key={ri} className="border-b border-border/20 last:border-0">
+                <tr key={ri}>
                   {headers.map((h) => (
-                    <td key={h} className="px-2 py-1 whitespace-nowrap">
-                      {String(row[h] ?? '—')}
-                    </td>
+                    <td key={h}>{String(row[h] ?? '—')}</td>
                   ))}
                 </tr>
               ))}
@@ -665,8 +577,9 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
       )}
       {card.rows.length > 5 && (
         <button
+          type="button"
           onClick={() => setExpanded(!expanded)}
-          className="w-full text-center text-[10px] text-muted-foreground hover:text-foreground py-1 border-t border-border/20"
+          className="sera-ai-assistant-data-card__expand"
         >
           {expanded ? 'Show less' : `Show all ${card.rows.length} rows`}
         </button>
@@ -674,8 +587,6 @@ function DataCard({ card }: { card: { title: string; rows: Record<string, any>[]
     </div>
   )
 }
-
-// ─── Simple Markdown renderer ──────────────────────────────────────
 
 function MarkdownLite({ text }: { text: string }) {
   if (!text) return null

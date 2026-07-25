@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { EngagementShell } from '@/components/engagement/EngagementShell'
 import LuckyDrawView from '@/components/dashboard/views/consumer-engagement/LuckyDrawView'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LuckyDrawPage() {
@@ -48,7 +49,7 @@ export default function LuckyDrawPage() {
   }, [])
 
   if (loading || !userProfile) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+    return <SeraLoadingState variant="page" label="Loading lucky draw" />
   }
 
   return (

@@ -495,7 +495,7 @@ export default function SystemSettingsTab({ userProfile }: SystemSettingsTabProp
         <TabsContent value="fiscal-year">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-purple-500" />
@@ -505,15 +505,15 @@ export default function SystemSettingsTab({ userProfile }: SystemSettingsTabProp
                     Define fiscal years and manage accounting periods for proper financial closing
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={loadData}>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto" onClick={loadData}>
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Refresh
                   </Button>
                   {canManage && (
                     <Dialog open={showNewYearDialog} onOpenChange={setShowNewYearDialog}>
                       <DialogTrigger asChild>
-                        <Button>
+                        <Button className="w-full sm:w-auto">
                           <Plus className="w-4 h-4 mr-2" />
                           New Fiscal Year
                         </Button>

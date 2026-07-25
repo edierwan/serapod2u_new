@@ -19,23 +19,23 @@ export default async function OrderFailedPage({ searchParams }: PageProps) {
         <XCircle className="h-10 w-10 text-red-500" />
       </div>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Payment Failed</h1>
-      <p className="text-gray-500 text-sm mb-2 leading-relaxed">
-        Order <span className="font-semibold text-gray-700">{orderRef}</span>
+      <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] mb-2">Payment Failed</h1>
+      <p className="text-[var(--sera-muted)] text-sm mb-2 leading-relaxed">
+        Order <span className="font-semibold text-[var(--sera-ink)]/80">{orderRef}</span>
       </p>
-      <p className="text-gray-500 text-sm mb-6">{reason}</p>
+      <p className="text-[var(--sera-muted)] text-sm mb-6">{reason}</p>
 
       <div className="inline-flex flex-col sm:flex-row gap-3">
         <Link
           href="/store/checkout"
-          className="inline-flex items-center gap-2 h-11 px-6 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition"
+          className="inline-flex items-center gap-2 h-11 px-6 bg-[var(--sera-ink)] text-white rounded-xl text-sm font-semibold hover:bg-[var(--sera-ink-soft)] transition"
         >
           <RefreshCw className="h-4 w-4" />
           Try Again
         </Link>
         <Link
           href="/store/products"
-          className="inline-flex items-center gap-2 h-11 px-6 bg-white border border-gray-200 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition"
+          className="inline-flex items-center gap-2 h-11 px-6 bg-white border border-[var(--sera-line)] text-[var(--sera-ink)]/80 rounded-xl text-sm font-semibold hover:bg-[var(--sera-mist)] transition"
         >
           <ShoppingBag className="h-4 w-4" />
           Browse Products

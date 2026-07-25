@@ -2284,8 +2284,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Warehouse Ship</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Warehouse Ship</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Scan master cases and unique QR codes for distributor shipments
           </p>
         </div>
@@ -2499,18 +2499,18 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
       {shipmentProgress && (
         <Card className="border-green-200 bg-green-50">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-green-900">
-                <Truck className="h-5 w-5" />
-                Current Ship Progress: Distributor: {shipmentProgress.distributor_name}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <CardTitle className="flex items-center gap-2 text-green-900 text-base sm:text-lg">
+                <Truck className="h-5 w-5 shrink-0" />
+                <span className="min-w-0">Current Ship Progress: Distributor: {shipmentProgress.distributor_name}</span>
               </CardTitle>
               {(masterCasesCount > 0 || looseItemsCount > 0 || manualQty > 0) && (
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                   <Button
                     onClick={handleCancelShipment}
                     disabled={canceling || confirming || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
                     variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 w-full sm:w-auto"
                   >
                     {canceling ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -2522,7 +2522,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   <Button
                     onClick={handleConfirmShipment}
                     disabled={confirming || canceling || (masterCasesCount === 0 && looseItemsCount === 0 && manualQty === 0)}
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
                   >
                     {confirming ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -2865,13 +2865,13 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
               ) : (
                 <div className="divide-y divide-gray-200">
                   {scannedCodes.map((code, index) => (
-                    <div key={index} className={`p-3 flex items-center justify-between hover:bg-gray-50 ${
+                    <div key={index} className={`p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between hover:bg-gray-50 ${
                       code.status === 'error' ? 'bg-red-50' : 
                       code.status === 'duplicate' ? 'bg-orange-50' : 
                       'bg-green-50'
                     }`}>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <Badge variant="secondary" className="text-xs">
                             #{code.sequence_number}
                           </Badge>
@@ -2977,7 +2977,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           )}
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
               <Select
                 value={historyPreset}
                 onValueChange={(value) => {
@@ -2985,7 +2985,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   setHistoryPage(1)
                 }}
               >
-                <SelectTrigger className="w-[160px]">
+                <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue placeholder="Date range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2997,9 +2997,9 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
-                <CalendarRange className="h-4 w-4" />
-                <span>
+              <div className="flex items-center gap-2 rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-700 min-w-0">
+                <CalendarRange className="h-4 w-4 shrink-0" />
+                <span className="truncate">
                   {formatDateOnly(historyRange.start)}
                   <span className="mx-1 text-gray-400">→</span>
                   {formatDateOnly(historyRange.end)}
@@ -3008,7 +3008,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
             </div>
 
             <div className="flex flex-col gap-3 w-full lg:w-auto lg:flex-row lg:items-center">
-              <div className="relative w-full lg:w-64">
+              <div className="relative w-full lg:w-64 min-w-0">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <Input
                   value={historySearchInput}
@@ -3025,7 +3025,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
                   setHistoryPage(1)
                 }}
               >
-                <SelectTrigger className="w-[120px]">
+                <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="Page size" />
                 </SelectTrigger>
                 <SelectContent>
@@ -3040,7 +3040,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <Table>
+            <Table className="min-w-[800px]">
               <TableHeader>
                 <TableRow className="bg-gray-50">
                   <TableHead 

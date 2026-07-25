@@ -519,11 +519,11 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
     && filteredRows.every((row) => selectedKeys.has(row.rowKey))
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="sera-sc-page space-y-6 pb-28">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manual Stock Addition</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)]">Manual Stock Addition</h1>
+          <p className="text-[var(--sera-muted)] mt-1">
             Directly increases inventory for authorized manual or non-PO additions. Every posted row uses an exact stock configuration.
           </p>
         </div>
@@ -574,7 +574,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Warehouse *</label>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Warehouse *</label>
             <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
               <SelectTrigger>
                 <SelectValue placeholder="Select warehouse" />
@@ -587,7 +587,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
             </Select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Addition reason / source type *</label>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Addition reason / source type *</label>
             <Select value={reason} onValueChange={(value) => setReason(value as ManualStockAdditionReason)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select reason" />
@@ -600,15 +600,15 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
             </Select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">External / supporting reference</label>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">External / supporting reference</label>
             <Input value={externalReference} onChange={(e) => setExternalReference(e.target.value)} placeholder="PO exception, email ref, etc." />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Physical location / shelf</label>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Physical location / shelf</label>
             <Input value={warehouseLocationText} onChange={(e) => setWarehouseLocationText(e.target.value)} placeholder="Optional shelf / bin" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2 flex items-center gap-2">
               <Factory className="w-4 h-4" /> Manufacturer / source
             </label>
             <Select value={selectedManufacturer || 'none'} onValueChange={(value) => setSelectedManufacturer(value === 'none' ? '' : value)}>
@@ -624,7 +624,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
             </Select>
           </div>
           <div className="md:col-span-2 xl:col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
+            <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Notes</label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Batch notes" />
           </div>
           <div className="md:col-span-2 xl:col-span-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">

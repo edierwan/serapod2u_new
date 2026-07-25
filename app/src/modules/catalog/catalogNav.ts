@@ -59,6 +59,26 @@ export function isCatalogViewId(viewId: string): boolean {
     return _allCatalogViewIds.has(viewId)
 }
 
+/** Admin URL paths for Catalog subviews under /catalog/... */
+export const catalogViewToPath: Record<string, string> = {
+    'product-catalog': 'products',
+}
+
+export const catalogPathToView: Record<string, string> = Object.fromEntries(
+    Object.entries(catalogViewToPath).map(([view, path]) => [path, view])
+)
+
+export function catalogHrefForView(viewId: string): string | null {
+    if (viewId === 'catalog') return '/catalog'
+    const path = catalogViewToPath[viewId]
+    return path ? `/catalog/${path}` : null
+}
+
+export function resolveCatalogSlug(slug: string[]): string {
+    const path = slug.join('/')
+    return catalogPathToView[path] || catalogPathToView[slug[0] || ''] || 'catalog'
+}
+
 export function findCatalogGroupForView(viewId: string): CatalogNavGroup | undefined {
     return catalogNavGroups.find(
         (g) => g.id === viewId || g.children.some((c) => c.id === viewId)

@@ -5,7 +5,7 @@ import {
     type StockCountVerificationErrorCode,
 } from './stock-count-verification-errors'
 import { normalizeBaseCost, sumStockCountImpacts } from './stock-count-costing'
-import { stockCountRowsSignature } from './stock-count-snapshot'
+import { stockCountDraftSignature } from './stock-count-snapshot'
 import {
     CLASSIFICATION_LEGACY_CONFIG_CODE,
     CLASSIFICATION_TARGET_CONFIG_CODES,
@@ -56,6 +56,9 @@ export interface StockCountPreflightDependencies {
         variantIds: string[],
     ) => Promise<ClassificationLiveLegacyBalance[]>
     loadVariantLabels: (variantIds: string[]) => Promise<Array<{ id: string; variant_name: string | null; product_name: string | null }>>
+    loadClassificationAllocationResolutions: (
+        sessionId: string,
+    ) => Promise<Array<{ variant_id: string; target_stock_config_id: string }>>
     checkPermission: (userId: string, permission: string) => Promise<{ allowed: boolean; context: { organization_id: string | null } | null }>
     loadEvent: () => Promise<any | null>
     loadSetting: (orgId: string) => Promise<any | null>
@@ -101,18 +104,25 @@ export async function evaluateStockCountPreflight(
     if (counted.some((item) => !item.stock_config_id)) return { ok: false, code: 'configuration_identity_missing' }
     const varianceItems = counted.filter((item) => Number(item.adjustment_quantity || 0) !== 0)
     if (varianceItems.length && !isValidStockCountPostingNote(session.notes)) return { ok: false, code: 'posting_note_required' }
+    let persistedAllocationResolutions: Array<{ variant_id: string; target_stock_config_id: string }> = []
 
-    // Initial Configuration Classification: revalidate live Legacy balances and
-    // refuse allocated>0 / already-fully-classified before a code is requested.
-    // Target totals above/below Legacy are genuine physical-count variance.
+    // Initial Physical Count & Configuration Classification: revalidate live
+    // Legacy balances and refuse already-classified stock. An allocation is
+    // allowed only with its persisted explicit target; database preparation
+    // then reconciles the owning orders and target capacity under row locks.
     if (session.count_type === 'initial_configuration_classification') {
         const variantIds = Array.from(new Set(counted.map((item) => item.variant_id)))
-        const [liveRows, labels] = await Promise.all([
+        const [liveRows, labels, allocationResolutions] = await Promise.all([
             deps.loadClassificationLiveLegacy(session.warehouse_organization_id, variantIds),
             deps.loadVariantLabels(variantIds),
+            deps.loadClassificationAllocationResolutions(sessionId),
         ])
+        persistedAllocationResolutions = allocationResolutions
         const liveByVariant = new Map(liveRows.map((row) => [row.variantId, row]))
         const labelByVariant = new Map(labels.map((row) => [row.id, row]))
+        const allocationTargetByVariant = new Map(
+            allocationResolutions.map((row) => [row.variant_id, row.target_stock_config_id]),
+        )
         const flavours = variantIds.map((variantId) => {
             const variantItems = counted.filter((item) => item.variant_id === variantId)
             const requestedTotal = variantItems
@@ -126,6 +136,7 @@ export async function evaluateStockCountPreflight(
                 variantName: label?.variant_name || 'Unknown flavour',
                 requestedTotal,
                 selected: hasLegacyRow,
+                allocationTargetStockConfigId: allocationTargetByVariant.get(variantId) || null,
             }
         })
         const classificationGate = evaluateClassificationPostable(flavours, liveByVariant)
@@ -171,13 +182,16 @@ export async function evaluateStockCountPreflight(
         recipients,
         provider,
         authoritativeBaseCosts: Object.fromEntries(baseCosts),
-        persistedSignature: stockCountRowsSignature(items.map((item) => ({
+        persistedSignature: stockCountDraftSignature(items.map((item) => ({
             stockConfigId: item.stock_config_id ?? null,
             variantId: item.variant_id,
             physicalCount: item.physical_quantity === null || item.physical_quantity === undefined
                 ? null
                 : Number(item.physical_quantity),
             note: typeof item.note === 'string' ? item.note : '',
+        })), persistedAllocationResolutions.map((row) => ({
+            variantId: row.variant_id,
+            targetStockConfigId: row.target_stock_config_id,
         }))),
         summary: {
             totalVariantsCounted: counted.length,
@@ -238,7 +252,7 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
                 .eq('organization_id', warehouseId)
                 .eq('is_active', true)
                 .in('stock_config_id', configIds)
-            const invByConfig = new Map((inventory || []).map((row: any) => [row.stock_config_id, row]))
+            const invByConfig = new Map<string, any>((inventory || []).map((row: any) => [row.stock_config_id, row]))
             return configRows.map((cfg) => {
                 const inv = invByConfig.get(cfg.id)
                 const variant = Array.isArray(cfg.product_variants) ? cfg.product_variants[0] : cfg.product_variants
@@ -266,6 +280,13 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
                     product_name: product?.product_name || null,
                 }
             })
+        },
+        loadClassificationAllocationResolutions: async (sessionId) => {
+            const { data } = await admin
+                .from('stock_count_classification_allocation_resolutions')
+                .select('variant_id,target_stock_config_id')
+                .eq('session_id', sessionId)
+            return data || []
         },
         checkPermission: (userId, permission) => checkPermissionForUser(userId, permission) as any,
         loadEvent: async () => {

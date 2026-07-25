@@ -62,6 +62,27 @@ export function isCrmViewId(viewId: string): boolean {
     return _allCrmViewIds.has(viewId)
 }
 
+/** Admin URL paths for CRM subviews under /crm/... */
+export const crmViewToPath: Record<string, string> = {
+    'consumer-activations': 'activity',
+    'support-inbox': 'support-inbox',
+}
+
+export const crmPathToView: Record<string, string> = Object.fromEntries(
+    Object.entries(crmViewToPath).map(([view, path]) => [path, view])
+)
+
+export function crmHrefForView(viewId: string): string | null {
+    if (viewId === 'crm') return '/crm'
+    const path = crmViewToPath[viewId]
+    return path ? `/crm/${path}` : null
+}
+
+export function resolveCrmSlug(slug: string[]): string {
+    const path = slug.join('/')
+    return crmPathToView[path] || crmPathToView[slug[0] || ''] || 'crm'
+}
+
 export function findCrmGroupForView(viewId: string): CrmNavGroup | undefined {
     return crmNavGroups.find(
         (g) => g.id === viewId || g.children.some((c) => c.id === viewId)

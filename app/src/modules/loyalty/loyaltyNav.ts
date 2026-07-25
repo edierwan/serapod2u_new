@@ -83,6 +83,35 @@ export function isLoyaltyViewId(viewId: string): boolean {
     return _allLoyaltyViewIds.has(viewId)
 }
 
+/**
+ * Admin URL paths for Loyalty subviews under /loyalty/...
+ * point-catalog* stay on /engagement/catalog (existing redirect in DashboardContent).
+ */
+export const loyaltyViewToPath: Record<string, string> = {
+    'lucky-draw': 'lucky-draw',
+    'scratch-card-game': 'games',
+    'redeem-gift-management': 'redeem',
+}
+
+export const loyaltyPathToView: Record<string, string> = Object.fromEntries(
+    Object.entries(loyaltyViewToPath).map(([view, path]) => [path, view])
+)
+
+export function loyaltyHrefForView(viewId: string): string | null {
+    if (viewId === 'loyalty' || viewId === 'consumer-engagement') return '/loyalty'
+    if (viewId === 'point-catalog' || viewId === 'point-catalog-admin' || viewId === 'point-catalog-admin-list') {
+        return '/engagement/catalog'
+    }
+    if (viewId === 'point-catalog-admin-new') return '/engagement/catalog/admin/new'
+    const path = loyaltyViewToPath[viewId]
+    return path ? `/loyalty/${path}` : null
+}
+
+export function resolveLoyaltySlug(slug: string[]): string {
+    const path = slug.join('/')
+    return loyaltyPathToView[path] || loyaltyPathToView[slug[0] || ''] || 'loyalty'
+}
+
 /** Find which group a given view id belongs to */
 export function findLoyaltyGroupForView(viewId: string): LoyaltyNavGroup | undefined {
     return loyaltyNavGroups.find(

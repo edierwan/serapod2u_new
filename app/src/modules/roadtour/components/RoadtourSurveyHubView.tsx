@@ -18,9 +18,10 @@ export function RoadtourSurveyHubView({ userProfile, onViewChange }: Props) {
     const [tab, setTab] = useState<TabKey>('templates')
 
     return (
-        <div className="space-y-5">
+        <div className="sera-sc-page space-y-5">
             <div className="flex flex-col gap-1">
-                <h2 className="text-xl sm:text-2xl font-semibold">Survey Templates &amp; Reporting</h2>
+                <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h2 className="font-display text-xl font-semibold tracking-tight text-[var(--sera-ink)] sm:text-2xl">Survey Templates &amp; Reporting</h2>
                 <p className="text-sm text-muted-foreground">
                     Manage RoadTour survey templates, browse submitted responses, and explore dynamic reporting.
                 </p>

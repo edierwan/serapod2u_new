@@ -196,7 +196,7 @@ export default function ProductDetailClient({ product }: Props) {
       <div className="space-y-4">
         {/* Main viewer */}
         <div
-          className="relative aspect-square rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center"
+          className="relative aspect-square rounded-2xl bg-[var(--sera-mist)] border border-[var(--sera-line)] overflow-hidden flex items-center justify-center"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -220,7 +220,7 @@ export default function ProductDetailClient({ product }: Props) {
               />
             )
           ) : (
-            <Package className="h-24 w-24 text-gray-200" />
+            <Package className="h-24 w-24 text-[var(--sera-muted)]/40" />
           )}
 
           {/* Navigation arrows */}
@@ -269,13 +269,13 @@ export default function ProductDetailClient({ product }: Props) {
               <>
                 <button
                   onClick={() => scrollThumbs('left')}
-                  className="absolute -left-2 top-1/2 -translate-y-1/2 z-10 h-7 w-7 rounded-full bg-white shadow border border-gray-200 flex items-center justify-center hover:bg-gray-50"
+                  className="absolute -left-2 top-1/2 -translate-y-1/2 z-10 h-7 w-7 rounded-full bg-white shadow border border-[var(--sera-line)] flex items-center justify-center hover:bg-[var(--sera-mist)]"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => scrollThumbs('right')}
-                  className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 h-7 w-7 rounded-full bg-white shadow border border-gray-200 flex items-center justify-center hover:bg-gray-50"
+                  className="absolute -right-2 top-1/2 -translate-y-1/2 z-10 h-7 w-7 rounded-full bg-white shadow border border-[var(--sera-line)] flex items-center justify-center hover:bg-[var(--sera-mist)]"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
@@ -291,8 +291,8 @@ export default function ProductDetailClient({ product }: Props) {
                   onClick={() => setCurrentIndex(i)}
                   className={`relative flex-none w-16 h-16 rounded-lg border overflow-hidden ${
                     safeIndex === i
-                      ? 'border-gray-900 ring-2 ring-gray-900/20'
-                      : 'border-gray-200 hover:border-gray-400'
+                      ? 'border-[var(--sera-ink)] ring-2 ring-[var(--sera-ink)]/20'
+                      : 'border-[var(--sera-line)] hover:border-[var(--sera-muted)]'
                   }`}
                 >
                   {item.type === 'video' ? (
@@ -329,38 +329,38 @@ export default function ProductDetailClient({ product }: Props) {
         {/* Category & Brand badges */}
         <div className="flex flex-wrap gap-2">
           {product.category_name && (
-            <span className="px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+            <span className="px-2.5 py-0.5 bg-[var(--sera-mist)] text-[var(--sera-muted)] rounded-full text-xs font-medium">
               {product.category_name}
             </span>
           )}
           {product.brand_name && (
-            <span className="px-2.5 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-medium">
+            <span className="px-2.5 py-0.5 bg-[var(--sera-orange)]/[0.08] text-[var(--sera-orange)] rounded-full text-xs font-medium">
               {product.brand_name}
             </span>
           )}
         </div>
 
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 leading-tight">
+        <h1 className="font-display text-2xl lg:text-3xl font-semibold text-[var(--sera-ink)] leading-tight">
           {product.product_name}
         </h1>
 
         {product.short_description && (
-          <p className="text-gray-500 text-sm leading-relaxed">{product.short_description}</p>
+          <p className="text-[var(--sera-muted)] text-sm leading-relaxed">{product.short_description}</p>
         )}
 
         {/* Price */}
         <div>
           {formattedPrice ? (
-            <span className="text-3xl font-bold text-gray-900">{formattedPrice}</span>
+            <span className="font-display text-3xl font-semibold text-[var(--sera-ink)]">{formattedPrice}</span>
           ) : (
-            <span className="text-lg text-gray-400">Contact for price</span>
+            <span className="text-lg text-[var(--sera-muted)]/70">Contact for price</span>
           )}
         </div>
 
         {/* Variant selector */}
         {product.variants.length > 1 && (
           <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">Variant</label>
+            <label className="text-sm font-medium text-[var(--sera-ink)]/80 mb-2 block">Variant</label>
             <div className="flex flex-wrap gap-2">
               {product.variants.map((v) => (
                 <button
@@ -371,8 +371,8 @@ export default function ProductDetailClient({ product }: Props) {
                   }}
                   className={`relative px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
                     selectedVariant?.id === v.id
-                      ? 'border-gray-900 bg-gray-900 text-white shadow-sm'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-400'
+                      ? 'border-[var(--sera-ink)] bg-[var(--sera-ink)] text-white shadow-sm'
+                      : 'border-[var(--sera-line)] bg-white text-[var(--sera-ink)]/80 hover:border-[var(--sera-muted)]'
                   }`}
                 >
                   {v.variant_name}
@@ -389,20 +389,20 @@ export default function ProductDetailClient({ product }: Props) {
 
         {/* Quantity */}
         <div>
-          <label className="text-sm font-medium text-gray-700 mb-2 block">Quantity</label>
-          <div className="inline-flex items-center border border-gray-200 rounded-lg overflow-hidden">
+          <label className="text-sm font-medium text-[var(--sera-ink)]/80 mb-2 block">Quantity</label>
+          <div className="inline-flex items-center border border-[var(--sera-line)] rounded-lg overflow-hidden">
             <button
               onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="h-10 w-10 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition"
+              className="h-10 w-10 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition"
             >
               <Minus className="h-4 w-4" />
             </button>
-            <span className="h-10 w-12 flex items-center justify-center text-sm font-semibold border-x border-gray-200">
+            <span className="h-10 w-12 flex items-center justify-center text-sm font-semibold border-x border-[var(--sera-line)]">
               {quantity}
             </span>
             <button
               onClick={() => setQuantity((q) => q + 1)}
-              className="h-10 w-10 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition"
+              className="h-10 w-10 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -416,7 +416,7 @@ export default function ProductDetailClient({ product }: Props) {
           className={`w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
             justAdded
               ? 'bg-green-500 text-white'
-              : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98]'
+              : 'bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)] active:scale-[0.98]'
           } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {justAdded ? (
@@ -432,9 +432,9 @@ export default function ProductDetailClient({ product }: Props) {
 
         {/* Description */}
         {product.product_description && (
-          <div className="border-t border-gray-100 pt-6 mt-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Description</h3>
-            <div className="prose prose-sm prose-gray max-w-none text-gray-600">
+          <div className="border-t border-[var(--sera-line)] pt-6 mt-6">
+            <h3 className="text-sm font-semibold text-[var(--sera-ink)] mb-3">Description</h3>
+            <div className="prose prose-sm prose-gray max-w-none text-[var(--sera-muted)]">
               {product.product_description.split('\n').map((paragraph, i) => (
                 <p key={i}>{paragraph}</p>
               ))}
@@ -445,13 +445,13 @@ export default function ProductDetailClient({ product }: Props) {
         {/* Variant details table */}
         {selectedVariant?.attributes &&
           Object.keys(selectedVariant.attributes).length > 0 && (
-            <div className="border-t border-gray-100 pt-6">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Specifications</h3>
+            <div className="border-t border-[var(--sera-line)] pt-6">
+              <h3 className="text-sm font-semibold text-[var(--sera-ink)] mb-3">Specifications</h3>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {Object.entries(selectedVariant.attributes).map(([key, value]) => (
                   <div key={key} className="contents">
-                    <dt className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}</dt>
-                    <dd className="text-gray-900 font-medium">{String(value)}</dd>
+                    <dt className="text-[var(--sera-muted)] capitalize">{key.replace(/_/g, ' ')}</dt>
+                    <dd className="text-[var(--sera-ink)] font-medium">{String(value)}</dd>
                   </div>
                 ))}
               </dl>
@@ -459,7 +459,7 @@ export default function ProductDetailClient({ product }: Props) {
           )}
 
         {/* SKU */}
-        <div className="text-xs text-gray-400 space-x-3">
+        <div className="text-xs text-[var(--sera-muted)]/70 space-x-3">
           <span>SKU: {selectedVariant?.variant_code || product.product_code}</span>
           {selectedVariant?.barcode && <span>Barcode: {selectedVariant.barcode}</span>}
         </div>

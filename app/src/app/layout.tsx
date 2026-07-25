@@ -1,12 +1,23 @@
 import type { Metadata } from 'next'
-// import { Inter } from 'next/font/google'
+import { Manrope, Syne } from 'next/font/google'
 import './globals.css'
+import '@/styles/sera-shell.css'
 import { AuthProvider } from '@/components/providers/AuthProvider'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import { Toaster } from '@/components/ui/toaster'
 
-// const inter = Inter({ subsets: ['latin'] })
+const syne = Syne({
+  subsets: ['latin'],
+  variable: '--font-sera-display',
+  display: 'swap',
+})
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-sera-body',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Serapod2U - Supply Chain Management System',
@@ -30,7 +41,7 @@ export function generateViewport() {
     maximumScale: 5,
     userScalable: true,
     viewportFit: 'cover',
-    themeColor: '#2563eb'
+    themeColor: '#141210'
   }
 }
 
@@ -40,7 +51,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${syne.variable} ${manrope.variable}`}>
       <body className="font-sans antialiased">
         <ThemeProvider>
           <LanguageProvider>

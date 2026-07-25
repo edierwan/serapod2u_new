@@ -1006,7 +1006,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                     <CardDescription>Filter by status, category, or search to focus your review.</CardDescription>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="relative sm:min-w-[220px]">
+                    <div className="relative w-full sm:min-w-[220px]">
                       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={searchTerm}
@@ -1016,7 +1016,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                       />
                     </div>
                     <Select value={sortOption} onValueChange={setSortOption}>
-                      <SelectTrigger className="sm:w-56">
+                      <SelectTrigger className="w-full sm:w-56">
                         <SelectValue placeholder="Sort" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1093,7 +1093,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                 ) : (
                   <>
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-border text-sm">
+                      <table className="min-w-[720px] w-full divide-y divide-border text-sm">
                         <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="px-4 py-3 w-[50px]">#</th>
@@ -1467,7 +1467,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
         <TabsContent value="redemptions" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Gift className="h-5 w-5 text-purple-500" />
@@ -1481,7 +1481,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => loadRedemptions(1)}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
@@ -1492,8 +1492,8 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
             </CardHeader>
             <CardContent>
               {/* Filters */}
-              <div className="mb-4 flex gap-4">
-                <div className="flex-1">
+              <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <div className="flex-1 min-w-0">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -1508,7 +1508,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
                   value={redemptionStatusFilter}
                   onValueChange={(value) => setRedemptionStatusFilter(value as any)}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
                   <SelectContent>

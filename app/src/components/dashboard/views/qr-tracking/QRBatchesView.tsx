@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface UserProfile {
   id: string
@@ -655,52 +656,47 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">QR Code Batches</h1>
-          <p className="text-gray-600 mt-1">
-            Manage QR code generation for approved H2M orders
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {/* Debug Button for Manual Worker Trigger */}
-          <Button
-            onClick={handleTriggerWorker}
-            disabled={workerRunning}
-            variant="secondary"
-            className="bg-gray-100 hover:bg-gray-200 text-gray-700"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${workerRunning ? 'animate-spin' : ''}`} />
-            {workerRunning ? 'Running...' : 'Run Worker (Debug)'}
-          </Button>
-
-          <Button onClick={handleRefresh} variant="outline">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-      </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        title="QR Code Batches"
+        description="Manage QR code generation for approved H2M orders"
+        actions={
+          <>
+            <Button
+              onClick={handleTriggerWorker}
+              disabled={workerRunning}
+              variant="secondary"
+              className="bg-[var(--sera-mist)] hover:bg-[var(--sera-line)] text-[var(--sera-ink-soft)]"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${workerRunning ? 'animate-spin' : ''}`} />
+              {workerRunning ? 'Running...' : 'Run Worker (Debug)'}
+            </Button>
+            <Button onClick={handleRefresh} variant="outline" className="border-[var(--sera-line)]">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="pt-6">
           <div className="flex gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] h-4 w-4" />
               <input
                 type="text"
                 placeholder="Search by order number or batch ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="sera-sc-select pl-10"
               />
             </div>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="sera-sc-select w-auto min-w-[160px]"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -715,24 +711,24 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
 
       {/* Approved Orders Section - NEW */}
       {ordersNeedingBatch.length > 0 && (
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/[0.04] shadow-none">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-blue-600" />
+            <CardTitle className="flex items-center gap-2 text-[var(--sera-ink)]">
+              <Package className="h-5 w-5 text-[var(--sera-orange)]" strokeWidth={1.75} />
               Orders Ready for QR Generation
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-[var(--sera-muted)]">
               Select an approved or closed H2M order to generate QR codes and download Excel
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-end">
               <div className="flex-1">
-                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                <label className="text-sm font-medium text-[var(--sera-ink-soft)] mb-2 block">
                   Select Order
                 </label>
                 <Select value={selectedOrderId} onValueChange={handleOrderSelect}>
-                  <SelectTrigger className="bg-white">
+                  <SelectTrigger className="bg-white border-[var(--sera-line)]">
                     <SelectValue placeholder="Choose an approved order..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -748,7 +744,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
                           <SelectItem key={order.id} value={order.id}>
                             <div className="flex flex-col">
                               <span className="font-medium">{displayOrderNo}</span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-[var(--sera-muted)]">
                                 {totalItems} items • {totalQuantity.toLocaleString()} units • {qrCodes.toLocaleString()} QR codes
                               </span>
                             </div>
@@ -761,7 +757,7 @@ export default function QRBatchesView({ userProfile, onViewChange }: QRBatchesVi
               <Button
                 onClick={handleGenerateBatchForSelectedOrder}
                 disabled={!selectedOrderId || generating !== null}
-                className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+                className="bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)] whitespace-nowrap"
               >
                 {generating === selectedOrderId ? (
                   <>

@@ -114,7 +114,7 @@ export default function StoreHeroSlider({
 
   return (
     <section
-      className="relative overflow-hidden bg-gray-900"
+      className="relative overflow-hidden bg-[var(--sera-ink)]"
       role="region"
       aria-roledescription="carousel"
       aria-label="Store hero banners"
@@ -177,7 +177,7 @@ export default function StoreHeroSlider({
                       {banner.badge_text && (
                         <motion.span
                           variants={prefersReducedMotion ? undefined : textItem}
-                          className="inline-block px-3 py-1 text-xs font-medium tracking-wider uppercase text-blue-400 bg-blue-500/10 backdrop-blur-sm rounded-full mb-4 border border-blue-400/20"
+                          className="inline-block px-3 py-1 text-xs font-medium tracking-wider uppercase text-[var(--sera-orange)] bg-[var(--sera-orange)]/15 backdrop-blur-sm rounded-full mb-4 border border-[var(--sera-orange)]/25"
                         >
                           {banner.badge_text}
                         </motion.span>
@@ -192,7 +192,7 @@ export default function StoreHeroSlider({
                             i === arr.length - 1 && arr.length > 1 ? (
                               <span
                                 key={i}
-                                className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-violet-400"
+                                className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--sera-orange)] to-[#ff8a3d]"
                               >
                                 {part}
                               </span>
@@ -209,7 +209,7 @@ export default function StoreHeroSlider({
                       {banner.subtitle && (
                         <motion.p
                           variants={prefersReducedMotion ? undefined : textItem}
-                          className="mt-5 text-base sm:text-lg text-gray-300 max-w-lg leading-relaxed"
+                          className="mt-5 text-base sm:text-lg text-white/65 max-w-lg leading-relaxed"
                         >
                           {banner.subtitle}
                         </motion.p>
@@ -222,14 +222,14 @@ export default function StoreHeroSlider({
                         >
                           <Link
                             href={banner.link_url}
-                            className="group/cta inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-full hover:bg-blue-500 hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-600/30 transition-all duration-200"
+                            className="group/cta inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-[var(--sera-orange)] rounded-xl hover:bg-[var(--sera-orange-deep)] hover:scale-[1.02] hover:shadow-xl hover:shadow-[var(--sera-orange)]/30 transition-all duration-200"
                           >
                             {banner.link_text || 'Shop Now'}
                             <ArrowRight className="h-4 w-4 transition-transform group-hover/cta:translate-x-0.5" />
                           </Link>
                           <Link
                             href="/login"
-                            className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-gray-300 bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-all border border-white/10"
+                            className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white/65 bg-white/10 backdrop-blur-sm rounded-full hover:bg-white/20 transition-all border border-white/10"
                           >
                             Business Login
                           </Link>

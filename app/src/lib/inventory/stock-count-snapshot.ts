@@ -22,6 +22,11 @@ export interface CountedRowSignatureInput {
   note: string
 }
 
+export interface ClassificationAllocationResolutionSignatureInput {
+  variantId: string
+  targetStockConfigId: string
+}
+
 interface CanonicalCountedRow {
   c: string
   v: string
@@ -59,4 +64,26 @@ function fnv1a(input: string): string {
 export function stockCountRowsSignature(rows: CountedRowSignatureInput[]): string {
   const canonical = canonicalizeCountedRows(rows)
   return `${canonical.length}:${fnv1a(JSON.stringify(canonical))}`
+}
+
+/**
+ * Bind an Initial Classification approval to both its counted rows and every
+ * explicit Legacy-allocation destination. A reservation target changes the
+ * inventory/order result even when the physical counts stay the same, so it
+ * must participate in the dirty-draft and OTP snapshot contract.
+ */
+export function stockCountDraftSignature(
+  rows: CountedRowSignatureInput[],
+  allocationResolutions: ClassificationAllocationResolutionSignatureInput[] = [],
+): string {
+  const resolutions = allocationResolutions
+    .map((resolution) => ({
+      variantId: String(resolution.variantId || ''),
+      targetStockConfigId: String(resolution.targetStockConfigId || ''),
+    }))
+    .sort((a, b) =>
+      `${a.variantId}:${a.targetStockConfigId}`.localeCompare(`${b.variantId}:${b.targetStockConfigId}`),
+    )
+
+  return `${stockCountRowsSignature(rows)}|alloc:${JSON.stringify(resolutions)}`
 }

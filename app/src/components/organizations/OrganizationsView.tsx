@@ -40,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ShopDistributorsManager from '@/components/shops/ShopDistributorsManager'
 import DistributorShopsManager from '@/components/distributors/DistributorShopsManager'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+} from '@/components/ui/sera-modal'
 import { buildSetDefaultFulfillmentConfirmMessage } from '@/lib/organizations/distributor-fulfillment-default'
 
 interface UserProfile {
@@ -590,7 +597,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const getOrgTypeColor = (typeCode: string) => {
     const colors = {
       'HQ': 'bg-purple-100 text-purple-700',
-      'MFG': 'bg-blue-100 text-blue-700',
+      'MFG': 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
       'DIST': 'bg-green-100 text-green-700',
       'WH': 'bg-orange-100 text-orange-700',
       'SHOP': 'bg-pink-100 text-pink-700'
@@ -987,20 +994,18 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
-        </div>
+      <div className="sera-sc-page">
+        <SupplyChainPageHeader title="Organizations" description="Manage your supply chain network" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[...Array(6)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
+            <Card key={i} className="animate-pulse sera-sc-panel shadow-none">
               <CardContent className="p-6">
-                <div className="h-4 bg-gray-200 rounded mb-4"></div>
-                <div className="h-8 bg-gray-200 rounded mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                <div className="h-4 bg-[var(--sera-mist)] rounded mb-4"></div>
+                <div className="h-8 bg-[var(--sera-mist)] rounded mb-2"></div>
+                <div className="h-4 bg-[var(--sera-mist)] rounded mb-4"></div>
                 <div className="flex gap-2">
-                  <div className="h-6 bg-gray-200 rounded flex-1"></div>
-                  <div className="h-6 bg-gray-200 rounded w-16"></div>
+                  <div className="h-6 bg-[var(--sera-mist)] rounded flex-1"></div>
+                  <div className="h-6 bg-[var(--sera-mist)] rounded w-16"></div>
                 </div>
               </CardContent>
             </Card>
@@ -1011,36 +1016,38 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Organizations</h2>
-          <p className="text-gray-600">Manage your supply chain network</p>
-        </div>
-        <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => onViewChange?.('add-organization')}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Organization
-        </Button>
-      </div>
+    <div className="sera-sc-page">
+      <SupplyChainPageHeader
+        title="Organizations"
+        description="Manage your supply chain network"
+        actions={
+          <Button
+            className="bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+            onClick={() => onViewChange?.('add-organization')}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Organization
+          </Button>
+        }
+      />
 
       {/* Filters */}
-      <Card>
+      <Card className="sera-sc-panel shadow-none">
         <CardContent className="p-6">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
                 <Input
                   placeholder="Search organizations..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
                 />
               </div>
             </div>
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-[var(--sera-line)]">
                 <Filter className="w-4 h-4 mr-2" />
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -1055,7 +1062,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 border-[var(--sera-line)]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -1065,7 +1072,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </SelectContent>
             </Select>
             <Select value={filterProgram} onValueChange={setFilterProgram}>
-              <SelectTrigger className="w-full sm:w-52">
+              <SelectTrigger className="w-full sm:w-52 border-[var(--sera-line)]">
                 <SelectValue placeholder="Program" />
               </SelectTrigger>
               <SelectContent>
@@ -1081,7 +1088,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 variant={viewMode === 'card' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('card')}
-                className={viewMode === 'card' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'card' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <LayoutGrid className="w-4 h-4" />
               </Button>
@@ -1089,7 +1096,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 variant={viewMode === 'list' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className={viewMode === 'list' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={viewMode === 'list' ? 'bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]' : 'border-[var(--sera-line)]'}
               >
                 <List className="w-4 h-4" />
               </Button>
@@ -1123,8 +1130,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         className="w-full h-full object-contain p-1"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-                        <span className="text-blue-600 font-semibold text-sm">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[var(--sera-orange)]/10 to-[var(--sera-orange)]/15">
+                        <span className="text-[var(--sera-orange)] font-semibold text-sm">
                           {getOrgInitials(org.org_name)}
                         </span>
                       </div>
@@ -1152,14 +1159,14 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                 <div className="mt-4">
                   <button
                     onClick={() => handleEditOrganization(org)}
-                    className="font-semibold text-gray-900 text-base leading-tight line-clamp-1 hover:text-blue-600 hover:underline text-left"
+                    className="font-semibold text-[var(--sera-ink)] text-base leading-tight line-clamp-1 hover:text-[var(--sera-orange)] hover:underline text-left"
                   >
                     {org.org_name}
                   </button>
                   <p className="text-sm text-gray-500 mt-0.5">
                     {org.org_code}
                     {org.branch && (
-                      <span className="text-gray-600 ml-1.5">• {org.branch}</span>
+                      <span className="text-[var(--sera-muted)] ml-1.5">• {org.branch}</span>
                     )}
                     {(org.org_type_code === 'MFG' || org.org_type_code === 'DIST' || org.org_type_code === 'SHOP') &&
                       (org as any).payment_terms && (
@@ -1202,7 +1209,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                           {org.contact_name || 'Not updated'}
                         </span>
                         {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
-                          <button onClick={() => handleQuickEdit(org.id, 'name', org.contact_name)} className="text-xs text-blue-600 hover:text-blue-700 hover:underline flex-shrink-0">[Edit]</button>
+                          <button onClick={() => handleQuickEdit(org.id, 'name', org.contact_name)} className="text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline flex-shrink-0">[Edit]</button>
                         )}
                       </div>
                     )}
@@ -1235,7 +1242,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                           {org.contact_phone || 'Not updated'}
                         </span>
                         {(org.org_type_code === 'SHOP' || org.org_type_code === 'DIST' || org.org_type_code === 'WH' || org.org_type_code === 'MFG') && (
-                          <button onClick={() => handleQuickEdit(org.id, 'phone', org.contact_phone)} className="text-xs text-blue-600 hover:text-blue-700 hover:underline flex-shrink-0">[Edit]</button>
+                          <button onClick={() => handleQuickEdit(org.id, 'phone', org.contact_phone)} className="text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline flex-shrink-0">[Edit]</button>
                         )}
                       </div>
                     )}
@@ -1264,11 +1271,11 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   (org.org_type_code === 'SHOP' && shopLinkedDistributors.has(org.id)) ||
                   (org.org_type_code === 'DIST' && distributorLinkedShops.has(org.id))
                 ) && (
-                    <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2">
+                    <div className="text-xs text-gray-500 bg-[var(--sera-orange)]/[0.06] rounded-lg px-3 py-2">
                       {/* Shop's Parent Distributor */}
                       {org.parent_org && org.org_type_code === 'SHOP' && (
                         <p className="mb-1">
-                          Ordering From: <span className="font-medium text-blue-600">{org.parent_org.org_name}</span>
+                          Ordering From: <span className="font-medium text-[var(--sera-orange)]">{org.parent_org.org_name}</span>
                         </p>
                       )}
 
@@ -1297,30 +1304,30 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   {org.org_type_code === 'SHOP' ? (
                     <>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.distributors_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.distributors_count || 0}</div>
                         <div className="text-xs text-gray-500">Distributors</div>
                       </div>
                       <div className="text-center px-2 border-x border-gray-200">
-                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.orders_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.orders_count || 0}</div>
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
                     </>
                   ) : org.org_type_code === 'DIST' ? (
                     <>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.shops_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.shops_count || 0}</div>
                         <div className="text-xs text-gray-500">Shops</div>
                       </div>
                       <div className="text-center px-2 border-x border-gray-200">
-                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.orders_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.orders_count || 0}</div>
                         <div className="text-xs text-gray-500">Orders</div>
                       </div>
                     </>
@@ -1329,7 +1336,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       <div className="text-center px-2" title="This warehouse automatically receives orders from its parent HQ">
                         <div className="text-sm font-bold">
                           {org.parent_org && organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id ? (
-                            <span className="text-blue-600">Yes</span>
+                            <span className="text-[var(--sera-orange)]">Yes</span>
                           ) : (
                             <span className="text-gray-400">No</span>
                           )}
@@ -1337,26 +1344,26 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         <div className="text-xs text-gray-500">Default</div>
                       </div>
                       <div className="text-center px-2 border-x border-gray-200">
-                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.products_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.products_count || 0}</div>
                         <div className="text-xs text-gray-500">Products</div>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.children_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.children_count || 0}</div>
                         <div className="text-xs text-gray-500">Children</div>
                       </div>
                       <div className="text-center px-2 border-x border-gray-200">
-                        <div className="text-xl font-bold text-gray-900">{org.users_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.users_count || 0}</div>
                         <div className="text-xs text-gray-500">Users</div>
                       </div>
                       <div className="text-center px-2">
-                        <div className="text-xl font-bold text-gray-900">{org.products_count || 0}</div>
+                        <div className="sera-sc-kpi__value !text-xl">{org.products_count || 0}</div>
                         <div className="text-xs text-gray-500">Products</div>
                       </div>
                     </>
@@ -1369,13 +1376,13 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 h-9 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                      className="flex-1 h-9 text-xs font-medium hover:bg-[var(--sera-orange)]/[0.06] hover:text-[var(--sera-orange-deep)] hover:border-[var(--sera-orange)]/30"
                       onClick={() => {
                         setSelectedShopForDistributors(org)
                         checkShopDistributorLinks()
                       }}
                     >
-                      <LinkIcon className={`w-3.5 h-3.5 mr-1.5 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : ''}`} />
+                      <LinkIcon className={`w-3.5 h-3.5 mr-1.5 ${shopsWithDistributors.has(org.id) ? 'text-[var(--sera-orange)]' : ''}`} />
                       Distributors
                     </Button>
                   )}
@@ -1398,8 +1405,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       variant="outline"
                       size="sm"
                       className={`flex-1 h-9 text-xs font-medium ${organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id
-                        ? 'bg-blue-50 text-blue-700 border-blue-300'
-                        : 'hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300'
+                        ? 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] border-[var(--sera-orange)]/30'
+                        : 'hover:bg-[var(--sera-orange)]/[0.06] hover:text-[var(--sera-orange-deep)] hover:border-[var(--sera-orange)]/30'
                         }`}
                       onClick={() => handleSetDefaultWarehouse(org)}
                       disabled={organizations.find(o => o.id === org.parent_org_id)?.default_warehouse_org_id === org.id}
@@ -1450,7 +1457,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <TableHead>
                     <button
                       onClick={() => handleSort('org_name')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
+                      className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium text-xs"
                     >
                       Organization
                       {sortField === 'org_name' ? (
@@ -1466,7 +1473,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <TableHead>
                     <button
                       onClick={() => handleSort('org_type_code')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
+                      className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium text-xs"
                     >
                       Type
                       {sortField === 'org_type_code' ? (
@@ -1480,7 +1487,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <TableHead>
                     <button
                       onClick={() => handleSort('contact_name')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
+                      className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium text-xs"
                     >
                       Contact
                       {sortField === 'contact_name' ? (
@@ -1493,7 +1500,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <TableHead>
                     <button
                       onClick={() => handleSort('state')}
-                      className="flex items-center gap-1 hover:text-gray-900 transition-colors font-medium text-xs"
+                      className="flex items-center gap-1 hover:text-[var(--sera-ink)] transition-colors font-medium text-xs"
                     >
                       State
                       {sortField === 'state' ? (
@@ -1517,7 +1524,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                         <div>
                           <button
                             onClick={() => handleEditOrganization(org)}
-                            className="font-medium text-xs text-blue-600 hover:text-blue-800 hover:underline text-left"
+                            className="font-medium text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline text-left"
                           >
                             {org.org_name}
                           </button>
@@ -1525,7 +1532,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       </div>
                     </TableCell>
                     {filterType === 'SHOP' && (
-                      <TableCell className="text-xs text-gray-600">
+                      <TableCell className="text-xs text-[var(--sera-muted)]">
                         {org.branch || '-'}
                       </TableCell>
                     )}
@@ -1563,7 +1570,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             title="Manage Distributors"
                           >
                             <LinkIcon
-                              className={`w-3.5 h-3.5 ${shopsWithDistributors.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
+                              className={`w-3.5 h-3.5 ${shopsWithDistributors.has(org.id) ? 'text-[var(--sera-orange)]' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
@@ -1580,7 +1587,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             title="Manage Shops"
                           >
                             <LinkIcon
-                              className={`w-3.5 h-3.5 ${distributorsWithShops.has(org.id) ? 'text-blue-600' : 'text-gray-400'}`}
+                              className={`w-3.5 h-3.5 ${distributorsWithShops.has(org.id) ? 'text-[var(--sera-orange)]' : 'text-gray-400'}`}
                             />
                           </Button>
                         )}
@@ -1620,7 +1627,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   </span>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600">Rows:</span>
+                    <span className="text-xs text-[var(--sera-muted)]">Rows:</span>
                     <Select
                       value={itemsPerPage.toString()}
                       onValueChange={(value) => {
@@ -1674,8 +1681,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
         <Card>
           <CardContent className="p-12 text-center">
             <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No organizations found</h3>
-            <p className="text-gray-600 mb-4">
+            <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No organizations found</h3>
+            <p className="text-[var(--sera-muted)] mb-4">
               {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterProgram !== 'all'
                 ? 'Try adjusting your search criteria'
                 : 'Get started by adding your first organization'
@@ -1691,64 +1698,62 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       {/* Shop Distributors Manager Modal */}
       {selectedShopForDistributors && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center">
+        <SeraModalOverlay onBackdropClick={() => {
+          setSelectedShopForDistributors(null)
+          checkShopDistributorLinks()
+        }}>
+          <SeraModalPanel className="sera-modal-panel--scroll">
+            <SeraModalHeader
+              onClose={() => {
+                setSelectedShopForDistributors(null)
+                checkShopDistributorLinks()
+              }}
+            >
               <div>
-                <h2 className="text-2xl font-bold">Manage Distributors</h2>
-                <p className="text-gray-600">
+                <h2 className="sera-modal-title">Manage Distributors</h2>
+                <p className="mt-1 text-sm text-[var(--sera-muted)]">
                   {selectedShopForDistributors.org_name} ({selectedShopForDistributors.org_code})
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedShopForDistributors(null)
-                  checkShopDistributorLinks() // Refresh links when modal closes
-                }}
-              >
-                ✕ Close
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
+            </SeraModalHeader>
+            <SeraModalBody className="flex-1 overflow-auto">
               <ShopDistributorsManager
                 shopId={selectedShopForDistributors.id}
                 shopName={selectedShopForDistributors.org_name}
               />
-            </div>
-          </div>
-        </div>
+            </SeraModalBody>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
 
       {/* Distributor Shops Manager Modal */}
       {selectedDistributorForShops && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center">
+        <SeraModalOverlay onBackdropClick={() => {
+          setSelectedDistributorForShops(null)
+          checkDistributorShopLinks()
+        }}>
+          <SeraModalPanel className="sera-modal-panel--scroll">
+            <SeraModalHeader
+              onClose={() => {
+                setSelectedDistributorForShops(null)
+                checkDistributorShopLinks()
+              }}
+            >
               <div>
-                <h2 className="text-2xl font-bold">Manage Shops</h2>
-                <p className="text-gray-600">
+                <h2 className="sera-modal-title">Manage Shops</h2>
+                <p className="mt-1 text-sm text-[var(--sera-muted)]">
                   {selectedDistributorForShops.org_name} ({selectedDistributorForShops.org_code})
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSelectedDistributorForShops(null)
-                  checkDistributorShopLinks() // Refresh links when modal closes
-                }}
-              >
-                ✕ Close
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
+            </SeraModalHeader>
+            <SeraModalBody className="flex-1 overflow-auto">
               <DistributorShopsManager
                 distributorId={selectedDistributorForShops.id}
                 distributorName={selectedDistributorForShops.org_name}
               />
-            </div>
-          </div>
-        </div>
+            </SeraModalBody>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
 
       {/* Delete Dependencies Modal */}
@@ -1758,7 +1763,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <DialogTitle className="flex items-center gap-2">
               {deleteDependenciesModal.loading ? (
                 <>
-                  <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--sera-orange)]" />
                   Checking Dependencies...
                 </>
               ) : deleteOtpStep === 'otp' ? (
@@ -1802,7 +1807,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
           <ScrollArea className="flex-1 pr-4">
             {deleteDependenciesModal.loading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <Loader2 className="h-8 w-8 animate-spin text-[var(--sera-orange)]" />
               </div>
             ) : deleteDependenciesModal.data?.error ? (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -1848,7 +1853,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                     </div>
                     {deleteDependenciesModal.data.blocking_records && deleteDependenciesModal.data.blocking_records.length > 0 && (
                       <div className="space-y-3">
-                        <p className="text-sm text-gray-600">The following will be automatically removed:</p>
+                        <p className="text-sm text-[var(--sera-muted)]">The following will be automatically removed:</p>
                         {deleteDependenciesModal.data.blocking_records
                           .filter(r => r.auto_delete)
                           .map((record, index) => (
@@ -1887,7 +1892,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded">
+                            <span className="bg-gray-100 text-[var(--sera-muted)] text-xs font-bold px-2 py-1 rounded">
                               Step {index + 1}
                             </span>
                             <span className="font-semibold text-gray-800">{record.display_name}</span>
@@ -1896,10 +1901,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             {record.count} record(s)
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{record.description}</p>
-                        <div className="flex items-start gap-2 bg-blue-50 rounded p-2">
-                          <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                          <p className="text-sm text-blue-700">{record.action}</p>
+                        <p className="text-sm text-[var(--sera-muted)] mb-2">{record.description}</p>
+                        <div className="flex items-start gap-2 bg-[var(--sera-orange)]/[0.06] rounded p-2">
+                          <Info className="h-4 w-4 text-[var(--sera-orange)] mt-0.5 flex-shrink-0" />
+                          <p className="text-sm text-[var(--sera-orange-deep)]">{record.action}</p>
                         </div>
 
                         {/* Show sample records if available */}
@@ -1909,7 +1914,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                             <div className="space-y-1">
                               {record.records.slice(0, 5).map((r, i) => (
                                 <div key={i} className="text-xs bg-gray-50 rounded px-2 py-1 flex items-center gap-2">
-                                  <span className="font-mono text-gray-600">{r.reference}</span>
+                                  <span className="font-mono text-[var(--sera-muted)]">{r.reference}</span>
                                   {r.code && <span className="text-gray-400">({r.code})</span>}
                                   {r.status && (
                                     <Badge variant="outline" className="text-xs px-1 py-0">
@@ -1938,7 +1943,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                       ?.filter(r => r.auto_delete)
                       .map((record, index) => (
                         <div key={index} className="flex items-center justify-between py-1">
-                          <span className="text-sm text-gray-600">{record.display_name}</span>
+                          <span className="text-sm text-[var(--sera-muted)]">{record.display_name}</span>
                           <Badge variant="secondary">{record.count}</Badge>
                         </div>
                       ))}

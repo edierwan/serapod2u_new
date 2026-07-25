@@ -1239,7 +1239,7 @@ export default function OrderDocumentsDialogEnhanced({
                               }
                             }}
                             disabled={downloading === 'manufacturer-doc'}
-                            className="w-full bg-blue-600 hover:bg-blue-700"
+                            className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                           >
                             {downloading === 'manufacturer-doc' ? (
                               <>
@@ -1465,7 +1465,7 @@ export default function OrderDocumentsDialogEnhanced({
                               }
                             }}
                             disabled={downloading === 'manufacturer-doc'}
-                            className="w-full bg-blue-600 hover:bg-blue-700"
+                            className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                           >
                             {downloading === 'manufacturer-doc' ? (
                               <>
@@ -1604,7 +1604,7 @@ export default function OrderDocumentsDialogEnhanced({
                             }
                           }}
                           disabled={downloading === 'payment-proof'}
-                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                         >
                           {downloading === 'payment-proof' ? (
                             <>
@@ -1839,7 +1839,7 @@ export default function OrderDocumentsDialogEnhanced({
                         <Button
                           onClick={handleDownloadBalancePaymentProof}
                           disabled={downloading === 'balance-proof'}
-                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                         >
                           {downloading === 'balance-proof' ? (
                             <>

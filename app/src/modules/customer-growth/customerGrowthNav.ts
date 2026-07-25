@@ -105,8 +105,8 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: HeadphonesIcon,
         description: 'Handle customer conversations and track consumer engagement activity.',
         children: [
-            { id: 'consumer-activations', label: 'Customer Activity', icon: Scan, route: '/crm', description: 'Track consumer scans and engagement', href: '/crm' },
-            { id: 'support-inbox', label: 'Support Inbox', icon: Inbox, route: '/crm', description: 'Manage customer support conversations', href: '/crm' },
+            { id: 'consumer-activations', label: 'Customer Activity', icon: Scan, route: '/crm/activity', description: 'Track consumer scans and engagement', href: '/crm/activity' },
+            { id: 'support-inbox', label: 'Support Inbox', icon: Inbox, route: '/crm/support-inbox', description: 'Manage customer support conversations', href: '/crm/support-inbox' },
         ],
     },
     {
@@ -115,10 +115,10 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: Megaphone,
         description: 'Build automated consumer journeys and send targeted WhatsApp broadcasts.',
         children: [
-            { id: 'landing-pages', label: 'Landing Pages', icon: PanelTop, route: '/marketing', description: 'Curated public campaign pages with product attribution', href: '/marketing' },
-            { id: 'journey-builder', label: 'Journey Builder', icon: BookOpen, route: '/marketing', description: 'Automated consumer journeys', href: '/marketing' },
+            { id: 'landing-pages', label: 'Landing Pages', icon: PanelTop, route: '/marketing/landing-pages', description: 'Curated public campaign pages with product attribution', href: '/marketing/landing-pages' },
+            { id: 'journey-builder', label: 'Journey Builder', icon: BookOpen, route: '/marketing/journey-builder', description: 'Automated consumer journeys', href: '/marketing/journey-builder' },
             { id: 'roadtour', label: 'Road Tour', icon: Map, route: '/roadtour', description: 'Field-visit verification with QR codes, surveys, and rewards', href: '/roadtour' },
-            { id: 'marketing', label: 'WhatsApp Broadcast', icon: MessageSquare, route: '/marketing', description: 'Outbound WhatsApp messaging', href: '/marketing' },
+            { id: 'marketing', label: 'WhatsApp Broadcast', icon: MessageSquare, route: '/marketing/whatsapp', description: 'Outbound WhatsApp messaging', href: '/marketing/whatsapp' },
         ],
     },
     {
@@ -127,10 +127,10 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: Trophy,
         description: 'Manage loyalty point rewards, lucky draw events, interactive games, and gift redemptions.',
         children: [
-            { id: 'point-catalog', label: 'Point Catalog', icon: Gift, route: '/loyalty', description: 'Points-based reward catalog', href: '/loyalty' },
-            { id: 'lucky-draw', label: 'Lucky Draw', icon: Trophy, route: '/loyalty', description: 'Lucky draw events', href: '/loyalty' },
-            { id: 'scratch-card-game', label: 'Games', icon: Gamepad2, route: '/loyalty', description: 'Interactive scratch card games', href: '/loyalty' },
-            { id: 'redeem-gift-management', label: 'Redeem', icon: Gift, route: '/loyalty', description: 'Gift redemption management', href: '/loyalty' },
+            { id: 'point-catalog', label: 'Point Catalog', icon: Gift, route: '/engagement/catalog', description: 'Points-based reward catalog', href: '/engagement/catalog' },
+            { id: 'lucky-draw', label: 'Lucky Draw', icon: Trophy, route: '/loyalty/lucky-draw', description: 'Lucky draw events', href: '/loyalty/lucky-draw' },
+            { id: 'scratch-card-game', label: 'Games', icon: Gamepad2, route: '/loyalty/games', description: 'Interactive scratch card games', href: '/loyalty/games' },
+            { id: 'redeem-gift-management', label: 'Redeem', icon: Gift, route: '/loyalty/redeem', description: 'Gift redemption management', href: '/loyalty/redeem' },
         ],
     },
     {
@@ -139,7 +139,7 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: ShoppingCart,
         description: 'Browse and manage consumer-facing product catalog with pricing and variants.',
         children: [
-            { id: 'product-catalog', label: 'Product Catalog', icon: ShoppingCart, route: '/catalog', description: 'Browse and manage product catalog', href: '/catalog' },
+            { id: 'product-catalog', label: 'Product Catalog', icon: ShoppingCart, route: '/catalog/products', description: 'Browse and manage product catalog', href: '/catalog/products' },
         ],
     },
     {
@@ -148,9 +148,9 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
         icon: Store,
         description: 'Manage your online storefront — hero banners, promotions, and store settings.',
         children: [
-            { id: 'hero-banners', label: 'Hero Banners', icon: ImageIcon, route: '/ecommerce', description: 'Manage storefront and login hero banners', href: '/ecommerce' },
-            { id: 'store-orders', label: 'Store Orders', icon: ShoppingBag, route: '/ecommerce', description: 'View and manage online store orders', href: '/ecommerce' },
-            { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce', description: 'Configure payment providers for checkout', href: '/ecommerce' },
+            { id: 'hero-banners', label: 'Hero Banners', icon: ImageIcon, route: '/ecommerce/hero-banners', description: 'Manage storefront and login hero banners', href: '/ecommerce/hero-banners' },
+            { id: 'store-orders', label: 'Store Orders', icon: ShoppingBag, route: '/ecommerce/store-orders', description: 'View and manage online store orders', href: '/ecommerce/store-orders' },
+            { id: 'ecommerce/payment-gateway', label: 'Payment Gateway', icon: CreditCard, route: '/ecommerce/payment-gateway', description: 'Configure payment providers for checkout', href: '/ecommerce/payment-gateway' },
         ],
     },
 ]
@@ -161,6 +161,33 @@ export const customerGrowthNavGroups: CustomerGrowthNavGroup[] = [
 const ecommerceViewIds = new Set(['ecommerce', 'hero-banners', 'store-banner-manager', 'login-hero-banner', 'store-orders', 'ecommerce/payment-gateway'])
 export function isEcommerceViewId(viewId: string): boolean {
     return ecommerceViewIds.has(viewId)
+}
+
+/** Admin URL paths for E-commerce subviews under /ecommerce/... */
+export const ecommerceViewToPath: Record<string, string> = {
+    'hero-banners': 'hero-banners',
+    'store-banner-manager': 'hero-banners',
+    'login-hero-banner': 'login-hero',
+    'store-orders': 'store-orders',
+    'ecommerce/payment-gateway': 'payment-gateway',
+}
+
+export const ecommercePathToView: Record<string, string> = {
+    'hero-banners': 'store-banner-manager',
+    'login-hero': 'login-hero-banner',
+    'store-orders': 'store-orders',
+    'payment-gateway': 'ecommerce/payment-gateway',
+}
+
+export function ecommerceHrefForView(viewId: string): string | null {
+    if (viewId === 'ecommerce') return '/ecommerce'
+    const path = ecommerceViewToPath[viewId]
+    return path ? `/ecommerce/${path}` : null
+}
+
+export function resolveEcommerceSlug(slug: string[]): string {
+    const path = slug.join('/')
+    return ecommercePathToView[path] || ecommercePathToView[slug[0] || ''] || 'store-banner-manager'
 }
 
 /** Check if a given view ID belongs to the Customer & Growth domain.

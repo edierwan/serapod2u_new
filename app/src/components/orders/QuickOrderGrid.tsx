@@ -80,14 +80,14 @@ const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?
   const content = (
     <>
       <span className="block font-semibold text-gray-900">{variant.product_name} - {displayVariantName(variant.variant_name)}</span>
-      <span className="block text-gray-500">{variant.available_qty.toLocaleString()} available</span>
+      <span className="block text-[var(--sera-muted)]">{variant.available_qty.toLocaleString()} available</span>
     </>
   )
   return onSelect ? (
-    <button type="button" onClick={onSelect} className="block w-full rounded border bg-white px-3 py-2 text-left text-xs hover:border-blue-400 hover:bg-blue-50">
+    <button type="button" onClick={onSelect} className="block w-full rounded border bg-white px-3 py-2 text-left text-xs hover:border-blue-400 hover:bg-[var(--sera-orange)]/[0.06]">
       {content}
     </button>
-  ) : <div className="rounded border bg-blue-50 px-3 py-2 text-xs">{content}</div>
+  ) : <div className="rounded border bg-[var(--sera-orange)]/[0.06] px-3 py-2 text-xs">{content}</div>
 }
 
 export default function QuickOrderGrid({ variants, items, formatCurrency, onQuantityChange, onClear }: QuickOrderGridProps) {
@@ -166,7 +166,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
           const count = group === 'All' ? variants.length : variants.filter(variant => (variant.group_name || 'Other') === group).length
           return (
             <button key={group} type="button" role="tab" aria-selected={activeGroup === group} onClick={() => setActiveGroup(group)}
-              className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${activeGroup === group ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300' : 'text-gray-600 hover:bg-gray-50'}`}>
+              className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${activeGroup === group ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300' : 'text-[var(--sera-muted)] hover:bg-gray-50'}`}>
               {group} ({count})
             </button>
           )
@@ -186,7 +186,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
 
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
+          <thead className="bg-gray-50 text-left text-[var(--sera-muted)]">
             <tr>{['Flavour', 'Product', 'Available', 'Order Qty', 'Unit Price (RM)', 'Line Total (RM)', 'Status'].map(label => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
           </thead>
           <tbody>
@@ -206,7 +206,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
                 </tr>
               )
             })}
-            {visibleVariants.length === 0 && <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-500">No variants match these filters.</td></tr>}
+            {visibleVariants.length === 0 && <tr><td colSpan={7} className="px-3 py-10 text-center text-[var(--sera-muted)]">No variants match these filters.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -230,17 +230,17 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
                   return (
                     <tr key={result.line} className="border-b align-top">
                       <td className="p-2">{result.line}</td>
-                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-gray-500">Original: {result.raw}</div></td>
+                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-[var(--sera-muted)]">Original: {result.raw}</div></td>
                       <td className="p-2">{result.quantity ?? 'Invalid'}</td>
                       <td className="p-2">
                         <span className={`rounded-full px-2 py-1 text-xs ${display.style}`}>{display.label}</span>
-                        {result.duplicateOfLine && <div className="mt-1 text-xs text-gray-500">Duplicates line {result.duplicateOfLine}</div>}
+                        {result.duplicateOfLine && <div className="mt-1 text-xs text-[var(--sera-muted)]">Duplicates line {result.duplicateOfLine}</div>}
                       </td>
                       <td className="min-w-[320px] p-2">
                         {selectedVariant && <CandidateCard variant={selectedVariant} />}
                         {!selectedVariant && result.candidates.length > 0 && (
                           <div className="space-y-1">
-                            <div className="text-xs font-medium text-gray-600">Relevant suggested matches ({Math.min(result.candidates.length, 8)})</div>
+                            <div className="text-xs font-medium text-[var(--sera-muted)]">Relevant suggested matches ({Math.min(result.candidates.length, 8)})</div>
                             {result.candidates.slice(0, 8).map(candidate => (
                               <CandidateCard key={candidate.id} variant={candidate as QuickVariant} onSelect={() => updateResolution(result.line, candidate.id)} />
                             ))}
@@ -251,7 +251,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
                   )
                 })}
               </tbody></table></div>
-              {hasResolvedDuplicates && <label className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 p-3 text-sm"><input type="checkbox" checked={combineDuplicates} onChange={event => setCombineDuplicates(event.target.checked)} className="mt-1" /><span><strong>Combine duplicate entries.</strong> I confirm quantities resolving to the same variant should be added together.</span></label>}
+              {hasResolvedDuplicates && <label className="flex items-start gap-2 rounded border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-3 text-sm"><input type="checkbox" checked={combineDuplicates} onChange={event => setCombineDuplicates(event.target.checked)} className="mt-1" /><span><strong>Combine duplicate entries.</strong> I confirm quantities resolving to the same variant should be added together.</span></label>}
             </div>
           )}
           <DialogFooter>

@@ -494,11 +494,11 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
             {!loading && (
                 <>
                     {/* KPI Plan summary / creation */}
-                    <Card className="border-blue-100 bg-blue-50/40">
+                    <Card className="border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06]">
                         <CardHeader className="pb-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <CardTitle className="text-base flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-blue-600" />
+                                    <CalendarDays className="h-4 w-4 text-[var(--sera-orange)]" />
                                     {isActive ? 'Active KPI Plan' : 'KPI Plan'}
                                 </CardTitle>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -571,7 +571,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                             <Card>
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-base flex items-center gap-2">
-                                        <SettingsIcon className="h-4 w-4 text-blue-600" /> KPI Plan Window
+                                        <SettingsIcon className="h-4 w-4 text-[var(--sera-orange)]" /> KPI Plan Window
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
@@ -611,14 +611,14 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                         Month options are limited to recent setup months, the selected RoadTour Event period{eventHasFixedPeriod && selectedRun ? ` (${formatKpiMonthLabel(monthKeyFromDate(selectedRun.start_date) || '')} – ${formatKpiMonthLabel(monthKeyFromDate(selectedRun.end_date) || '')})` : ''}, and configured KPI data. Effective To must be on or after Effective From.
                                     </p>
 
-                                    <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
-                                        <span className="flex items-center gap-2 text-blue-800">
+                                    <div className="rounded-md border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.08] px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
+                                        <span className="flex items-center gap-2 text-[var(--sera-ink-soft)]">
                                             <CalendarDays className="h-4 w-4" /> Current Report Month (auto)
                                         </span>
-                                        <span className="font-semibold text-blue-800">{formatKpiMonthLabel(currentKpiMonth())} · {currentPeriod.label}</span>
+                                        <span className="font-semibold text-[var(--sera-ink-soft)]">{formatKpiMonthLabel(currentKpiMonth())} · {currentPeriod.label}</span>
                                     </div>
 
-                                    <div className="rounded-md border border-sky-100 bg-sky-50/60 px-3 py-2 text-xs text-sky-800">
+                                    <div className="rounded-md border border-[var(--sera-line)] bg-[var(--sera-mist)]/60 px-3 py-2 text-xs text-[var(--sera-ink-soft)]">
                                         Reports are produced monthly from this single plan. Changing AM assignment affects new scans only; historical scans keep their original campaign/QR attribution.
                                     </div>
                                 </CardContent>
@@ -628,7 +628,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
                                         <CardTitle className="text-base flex items-center gap-2">
-                                            <Users className="h-4 w-4 text-blue-600" /> Selected Team Detail / Team Builder
+                                            <Users className="h-4 w-4 text-[var(--sera-orange)]" /> Selected Team Detail / Team Builder
                                         </CardTitle>
                                         {editingTeamId && <Button size="sm" variant="ghost" onClick={resetTeamBuilder}>New Team</Button>}
                                     </div>
@@ -680,7 +680,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                                         const checked = memberIds.includes(a.id)
                                                         return (
                                                             <button key={a.id} type="button"
-                                                                className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center justify-between hover:bg-muted ${checked ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                className={`w-full text-left px-2 py-1.5 rounded text-sm flex items-center justify-between hover:bg-muted ${checked ? 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-ink-soft)]' : ''}`}
                                                                 onClick={() => setMemberIds((prev) => checked ? prev.filter((x) => x !== a.id) : [...prev, a.id])}>
                                                                 <span>{a.full_name}</span>
                                                                 {checked && <CheckCircle2 className="h-4 w-4" />}
@@ -705,7 +705,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                     </div>
 
                                     {memberCount > 0 && Number(teamTarget) > 0 && (
-                                        <div className="rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm text-indigo-800">
+                                        <div className="rounded-md border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06]/60 px-3 py-2 text-sm text-[var(--sera-ink-soft)]">
                                             <span className="font-medium">Auto-distribution:</span>{' '}
                                             {memberCount} members × {perAmAuto.toLocaleString()} scans ≈ {Number(teamTarget).toLocaleString()}
                                         </div>
@@ -761,7 +761,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
                                         <CardTitle className="text-base flex items-center gap-2">
-                                            <BarChart3 className="h-4 w-4 text-blue-600" /> Team KPI Structure
+                                            <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" /> Team KPI Structure
                                         </CardTitle>
                                         <Button size="sm" variant="outline" onClick={resetTeamBuilder} disabled={isFrozen}>
                                             <Plus className="h-4 w-4 mr-1" /> Add Team
@@ -788,7 +788,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                                     {plan.teams.map((t) => {
                                                         const autoPerAm = t.members.length > 0 ? Math.floor(t.monthly_team_target / t.members.length) : 0
                                                         return (
-                                                            <TableRow key={t.id} className={editingTeamId === t.id ? 'bg-blue-50/50' : ''}>
+                                                            <TableRow key={t.id} className={editingTeamId === t.id ? 'bg-[var(--sera-orange)]/[0.06]/50' : ''}>
                                                                 <TableCell className="font-medium">{t.team_name}</TableCell>
                                                                 <TableCell>{t.leader_user_id ? (amById.get(t.leader_user_id)?.full_name || '—') : '—'}</TableCell>
                                                                 <TableCell className="text-right">{t.members.length}</TableCell>
@@ -816,11 +816,11 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <CardTitle className="text-base flex items-center gap-2">
-                                                <Wallet className="h-4 w-4 text-blue-600" /> AM Incentive Tiers
+                                                <Wallet className="h-4 w-4 text-[var(--sera-orange)]" /> AM Incentive Tiers
                                             </CardTitle>
                                             <p className="text-xs text-muted-foreground mt-1">
                                                 Applies to every AM (including the leader). Based on the AM&apos;s actual scans vs their assigned monthly target.
-                                                <span className="font-medium text-blue-700"> Highest achieved tier wins</span> — payouts are not stacked.
+                                                <span className="font-medium text-[var(--sera-orange-deep)]"> Highest achieved tier wins</span> — payouts are not stacked.
                                             </p>
                                         </div>
                                         <Button size="sm" variant="outline" onClick={() => { setTierForm(emptyTierForm('all_ams')); setTierDialogOpen(true) }}>
@@ -924,7 +924,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                             <Card>
                                 <CardHeader className="pb-2">
                                     <CardTitle className="text-base flex items-center gap-2">
-                                        <ShieldCheck className="h-4 w-4 text-blue-600" /> KPI Policy &amp; Attribution Rules
+                                        <ShieldCheck className="h-4 w-4 text-[var(--sera-orange)]" /> KPI Policy &amp; Attribution Rules
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
@@ -1014,7 +1014,7 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-3">
-                                <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">
+                                <div className="rounded-md border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.08] px-3 py-2 text-xs text-[var(--sera-ink-soft)]">
                                     {tierForm.applies_to === 'team_leader'
                                         ? 'Leader bonus is additive and based on total team achievement.'
                                         : `AM incentive uses highest-tier-wins based on the AM’s achievement vs target. Higher achievement must pay more, and payouts are capped at Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''}.`}

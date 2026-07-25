@@ -114,10 +114,10 @@ export function ReferenceCheckbox({
         className="mt-0.5"
       />
       <div className="space-y-1">
-        <Label htmlFor="can-be-reference" className="cursor-pointer text-sm font-semibold text-gray-900">
+        <Label htmlFor="can-be-reference" className="cursor-pointer text-sm font-semibold text-[var(--sera-ink)]">
           Reference
         </Label>
-        <p className="text-xs text-gray-500">Allow this user to be selected as a Reference in RoadTour campaigns.</p>
+        <p className="text-xs text-[var(--sera-muted)]">Allow this user to be selected as a Reference in RoadTour campaigns.</p>
       </div>
     </div>
   )
@@ -817,16 +817,16 @@ export default function UserDialogNew({
   if (!open) return null
 
   const renderFieldError = (field: string) => errors[field] ? <p className="text-xs text-red-500">{errors[field]}</p> : null
-  const inputClass = (field: string, extra = '') => `h-11 rounded-lg border-gray-200 text-sm ${errors[field] ? 'border-red-500 focus-visible:ring-red-200' : ''} ${extra}`
+  const inputClass = (field: string, extra = '') => `h-11 rounded-lg border-[var(--sera-line)] text-sm ${errors[field] ? 'border-red-500 focus-visible:ring-red-200' : ''} ${extra}`
 
   const sectionHeader = (icon: React.ReactNode, title: string, description: string) => (
     <div className="flex items-start gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange)]">
         {icon}
       </div>
       <div>
         <h3 className="text-base font-semibold text-gray-950">{title}</h3>
-        <p className="text-sm text-gray-500">{description}</p>
+        <p className="text-sm text-[var(--sera-muted)]">{description}</p>
       </div>
     </div>
   )
@@ -834,7 +834,7 @@ export default function UserDialogNew({
   const summaryValue = (value?: string | null) => value?.trim() || '-'
 
   const renderBasicStep = () => (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {sectionHeader(<UserIcon className="h-5 w-5" />, 'Basic Information', "Enter the user's basic details to get started.")}
       <div className="grid gap-6 lg:grid-cols-[120px_1fr]">
         <div className="flex flex-col items-center gap-3">
@@ -858,7 +858,7 @@ export default function UserDialogNew({
             onMouseMove={handleAvatarMouseMove}
             onMouseUp={handleAvatarMouseUp}
             onMouseLeave={handleAvatarMouseUp}
-            className={`group flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-sm ring-4 ring-blue-50 ${saving ? 'pointer-events-none opacity-70' : avatarPreview ? 'cursor-move' : 'cursor-pointer'}`}
+            className={`group flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-white shadow-sm ring-4 ring-[var(--sera-orange)]/10 ${saving ? 'pointer-events-none opacity-70' : avatarPreview ? 'cursor-move' : 'cursor-pointer'}`}
             title={avatarPreview ? 'Drag to reposition image' : 'Upload photo'}
           >
             {avatarPreview ? (
@@ -870,22 +870,22 @@ export default function UserDialogNew({
                 style={{ objectPosition: `${avatarCropPosition.x}% ${avatarCropPosition.y}%` }}
               />
             ) : (
-              <div className="relative flex h-full w-full items-center justify-center bg-gray-200 text-2xl font-medium text-gray-700">
+              <div className="relative flex h-full w-full items-center justify-center bg-gray-200 text-2xl font-medium text-[var(--sera-ink)]/80">
                 {getInitials(formData.full_name)}
-                <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                <span className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--sera-orange)] text-white shadow-sm">
                   <Camera className="h-4 w-4" />
                 </span>
               </div>
             )}
           </div>
           <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" onChange={handleAvatarChange} className="hidden" />
-          <Button type="button" variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving} className="h-8 text-blue-600">
+          <Button type="button" variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving} className="h-8 text-[var(--sera-orange)]">
             <Upload className="mr-1.5 h-4 w-4" />
             Upload Photo
           </Button>
-          <p className="text-center text-xs text-gray-400">JPG, PNG (Max 2MB)</p>
+          <p className="text-center text-xs text-[var(--sera-muted)]/70">JPG, PNG (Max 2MB)</p>
           {avatarPreview ? (
-            <p className="text-center text-xs text-gray-400">Drag image to reposition</p>
+            <p className="text-center text-xs text-[var(--sera-muted)]/70">Drag image to reposition</p>
           ) : null}
           {avatarFile || avatarPreview ? (
             <Button type="button" variant="ghost" size="sm" onClick={resetAvatarUpload} disabled={saving} className="h-7 text-xs text-red-500">
@@ -901,15 +901,15 @@ export default function UserDialogNew({
             {renderFieldError('full_name')}
           </div>
           <div className="space-y-2">
-            <Label>Call Name <span className="font-normal text-gray-400">(Optional)</span></Label>
+            <Label>Call Name <span className="font-normal text-[var(--sera-muted)]/70">(Optional)</span></Label>
             <Input value={formData.call_name || ''} onChange={e => handleInputChange('call_name', e.target.value)} disabled={saving} placeholder="Short name / preferred name" className={inputClass('call_name')} />
           </div>
           <div className="space-y-2">
             <Label>Email <span className="text-red-500">*</span></Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+              <Mail className="absolute left-3 top-3.5 h-4 w-4 text-[var(--sera-muted)]/70" />
               <Input type="email" value={formData.email || ''} onChange={e => handleInputChange('email', e.target.value)} disabled={saving || !!user} placeholder="Enter email address" className={inputClass('email', 'pl-9')} />
-              {emailCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-gray-400" /> : null}
+              {emailCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-[var(--sera-muted)]/70" /> : null}
               {emailCheckStatus === 'available' ? <CheckCircle2 className="absolute right-3 top-3.5 h-4 w-4 text-green-500" /> : null}
             </div>
             {renderFieldError('email')}
@@ -917,12 +917,12 @@ export default function UserDialogNew({
           <div className="space-y-2">
             <Label>Phone Number <span className="text-red-500">*</span></Label>
             <div className="relative">
-              <Phone className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+              <Phone className="absolute left-3 top-3.5 h-4 w-4 text-[var(--sera-muted)]/70" />
               <Input value={formData.phone || ''} onChange={e => handleInputChange('phone', e.target.value)} disabled={saving} placeholder="e.g. 0123456789 (MY) or 13800138000 (CN)" className={inputClass('phone', 'pl-9')} />
-              {phoneCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-gray-400" /> : null}
+              {phoneCheckStatus === 'checking' ? <Loader2 className="absolute right-3 top-3.5 h-4 w-4 animate-spin text-[var(--sera-muted)]/70" /> : null}
               {phoneCheckStatus === 'available' ? <CheckCircle2 className="absolute right-3 top-3.5 h-4 w-4 text-green-500" /> : null}
             </div>
-            {renderFieldError('phone') || <p className="text-xs text-gray-400">{phoneCheckStatus === 'available' ? 'Phone number is available' : 'Malaysia (+60) or China (+86)'}</p>}
+            {renderFieldError('phone') || <p className="text-xs text-[var(--sera-muted)]/70">{phoneCheckStatus === 'available' ? 'Phone number is available' : 'Malaysia (+60) or China (+86)'}</p>}
           </div>
           {!user ? (
             <>
@@ -930,7 +930,7 @@ export default function UserDialogNew({
                 <Label>Password <span className="text-red-500">*</span></Label>
                 <div className="relative">
                   <Input type={showPassword ? 'text' : 'password'} value={formData.password || ''} onChange={e => handleInputChange('password', e.target.value)} disabled={saving} placeholder="Min. 6 characters" className={inputClass('password', 'pr-10')} />
-                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-3.5 text-gray-400">
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute right-3 top-3.5 text-[var(--sera-muted)]/70">
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -940,7 +940,7 @@ export default function UserDialogNew({
                 <Label>Confirm Password <span className="text-red-500">*</span></Label>
                 <div className="relative">
                   <Input type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword || ''} onChange={e => handleInputChange('confirmPassword', e.target.value)} disabled={saving} placeholder="Re-enter password" className={inputClass('confirmPassword', 'pr-10')} />
-                  <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-3.5 text-gray-400">
+                  <button type="button" onClick={() => setShowConfirmPassword(v => !v)} className="absolute right-3 top-3.5 text-[var(--sera-muted)]/70">
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -954,7 +954,7 @@ export default function UserDialogNew({
   )
 
   const renderAccessStep = () => (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {sectionHeader(<Shield className="h-5 w-5" />, 'Role & Access', "Select the user's role and organization in one place.")}
       <div className="space-y-3">
         <Label>Select Role <span className="text-red-500">*</span></Label>
@@ -968,12 +968,12 @@ export default function UserDialogNew({
                 type="button"
                 onClick={() => selectRole(role)}
                 disabled={saving}
-                className={`relative rounded-lg border bg-white p-4 text-center shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 ${active ? 'border-blue-600 ring-2 ring-blue-100' : 'border-gray-200'}`}
+                className={`relative rounded-lg border bg-white p-4 text-center shadow-sm transition hover:border-[var(--sera-orange)]/30 hover:bg-[var(--sera-orange)]/[0.06]/40 ${active ? 'border-[var(--sera-orange)] ring-2 ring-[var(--sera-orange)]/15' : 'border-[var(--sera-line)]'}`}
               >
-                {active ? <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white"><Check className="h-3.5 w-3.5" /></span> : null}
-                <Icon className={`mx-auto mb-3 h-8 w-8 ${active ? 'text-blue-600' : 'text-gray-700'}`} />
-                <div className="text-sm font-semibold text-gray-900">{desiredRoleLabel(role)}</div>
-                <div className="text-xs text-gray-500">Level {role.role_level}</div>
+                {active ? <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--sera-orange)] text-white"><Check className="h-3.5 w-3.5" /></span> : null}
+                <Icon className={`mx-auto mb-3 h-8 w-8 ${active ? 'text-[var(--sera-orange)]' : 'text-[var(--sera-ink)]/80'}`} />
+                <div className="text-sm font-semibold text-[var(--sera-ink)]">{desiredRoleLabel(role)}</div>
+                <div className="text-xs text-[var(--sera-muted)]">Level {role.role_level}</div>
               </button>
             )
           })}
@@ -992,7 +992,7 @@ export default function UserDialogNew({
                 type="button"
                 onClick={() => selectOrganizationType(type.value)}
                 disabled={saving || lockOrganization || isGuest}
-                className={`flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-200'}`}
+                className={`flex h-12 items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition ${active ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]' : 'border-[var(--sera-line)] bg-white text-[var(--sera-ink)]/80 hover:border-[var(--sera-orange)]/20'}`}
               >
                 <Icon className="h-4 w-4" />
                 {type.label}
@@ -1000,7 +1000,7 @@ export default function UserDialogNew({
             )
           })}
         </div>
-        {isGuest ? <p className="text-xs text-gray-500">Guest users can be independent unless an organization is selected later by an admin.</p> : null}
+        {isGuest ? <p className="text-xs text-[var(--sera-muted)]">Guest users can be independent unless an organization is selected later by an admin.</p> : null}
       </div>
       <div className="space-y-2">
         <Label>Organization {!isGuest ? <span className="text-red-500">*</span> : null}</Label>
@@ -1030,20 +1030,20 @@ export default function UserDialogNew({
                 {org.org_name} ({org.org_code})
               </SelectItem>
             ))}
-            {filteredOrganizations.length === 0 ? <p className="px-3 py-2 text-xs text-gray-500">No matching organizations.</p> : null}
+            {filteredOrganizations.length === 0 ? <p className="px-3 py-2 text-xs text-[var(--sera-muted)]">No matching organizations.</p> : null}
           </SelectContent>
         </Select>
         {renderFieldError('organization_id')}
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-lg border border-[var(--sera-line)] bg-white p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className={`flex h-8 w-8 items-center justify-center rounded-full ${formData.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`flex h-8 w-8 items-center justify-center rounded-full ${formData.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-[var(--sera-muted)]'}`}>
               <CheckCircle2 className="h-4 w-4" />
             </span>
             <div>
-              <div className="text-sm font-semibold text-gray-900">Active</div>
-              <p className="text-xs text-gray-500">User can log in to the system</p>
+              <div className="text-sm font-semibold text-[var(--sera-ink)]">Active</div>
+              <p className="text-xs text-[var(--sera-muted)]">User can log in to the system</p>
             </div>
           </div>
           <Switch checked={Boolean(formData.is_active)} onCheckedChange={checked => handleInputChange('is_active', checked)} disabled={saving} />
@@ -1063,10 +1063,10 @@ export default function UserDialogNew({
         />
       ) : null}
       {showHrFields ? (
-        <div className="space-y-4 rounded-lg border border-blue-100 bg-blue-50/40 p-4">
+        <div className="space-y-4 rounded-lg border border-[var(--sera-orange)]/15 bg-[var(--sera-orange)]/[0.06]/40 p-4">
           <div>
-            <div className="text-sm font-semibold text-gray-900">HR Configuration</div>
-            <p className="text-xs text-gray-500">Link this user to department, reporting line, and employment details.</p>
+            <div className="text-sm font-semibold text-[var(--sera-ink)]">HR Configuration</div>
+            <p className="text-xs text-[var(--sera-muted)]">Link this user to department, reporting line, and employment details.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -1125,7 +1125,7 @@ export default function UserDialogNew({
   )
 
   const renderBusinessStep = () => (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {sectionHeader(<Store className="h-5 w-5" />, 'Business Information', 'Provide business details for this user.')}
       <div className="space-y-2">
         <Label>Shop Name / Outlet</Label>
@@ -1140,11 +1140,11 @@ export default function UserDialogNew({
         />
       </div>
       <div className="space-y-2">
-        <Label><span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gray-400" />Address</span></Label>
+        <Label><span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[var(--sera-muted)]/70" />Address</span></Label>
         <Input value={formData.address || ''} onChange={e => handleInputChange('address', e.target.value)} disabled={saving} placeholder="Enter shop address" className={inputClass('address')} />
       </div>
       <div className="space-y-2">
-        <Label><span className="inline-flex items-center gap-1.5"><Search className="h-4 w-4 text-gray-400" />Reference / Account Manager</span></Label>
+        <Label><span className="inline-flex items-center gap-1.5"><Search className="h-4 w-4 text-[var(--sera-muted)]/70" />Reference / Account Manager</span></Label>
         <ReferencePicker
           value={formData.referral_phone || ''}
           onSelect={(_ref: ReferenceUser | null, phone: string) => handleInputChange('referral_phone', phone)}
@@ -1153,14 +1153,14 @@ export default function UserDialogNew({
         />
       </div>
       <div className="space-y-2">
-        <Label>Notes <span className="font-normal text-gray-400">(Optional)</span></Label>
-        <Textarea value={formData.notes || ''} onChange={e => handleInputChange('notes', e.target.value)} disabled={saving} placeholder="Add any notes about this user..." className="min-h-[92px] rounded-lg border-gray-200" />
+        <Label>Notes <span className="font-normal text-[var(--sera-muted)]/70">(Optional)</span></Label>
+        <Textarea value={formData.notes || ''} onChange={e => handleInputChange('notes', e.target.value)} disabled={saving} placeholder="Add any notes about this user..." className="min-h-[92px] rounded-lg border-[var(--sera-line)]" />
       </div>
     </div>
   )
 
   const renderBankingStep = () => (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {sectionHeader(<Banknote className="h-5 w-5" />, 'Banking Information', 'Enter bank details for this user.')}
       <div className="space-y-2">
         <Label>Account Holder Name</Label>
@@ -1177,13 +1177,13 @@ export default function UserDialogNew({
         <div className="space-y-2">
           <Label>Account Number</Label>
           <div className="relative">
-            <CreditCard className="absolute left-3 top-3.5 h-4 w-4 text-gray-400" />
+            <CreditCard className="absolute left-3 top-3.5 h-4 w-4 text-[var(--sera-muted)]/70" />
             <Input value={formData.bank_account_number || ''} onChange={e => handleInputChange('bank_account_number', e.target.value)} disabled={saving} placeholder="e.g., 1234567890" className={inputClass('bank_account_number', 'pl-9')} />
           </div>
           {renderFieldError('bank_account_number')}
         </div>
       </div>
-      <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+      <div className="flex items-start gap-2 rounded-lg bg-[var(--sera-orange)]/[0.06] p-3 text-sm text-[var(--sera-orange-deep)]">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
         This information is used for payment and verification purposes only.
       </div>
@@ -1191,59 +1191,59 @@ export default function UserDialogNew({
   )
 
   const SummaryCard = ({ title, icon, step, children }: { title: string; icon: React.ReactNode; step: WizardStep; children: React.ReactNode }) => (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-[var(--sera-line)] bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">{icon}{title}</div>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setCurrentStep(step)} className="h-7 px-2 text-xs text-blue-600">Edit</Button>
+        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--sera-ink)]">{icon}{title}</div>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setCurrentStep(step)} className="h-7 px-2 text-xs text-[var(--sera-orange)]">Edit</Button>
       </div>
-      <div className="space-y-2 text-sm text-gray-600">{children}</div>
+      <div className="space-y-2 text-sm text-[var(--sera-muted)]">{children}</div>
     </div>
   )
 
   const renderReviewStep = () => (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {sectionHeader(<CheckCircle2 className="h-5 w-5" />, 'Review & Confirm', 'Please review the information before creating the user.')}
       <div className="grid gap-4 lg:grid-cols-2">
-        <SummaryCard title="Basic Information" icon={<UserIcon className="h-4 w-4 text-blue-500" />} step="basic">
-          <p>Full Name: <span className="font-medium text-gray-900">{summaryValue(formData.full_name)}</span></p>
-          <p>Call Name: <span className="font-medium text-gray-900">{summaryValue(formData.call_name)}</span></p>
-          <p>Email: <span className="font-medium text-gray-900">{summaryValue(formData.email)}</span></p>
-          <p>Phone: <span className="font-medium text-gray-900">{summaryValue(formData.phone)}</span></p>
+        <SummaryCard title="Basic Information" icon={<UserIcon className="h-4 w-4 text-[var(--sera-orange)]" />} step="basic">
+          <p>Full Name: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.full_name)}</span></p>
+          <p>Call Name: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.call_name)}</span></p>
+          <p>Email: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.email)}</span></p>
+          <p>Phone: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.phone)}</span></p>
         </SummaryCard>
-        <SummaryCard title="Role & Access" icon={<Shield className="h-4 w-4 text-blue-500" />} step="access">
-          <p>Role: <span className="font-medium text-gray-900">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'}</span></p>
-          <p>Organization Type: <span className="font-medium text-gray-900">{organizationType === 'HQ' ? 'HQ' : getOrgTypeName(organizationType)}</span></p>
-          <p>Organization: <span className="font-medium text-gray-900">{selectedOrg ? `${selectedOrg.org_name} (${selectedOrg.org_code})` : '-'}</span></p>
+        <SummaryCard title="Role & Access" icon={<Shield className="h-4 w-4 text-[var(--sera-orange)]" />} step="access">
+          <p>Role: <span className="font-medium text-[var(--sera-ink)]">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'}</span></p>
+          <p>Organization Type: <span className="font-medium text-[var(--sera-ink)]">{organizationType === 'HQ' ? 'HQ' : getOrgTypeName(organizationType)}</span></p>
+          <p>Organization: <span className="font-medium text-[var(--sera-ink)]">{selectedOrg ? `${selectedOrg.org_name} (${selectedOrg.org_code})` : '-'}</span></p>
         </SummaryCard>
         {showHrFields ? (
-          <SummaryCard title="HR Configuration" icon={<Building2 className="h-4 w-4 text-blue-500" />} step="access">
-            <p>Department: <span className="font-medium text-gray-900">{selectedDepartment ? `${selectedDepartment.dept_code ? `${selectedDepartment.dept_code} - ` : ''}${selectedDepartment.dept_name}` : '-'}</span></p>
-            <p>Position: <span className="font-medium text-gray-900">{selectedPosition?.name || '-'}</span></p>
-            <p>Reports To: <span className="font-medium text-gray-900">{selectedManager?.full_name || selectedManager?.email || '-'}</span></p>
-            <p>Employment Type: <span className="font-medium text-gray-900">{summaryValue(formData.employment_type)}</span></p>
-            <p>Join Date: <span className="font-medium text-gray-900">{summaryValue(formData.join_date)}</span></p>
-            <p>Employment Status: <span className="font-medium text-gray-900">{formData.employment_status || 'active'}</span></p>
+          <SummaryCard title="HR Configuration" icon={<Building2 className="h-4 w-4 text-[var(--sera-orange)]" />} step="access">
+            <p>Department: <span className="font-medium text-[var(--sera-ink)]">{selectedDepartment ? `${selectedDepartment.dept_code ? `${selectedDepartment.dept_code} - ` : ''}${selectedDepartment.dept_name}` : '-'}</span></p>
+            <p>Position: <span className="font-medium text-[var(--sera-ink)]">{selectedPosition?.name || '-'}</span></p>
+            <p>Reports To: <span className="font-medium text-[var(--sera-ink)]">{selectedManager?.full_name || selectedManager?.email || '-'}</span></p>
+            <p>Employment Type: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.employment_type)}</span></p>
+            <p>Join Date: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.join_date)}</span></p>
+            <p>Employment Status: <span className="font-medium text-[var(--sera-ink)]">{formData.employment_status || 'active'}</span></p>
           </SummaryCard>
         ) : null}
         {showBusinessStep ? (
-          <SummaryCard title="Business Information" icon={<Store className="h-4 w-4 text-blue-500" />} step="business">
-            <p>Shop Name: <span className="font-medium text-gray-900">{summaryValue(formData.shop_name)}</span></p>
-            <p>Address: <span className="font-medium text-gray-900">{summaryValue(formData.address)}</span></p>
-            <p>Reference: <span className="font-medium text-gray-900">{summaryValue(formData.referral_phone)}</span></p>
-            <p>Notes: <span className="font-medium text-gray-900">{summaryValue(formData.notes)}</span></p>
+          <SummaryCard title="Business Information" icon={<Store className="h-4 w-4 text-[var(--sera-orange)]" />} step="business">
+            <p>Shop Name: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.shop_name)}</span></p>
+            <p>Address: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.address)}</span></p>
+            <p>Reference: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.referral_phone)}</span></p>
+            <p>Notes: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.notes)}</span></p>
           </SummaryCard>
         ) : null}
-        <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-blue-500" />} step="banking">
-          <p>Bank: <span className="font-medium text-gray-900">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
-          <p>Account No: <span className="font-medium text-gray-900">{summaryValue(formData.bank_account_number)}</span></p>
-          <p>Account Holder: <span className="font-medium text-gray-900">{summaryValue(formData.bank_account_holder_name)}</span></p>
+        <SummaryCard title="Banking Information" icon={<Banknote className="h-4 w-4 text-[var(--sera-orange)]" />} step="banking">
+          <p>Bank: <span className="font-medium text-[var(--sera-ink)]">{banks.find(bank => bank.id === formData.bank_id)?.short_name || '-'}</span></p>
+          <p>Account No: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_number)}</span></p>
+          <p>Account Holder: <span className="font-medium text-[var(--sera-ink)]">{summaryValue(formData.bank_account_holder_name)}</span></p>
         </SummaryCard>
-        <SummaryCard title="Account/Security Status" icon={<CheckCircle2 className="h-4 w-4 text-blue-500" />} step="access">
+        <SummaryCard title="Account/Security Status" icon={<CheckCircle2 className="h-4 w-4 text-[var(--sera-orange)]" />} step="access">
           <div className="flex items-center gap-2">
             <span>Status:</span>
-            <Badge className={formData.is_active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-100'}>{formData.is_active ? 'Active' : 'Inactive'}</Badge>
+            <Badge className={formData.is_active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.04]'}>{formData.is_active ? 'Active' : 'Inactive'}</Badge>
           </div>
-          <p>Password: <span className="font-medium text-gray-900">{user ? 'Unchanged' : 'Set for new user'}</span></p>
+          <p>Password: <span className="font-medium text-[var(--sera-ink)]">{user ? 'Unchanged' : 'Set for new user'}</span></p>
         </SummaryCard>
       </div>
       {submitError ? (
@@ -1268,26 +1268,26 @@ export default function UserDialogNew({
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
         <div className="w-full max-w-3xl rounded-2xl bg-gradient-to-b from-emerald-50 to-white p-6 shadow-2xl sm:p-10">
           <div className="flex justify-end">
-            <button onClick={handleClose} className="rounded-lg p-1 text-gray-400 hover:bg-white/70 hover:text-gray-600"><X className="h-6 w-6" /></button>
+            <button onClick={handleClose} className="rounded-lg p-1 text-[var(--sera-muted)]/70 hover:bg-white/70 hover:text-[var(--sera-muted)]"><X className="h-6 w-6" /></button>
           </div>
           <div className="mx-auto max-w-xl text-center">
             <div className="mx-auto mb-5 flex h-28 w-28 items-center justify-center rounded-full bg-green-500 text-white shadow-lg">
               <Check className="h-16 w-16" />
             </div>
             <h2 className="text-2xl font-bold text-gray-950">User Created Successfully!</h2>
-            <p className="mt-2 text-gray-500">The new user has been added to the system.</p>
-            <div className="mt-8 flex items-center gap-4 rounded-xl border border-gray-200 bg-white p-5 text-left shadow-sm">
+            <p className="mt-2 text-[var(--sera-muted)]">The new user has been added to the system.</p>
+            <div className="mt-8 flex items-center gap-4 rounded-xl border border-[var(--sera-line)] bg-white p-5 text-left shadow-sm">
               <Avatar className="h-16 w-16">
                 <AvatarImage src={avatarPreview || undefined} />
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-violet-600 text-xl text-white">{getInitials(formData.full_name)}</AvatarFallback>
+                <AvatarFallback className="bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-xl text-white">{getInitials(formData.full_name)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-semibold text-gray-950">{formData.full_name}</h3>
                   <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Active</Badge>
                 </div>
-                <p className="text-sm text-gray-500">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'} {selectedOrg ? `- ${selectedOrg.org_name}` : ''}</p>
-                <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
+                <p className="text-sm text-[var(--sera-muted)]">{selectedRole ? `${desiredRoleLabel(selectedRole)} (Level ${selectedRole.role_level})` : '-'} {selectedOrg ? `- ${selectedOrg.org_name}` : ''}</p>
+                <div className="mt-2 flex flex-wrap gap-4 text-sm text-[var(--sera-muted)]">
                   <span className="inline-flex items-center gap-1"><Mail className="h-4 w-4" />{formData.email}</span>
                   <span className="inline-flex items-center gap-1"><Phone className="h-4 w-4" />{formData.phone}</span>
                 </div>
@@ -1298,7 +1298,7 @@ export default function UserDialogNew({
                 <UserPlus className="mr-2 h-4 w-4" />
                 Add Another User
               </Button>
-              <Button type="button" onClick={handleClose} className="h-12 rounded-lg bg-blue-600 hover:bg-blue-700">
+              <Button type="button" onClick={handleClose} className="h-12 rounded-lg bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
                 View User List
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -1314,14 +1314,14 @@ export default function UserDialogNew({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4">
       <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
+        <div className="flex items-center justify-between border-b border-[var(--sera-line)] px-5 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white"><UserPlus className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--sera-orange)] text-white"><UserPlus className="h-5 w-5" /></span>
             <h2 className="text-xl font-bold text-gray-950">{user ? 'Edit User' : 'Add New User'}</h2>
           </div>
-          <button onClick={handleClose} disabled={saving} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X className="h-6 w-6" /></button>
+          <button onClick={handleClose} disabled={saving} className="rounded-lg p-1 text-[var(--sera-muted)]/70 hover:bg-[var(--sera-ink)]/[0.04] hover:text-[var(--sera-muted)]"><X className="h-6 w-6" /></button>
         </div>
-        <div className="border-b border-gray-100 px-4 py-4 sm:px-6">
+        <div className="border-b border-[var(--sera-line)] px-4 py-4 sm:px-6">
           <div className="flex gap-3 overflow-x-auto pb-1">
             {steps.map((step, index) => {
               const active = step === currentStep
@@ -1331,9 +1331,9 @@ export default function UserDialogNew({
                   key={step}
                   type="button"
                   onClick={() => index <= currentIndex && setCurrentStep(step)}
-                  className={`flex min-w-[116px] flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left transition ${active ? 'bg-blue-50 text-blue-700' : done ? 'text-blue-600' : 'text-gray-400'}`}
+                  className={`flex min-w-[116px] flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left transition ${active ? 'bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)]' : done ? 'text-[var(--sera-orange)]' : 'text-[var(--sera-muted)]/70'}`}
                 >
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${active ? 'border-blue-600 bg-blue-600 text-white' : done ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-500'}`}>
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${active ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)] text-white' : done ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)] text-white' : 'border-[var(--sera-line)] bg-white text-[var(--sera-muted)]'}`}>
                     {done ? <Check className="h-4 w-4" /> : index + 1}
                   </span>
                   <span className="text-xs font-semibold sm:text-sm">{STEP_LABELS[step]}</span>
@@ -1345,7 +1345,7 @@ export default function UserDialogNew({
         <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-6">
           {renderStep()}
         </div>
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-white px-5 py-4 sm:px-6">
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-[var(--sera-line)] bg-white px-5 py-4 sm:px-6">
           <Button type="button" variant="outline" onClick={currentIndex === 0 ? handleClose : goBack} disabled={saving} className="h-11 rounded-lg">
             {currentIndex === 0 ? 'Cancel' : <><ArrowLeft className="mr-2 h-4 w-4" />Back</>}
           </Button>
@@ -1355,7 +1355,7 @@ export default function UserDialogNew({
               {user ? 'Save User' : 'Create User'}
             </Button>
           ) : (
-            <Button type="button" onClick={goNext} disabled={saving} className="h-11 rounded-lg bg-blue-600 px-6 hover:bg-blue-700">
+            <Button type="button" onClick={goNext} disabled={saving} className="h-11 rounded-lg bg-[var(--sera-orange)] px-6 hover:bg-[var(--sera-orange-deep)] text-white">
               Next
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

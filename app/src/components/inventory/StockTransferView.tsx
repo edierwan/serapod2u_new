@@ -648,11 +648,11 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       <div>
         <p className="text-sm text-slate-500">Supply Chain &gt; Inventory &gt; Stock Transfer</p>
-        <h1 className="text-3xl font-bold text-gray-900 mt-1">Stock Transfer</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="font-display text-3xl font-semibold text-[var(--sera-ink)] mt-1">Stock Transfer</h1>
+        <p className="text-[var(--sera-muted)] mt-1">
           Bulk-select exact stock configurations, then move through Draft → Pending Approval → Ready to Dispatch → In Transit → Received.
         </p>
       </div>
@@ -666,7 +666,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
               return (
                 <div
                   key={stage.id}
-                  className={`rounded-lg border px-3 py-3 text-sm ${active ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-500'}`}
+                  className={`rounded-lg border px-3 py-3 text-sm ${active ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06] text-blue-800' : 'border-slate-200 bg-white text-slate-500'}`}
                 >
                   <div className="font-semibold">{index + 1}. {stage.label}</div>
                 </div>
@@ -689,7 +689,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-end">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">From Warehouse</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">From Warehouse</label>
                   <Select value={fromWarehouse} onValueChange={setFromWarehouse} disabled={!editable}>
                     <SelectTrigger><SelectValue placeholder="Source warehouse" /></SelectTrigger>
                     <SelectContent>
@@ -708,7 +708,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                   <ArrowRight className="w-6 h-6 text-slate-400" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">To Warehouse</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">To Warehouse</label>
                   <Select value={toWarehouse} onValueChange={setToWarehouse} disabled={!editable}>
                     <SelectTrigger><SelectValue placeholder="Destination warehouse" /></SelectTrigger>
                     <SelectContent>
@@ -727,17 +727,17 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Required Date</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Required Date</label>
                   <Input type="date" value={requiredDate} onChange={(e) => setRequiredDate(e.target.value)} disabled={!editable} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Transfer Reference</label>
+                  <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">Transfer Reference</label>
                   <Input value={transferNo} readOnly className="bg-slate-50" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Notes <span className="text-slate-400">({notes.length}/{STOCK_TRANSFER_NOTES_MAX})</span>
                 </label>
                 <Textarea

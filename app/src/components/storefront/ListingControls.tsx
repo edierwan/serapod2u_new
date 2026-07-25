@@ -65,19 +65,19 @@ export default function ProductListingControls({
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}
         <form onSubmit={handleSearch} className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--sera-muted)]/70" />
           <input
             name="search"
             type="text"
             defaultValue={currentSearch ?? ''}
             placeholder="Search products..."
-            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-[var(--sera-line)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 focus:border-[var(--sera-orange)]/40"
           />
           {currentSearch && (
             <button
               type="button"
               onClick={() => navigate({ search: undefined })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--sera-muted)]/70 hover:text-[var(--sera-muted)]"
             >
               <X className="h-4 w-4" />
             </button>
@@ -86,13 +86,13 @@ export default function ProductListingControls({
 
         {/* Sort */}
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-gray-400 hidden sm:block" />
+          <SlidersHorizontal className="h-4 w-4 text-[var(--sera-muted)]/70 hidden sm:block" />
           <select
             value={currentSort ?? ''}
             onChange={(e) =>
               navigate({ sort: e.target.value || undefined })
             }
-            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            className="text-sm bg-white border border-[var(--sera-line)] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]/25 focus:border-[var(--sera-orange)]/40"
           >
             {SORT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -110,8 +110,8 @@ export default function ProductListingControls({
             onClick={() => navigate({ category: undefined })}
             className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
               !currentCategory
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-[var(--sera-ink)] text-white'
+                : 'bg-[var(--sera-mist)] text-[var(--sera-muted)] hover:bg-[var(--sera-line)]'
             }`}
           >
             All
@@ -126,8 +126,8 @@ export default function ProductListingControls({
               }
               className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                 cat.id === currentCategory
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-[var(--sera-ink)] text-white'
+                  : 'bg-[var(--sera-mist)] text-[var(--sera-muted)] hover:bg-[var(--sera-line)]'
               }`}
             >
               {cat.name}
@@ -138,8 +138,8 @@ export default function ProductListingControls({
 
       {/* Pending indicator */}
       {isPending && (
-        <div className="h-0.5 bg-blue-100 rounded-full overflow-hidden">
-          <div className="h-full w-1/3 bg-blue-500 rounded-full animate-pulse" />
+        <div className="h-0.5 bg-[var(--sera-orange)]/15 rounded-full overflow-hidden">
+          <div className="h-full w-1/3 bg-[var(--sera-orange)] rounded-full animate-pulse" />
         </div>
       )}
     </div>

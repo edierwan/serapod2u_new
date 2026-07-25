@@ -12,6 +12,10 @@ import { Upload, X, Loader2, AlertCircle } from 'lucide-react'
 import { User, Role, Organization } from '@/types/user'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { normalizePhone, validatePhoneNumber, type PhoneValidationResult } from '@/lib/utils'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+} from '@/components/ui/sera-modal'
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('en-US', {
@@ -344,29 +348,31 @@ export default function UserDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg max-h-screen overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-          <h2 className="text-lg font-bold text-gray-900">
+    <SeraModalOverlay onBackdropClick={() => !isSaving && handleClose()}>
+      <SeraModalPanel className="overflow-y-auto">
+        <div className="sera-modal-header is-sticky">
+          <h2 className="sera-modal-title">
             {user ? 'Edit User' : 'Add New User'}
           </h2>
           <button
+            type="button"
             onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="sera-modal-close"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
+        <div className="sera-modal-body space-y-6">
+          <div className="sera-sc-page space-y-6">
+            <h3 className="text-lg font-semibold text-[var(--sera-ink)]">Basic Information</h3>
 
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-400 transition-colors">
+            <div className="border-2 border-dashed border-[var(--sera-line)] rounded-lg p-6 text-center hover:border-[var(--sera-orange)]/40 transition-colors">
               <div className="flex flex-col items-center">
                 <Avatar className="w-20 h-20 mb-4">
                   <AvatarImage src={avatarPreview || undefined} />
-                  <AvatarFallback className="text-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+                  <AvatarFallback className="text-lg bg-gradient-to-br from-[var(--sera-orange)] to-[var(--sera-orange-deep)] text-white">
                     {getInitials(formData.full_name as string | null)}
                   </AvatarFallback>
                 </Avatar>
@@ -386,10 +392,10 @@ export default function UserDialog({
                   <Upload className="w-4 h-4" />
                   Upload Avatar
                 </Button>
-                <p className="text-xs text-gray-500 mb-2">PNG, JPG or GIF (max 5MB)</p>
+                <p className="text-xs text-[var(--sera-muted)] mb-2">PNG, JPG or GIF (max 5MB)</p>
                 {avatarFile && (
                   <div className="mt-3 flex items-center gap-2 w-full justify-center">
-                    <span className="text-sm text-gray-700 truncate flex-1">{avatarFile.name}</span>
+                    <span className="text-sm text-[var(--sera-ink)]/80 truncate flex-1">{avatarFile.name}</span>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -444,7 +450,7 @@ export default function UserDialog({
                   className={errors.password ? 'border-red-500' : ''}
                 />
                 {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
-                <p className="text-xs text-gray-500">Minimum 6 characters</p>
+                <p className="text-xs text-[var(--sera-muted)]">Minimum 6 characters</p>
               </div>
             )}
 
@@ -461,7 +467,7 @@ export default function UserDialog({
                 />
                 {isCheckingPhone && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    <Loader2 className="w-4 h-4 animate-spin text-[var(--sera-muted)]/70" />
                   </div>
                 )}
                 {phoneCheckStatus === 'available' && (
@@ -486,20 +492,20 @@ export default function UserDialog({
                 </p>
               )}
               {!errors.phone && phoneCheckStatus === 'idle' && formData.phone && formData.phone.trim() && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[var(--sera-muted)]">
                   Supported: Malaysia (+60) and China (+86) mobile numbers
                 </p>
               )}
               {!formData.phone && (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-[var(--sera-muted)]/70">
                   Supported: Malaysia (+60) and China (+86) mobile numbers
                 </p>
               )}
             </div>
           </div>
 
-          <div className="space-y-4 pt-4 border-t border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Role & Access</h3>
+          <div className="space-y-4 pt-4 border-t border-[var(--sera-line)]">
+            <h3 className="text-lg font-semibold text-[var(--sera-ink)]">Role & Access</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -536,22 +542,22 @@ export default function UserDialog({
               </div>
             </div>
 
-            <Card className="bg-blue-50 border-blue-200">
+            <Card className="bg-[var(--sera-orange)]/[0.06] border-[var(--sera-orange)]/20">
               <CardContent className="pt-6">
-                <p className="text-xs text-blue-800">
+                <p className="text-xs text-[var(--sera-orange-deep)]">
                   <strong>Role Levels:</strong> Super Admin (1) → HQ Admin (10) → Power User (20) → Manager (30) → User (40) → Guest (50)
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          <div className="space-y-4 pt-4 border-t border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
+          <div className="space-y-4 pt-4 border-t border-[var(--sera-line)]">
+            <h3 className="text-lg font-semibold text-[var(--sera-ink)]">Settings</h3>
 
-            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+            <div className="flex items-center justify-between p-4 border border-[var(--sera-line)] rounded-lg">
               <div className="space-y-0.5 flex-1">
                 <Label htmlFor="is_active" className="text-base">Active Status</Label>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-[var(--sera-muted)]">
                   Inactive users cannot log in
                 </p>
               </div>
@@ -563,19 +569,19 @@ export default function UserDialog({
             </div>
 
             {user && (
-              <Card className="bg-gray-50 border-gray-200">
+              <Card className="bg-gray-50 border-[var(--sera-line)]">
                 <CardContent className="pt-6">
-                  <h4 className="text-sm text-gray-700 font-medium mb-4">Account Information</h4>
+                  <h4 className="text-sm text-[var(--sera-ink)]/80 font-medium mb-4">Account Information</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-500">Created</span>
-                      <p className="text-gray-900 font-medium">
+                      <span className="text-[var(--sera-muted)]">Created</span>
+                      <p className="text-[var(--sera-ink)] font-medium">
                         {formatDate(user.created_at)}
                       </p>
                     </div>
                     <div>
-                      <span className="text-gray-500">Updated</span>
-                      <p className="text-gray-900 font-medium">
+                      <span className="text-[var(--sera-muted)]">Updated</span>
+                      <p className="text-[var(--sera-ink)] font-medium">
                         {formatDate(user.updated_at)}
                       </p>
                     </div>
@@ -586,18 +592,19 @@ export default function UserDialog({
           </div>
         </div>
 
-        <div className="flex gap-3 justify-end p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+        <div className="sera-modal-footer">
           <Button
             variant="outline"
             onClick={handleClose}
             disabled={isSaving}
+            className="border-[var(--sera-line)]"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400"
+            className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white disabled:opacity-50"
           >
             {isSaving ? (
               <>
@@ -609,7 +616,7 @@ export default function UserDialog({
             )}
           </Button>
         </div>
-      </div>
-    </div>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }

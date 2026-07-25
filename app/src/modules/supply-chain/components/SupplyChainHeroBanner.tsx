@@ -1,18 +1,20 @@
 'use client'
 
-import ModuleBanner from '@/components/ui/ModuleBanner'
+import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 
 interface SupplyChainHeroBannerProps {
     userName: string | null
     bannerImageUrl?: string | null
 }
 
-export default function SupplyChainHeroBanner({ userName, bannerImageUrl }: SupplyChainHeroBannerProps) {
+export default function SupplyChainHeroBanner({ userName }: SupplyChainHeroBannerProps) {
+    const firstName = userName?.trim().split(/\s+/)[0]
+
     return (
-        <ModuleBanner
-            module="supply"
-            userName={userName}
-            bannerImageUrl={bannerImageUrl}
+        <ModuleLightHeader
+            eyebrow="Supply Chain"
+            title={firstName ? `Welcome, ${firstName}` : 'Operations hub'}
+            description="Manage products, orders, QR traceability, and inventory movements."
         />
     )
 }

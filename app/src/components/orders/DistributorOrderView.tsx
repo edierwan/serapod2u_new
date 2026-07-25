@@ -784,13 +784,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sera-orange)]" />
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sera-sc-page space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -805,7 +805,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
           </Button>
         </div>
         <h2 className="text-xl font-bold text-gray-900">Order to HQ (D2H)</h2>
-        <p className="text-gray-600 text-xs mt-1">Create a D2H order to headquarters using distributor pricing</p>
+        <p className="text-[var(--sera-muted)] text-xs mt-1">Create a D2H order to headquarters using distributor pricing</p>
       </div>
 
       {/* Main Layout - Two Columns */}
@@ -823,7 +823,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             </CardHeader>
             <CardContent className="pt-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Distributor <span className="text-red-500">*</span>
                 </label>
                 <div className="relative" ref={distributorSearchRef}>
@@ -844,7 +844,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   {isDistributorDropdownOpen && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
                       {availableDistributors.length === 0 ? (
-                        <div className="p-2 text-sm text-gray-500">No distributors found</div>
+                        <div className="p-2 text-sm text-[var(--sera-muted)]">No distributors found</div>
                       ) : (
                         availableDistributors.map((dist) => (
                           <div
@@ -871,13 +871,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
               </div>
 
               <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                   Fulfillment Warehouse <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={fulfillmentWarehouseId}
                   onChange={(e) => handleFulfillmentWarehouseChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)] bg-white"
                   disabled={fulfillmentWarehouses.length === 0}
                 >
                   <option value="">Select warehouse...</option>
@@ -887,7 +887,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-[var(--sera-muted)] mt-2">
                   Stock for this order will be allocated and fulfilled from this warehouse.
                 </p>
                 {defaultFulfillmentMissing && !fulfillmentWarehouseId && (
@@ -910,14 +910,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             <CardContent className="pt-6">
               {selectedDistributorId && (
                 <>
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="mb-4 p-3 bg-[var(--sera-orange)]/[0.06] border border-[var(--sera-orange)]/20 rounded-md">
                     <p className="text-xs text-blue-700">
                       ℹ️ Customer information is automatically filled from the selected distributor's profile
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Customer Name <span className="text-red-500">*</span>
                       </label>
                       <Input
@@ -928,7 +928,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Phone Number
                       </label>
                       <Input
@@ -940,7 +940,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Delivery Address <span className="text-red-500">*</span>
                     </label>
                     <textarea
@@ -948,13 +948,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                       onChange={(e) => setDeliveryAddress(e.target.value)}
                       placeholder="Delivery address"
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)] bg-gray-100"
                     />
                   </div>
                 </>
               )}
               {!selectedDistributorId && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-[var(--sera-muted)]">
                   <p>Please select a distributor first</p>
                 </div>
               )}
@@ -971,7 +971,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
             </CardHeader>
             <CardContent className="pt-6">
               {!selectedDistributorId || !fulfillmentWarehouseId ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-12 text-[var(--sera-muted)]">
                   <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                   <p className="text-lg font-medium mb-1">
                     {!selectedDistributorId ? 'No Distributor Selected' : 'No Fulfillment Warehouse Selected'}
@@ -987,11 +987,11 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h4 className="font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
-                      <p className="text-xs text-gray-500">{orderMode === 'quick' ? 'Enter quantities for multiple flavours at once.' : 'Add and edit products using the original order form.'}</p>
+                      <p className="text-xs text-[var(--sera-muted)]">{orderMode === 'quick' ? 'Enter quantities for multiple flavours at once.' : 'Add and edit products using the original order form.'}</p>
                     </div>
-                    <div className="text-xs text-gray-600">
+                    <div className="text-xs text-[var(--sera-muted)]">
                       Using {orderMode === 'quick' ? 'Quick Order' : 'Standard Order'} <span aria-hidden="true">·</span>{' '}
-                      <button type="button" className="font-medium text-blue-600 underline underline-offset-2" onClick={handleOrderModeSwitch}>
+                      <button type="button" className="font-medium text-[var(--sera-orange)] underline underline-offset-2" onClick={handleOrderModeSwitch}>
                         {orderMode === 'quick' ? 'Switch to Standard' : 'Try Quick Order'}
                       </button>
                     </div>
@@ -1009,7 +1009,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   {/* Search and Filter */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Search Variant
                       </label>
                       <Input
@@ -1020,13 +1020,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                         Filter by Product
                       </label>
                       <select
                         value={selectedProductFilter}
                         onChange={(e) => setSelectedProductFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)] bg-white"
                       >
                         <option value="">All Products ({Array.from(new Set(standardAvailableVariants.map(v => v.product_name))).length})</option>
                         {Array.from(new Set(standardAvailableVariants.map(v => v.product_name))).sort().map(productName => (
@@ -1040,13 +1040,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
                   {/* Variant Selection */}
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-[var(--sera-ink)]/80 mb-2">
                       Select Variant ({filteredVariants.length} available)
                     </label>
                     <select
                       value={selectedVariantId}
                       onChange={(e) => setSelectedVariantId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)] bg-white"
                       disabled={filteredVariants.length === 0}
                     >
                       <option value="">Choose variant...</option>
@@ -1079,12 +1079,12 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex-1">
                                 <h5 className="font-medium text-gray-900">{item.product_name}</h5>
-                                <p className="text-sm text-gray-600">{item.variant_name}</p>
+                                <p className="text-sm text-[var(--sera-muted)]">{item.variant_name}</p>
                                 {item.manufacturer_sku && (
-                                  <p className="text-xs text-gray-500 mt-1">SKU: {item.manufacturer_sku}</p>
+                                  <p className="text-xs text-[var(--sera-muted)] mt-1">SKU: {item.manufacturer_sku}</p>
                                 )}
                                 {variant && (
-                                  <p className="text-xs text-blue-600 mt-1">Available: {variant.available_qty} units</p>
+                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} units</p>
                                 )}
                               </div>
                               <Button
@@ -1099,7 +1099,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
                             <div className="grid grid-cols-3 gap-3">
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Quantity
                                 </label>
                                 <Input
@@ -1112,7 +1112,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Unit Price (RM)
                                 </label>
                                 <Input
@@ -1125,7 +1125,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium text-[var(--sera-ink)]/80 mb-1">
                                   Line Total (RM)
                                 </label>
                                 <div className="text-sm font-semibold text-gray-900 py-2">
@@ -1171,7 +1171,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
 
               <div className="mb-6">
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Fulfillment</h4>
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-[var(--sera-ink)]/80">
                   Fulfilled From: {selectedFulfillmentWarehouse?.org_name || 'Not selected'}
                 </p>
               </div>
@@ -1191,7 +1191,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 <div className="mb-6 pb-6 border-b">
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">Selected Distributor</h4>
                   <div className="text-sm">
-                    <p className="font-medium text-blue-600">
+                    <p className="font-medium text-[var(--sera-orange)]">
                       {availableDistributors.find(d => d.id === selectedDistributorId)?.org_name}
                     </p>
                   </div>
@@ -1217,13 +1217,13 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   Products ({orderItems.length})
                 </h4>
                 {orderItems.length === 0 ? (
-                  <p className="text-sm text-gray-500">No products selected</p>
+                  <p className="text-sm text-[var(--sera-muted)]">No products selected</p>
                 ) : (
                   <div className="space-y-2">
                     {orderItems.map((item) => (
                       <div key={item.variant_id} className="text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-600">{item.variant_name}</span>
+                          <span className="text-[var(--sera-muted)]">{item.variant_name}</span>
                           <span className="font-medium">×{item.qty}</span>
                         </div>
                       </div>
@@ -1235,11 +1235,11 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
               {/* Totals */}
               <div className="space-y-2 mb-6 pb-6 border-b">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="text-[var(--sera-muted)]">Subtotal:</span>
                   <span className="font-medium">RM {formatCurrency(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Tax:</span>
+                  <span className="text-[var(--sera-muted)]">Tax:</span>
                   <span className="font-medium">RM {formatCurrency(totals.tax)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -1261,7 +1261,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                   </div>
                 )}
                 <Button
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={saveOrder}
                   disabled={saving || !selectedDistributorId || !sellerOrg || !customerName || !deliveryAddress || orderItems.length === 0}
                 >

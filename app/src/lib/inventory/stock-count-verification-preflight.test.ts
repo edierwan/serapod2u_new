@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateStockCountPreflight, type StockCountPreflightDependencies } from './stock-count-verification-preflight'
-import { stockCountRowsSignature } from './stock-count-snapshot'
+import { stockCountDraftSignature } from './stock-count-snapshot'
 import {
     isValidStockCountPostingNote,
     normalizeStockCountPostingNote,
@@ -19,6 +19,7 @@ function dependencies(overrides: Partial<StockCountPreflightDependencies> = {}):
         loadVariantBaseCosts: async () => [{ id: 'variant-1', base_cost: '14.00' }],
         loadClassificationLiveLegacy: async () => [],
         loadVariantLabels: async () => [],
+        loadClassificationAllocationResolutions: async () => [],
         checkPermission: async () => ({ allowed: true, context: { organization_id: 'org-1' } }),
         loadEvent: async () => ({ event_code: 'stock_count_posting_verification', available_channels: ['email'] }),
         loadSetting: async () => ({
@@ -124,7 +125,7 @@ describe('Stock Count verification preflight', () => {
             if (!result.ok) return
             // The server signature must equal the client signature over the same
             // on-screen rows — this is the equality Review & Post relies on.
-            expect(result.persistedSignature).toBe(stockCountRowsSignature([
+            expect(result.persistedSignature).toBe(stockCountDraftSignature([
                 { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
                 { stockConfigId: '50NB', variantId: 'v1', physicalCount: 50, note: '' },
                 { stockConfigId: '50OB', variantId: 'v1', physicalCount: 50, note: '' },
@@ -142,7 +143,7 @@ describe('Stock Count verification preflight', () => {
             // …but the user's latest import on screen is 50/40/20. The client
             // compares its signature to result.persistedSignature; they differ,
             // so Review & Post blocks instead of silently posting +150.
-            const latestScreenSignature = stockCountRowsSignature([
+            const latestScreenSignature = stockCountDraftSignature([
                 { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
                 { stockConfigId: '50NB', variantId: 'v1', physicalCount: 40, note: '' },
                 { stockConfigId: '50OB', variantId: 'v1', physicalCount: 20, note: '' },
@@ -162,7 +163,7 @@ describe('Stock Count verification preflight', () => {
             }), 'user-1', 'session-1')
             expect(result.ok).toBe(true)
             if (!result.ok) return
-            expect(result.persistedSignature).toBe(stockCountRowsSignature([
+            expect(result.persistedSignature).toBe(stockCountDraftSignature([
                 { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
                 { stockConfigId: '50NB', variantId: 'v1', physicalCount: 40, note: '' },
                 { stockConfigId: '50OB', variantId: 'v1', physicalCount: 20, note: '' },
@@ -235,6 +236,31 @@ describe('Stock Count verification preflight', () => {
             expect(result.code).toBe('classification_allocated_blocks_post')
             expect(result.message).toContain('Cellera Zero [Buttercake]')
             expect(result.message).toContain('1 allocated unit')
+        })
+
+        it('allows allocated Legacy only after an explicit target is persisted and signs that target', async () => {
+            const result = await evaluateStockCountPreflight(dependencies({
+                loadAccessibleSession: async () => classificationSession,
+                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
+                loadVariantLabels: async () => [{ id: 'v1', variant_name: 'Potato', product_name: 'Cellera Zero' }],
+                loadClassificationLiveLegacy: async () => [{
+                    variantId: 'v1',
+                    productName: 'Cellera Zero',
+                    variantName: 'Potato',
+                    liveOnHand: 100,
+                    liveAllocated: 1,
+                }],
+                loadClassificationAllocationResolutions: async () => [{
+                    variant_id: 'v1',
+                    target_stock_config_id: '20nb',
+                }],
+            }), 'user-1', 'session-cls')
+
+            expect(result.ok).toBe(true)
+            if (!result.ok) return
+            expect(result.persistedSignature).toContain(
+                '"variantId":"v1","targetStockConfigId":"20nb"',
+            )
         })
     })
 })

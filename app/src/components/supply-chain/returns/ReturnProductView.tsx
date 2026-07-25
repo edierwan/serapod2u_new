@@ -48,6 +48,8 @@ import {
     type ReturnExcelContext, type ReturnExcelImportResult,
 } from '@/lib/returns/excel'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import { SC_PANEL_CLASS } from '@/modules/supply-chain/components/supplyChainChrome'
 
 interface UserProfile { id: string; full_name?: string | null }
 
@@ -55,7 +57,7 @@ const STATUS_BADGE: Record<string, string> = {
     return_draft: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
     return_submitted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
     return_received: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-    return_processing: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    return_processing: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)]',
     return_completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
     return_cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
 }
@@ -147,16 +149,17 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
     }
 
     return (
-        <div className="w-full space-y-4">
-            <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h1 className="text-xl font-semibold text-foreground">Return Product</h1>
-                    <p className="text-sm text-muted-foreground">Create and manage product return cases from shops to warehouse.</p>
-                </div>
-                <Button onClick={openNew} className="gap-1.5" disabled={metaLoading || !!metaError}>
-                    {metaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} New Return
-                </Button>
-            </div>
+        <div className="sera-sc-page space-y-4">
+            <SupplyChainPageHeader
+                eyebrow="Quality · Returns"
+                title="Return Product"
+                description="Create and manage product return cases from shops to warehouse."
+                actions={
+                    <Button onClick={openNew} className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" disabled={metaLoading || !!metaError}>
+                        {metaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} New Return
+                    </Button>
+                }
+            />
 
             {metaError && (
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -167,8 +170,8 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[200px]">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Search return no…"
@@ -179,7 +182,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                     />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-[190px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectTrigger className="w-full sm:w-[190px]"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
                         {Object.entries(RETURN_STATUS_LABELS).map(([k, v]) => (
@@ -187,14 +190,14 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                         ))}
                     </SelectContent>
                 </Select>
-                <Button variant="outline" size="icon" onClick={loadCases} disabled={loading} title="Refresh">
+                <Button variant="outline" size="icon" className="shrink-0 self-end sm:self-auto" onClick={loadCases} disabled={loading} title="Refresh">
                     <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
                 </Button>
             </div>
 
-            <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <div className={`${SC_PANEL_CLASS} overflow-x-auto sera-sc-table-scroll`}>
+                <table className="sera-sc-table w-full min-w-[720px] text-sm">
+                    <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-3 py-2 font-medium">Return No</th>
                             <th className="px-3 py-2 font-medium">Shop</th>
@@ -215,7 +218,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                                 No return cases yet.
                             </td></tr>
                         ) : cases.map((c) => (
-                            <tr key={c.id} className="cursor-pointer hover:bg-accent/50" onClick={() => openCase(c.id)}>
+                            <tr key={c.id} className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.03]" onClick={() => openCase(c.id)}>
                                 <td className="px-3 py-2 font-medium text-foreground">{c.return_no}</td>
                                 <td className="px-3 py-2">{c.shop?.org_name || '—'}</td>
                                 <td className="px-3 py-2">{c.warehouse?.org_name || '—'}</td>
@@ -1044,22 +1047,23 @@ function ReturnCaseEditor({
     const shopName = selectedShop?.org_name || rc?.source?.org_name || rc?.shop?.org_name || '—'
 
     return (
-        <div className="w-full space-y-4">
+        <div className="sera-sc-page space-y-4">
             {/* Header bar */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex items-start gap-2">
-                    <Button variant="ghost" size="icon" onClick={onBack}><ArrowLeft className="h-4 w-4" /></Button>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-xl font-semibold text-foreground">Return Product</h1>
+            <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-2 min-w-0">
+                    <Button variant="ghost" size="icon" onClick={onBack} className="shrink-0 mt-0.5 border border-transparent hover:border-[var(--sera-line)]"><ArrowLeft className="h-4 w-4" /></Button>
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-medium tracking-[0.16em] uppercase text-[var(--sera-muted)] mb-1">Quality · Returns</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">Return Product</h1>
                             <StatusBadge status={status} />
                         </div>
-                        <p className="text-sm text-muted-foreground">Create and manage product return cases from shops to warehouse.</p>
+                        <p className="text-sm text-[var(--sera-muted)] mt-0.5">Create and manage product return cases from shops to warehouse.</p>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     {unsavedChanges && !readOnly && (
-                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                        <Badge variant="outline" className="border-[var(--sera-orange)]/30 bg-[var(--sera-orange)]/8 text-[var(--sera-orange-deep)]">
                             Unsaved changes
                         </Badge>
                     )}
@@ -1093,7 +1097,7 @@ function ReturnCaseEditor({
                     <Button variant="outline" onClick={previewPdf} className="gap-1.5"><Eye className="h-4 w-4" /> Preview PDF</Button>
                     <Button variant="outline" onClick={downloadPdf} className="gap-1.5"><FileText className="h-4 w-4" /> Generate PDF</Button>
                     {nextActionLabel && canAdvance && (
-                        <Button onClick={advance} disabled={advancing || saving} className="gap-1.5">
+                        <Button onClick={advance} disabled={advancing || saving} className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
                             {advancing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} {nextActionLabel}
                         </Button>
                     )}
@@ -1103,10 +1107,10 @@ function ReturnCaseEditor({
                         </Button>
                     )}
                 </div>
-            </div>
+            </header>
 
             {!excelReady && !readOnly && (
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 rounded-lg border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.03] px-3 py-2 text-xs text-[var(--sera-muted)]">
                     <Info className="h-3.5 w-3.5 shrink-0" />
                     Complete the required Return Information before using Excel.
                 </div>
@@ -1120,15 +1124,15 @@ function ReturnCaseEditor({
             />
 
             {/* Stepper */}
-            <div className="rounded-lg border border-border bg-card p-4">
+            <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <ReturnStatusStepper status={status} />
             </div>
 
             {/* Return Information */}
-            <section className="rounded-lg border border-border bg-card p-4">
+            <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="mb-3 flex items-center gap-2">
                     <PackageOpen className="h-4 w-4 text-muted-foreground" />
-                    <h2 className="text-sm font-semibold text-foreground">Return Information</h2>
+                    <h2 className="text-sm font-semibold text-[var(--sera-ink)]">Return Information</h2>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="Return From Type" required>
@@ -1144,7 +1148,7 @@ function ReturnCaseEditor({
                                         onClick={() => changeSourceType(t)}
                                         className={cn(
                                             'rounded px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
-                                            sourceType === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                                            sourceType === t ? 'bg-[var(--sera-orange)] text-white' : 'text-[var(--sera-muted)] hover:text-[var(--sera-ink)]',
                                         )}
                                     >
                                         {RETURN_SOURCE_LABELS[t]}
@@ -1244,7 +1248,7 @@ function ReturnCaseEditor({
 
                 {/* Shop master-data card + shortcut */}
                 {selectedShop && (
-                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg sera-sc-panel overflow-hidden bg-[var(--sera-ink)]/[0.02] p-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-start gap-2.5">
                             <Store className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 text-sm">
@@ -1290,15 +1294,15 @@ function ReturnCaseEditor({
             />
 
             {/* Additional Notes */}
-            <section className="rounded-lg border border-border bg-card p-4">
-                <h2 className="mb-2 text-sm font-semibold text-foreground">Additional Notes</h2>
+            <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
+                <h2 className="mb-2 text-sm font-semibold text-[var(--sera-ink)]">Additional Notes</h2>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={readOnly} rows={3} placeholder="General return notes…" />
             </section>
 
             {/* Warehouse Processing */}
             {showsWarehouseProcessing(status) && (
-                <section className="rounded-lg border border-border bg-card p-4">
-                    <h2 className="mb-3 text-sm font-semibold text-foreground">Warehouse Processing</h2>
+                <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
+                    <h2 className="mb-3 text-sm font-semibold text-[var(--sera-ink)]">Warehouse Processing</h2>
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="Received Date"><Input type="date" value={wh.received_date} onChange={(e) => setWh({ ...wh, received_date: e.target.value })} disabled={readOnly || !meta.isManager} /></Field>
                         <Field label="Received By"><Input value={wh.received_by} onChange={(e) => setWh({ ...wh, received_by: e.target.value })} disabled={readOnly || !meta.isManager} /></Field>
@@ -1315,19 +1319,19 @@ function ReturnCaseEditor({
 
             {/* Timeline */}
             {rc?.status_history && rc.status_history.length > 0 && (
-                <section className="rounded-lg border border-border bg-card p-4">
-                    <h2 className="mb-3 text-sm font-semibold text-foreground">Return Case Timeline</h2>
+                <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
+                    <h2 className="mb-3 text-sm font-semibold text-[var(--sera-ink)]">Return Case Timeline</h2>
                     <ol className="space-y-3">
                         {rc.status_history.map((h) => (
                             <li key={h.id} className="flex gap-2 text-sm">
-                                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--sera-orange)]" />
                                 <div>
-                                    <div className="font-medium text-foreground">{RETURN_STATUS_LABELS[h.to_status as ReturnStatus] || h.to_status}</div>
-                                    <div className="text-xs text-muted-foreground">
+                                    <div className="font-medium text-[var(--sera-ink)]">{RETURN_STATUS_LABELS[h.to_status as ReturnStatus] || h.to_status}</div>
+                                    <div className="text-xs text-[var(--sera-muted)]">
                                         {new Date(h.changed_at).toLocaleString('en-MY')}
                                         {h.changed_by_name ? ` • ${h.changed_by_name}` : ''}
                                     </div>
-                                    {h.notes && <div className="text-xs text-muted-foreground">{h.notes}</div>}
+                                    {h.notes && <div className="text-xs text-[var(--sera-muted)]">{h.notes}</div>}
                                 </div>
                             </li>
                         ))}
@@ -1351,9 +1355,9 @@ function ReadOnlyCard({ label, value, hint }: { label: string; value: string; hi
     return (
         <div className="space-y-1">
             <span className="text-xs font-medium text-muted-foreground">{label}</span>
-            <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-                <div className="text-sm font-medium text-foreground">{label}: {value}</div>
-                <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"><Info className="h-3 w-3" /> {hint}</div>
+            <div className="rounded-md border border-[var(--sera-line)] bg-[var(--sera-ink)]/[0.03] px-3 py-2">
+                <div className="text-sm font-medium text-[var(--sera-ink)]">{label}: {value}</div>
+                <div className="mt-0.5 flex items-center gap-1 text-xs text-[var(--sera-muted)]"><Info className="h-3 w-3" /> {hint}</div>
             </div>
         </div>
     )
@@ -1362,23 +1366,23 @@ function ReadOnlyCard({ label, value, hint }: { label: string; value: string; hi
 function PackingReference() {
     return (
         <div className="grid gap-3 lg:grid-cols-3">
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Package className="h-5 w-5 text-muted-foreground" /></div>
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10"><Package className="h-5 w-5 text-[var(--sera-orange)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-foreground">Enter Quantity in Pcs or Box</div>
-                    <div className="text-xs text-muted-foreground">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Enter Quantity in Pcs or Box</div>
+                    <div className="text-xs text-[var(--sera-muted)]">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
                 </div>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted"><Boxes className="h-5 w-5 text-muted-foreground" /></div>
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-ink)]/5"><Boxes className="h-5 w-5 text-[var(--sera-ink)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-foreground">Box (4 Pcs)</div>
-                    <div className="text-xs text-muted-foreground">1 Box = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Box (4 Pcs)</div>
+                    <div className="text-xs text-[var(--sera-muted)]">1 Box = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
                 </div>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-900/20">
-                <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-                <div className="text-xs text-amber-800 dark:text-amber-200">
+            <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.05] p-4">
+                <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sera-orange)]" />
+                <div className="text-xs text-[var(--sera-orange-deep)]">
                     Total Pcs is auto-calculated. Switch between Pcs and Box mode without losing your quantity.
                 </div>
             </div>
@@ -1459,15 +1463,15 @@ function ReturnWorksheet({
     }, [rows, search, viewMode, hideEmpty, lineTab])
 
     return (
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="rounded-lg sera-sc-panel overflow-hidden p-4">
             <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 className="text-sm font-semibold text-foreground">Return Items (Worksheet)</h2>
+                    <h2 className="text-sm font-semibold text-[var(--sera-ink)]">Return Items (Worksheet)</h2>
                     <p className="text-xs text-muted-foreground">All available flavours and devices for the selected category are preloaded below.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="hidden text-xs font-medium text-muted-foreground sm:inline">Product Line</span>
-                    <div className="inline-flex overflow-hidden rounded-md border border-border">
+                    <div className="inline-flex overflow-hidden rounded-md border border-[var(--sera-line)]">
                         <LineTab label="All Items" count={lineCounts.all} active={lineTab === 'all'} onClick={() => setLineTab('all')} />
                         <LineTab label="Hero" count={lineCounts.hero} active={lineTab === 'hero'} onClick={() => setLineTab('hero')} />
                         <LineTab label="Zero" count={lineCounts.zero} active={lineTab === 'zero'} onClick={() => setLineTab('zero')} />
@@ -1486,7 +1490,7 @@ function ReturnWorksheet({
                 <button
                     type="button"
                     onClick={() => setViewMode((v) => (v === 'entered' ? 'all' : 'entered'))}
-                    className={cn('rounded-md border border-border px-3 py-1.5 text-xs font-medium', viewMode === 'entered' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent')}
+                    className={cn('rounded-md border border-[var(--sera-line)] px-3 py-1.5 text-xs font-medium', viewMode === 'entered' ? 'bg-[var(--sera-orange)] text-white' : 'bg-white text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.03]')}
                 >
                     Entered Items Only
                 </button>
@@ -1507,9 +1511,9 @@ function ReturnWorksheet({
 
             {/* Bulk update panel — applies Reason/Condition to every entered row (Total Pcs > 0). */}
             {!readOnly && (
-                <div className="mb-3 flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3 lg:flex-row lg:items-end">
+                <div className="mb-3 flex flex-col gap-3 rounded-lg sera-sc-panel overflow-hidden bg-[var(--sera-orange)]/[0.04] border border-[var(--sera-orange)]/15 p-3 lg:flex-row lg:items-end">
                     <div className="flex items-center gap-2 lg:min-w-[220px]">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10 text-[var(--sera-orange)]">
                             <Zap className="h-4 w-4" />
                         </div>
                         <div>
@@ -1535,7 +1539,7 @@ function ReturnWorksheet({
                         <Button
                             type="button"
                             size="sm"
-                            className="gap-1.5"
+                            className="gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white"
                             disabled={!bulkReason && !bulkCondition}
                             onClick={() => onBulkApply(bulkReason || null, bulkCondition || null)}
                         >
@@ -1546,9 +1550,9 @@ function ReturnWorksheet({
             )}
 
             {/* Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+            <div className="overflow-x-auto sera-sc-panel overflow-hidden">
+                <table className="sera-sc-table w-full text-sm">
+                    <thead className="text-left text-xs uppercase text-[var(--sera-muted)]">
                         <tr>
                             <th className="px-2 py-2 font-medium">No.</th>
                             <th className="px-2 py-2 font-medium">Image</th>
@@ -1912,7 +1916,7 @@ function LineTab({ label, count, active, onClick }: { label: string; count: numb
         <button
             type="button"
             onClick={onClick}
-            className={cn('px-3 py-1.5 text-xs font-medium', active ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent')}
+            className={cn('px-3 py-1.5 text-xs font-medium', active ? 'bg-[var(--sera-orange)] text-white' : 'bg-white text-[var(--sera-muted)] hover:bg-[var(--sera-ink)]/[0.03]')}
         >
             {label} ({count})
         </button>

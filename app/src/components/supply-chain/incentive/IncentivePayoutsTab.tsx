@@ -342,7 +342,7 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
           { label: 'Rejected', value: stats.rejected, color: '#ef4444', icon: XCircle },
           { label: 'Total Paid', value: `RM${stats.totalPaidAmount.toLocaleString()}`, color: '#8b5cf6', icon: Banknote },
         ].map(kpi => (
-          <Card key={kpi.label} className="border-0 shadow-md bg-card/80 backdrop-blur">
+          <Card key={kpi.label} className="sera-sc-panel overflow-hidden">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{kpi.label}</span>
@@ -355,7 +355,7 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
       </div>
 
       {/* Workflow Visual */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur">
+      <Card className="sera-sc-panel overflow-hidden">
         <CardContent className="p-4">
           <div className="flex items-center justify-between overflow-x-auto gap-2">
             {[
@@ -371,8 +371,8 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
                     onClick={() => setPayoutSubTab(step.status)}
                     className={`flex-1 p-3 rounded-xl border-2 text-center transition-all cursor-pointer ${
                       payoutSubTab === step.status
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20 shadow-md'
-                        : 'border-border hover:border-indigo-300'
+                        ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/8'
+                        : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                     }`}
                   >
                     <p className="text-2xl font-bold text-foreground">{step.count}</p>
@@ -423,7 +423,7 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
       </div>
 
       {/* Table */}
-      <Card className="border-0 shadow-lg bg-card/80 backdrop-blur overflow-hidden">
+      <Card className="sera-sc-panel overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -529,8 +529,8 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
                           onClick={() => setPaymentMethod(pm.value)}
                           className={`p-3 rounded-lg border-2 text-left transition-all flex items-center gap-2 ${
                             paymentMethod === pm.value
-                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
-                              : 'border-border hover:border-indigo-300'
+                              ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/8'
+                              : 'border-[var(--sera-line)] hover:border-[var(--sera-orange)]/30'
                           }`}
                         >
                           <pm.icon className={`w-4 h-4 ${paymentMethod === pm.value ? 'text-indigo-600' : 'text-muted-foreground'}`} />
@@ -594,7 +594,7 @@ export default function IncentivePayoutsTab({ campaigns, loading }: IncentivePay
                 className={`text-white shadow-lg ${
                   actionDialog.action === 'reject'
                     ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+                    : 'bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)]'
                 }`}
                 disabled={actionDialog.action === 'reject' && !rejectionReason}
               >

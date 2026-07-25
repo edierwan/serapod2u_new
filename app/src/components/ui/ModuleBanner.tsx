@@ -124,7 +124,6 @@ export default function ModuleBanner({
 }: ModuleBannerProps) {
   const { resolvedTheme } = useTheme()
   const config = MODULE_CONFIG[module]
-  const Icon = config.icon
 
   // Hydration-safe greeting
   const [greeting, setGreeting] = useState('Welcome')
@@ -200,30 +199,28 @@ export default function ModuleBanner({
 
       {/* Content */}
       <div className="relative z-10 flex flex-col justify-center px-6 md:px-8 py-8 md:py-10 h-[160px] md:h-[200px]">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-white/15 backdrop-blur-sm">
-            <Icon className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-white/80 text-sm font-medium tracking-wide uppercase">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="h-1.5 w-10 rounded-sm bg-[var(--sera-orange,#e85d04)]" />
+          <span className="text-white/70 text-xs font-medium tracking-[0.16em] uppercase">
             {config.label}
           </span>
         </div>
 
         {config.useGreeting ? (
           <>
-            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight drop-shadow-sm">
+            <h1 className="font-display text-2xl md:text-3xl lg:text-4xl font-semibold text-white leading-tight">
               {displayTitle}
             </h1>
-            <p className="text-lg md:text-xl text-white/90 font-medium mt-1 drop-shadow-sm">
+            <p className="text-lg md:text-xl text-white/85 font-medium mt-1">
               {displaySubtitle}
             </p>
           </>
         ) : (
           <>
-            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight drop-shadow-sm">
+            <h1 className="font-display text-2xl md:text-3xl lg:text-4xl font-semibold text-white leading-tight">
               {displayTitle}
             </h1>
-            <p className="text-sm md:text-base text-white/90 font-medium mt-1 drop-shadow-sm">
+            <p className="text-sm md:text-base text-white/70 font-medium mt-2 max-w-xl">
               {displaySubtitle}
             </p>
           </>

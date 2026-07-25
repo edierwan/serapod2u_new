@@ -460,10 +460,10 @@ export default function NotificationFlowDrawer({
 
                                     <div className="relative flex gap-4 items-start mb-8">
                                         <div className="w-8 h-8 rounded-full bg-blue-100 border-2 border-blue-500 flex items-center justify-center shrink-0 z-10">
-                                            <Play className="w-4 h-4 text-blue-600" />
+                                            <Play className="w-4 h-4 text-[var(--sera-orange)]" />
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold text-gray-900">Trigger Event</h4>
+                                            <h4 className="font-semibold text-[var(--sera-ink)]">Trigger Event</h4>
                                             <p className="text-sm text-gray-500">{type.event_name} occurs in system</p>
                                         </div>
                                     </div>
@@ -473,7 +473,7 @@ export default function NotificationFlowDrawer({
                                             <Users className="w-4 h-4 text-purple-600" />
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold text-gray-900">Resolve Recipients</h4>
+                                            <h4 className="font-semibold text-[var(--sera-ink)]">Resolve Recipients</h4>
                                             <div className="text-sm text-gray-500 flex flex-col gap-1">
                                                 {localSetting.recipient_config?.recipient_targets?.consumer && <span>• Consumer</span>}
                                                 {localSetting.recipient_config?.recipient_targets?.roles && <span>• Roles: {(localSetting.recipient_config?.roles || []).join(', ')}</span>}
@@ -495,7 +495,7 @@ export default function NotificationFlowDrawer({
                                             <GitBranch className="w-4 h-4 text-orange-600" />
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold text-gray-900">Routing & Templates</h4>
+                                            <h4 className="font-semibold text-[var(--sera-ink)]">Routing & Templates</h4>
                                             <div className="flex gap-2 mt-1">
                                                 {localSetting.channels_enabled.map((c: string) => (
                                                     <Badge key={c} variant="outline" className="text-xs bg-white">
@@ -511,7 +511,7 @@ export default function NotificationFlowDrawer({
                                             <CheckCircle2 className="w-4 h-4 text-green-600" />
                                         </div>
                                         <div>
-                                            <h4 className="font-semibold text-gray-900">Delivery</h4>
+                                            <h4 className="font-semibold text-[var(--sera-ink)]">Delivery</h4>
                                             <p className="text-sm text-gray-500">Sent via configured providers (Baileys/Twilio/etc)</p>
                                         </div>
                                     </div>
@@ -524,10 +524,10 @@ export default function NotificationFlowDrawer({
                                 {(() => null)()}
 
                                 {/* Header banner: source count + clear all */}
-                                <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 flex justify-between items-start">
+                                <div className="bg-[var(--sera-orange)]/[0.06]/50 p-4 rounded-lg border border-blue-100 flex justify-between items-start">
                                     <div>
                                         <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-900">Recipients Summary</h4>
-                                        <p className="text-xs text-blue-700/80 mt-0.5">
+                                        <p className="text-xs text-[var(--sera-orange-deep)]/80 mt-0.5">
                                             {(() => {
                                                 const t = localSetting.recipient_config?.recipient_targets || {}
                                                 const enabledSources = [t.consumer && 'Consumer', t.dynamic_org && 'Related Organization', t.users && 'Specific Users', (manualParse.valid.length > 0) && 'Manual WhatsApp', (manualEmailParse.valid.length > 0) && 'Manual Email'].filter(Boolean) as string[]
@@ -541,7 +541,7 @@ export default function NotificationFlowDrawer({
                                         localSetting.recipient_config?.recipient_targets?.dynamic_org ||
                                         localSetting.recipient_config?.recipient_targets?.users ||
                                         manualParse.valid.length > 0 || manualEmailParse.valid.length > 0) && (
-                                            <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-800" onClick={() => {
+                                            <Button variant="ghost" size="sm" className="h-6 text-xs text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)]" onClick={() => {
                                                 updateRecipientConfig({
                                                     recipient_targets: { roles: false, dynamic_org: false, users: false, consumer: false },
                                                     include_consumer: false,
@@ -573,7 +573,7 @@ export default function NotificationFlowDrawer({
                                         {([
                                             {
                                                 key: 'consumer',
-                                                icon: <UserIcon className="w-4 h-4 text-blue-600" />,
+                                                icon: <UserIcon className="w-4 h-4 text-[var(--sera-orange)]" />,
                                                 title: 'Consumer',
                                                 subtitle: 'Send to relevant Consumer',
                                                 enabled: !!localSetting.recipient_config?.recipient_targets?.consumer,
@@ -641,7 +641,7 @@ export default function NotificationFlowDrawer({
                                                     key={src.key}
                                                     type="button"
                                                     onClick={() => setActiveSource(src.key as any)}
-                                                    className={`w-full text-left rounded-lg border p-3 transition-all ${isActive ? 'border-blue-500 bg-blue-50/40 shadow-sm' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
+                                                    className={`w-full text-left rounded-lg border p-3 transition-all ${isActive ? 'border-blue-500 bg-[var(--sera-orange)]/[0.06]/40 shadow-sm' : 'border-gray-200 hover:border-gray-300 bg-white'}`}
                                                 >
                                                     <div className="flex items-start gap-3">
                                                         <div className="w-8 h-8 rounded-md bg-gray-50 flex items-center justify-center shrink-0">
@@ -649,14 +649,14 @@ export default function NotificationFlowDrawer({
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center justify-between gap-2">
-                                                                <span className="text-sm font-medium text-gray-900">{src.title}</span>
+                                                                <span className="text-sm font-medium text-[var(--sera-ink)]">{src.title}</span>
                                                                 {src.key === 'users' ? (
                                                                     <span
                                                                         role="button"
                                                                         tabIndex={0}
                                                                         onClick={(e) => { e.stopPropagation(); src.onToggle(!src.enabled); setActiveSource('users') }}
                                                                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); src.onToggle(!src.enabled); setActiveSource('users') } }}
-                                                                        className={`text-[11px] px-2 py-0.5 rounded border ${src.enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-blue-300 text-blue-600 hover:bg-blue-50'}`}
+                                                                        className={`text-[11px] px-2 py-0.5 rounded border ${src.enabled ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-[var(--sera-orange)]/30 text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.06]'}`}
                                                                     >
                                                                         {src.enabled ? 'Selected' : 'Select'}
                                                                     </span>
@@ -689,8 +689,8 @@ export default function NotificationFlowDrawer({
                                         {activeSource === 'consumer' && (
                                             <div className="space-y-4">
                                                 <div className="flex items-center gap-2">
-                                                    <UserIcon className="w-4 h-4 text-blue-600" />
-                                                    <h4 className="text-sm font-semibold text-gray-900">Consumer</h4>
+                                                    <UserIcon className="w-4 h-4 text-[var(--sera-orange)]" />
+                                                    <h4 className="text-sm font-semibold text-[var(--sera-ink)]">Consumer</h4>
                                                 </div>
                                                 <p className="text-xs text-gray-500">Send the notification to the consumer related to the triggering event (e.g. the consumer that placed the order or scanned a QR).</p>
                                                 <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
@@ -713,7 +713,7 @@ export default function NotificationFlowDrawer({
                                             <div className="space-y-4">
                                                 <div className="flex items-center gap-2">
                                                     <Building2 className="w-4 h-4 text-purple-600" />
-                                                    <h4 className="text-sm font-semibold text-gray-900">Related Organization</h4>
+                                                    <h4 className="text-sm font-semibold text-[var(--sera-ink)]">Related Organization</h4>
                                                 </div>
                                                 <p className="text-xs text-gray-500">Resolve recipients dynamically based on the organization associated with the triggering event (manufacturer, distributor, warehouse).</p>
                                                 <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
@@ -788,7 +788,7 @@ export default function NotificationFlowDrawer({
                                             <div className="space-y-4">
                                                 <div className="flex items-center gap-2">
                                                     <Users className="w-4 h-4 text-emerald-600" />
-                                                    <h4 className="text-sm font-semibold text-gray-900">Specific Users</h4>
+                                                    <h4 className="text-sm font-semibold text-[var(--sera-ink)]">Specific Users</h4>
                                                 </div>
                                                 <p className="text-xs text-gray-500">Send to a curated list of internal users.</p>
                                                 <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded border border-transparent hover:border-gray-200 transition-colors">
@@ -831,7 +831,7 @@ export default function NotificationFlowDrawer({
                                             <div className="space-y-4">
                                                 <div className="flex items-center gap-2">
                                                     <MessageCircle className="w-4 h-4 text-green-600" />
-                                                    <h4 className="text-sm font-semibold text-gray-900">Manual WhatsApp Numbers</h4>
+                                                    <h4 className="text-sm font-semibold text-[var(--sera-ink)]">Manual WhatsApp Numbers</h4>
                                                 </div>
                                                 <p className="text-xs text-gray-500">
                                                     Enter WhatsApp numbers in international format.<br />
@@ -955,7 +955,7 @@ export default function NotificationFlowDrawer({
 
                                         {activeSource === 'manual_email' && (
                                             <div className="space-y-4">
-                                                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-violet-600" /><h4 className="text-sm font-semibold text-gray-900">Manual Email Addresses</h4></div>
+                                                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-violet-600" /><h4 className="text-sm font-semibold text-[var(--sera-ink)]">Manual Email Addresses</h4></div>
                                                 <p className="text-xs text-gray-500">Enter email addresses separated by commas, semicolons, spaces, or new lines. Addresses are normalized and deduplicated case-insensitively.</p>
                                                 <Textarea placeholder="approver@example.com\nmanager@example.com" className="min-h-[110px] font-mono text-xs" value={manualEmailRawInput} onChange={(event) => setManualEmailRawInput(event.target.value)} />
                                                 <div className="flex justify-between text-[11px] text-gray-500"><span>{manualEmailParse.valid.length} valid · {manualEmailParse.invalid.length} invalid · {manualEmailParse.duplicatesRemoved} duplicate removed</span><Button type="button" variant="ghost" size="sm" onClick={() => setManualEmailRawInput('')}><Trash2 className="mr-1 h-3 w-3" />Clear All</Button></div>
@@ -981,7 +981,7 @@ export default function NotificationFlowDrawer({
                                             <p className="text-[11px] text-gray-400 mb-3">Estimated unique recipients (real counts resolved per-event at send time)</p>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                 {[
-                                                    { label: 'Consumers', value: consumersCount, icon: <UserIcon className="w-3 h-3" />, accent: 'text-blue-600' },
+                                                    { label: 'Consumers', value: consumersCount, icon: <UserIcon className="w-3 h-3" />, accent: 'text-[var(--sera-orange)]' },
                                                     { label: 'Organizations', value: orgsCount, icon: <Building2 className="w-3 h-3" />, accent: 'text-purple-600' },
                                                     { label: 'Users', value: usersCount, icon: <Users className="w-3 h-3" />, accent: 'text-emerald-600' },
                                                     { label: 'Manual WhatsApp', value: manualCount, icon: <MessageCircle className="w-3 h-3" />, accent: 'text-green-600' },
@@ -992,7 +992,7 @@ export default function NotificationFlowDrawer({
                                                         <div className={`flex items-center gap-1 text-[10px] uppercase tracking-wide ${c.accent}`}>
                                                             {c.icon}<span>{c.label}</span>
                                                         </div>
-                                                        <div className="text-lg font-bold text-gray-900 mt-1">{c.value}</div>
+                                                        <div className="text-lg font-bold text-[var(--sera-ink)] mt-1">{c.value}</div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -1025,7 +1025,7 @@ export default function NotificationFlowDrawer({
 
                                     {resolvedRecipients.length > 0 && (
                                         <div className="space-y-3">
-                                            <div className="flex gap-4 text-xs font-medium text-gray-600 bg-gray-100/50 p-2 rounded">
+                                            <div className="flex gap-4 text-xs font-medium text-[var(--sera-muted)] bg-gray-100/50 p-2 rounded">
                                                 <span>Total: {resolvedRecipients.length}</span>
                                                 <span>Consumer: {resolvedRecipients.filter(r => r.type === 'Consumer').length}</span>
                                                 <span>Staff: {resolvedRecipients.filter(r => r.type !== 'Consumer').length}</span>
@@ -1044,7 +1044,7 @@ export default function NotificationFlowDrawer({
                                                                 {r.full_name}
                                                                 <span className="flex gap-1 ml-1 opacity-70">
                                                                     {r.phone && <CheckCircle2 className="w-3 h-3 text-green-600" aria-label="Phone OK" />}
-                                                                    {r.email && <CheckCircle2 className="w-3 h-3 text-blue-600" aria-label="Email OK" />}
+                                                                    {r.email && <CheckCircle2 className="w-3 h-3 text-[var(--sera-orange)]" aria-label="Email OK" />}
                                                                 </span>
                                                             </div>
                                                             <div className="text-gray-500 text-xs flex gap-2">
@@ -1329,7 +1329,7 @@ export default function NotificationFlowDrawer({
                                             </div>
                                         ) : (
                                             <div className="space-y-2">
-                                                <div className="p-3 bg-blue-50 text-blue-800 text-sm border border-blue-200 rounded flex justify-between items-center">
+                                                <div className="p-3 bg-[var(--sera-orange)]/[0.06] text-[var(--sera-orange-deep)] text-sm border border-[var(--sera-orange)]/20 rounded flex justify-between items-center">
                                                     <span>To: {resolvedRecipients[0].full_name} ({resolvedRecipients[0].phone || resolvedRecipients[0].email})</span>
                                                     <Badge variant="outline">Resolved</Badge>
                                                 </div>

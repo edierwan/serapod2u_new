@@ -43,6 +43,7 @@ import {
 import { buildReturnReportPdf, type ReturnReportPdf } from '@/lib/returns/report-pdf'
 import { ReturnSourceCombobox } from './ReturnSourceCombobox'
 import { ReturnReportEmailDialog } from './ReturnReportEmailDialog'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 
 interface UserProfile { id: string }
 
@@ -51,7 +52,7 @@ interface SummaryResponse extends ReturnReportSummary {
     generatedBy: string | null
 }
 
-const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#94a3b8', '#ef4444', '#06b6d4', '#f97316']
+const CHART_COLORS = ['#e85d04', '#141210', '#059669', '#d97706', '#64748b', '#7c3aed', '#ef4444', '#0891b2']
 
 const STATUS_BADGE: Record<string, string> = {
     return_draft: 'bg-slate-100 text-slate-700',
@@ -97,7 +98,7 @@ function KpiCard({ icon: Icon, iconClass, label, value, delta, comparisonLabel, 
     sentiment: DeltaSentiment
 }) {
     return (
-        <div className="rounded-lg border border-border bg-card p-4">
+        <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
             <div className="flex items-start gap-3">
                 <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', iconClass)}>
                     <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" />
@@ -363,17 +364,14 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
     )
 
     return (
-        <div className="w-full space-y-4">
-            {/* Header */}
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                    <h1 className="text-xl font-semibold text-foreground">Return Product Reports</h1>
-                    <p className="text-sm text-muted-foreground">
-                        {mode === 'monthly' ? 'Monthly' : 'Quarterly'} overview of return product performance and trends.
-                        <span className="ml-2 font-medium text-foreground">Period: {periodLabel(period)}</span>
-                    </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+        <div className="sera-sc-page space-y-4">
+            <SupplyChainPageHeader
+                eyebrow="Quality · Returns"
+                title="Return Product Reports"
+                description={`${mode === 'monthly' ? 'Monthly' : 'Quarterly'} overview of return product performance. Period: ${periodLabel(period)}`}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
                     <Tabs value={mode} onValueChange={(v) => { setMode(v as ReportMode); setCmpOverride(null) }}>
                         <TabsList className="h-9">
                             <TabsTrigger value="monthly" className="text-xs">Monthly</TabsTrigger>
@@ -422,14 +420,13 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                             <DropdownMenuItem onClick={() => handlePdf('download')} className="gap-2"><Download className="h-4 w-4" /> Download PDF</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button className="h-9 gap-1.5" onClick={() => setEmailOpen(true)} disabled={busy}>
+                    <Button className="h-9 gap-1.5 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white" onClick={() => setEmailOpen(true)} disabled={busy}>
                         <Mail className="h-4 w-4" /> Email Report
                     </Button>
-                </div>
             </div>
 
             {/* Filters */}
-            <div className="rounded-lg border border-border bg-card p-3">
+            <div className="rounded-lg sera-sc-panel overflow-hidden p-3">
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
                     <div className="space-y-1">
                         <div className="text-[11px] font-medium text-muted-foreground">Source Type</div>
@@ -553,7 +550,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                     {/* Charts row */}
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
                         {/* Trend */}
-                        <div className="rounded-lg border border-border bg-card p-4 xl:col-span-1">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
                             <div className="mb-2 flex items-center justify-between">
                                 <h3 className="text-sm font-semibold text-foreground">Returns Trend</h3>
                                 <span className="text-xs text-muted-foreground">{mode === 'monthly' ? `Monthly · ${year}` : 'Last 8 quarters'}</span>
@@ -577,7 +574,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                         </div>
 
                         {/* Reasons donut */}
-                        <div className="rounded-lg border border-border bg-card p-4 xl:col-span-1">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
                             <div className="mb-2 flex items-center justify-between">
                                 <h3 className="text-sm font-semibold text-foreground">Returns by Reason</h3>
                                 {data.byReason.length > 5 && (
@@ -621,7 +618,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                         </div>
 
                         {/* Sources top 5 */}
-                        <div className="rounded-lg border border-border bg-card p-4 xl:col-span-1">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden p-4 xl:col-span-1">
                             <div className="mb-2 flex items-center justify-between">
                                 <h3 className="text-sm font-semibold text-foreground">Returns by Source (Top 5)</h3>
                                 {data.bySource.length > 5 && (
@@ -658,7 +655,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                     </div>
 
                     {/* Status breakdown strip */}
-                    <div className="rounded-lg border border-border bg-card p-4">
+                    <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
                         <h3 className="mb-3 text-sm font-semibold text-foreground">Status Breakdown</h3>
                         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                             {data.byStatus.map((s) => {
@@ -681,7 +678,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                     {/* Tables row */}
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
                         {/* Warehouses */}
-                        <div className="rounded-lg border border-border bg-card">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden">
                             <div className="border-b border-border px-4 py-3">
                                 <h3 className="text-sm font-semibold text-foreground">Returns by Warehouse</h3>
                             </div>
@@ -723,7 +720,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                         </div>
 
                         {/* Products top 5 */}
-                        <div className="rounded-lg border border-border bg-card">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden">
                             <div className="border-b border-border px-4 py-3">
                                 <h3 className="text-sm font-semibold text-foreground">Returns by Product (Top 5)</h3>
                             </div>
@@ -754,7 +751,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                         </div>
 
                         {/* Recent returns */}
-                        <div className="rounded-lg border border-border bg-card">
+                        <div className="rounded-lg sera-sc-panel overflow-hidden">
                             <div className="flex items-center justify-between border-b border-border px-4 py-3">
                                 <h3 className="text-sm font-semibold text-foreground">Recent Returns</h3>
                                 <button className="text-xs font-medium text-primary hover:underline" onClick={scrollToDetail}>View all returns</button>
@@ -793,7 +790,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                     </div>
 
                     {/* Key insights */}
-                    <div className="rounded-lg border border-border bg-card p-4">
+                    <div className="rounded-lg sera-sc-panel overflow-hidden p-4">
                         <div className="mb-2 flex items-center gap-2">
                             <Lightbulb className="h-4 w-4 text-amber-500" />
                             <h3 className="text-sm font-semibold text-foreground">Key Insights</h3>
@@ -807,7 +804,7 @@ export default function ReturnReportingView({ userProfile: _userProfile, onViewC
                     </div>
 
                     {/* Detailed report */}
-                    <div ref={detailRef} className="scroll-mt-4 rounded-lg border border-border bg-card">
+                    <div ref={detailRef} className="scroll-mt-4 rounded-lg sera-sc-panel overflow-hidden">
                         <div className="flex flex-col gap-2 border-b border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
                             <div>
                                 <h3 className="text-sm font-semibold text-foreground">Detailed Report</h3>

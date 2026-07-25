@@ -260,15 +260,15 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex-1 max-w-md relative">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-md sm:flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
             placeholder="Search categories..."
@@ -282,7 +282,7 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
             setEditingCategory(null)
             setDialogOpen(true)
           }}
-          className="bg-blue-600 hover:bg-blue-700"
+          className="w-full shrink-0 bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white sm:w-auto"
         >
           <Plus className="w-4 h-4 mr-2" />
           Add Category
@@ -297,8 +297,8 @@ export default function CategoriesTab({ userProfile, onRefresh, refreshTrigger }
         onSave={handleSave}
       />
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
+      <div className="border rounded-lg overflow-x-auto">
+        <Table className="min-w-[560px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-12 text-center">#</TableHead>

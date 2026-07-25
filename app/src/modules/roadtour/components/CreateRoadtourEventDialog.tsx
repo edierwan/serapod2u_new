@@ -234,7 +234,7 @@ export function CreateRoadtourEventDialog({
             <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-lg">
-                        <MapIcon className="h-5 w-5 text-primary" />
+                        <MapIcon className="h-5 w-5 text-[var(--sera-orange)]" />
                         {isEditMode ? 'Edit RoadTour Event' : 'Create RoadTour Event'}
                     </DialogTitle>
                     <DialogDescription>
@@ -275,14 +275,14 @@ export function CreateRoadtourEventDialog({
                                             disabled={!available}
                                             aria-pressed={selected}
                                             onClick={() => setProductCategoryId(category.id)}
-                                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200'} ${available ? 'hover:border-primary/60' : 'cursor-not-allowed bg-slate-50 opacity-65'}`}
+                                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition ${selected ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06] ring-1 ring-[var(--sera-orange)]/30' : 'border-[var(--sera-line)]'} ${available ? 'hover:border-[var(--sera-orange)]/50' : 'cursor-not-allowed bg-[var(--sera-mist)] opacity-65'}`}
                                         >
                                             <SafeImage
                                                 src={category.image_url}
                                                 alt={category.category_name}
                                                 className="h-10 w-10 rounded-md object-cover"
-                                                fallbackClassName="bg-slate-100"
-                                                fallbackIconClassName="h-5 w-5 text-slate-500"
+                                                fallbackClassName="bg-[var(--sera-mist)]"
+                                                fallbackIconClassName="h-5 w-5 text-[var(--sera-muted)]"
                                             />
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate text-sm font-medium">{category.category_name}</span>
@@ -290,7 +290,7 @@ export function CreateRoadtourEventDialog({
                                                     {available ? 'Available' : 'Coming soon'}
                                                 </Badge>
                                             </span>
-                                            {selected && <Check className="h-4 w-4 text-primary" />}
+                                            {selected && <Check className="h-4 w-4 text-[var(--sera-orange)]" />}
                                         </button>
                                     )
                                 })}
@@ -350,13 +350,13 @@ export function CreateRoadtourEventDialog({
                         Recommended: <strong>One participant once per event</strong> allows multiple workers from the same shop to claim once each,
                         while preventing the same user or phone from claiming repeatedly. Use shop-level protection only when the reward is intended once per shop.
                     </p>
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                    <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4 space-y-4">
                         <div>
                             <p className="text-sm font-semibold">Participant Reward Release Rule (New Flow)</p>
                             <p className="text-xs text-muted-foreground mt-1">This event-level rule applies to all campaigns under this event.</p>
                         </div>
 
-                        <div className="flex gap-2 rounded-md border border-blue-200 bg-white/80 p-3 text-xs text-blue-800">
+                        <div className="flex gap-2 rounded-md border border-[var(--sera-orange)]/25 bg-white/80 p-3 text-xs text-[var(--sera-ink-soft)]">
                             <Info className="h-4 w-4 shrink-0 mt-0.5" />
                             <p>Campaign Reward Points remain configured inside each RoadTour campaign. This section only controls when participants receive those points.</p>
                         </div>
@@ -418,7 +418,7 @@ export function CreateRoadtourEventDialog({
                             <Switch checked disabled />
                         </div>
 
-                        <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">{previewText}</p>
+                        <p className="rounded-md border border-[var(--sera-line)] bg-white px-3 py-2 text-xs text-[var(--sera-ink-soft)]">{previewText}</p>
                     </div>
                     {isEditMode && event?.status === 'active' && (
                         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -429,7 +429,7 @@ export function CreateRoadtourEventDialog({
 
                 <DialogFooter className="pt-2">
                     <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
-                    <Button onClick={handleSave} disabled={saving}>
+                    <Button onClick={handleSave} disabled={saving} className="bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)]">
                         {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                         {isEditMode ? 'Save Changes' : 'Create Event'}
                     </Button>

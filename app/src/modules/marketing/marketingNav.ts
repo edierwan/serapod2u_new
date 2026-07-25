@@ -64,6 +64,29 @@ export function isMarketingViewId(viewId: string): boolean {
     return _allMarketingViewIds.has(viewId)
 }
 
+/** Admin URL paths for Marketing subviews under /marketing/... */
+export const marketingViewToPath: Record<string, string> = {
+    'landing-pages': 'landing-pages',
+    'journey-builder': 'journey-builder',
+    // view id "marketing" is WhatsApp Broadcast (module landing is "mktg" at /marketing)
+    'marketing': 'whatsapp',
+}
+
+export const marketingPathToView: Record<string, string> = Object.fromEntries(
+    Object.entries(marketingViewToPath).map(([view, path]) => [path, view])
+)
+
+export function marketingHrefForView(viewId: string): string | null {
+    if (viewId === 'mktg') return '/marketing'
+    const path = marketingViewToPath[viewId]
+    return path ? `/marketing/${path}` : null
+}
+
+export function resolveMarketingSlug(slug: string[]): string {
+    const path = slug.join('/')
+    return marketingPathToView[path] || marketingPathToView[slug[0] || ''] || 'mktg'
+}
+
 export function findMarketingGroupForView(viewId: string): MarketingNavGroup | undefined {
     return marketingNavGroups.find(
         (g) => g.id === viewId || g.children.some((c) => c.id === viewId)

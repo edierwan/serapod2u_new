@@ -7,6 +7,13 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
+import {
   X,
   Loader2,
   Plus,
@@ -389,21 +396,22 @@ export default function VariantDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-6xl bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900">{variant ? 'Edit Variant' : 'Add Variant'}</h2>
-          <button onClick={() => onOpenChange(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
-        </div>
+    <SeraModalOverlay onBackdropClick={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}>
+      <SeraModalPanel className="overflow-y-auto">
+        <SeraModalHeader
+          sticky
+          title={variant ? 'Edit Variant' : 'Add Variant'}
+          onClose={() => !(isSaving || isValidatingProductCode) && onOpenChange(false)}
+        />
 
-        <div className="p-6 space-y-5">
+        <SeraModalBody className="space-y-5">
           {/* Unified Variant Media */}
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-gray-500">(Up to {MAX_MEDIA} — images &amp; videos)</span></Label>
+            <Label className="text-sm font-semibold">Variant Media <span className="font-normal text-[var(--sera-muted)]">(Up to {MAX_MEDIA} — images &amp; videos)</span></Label>
             <div className="flex flex-wrap gap-3">
               {mediaItems.map((item, idx) => (
                 <div key={item.id} className="relative group">
-                  <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${item.isDefault ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-gray-200'}`}>
+                  <div className={`w-20 h-20 rounded-lg border-2 overflow-hidden ${item.isDefault ? 'border-[var(--sera-orange)] ring-2 ring-[var(--sera-orange)]/30' : 'border-[var(--sera-line)]'}`}>
                     {item.type === 'video' ? (
                       <video src={item.url} className="w-full h-full object-cover" muted loop autoPlay playsInline />
                     ) : (
@@ -413,17 +421,17 @@ export default function VariantDialog({
                   <span className={`absolute bottom-0.5 left-0.5 text-[9px] font-bold uppercase px-1 py-[1px] rounded flex items-center gap-0.5 ${item.type === 'video' ? 'bg-purple-600 text-white' : 'bg-emerald-600 text-white'}`}>
                     {item.type === 'video' ? <><Film className="w-2.5 h-2.5" /> Vid</> : <><ImageIcon className="w-2.5 h-2.5" /> Img</>}
                   </span>
-                  {item.isDefault && <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Default</div>}
+                  {item.isDefault && <div className="absolute -top-1 -right-1 bg-[var(--sera-orange)] text-white text-[10px] px-1.5 py-0.5 rounded-full">Default</div>}
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
                     {idx > 0 && <button type="button" onClick={() => handleMoveMedia(idx, -1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move left"><span className="text-[10px] font-bold">←</span></button>}
-                    {!item.isDefault && <button type="button" onClick={() => handleSetDefault(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-blue-600" title="Set as default"><Star className="w-3.5 h-3.5" /></button>}
+                    {!item.isDefault && <button type="button" onClick={() => handleSetDefault(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-[var(--sera-orange)]" title="Set as default"><Star className="w-3.5 h-3.5" /></button>}
                     <button type="button" onClick={() => handleRemoveMedia(item.id)} className="p-1.5 bg-white/90 rounded-full hover:bg-white text-red-600" title="Remove"><X className="w-3.5 h-3.5" /></button>
                     {idx < mediaItems.length - 1 && <button type="button" onClick={() => handleMoveMedia(idx, 1)} className="p-1 bg-white/90 rounded-full hover:bg-white text-gray-700" title="Move right"><span className="text-[10px] font-bold">→</span></button>}
                   </div>
                 </div>
               ))}
               {mediaItems.length < MAX_MEDIA && (
-                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50/50 transition-colors flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-blue-500">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-[var(--sera-line)] hover:border-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.06] transition-colors flex flex-col items-center justify-center gap-1 text-[var(--sera-muted)] hover:text-[var(--sera-orange)]">
                   <Plus className="w-5 h-5" /><span className="text-[10px]">Add</span>
                 </button>
               )}
@@ -524,7 +532,7 @@ export default function VariantDialog({
           ) : null}
 
           {isNewCelleraVariant ? (
-            <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50/40 p-4">
+            <div className="space-y-2 rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4">
               <Label className="text-sm font-semibold">Stock Configuration Setup Profile</Label>
               <p className="text-xs text-slate-600">Choose how this Cellera flavour's inventory stock configurations are set up once created.</p>
               <RadioGroup value={configurationProfile} onValueChange={(value) => setConfigurationProfile(value as 'new_standard' | 'transition')} className="space-y-2">
@@ -577,15 +585,15 @@ export default function VariantDialog({
             <Checkbox id="is_active" checked={formData.is_active !== false} onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: Boolean(checked) }))} />
             <Label htmlFor="is_active" className="font-normal cursor-pointer">Active</Label>
           </div>
-        </div>
+        </SeraModalBody>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+        <SeraModalFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving || isValidatingProductCode}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isSaving || isValidatingProductCode} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={handleSubmit} disabled={isSaving || isValidatingProductCode} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)] text-white">
             {isSaving || isValidatingProductCode ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{isSaving ? 'Saving...' : 'Validating...'}</> : 'Save'}
           </Button>
-        </div>
-      </div>
-    </div>
+        </SeraModalFooter>
+      </SeraModalPanel>
+    </SeraModalOverlay>
   )
 }

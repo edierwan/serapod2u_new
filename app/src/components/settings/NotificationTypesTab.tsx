@@ -29,6 +29,7 @@ import {
   UserCheck,
   XCircle,
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 
 type Channel = 'whatsapp' | 'email' | 'sms'
 type RoutingPreset = 'whatsapp_only' | 'email_only' | 'sms_only' | 'whatsapp_email_fallback'
@@ -160,7 +161,7 @@ function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; 
 
 function CategoryIcon({ category }: { category: string }) {
   const classes = 'h-5 w-5'
-  if (category === 'order') return <ShoppingCart className={`${classes} text-blue-600`} />
+  if (category === 'order') return <ShoppingCart className={`${classes} text-[var(--sera-orange)]`} />
   if (category === 'document') return <FileText className={`${classes} text-violet-600`} />
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
@@ -334,7 +335,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
   }
 
   if (loading) {
-    return <div className="flex min-h-[420px] items-center justify-center rounded-2xl border bg-white"><Loader2 className="h-7 w-7 animate-spin text-violet-600" /><span className="ml-3 text-slate-600">Loading notification routing…</span></div>
+    return <SeraLoadingState variant="section" minHeight="420px" label="Loading notification routing" className="rounded-2xl border bg-white" />
   }
 
   const selectedPreset = PRESETS.find((preset) => preset.id === defaultPreset)!

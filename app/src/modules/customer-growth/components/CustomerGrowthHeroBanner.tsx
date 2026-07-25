@@ -1,18 +1,20 @@
 'use client'
 
-import ModuleBanner from '@/components/ui/ModuleBanner'
+import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 
 interface CustomerGrowthHeroBannerProps {
     userName: string | null
     bannerImageUrl?: string | null
 }
 
-export default function CustomerGrowthHeroBanner({ userName, bannerImageUrl }: CustomerGrowthHeroBannerProps) {
+export default function CustomerGrowthHeroBanner({ userName }: CustomerGrowthHeroBannerProps) {
+    const firstName = userName?.trim().split(/\s+/)[0]
+
     return (
-        <ModuleBanner
-            module="customer"
-            userName={userName}
-            bannerImageUrl={bannerImageUrl}
+        <ModuleLightHeader
+            eyebrow="Customer & Growth"
+            title={firstName ? `Welcome, ${firstName}` : 'Growth hub'}
+            description="Manage customer engagement, marketing campaigns, loyalty programs, and product catalog."
         />
     )
 }

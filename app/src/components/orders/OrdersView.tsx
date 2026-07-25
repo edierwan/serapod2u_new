@@ -38,6 +38,14 @@ import {
   ChevronRight
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
+import {
+  SeraModalOverlay,
+  SeraModalPanel,
+  SeraModalHeader,
+  SeraModalBody,
+  SeraModalFooter,
+} from '@/components/ui/sera-modal'
 
 interface UserProfile {
   id: string
@@ -765,7 +773,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             <Button
               variant="outline"
               size="sm"
-              className="bg-white text-black hover:bg-gray-100"
+              className="bg-white text-black hover:bg-[var(--sera-ink)]/[0.04]"
               onClick={() => {
                 if (onViewChange) onViewChange('my-profile')
               }}
@@ -1059,12 +1067,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
   const getStatusColor = (status: OrderStatus) => {
     const colors = {
-      draft: 'bg-gray-100 text-gray-800',
-      submitted: 'bg-blue-100 text-blue-800',
-      approved: 'bg-green-100 text-green-800',
-      closed: 'bg-purple-100 text-purple-800',
+      draft: 'sera-sc-badge sera-sc-badge--ink',
+      submitted: 'sera-sc-badge sera-sc-badge--info',
+      approved: 'sera-sc-badge sera-sc-badge--success',
+      closed: 'sera-sc-badge sera-sc-badge--ink',
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'sera-sc-badge sera-sc-badge--ink'
   }
 
   const getStatusIcon = (status: OrderStatus) => {
@@ -1157,89 +1165,75 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading orders...</p>
+          <div className="w-8 h-8 border-2 border-[var(--sera-orange)]/25 border-t-[var(--sera-orange)] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-[var(--sera-muted)]">Loading orders...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6 text-sm">
+    <div className="sera-sc-page sera-page-enter text-sm">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900">Orders</h2>
-          <p className="text-xs text-gray-600 mt-1">Manage and track all your orders</p>
-        </div>
-        {/* Hide Create Order button for Manufacturer (MANU/MFG) organizations or if user doesn't have permission */}
-        {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
-          <Button className="gap-2" onClick={handleCreateOrder}>
-            <Plus className="w-4 h-4" />
-            Create Order
-          </Button>
-        )}
-      </div>
+      <SupplyChainPageHeader
+        title="Orders"
+        description="Manage and track all your orders"
+        actions={
+          !['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders ? (
+            <Button
+              className="gap-2 bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+              onClick={handleCreateOrder}
+            >
+              <Plus className="w-4 h-4" />
+              Create Order
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Total Orders</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.total_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Total Orders</p>
+            <p className="sera-sc-kpi__value">{summary.total_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Submitted</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.submitted_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Submitted</p>
+            <p className="sera-sc-kpi__value">{summary.submitted_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Approved</p>
-                <p className="text-3xl font-bold text-gray-900">{summary.approved_orders}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Approved</p>
+            <p className="sera-sc-kpi__value">{summary.approved_orders}</p>
+          </div>
 
-          <Card className="border-t-4 border-t-[#1F4E55] shadow-sm">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm text-muted-foreground font-medium">Total Amount</p>
-                <p className="text-3xl font-bold text-gray-900 truncate">
-                  RM {summary.total_amount.toLocaleString('en-MY', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="sera-sc-kpi">
+            <p className="sera-sc-kpi__label">Total Amount</p>
+            <p className="sera-sc-kpi__value truncate text-[1.35rem] sm:text-[1.75rem]">
+              RM {summary.total_amount.toLocaleString('en-MY', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </p>
+          </div>
         </div>
       )}
 
       {/* Filters and View Toggle */}
-      <Card>
-        <CardContent className="pt-6 space-y-4">
+      <Card className="sera-sc-panel shadow-none">
+        <CardContent className="p-4 sm:pt-6 space-y-4">
           {/* Filter Row */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Order Type Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Order Type</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Order Type</label>
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value as OrderType | 'all')}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="all">All Types</option>
                   {canCreateH2M ? <option value="H2M">H2M (HQ → Manufacturer)</option> : null}
@@ -1252,11 +1246,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             {/* Manufacturer/Seller Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Seller/Manufacturer</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Seller/Manufacturer</label>
                 <select
                   value={sellerFilter}
                   onChange={(e) => setSellerFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="">All Sellers</option>
                   {uniqueSellers.map(seller => (
@@ -1271,11 +1265,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             {/* Status Filter - Hidden for Manufacturers */}
             {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && (
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
+                <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as OrderStatus | 'all')}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  className="sera-sc-select"
                 >
                   <option value="all">All Status</option>
                   <option value="draft">Draft</option>
@@ -1288,12 +1282,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
             {/* View Mode Toggle */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">View Mode</label>
-              <div className="flex border border-gray-300 rounded-md overflow-hidden">
+              <label className="block text-xs font-medium text-[var(--sera-ink-soft)] mb-2">View Mode</label>
+              <div className="sera-sc-toggle">
                 <Button
                   variant={viewMode === 'cards' ? 'default' : 'ghost'}
                   size="sm"
-                  className={`flex-1 rounded-none ${viewMode === 'cards' ? 'bg-blue-600' : ''}`}
+                  className={`sera-sc-toggle__btn ${viewMode === 'cards' ? 'is-active' : ''}`}
                   onClick={() => setViewMode('cards')}
                 >
                   <Grid3x3 className="w-4 h-4 mr-2" />
@@ -1302,7 +1296,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <Button
                   variant={viewMode === 'list' ? 'default' : 'ghost'}
                   size="sm"
-                  className={`flex-1 rounded-none ${viewMode === 'list' ? 'bg-blue-600' : ''}`}
+                  className={`sera-sc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`}
                   onClick={() => setViewMode('list')}
                 >
                   <List className="w-4 h-4 mr-2" />
@@ -1314,12 +1308,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
           {/* Search Box */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
             <Input
               placeholder="Search orders by order number or notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 border-[var(--sera-line)] focus-visible:ring-[var(--sera-orange)]/30"
             />
           </div>
         </CardContent>
@@ -1328,19 +1322,19 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       {/* Orders List - Card Layout */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
+          <h2 className="text-base font-semibold text-[var(--sera-ink)]">Recent Orders</h2>
           {filteredOrders.length > 0 && (
-            <span className="text-sm text-gray-500">{filteredOrders.length} orders found</span>
+            <span className="text-sm text-[var(--sera-muted)]">{filteredOrders.length} orders found</span>
           )}
         </div>
 
         {filteredOrders.length === 0 ? (
-          <Card>
+          <Card className="sera-sc-panel shadow-none">
             <CardContent className="py-12">
               <div className="text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No orders found</h3>
-                <p className="text-gray-600 mb-4">
+                <FileText className="w-12 h-12 text-[var(--sera-muted)] mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No orders found</h3>
+                <p className="text-[var(--sera-muted)] mb-4">
                   {searchQuery || statusFilter !== 'all'
                     ? 'Try adjusting your filters'
                     : ['MANU', 'MFG'].includes(userProfile.organizations.org_type_code)
@@ -1349,7 +1343,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 </p>
                 {/* Hide Create Order button for Manufacturer organizations or if user doesn't have permission */}
                 {!['MANU', 'MFG'].includes(userProfile.organizations.org_type_code) && canCreateOrders && (
-                  <Button className="gap-2" onClick={handleCreateOrder}>
+                  <Button
+                    className="gap-2 bg-[var(--sera-ink)] text-white hover:bg-[var(--sera-ink-soft)]"
+                    onClick={handleCreateOrder}
+                  >
                     <Plus className="w-4 h-4" />
                     Create Order
                   </Button>
@@ -1359,14 +1356,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           </Card>
         ) : viewMode === 'list' ? (
           /* LIST VIEW - Table Format */
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
+          <div className="sera-sc-panel overflow-hidden">
+              <div className="overflow-x-auto sera-sc-table-scroll">
+                <table className="sera-sc-table min-w-[900px]">
+                  <thead>
                     <tr>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('created_at')}
                       >
                         <div className="flex items-center gap-1">
@@ -1375,7 +1371,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('order_no')}
                       >
                         <div className="flex items-center gap-1">
@@ -1384,7 +1380,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('seller')}
                       >
                         <div className="flex items-center gap-1">
@@ -1393,7 +1389,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-right"
                         onClick={() => handleSort('total')}
                       >
                         <div className="flex items-center justify-end gap-1">
@@ -1402,7 +1398,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-right"
                         onClick={() => handleSort('balance')}
                       >
                         <div className="flex items-center justify-end gap-1">
@@ -1411,7 +1407,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </div>
                       </th>
                       <th
-                        className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable text-center"
                         onClick={() => handleSort('status')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -1419,9 +1415,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">Due</th>
+                      <th className="text-center">Due</th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('created_by')}
                       >
                         <div className="flex items-center gap-1">
@@ -1429,10 +1425,10 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody>
                     {paginatedOrders.map((order) => {
                       const totalAmount = calculateOrderTotal(order)
                       const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
@@ -1440,9 +1436,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       const balance = Math.max(0, totalAmount - paidAmount)
 
                       return (
-                        <tr key={order.id} className="hover:bg-gray-50 transition-colors">
-                          {/* Date Created */}
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-900">
+                        <tr key={order.id}>
+                          <td className="whitespace-nowrap">
                             {new Date(order.created_at).toLocaleDateString('en-MY', {
                               day: '2-digit',
                               month: '2-digit',
@@ -1450,10 +1445,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             })}
                           </td>
 
-                          {/* Order Number */}
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="whitespace-nowrap">
                             <button
-                              className="text-xs font-medium text-gray-900 hover:underline"
+                              className="font-medium text-[var(--sera-ink)] hover:text-[var(--sera-orange)] hover:underline"
                               onClick={() => handleViewOrderDetails(order.id)}
                               title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                             >
@@ -1461,25 +1455,21 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             </button>
                           </td>
 
-                          {/* Seller Name */}
-                          <td className="px-4 py-3 text-xs text-gray-900">
+                          <td>
                             <div className="max-w-[200px] truncate" title={getDisplayOrgName(order)}>
                               {getDisplayOrgName(order)}
                             </div>
                           </td>
 
-                          {/* Total Amount */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-xs font-medium text-gray-900">
+                          <td className="text-right font-medium">
                             {formatCurrency(totalAmount)}
                           </td>
 
-                          {/* Balance */}
-                          <td className={`px-4 py-3 whitespace-nowrap text-right text-xs font-medium ${balance > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                          <td className={`text-right font-medium ${balance > 0 ? 'text-red-600' : ''}`}>
                             {formatCurrency(balance)}
                           </td>
 
-                          {/* Status */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <td className="text-center">
                             {order.status === 'approved' && (order as any).po_acknowledged ? (
                               (() => {
                                 const totalAmount = calculateOrderTotal(order)
@@ -1487,45 +1477,40 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                                 if (paidAmount >= totalAmount && totalAmount > 0) {
                                   return (
-                                    <Badge className="bg-green-100 text-green-800">
-                                      <span className="text-[11px] capitalize">Paid</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--success">
+                                      <span className="capitalize">Paid</span>
                                     </Badge>
                                   )
                                 } else if (paidAmount > 0) {
                                   return (
-                                    <Badge className="bg-orange-100 text-orange-800">
-                                      <span className="text-[11px] capitalize">Partial</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--orange">
+                                      <span className="capitalize">Partial</span>
                                     </Badge>
                                   )
                                 } else {
                                   return (
-                                    <Badge className="bg-red-100 text-red-800">
-                                      <span className="text-[11px] capitalize">Unpaid</span>
+                                    <Badge className="sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700">
+                                      <span className="capitalize">Unpaid</span>
                                     </Badge>
                                   )
                                 }
                               })()
                             ) : (
                               <Badge className={getStatusColor(order.status)}>
-                                <span className="text-[11px] capitalize">{order.status}</span>
+                                <span className="capitalize">{order.status}</span>
                               </Badge>
                             )}
                           </td>
 
-                          {/* Due Date (empty for now) */}
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs text-gray-900">
-                            -
-                          </td>
+                          <td className="text-center">-</td>
 
-                          {/* Created By */}
-                          <td className="px-4 py-3 text-xs text-gray-900">
+                          <td>
                             <div className="max-w-[120px] truncate" title={order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}>
                               {order.created_by_user?.full_name || order.created_by_user?.email || 'Unknown'}
                             </div>
                           </td>
 
-                          {/* Actions */}
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <td className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               {canEditOrder(order) && (
                                 <Button
@@ -1542,7 +1527,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="h-7 gap-1 text-xs px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                  className="h-7 gap-1 text-xs px-2 border-[var(--sera-line)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/8"
                                   onClick={() => handleCopyOrder(order.id, order.order_no)}
                                   title="Copy Order"
                                 >
@@ -1553,7 +1538,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                                 <Button
                                   variant="default"
                                   size="sm"
-                                  className="h-7 gap-1 text-xs px-2 bg-green-600 hover:bg-green-700 text-white"
+                                  className="h-7 gap-1 text-xs px-2 sera-sc-btn-primary"
                                   onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                                   title="Approve Order"
                                 >
@@ -1602,9 +1587,9 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
               {/* Pagination Controls */}
               {sortedOrders.length > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
+                <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--sera-line)] bg-[var(--sera-mist)]/40">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-700">
+                    <span className="text-xs text-[var(--sera-muted)]">
                       Showing {startIndex + 1} to {Math.min(endIndex, sortedOrders.length)} of {sortedOrders.length} orders
                     </span>
                   </div>
@@ -1616,7 +1601,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         setItemsPerPage(Number(e.target.value))
                         setCurrentPage(1)
                       }}
-                      className="px-2 py-1 text-xs border border-gray-300 rounded-md"
+                      className="px-2 py-1 text-xs border border-[var(--sera-line)] rounded-md bg-white"
                     >
                       <option value={10}>10 per page</option>
                       <option value={25}>25 per page</option>
@@ -1633,7 +1618,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
 
-                    <span className="text-xs text-gray-700">
+                    <span className="text-xs text-[var(--sera-ink)]/80">
                       Page {currentPage} of {totalPages}
                     </span>
 
@@ -1648,37 +1633,32 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         ) : (
           /* CARD VIEW */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="sera-module-landing__grid">
             {filteredOrders.map((order) => {
               const totalAmount = calculateOrderTotal(order)
               const itemCount = order.order_items?.length || 0
               const totalUnits = order.order_items?.reduce((sum, item) => sum + item.qty, 0) || 0
 
               return (
-                <Card key={order.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-                  <CardContent className="p-5">
-                    {/* Header with Order Number and Status */}
+                <div key={order.id} className="sera-module-landing__card cursor-pointer">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div
-                          className="font-bold text-blue-600 text-lg mb-1 cursor-pointer hover:underline"
+                      <div className="flex-1 min-w-0">
+                        <button
+                          type="button"
+                          className="font-display font-semibold text-lg mb-1 text-[var(--sera-ink)] hover:text-[var(--sera-orange)] hover:underline text-left"
                           onClick={() => handleViewOrderDetails(order.id)}
                           title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                         >
                           {order.display_doc_no || order.order_no}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                          >
+                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-xs sera-sc-badge sera-sc-badge--info border-[var(--sera-line)]">
                             {order.order_type}
                           </Badge>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-[var(--sera-muted)]">
                             {getOrderTypeLabel(order.order_type)}
                           </span>
                         </div>
@@ -1690,7 +1670,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
                           if (paidAmount >= totalAmount && totalAmount > 0) {
                             return (
-                              <Badge className="bg-green-100 text-green-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--success">
                                 <div className="flex items-center gap-1">
                                   <CheckCircle className="w-3 h-3" />
                                   <span className="text-xs font-medium">Paid</span>
@@ -1699,7 +1679,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             )
                           } else if (paidAmount > 0) {
                             return (
-                              <Badge className="bg-orange-100 text-orange-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--orange">
                                 <div className="flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
                                   <span className="text-xs font-medium">Partial</span>
@@ -1708,7 +1688,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                             )
                           } else {
                             return (
-                              <Badge className="bg-red-100 text-red-800">
+                              <Badge className="sera-sc-badge sera-sc-badge--ink bg-red-50 text-red-700">
                                 <div className="flex items-center gap-1">
                                   <AlertCircle className="w-3 h-3" />
                                   <span className="text-xs font-medium">Unpaid</span>
@@ -1727,85 +1707,76 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                       )}
                     </div>
 
-                    {/* Organization Details */}
-                    <div className="space-y-2 mb-4 border-t border-b border-gray-100 py-3">
-                      {/* Customer/Buyer */}
+                    <div className="space-y-2 mb-4 border-t border-b border-[var(--sera-line)] py-3">
                       <div className="flex items-start gap-2">
-                        <ShoppingCart className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <ShoppingCart className="w-4 h-4 text-[var(--sera-orange)] mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-gray-500">Customer</div>
-                          <div className="text-sm font-medium text-gray-900 truncate">
+                          <div className="text-xs text-[var(--sera-muted)]">Customer</div>
+                          <div className="text-sm font-medium text-[var(--sera-ink)] truncate">
                             {order.buyer_org?.org_name || 'Unknown'}
                           </div>
                         </div>
                       </div>
 
-                      {/* Seller */}
                       <div className="flex items-start gap-2">
-                        <Store className="w-4 h-4 text-green-500 mt-0.5" />
+                        <Store className="w-4 h-4 text-[var(--sera-orange)] mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-gray-500">Seller</div>
-                          <div className="text-sm font-medium text-gray-900 truncate" title={getDisplayOrgName(order)}>
+                          <div className="text-xs text-[var(--sera-muted)]">Seller</div>
+                          <div className="text-sm font-medium text-[var(--sera-ink)] truncate" title={getDisplayOrgName(order)}>
                             {shortenOrgName(getDisplayOrgName(order))}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Order Stats */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
-                      <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-gray-500 mb-1">Items</div>
-                        <div className="text-lg font-bold text-gray-900">{formatNumber(itemCount)}</div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Items</div>
+                        <div className="sera-sc-kpi__value !text-lg">{formatNumber(itemCount)}</div>
                       </div>
-                      <div className="bg-gray-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-gray-500 mb-1">Units</div>
-                        <div className="text-lg font-bold text-gray-900">{formatNumber(totalUnits)}</div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Units</div>
+                        <div className="sera-sc-kpi__value !text-lg">{formatNumber(totalUnits)}</div>
                       </div>
-                      <div className="bg-blue-50 rounded-lg p-2 text-center">
-                        <div className="text-xs text-blue-600 mb-1">Amount</div>
-                        <div className="text-sm font-bold text-blue-700">
-                          {formatCurrency(totalAmount)}
-                        </div>
+                      <div className="sera-sc-kpi text-center !p-2">
+                        <div className="sera-sc-kpi__label !text-[10px]">Amount</div>
+                        <div className="sera-sc-kpi__value !text-sm">{formatCurrency(totalAmount)}</div>
                       </div>
                     </div>
 
-                    {/* Date */}
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 text-xs text-[var(--sera-muted)]">
                         <Calendar className="w-3 h-3" />
                         <span>Created {new Date(order.created_at).toLocaleDateString('en-MY')}</span>
                       </div>
                     </div>
 
-                    {/* Creator and Approver Info */}
-                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                    <div className="space-y-1.5 pt-2 border-t border-[var(--sera-line)]">
                       {order.created_by_user && (
                         <div className="flex items-center gap-2 text-xs">
-                          <User className="w-3 h-3 text-gray-400" />
-                          <span className="text-gray-500">Created by:</span>
-                          <span className="font-medium text-gray-700">
+                          <User className="w-3 h-3 text-[var(--sera-muted)]" />
+                          <span className="text-[var(--sera-muted)]">Created by:</span>
+                          <span className="font-medium text-[var(--sera-ink)]">
                             {order.created_by_user.full_name || order.created_by_user.email}
                           </span>
                         </div>
                       )}
                       {order.status === 'approved' && order.approved_by_user && (
                         <div className="flex items-center gap-2 text-xs">
-                          <CheckCircle className="w-3 h-3 text-green-500" />
-                          <span className="text-gray-500">Approved by:</span>
-                          <span className="font-medium text-green-700">
+                          <CheckCircle className="w-3 h-3 text-[var(--sera-orange)]" />
+                          <span className="text-[var(--sera-muted)]">Approved by:</span>
+                          <span className="font-medium text-[var(--sera-ink)]">
                             {order.approved_by_user.full_name || order.approved_by_user.email}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[var(--sera-line)]">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1 text-xs h-7 px-2"
+                        className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)]"
                         title="View Details"
                         onClick={() => handleViewOrderDetails(order.id)}
                       >
@@ -1816,7 +1787,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2"
+                          className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)]"
                           title="Edit Order"
                           onClick={() => handleEditOrder(order.id)}
                         >
@@ -1828,7 +1799,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                          className="flex-1 gap-1 text-xs h-7 px-2 border-[var(--sera-line)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/8"
                           title="Copy Order"
                           onClick={() => handleCopyOrder(order.id, order.order_no)}
                         >
@@ -1840,7 +1811,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <Button
                           variant="default"
                           size="sm"
-                          className="flex-1 gap-1 text-xs h-7 px-2 bg-green-600 hover:bg-green-700 text-white"
+                          className="flex-1 gap-1 text-xs h-7 px-2 sera-sc-btn-primary"
                           onClick={() => handleApproveOrder(order.id, order.order_no, order.display_doc_no)}
                           title="Approve Order"
                         >
@@ -1871,8 +1842,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         </Button>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
+                </div>
               )
             })}
           </div>
@@ -1881,24 +1851,27 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
       {/* Order Type Selection Dialog */}
       {showOrderTypeDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Select Order Type</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Choose the type of order you want to create:
-            </p>
+        <SeraModalOverlay onBackdropClick={() => setShowOrderTypeDialog(false)}>
+          <SeraModalPanel>
+            <SeraModalHeader
+              title="Select Order Type"
+              onClose={() => setShowOrderTypeDialog(false)}
+            />
+            <SeraModalBody className="space-y-3">
+              <p className="text-sm text-[var(--sera-muted)] -mt-1 mb-2">
+                Choose the type of order you want to create:
+              </p>
 
-            <div className="space-y-3">
               {canCreateH2M ? (
                 <button
                   onClick={() => handleOrderTypeSelection('regular')}
-                  className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+                  className="w-full p-4 border-2 border-[var(--sera-line)] rounded-lg hover:border-gray-400 hover:bg-[var(--sera-ink)]/[0.02] transition-colors text-left"
                 >
                   <div className="flex items-start gap-3">
-                    <Store className="w-5 h-5 text-gray-600 mt-0.5" />
+                    <Store className="w-5 h-5 text-[var(--sera-muted)] mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-gray-900">HQ Order to Manufacture (H2M)</h4>
-                      <p className="text-sm text-gray-600 mt-1">Create an order from Headquarters to a manufacturer.</p>
+                      <h4 className="font-semibold text-[var(--sera-ink)]">HQ Order to Manufacture (H2M)</h4>
+                      <p className="text-sm text-[var(--sera-muted)] mt-1">Create an order from Headquarters to a manufacturer.</p>
                     </div>
                   </div>
                 </button>
@@ -1906,13 +1879,13 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
 
               <button
                 onClick={() => handleOrderTypeSelection('d2h')}
-                className="w-full p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
+                className="w-full p-4 border-2 border-[var(--sera-orange)]/20 rounded-lg hover:border-[var(--sera-orange)]/45 hover:bg-[var(--sera-orange)]/[0.06] transition-colors text-left"
               >
                 <div className="flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-blue-600 mt-0.5" />
+                  <Building2 className="w-5 h-5 text-[var(--sera-orange)] mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-gray-900">Order to HQ (D2H)</h4>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <h4 className="font-semibold text-[var(--sera-ink)]">Order to HQ (D2H)</h4>
+                    <p className="text-sm text-[var(--sera-muted)] mt-1">
                       Order products from headquarters using distributor pricing (only products with available stock)
                     </p>
                   </div>
@@ -1926,25 +1899,24 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                 <div className="flex items-start gap-3">
                   <ShoppingCart className="w-5 h-5 text-green-600 mt-0.5" />
                   <div>
-                    <h4 className="font-semibold text-gray-900">Shop Order (S2D)</h4>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <h4 className="font-semibold text-[var(--sera-ink)]">Shop Order (S2D)</h4>
+                    <p className="text-sm text-[var(--sera-muted)] mt-1">
                       Create order for Shop from Distributor using retailer pricing (deducts from Distributor inventory)
                     </p>
                   </div>
                 </div>
               </button>
-            </div>
-
-            <div className="mt-6 flex justify-end">
+            </SeraModalBody>
+            <SeraModalFooter>
               <Button
                 variant="ghost"
                 onClick={() => setShowOrderTypeDialog(false)}
               >
                 Cancel
               </Button>
-            </div>
-          </div>
-        </div>
+            </SeraModalFooter>
+          </SeraModalPanel>
+        </SeraModalOverlay>
       )}
     </div>
   )

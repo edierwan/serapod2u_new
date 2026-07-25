@@ -14,6 +14,7 @@ import { getRoadtourShopSurveyField, ROADTOUR_SHOP_SURVEY_FIELDS } from '@/lib/r
 import {
     ArrowDown, ArrowUp, ClipboardList, Edit, GripVertical, Loader2, Plus, Save, Trash2
 } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 
 interface RoadtourSurveyBuilderViewProps {
@@ -420,12 +421,12 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         return <input disabled type={field.field_type === 'number' ? 'number' : field.field_type === 'phone' ? 'tel' : 'text'} placeholder="Preview answer" className="w-full rounded-xl border bg-muted/30 px-3 py-2 text-sm" />
     }
 
-    if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+    if (loading) return <SeraLoadingState variant="page" />
 
     // Field builder view
     if (editingTemplate) {
         return (
-            <div className="space-y-6">
+            <div className="sera-sc-page space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <div className="flex items-center gap-2">
@@ -621,7 +622,8 @@ export function RoadtourSurveyBuilderView({ userProfile, onViewChange }: Roadtou
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h3 className="text-xl font-semibold flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" />Survey Templates</h3>
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-xl font-semibold tracking-tight text-[var(--sera-ink)]"><ClipboardList className="h-5 w-5 text-[var(--sera-orange)]" />Survey Templates</h3>
                     <p className="text-sm text-muted-foreground mt-1">Create and manage survey templates for RoadTour campaigns.</p>
                 </div>
                 <Button onClick={openCreateTemplate} className="gap-2"><Plus className="h-4 w-4" />Create Template</Button>

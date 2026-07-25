@@ -8,6 +8,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import {
   KKM_CERTIFICATE_BUCKET,
+  kkmCertificateAccessUrl,
+  normalizeKkmCertificateStoragePath,
   uploadKkmCertificate,
   validateKkmCertificate,
 } from '@/lib/products/kkm-certificate'
@@ -92,40 +94,48 @@ export default function KkmApprovalCertificate({ variantId, canManage, pendingFi
     }
   }
 
-  const getSignedUrl = async () => {
+  const fetchCertificate = async (download = false) => {
     if (!certificate) return null
-    const { data, error } = await supabase.storage.from(KKM_CERTIFICATE_BUCKET).createSignedUrl(certificate.storage_path, 60)
-    if (error) throw error
-    return data.signedUrl
+    const response = await fetch(kkmCertificateAccessUrl(certificate.product_variant_id, download), {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      throw new Error(payload?.error || 'Certificate file is unavailable.')
+    }
+    return response.blob()
   }
 
   const handleView = async () => {
     try {
-      const signedUrl = await getSignedUrl()
-      if (!signedUrl) return
+      const file = await fetchCertificate()
+      if (!file) throw new Error('Certificate is not attached.')
+      const objectUrl = URL.createObjectURL(file)
       const anchor = document.createElement('a')
-      anchor.href = signedUrl
+      anchor.href = objectUrl
       anchor.target = '_blank'
       anchor.rel = 'noopener noreferrer'
       anchor.click()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
     } catch (error: any) {
-      toast({ title: 'Unable to view certificate', description: error?.message, variant: 'destructive' })
+      toast({ title: 'Unable to view certificate', description: error?.message || 'Please try again.', variant: 'destructive' })
     }
   }
 
   const handleDownload = async () => {
     if (!certificate) return
     try {
-      const { data, error } = await supabase.storage.from(KKM_CERTIFICATE_BUCKET).download(certificate.storage_path)
-      if (error) throw error
-      const url = URL.createObjectURL(data)
+      const file = await fetchCertificate(true)
+      if (!file) throw new Error('Certificate is not attached.')
+      const url = URL.createObjectURL(file)
       const anchor = document.createElement('a')
       anchor.href = url
       anchor.download = certificate.file_name
       anchor.click()
-      URL.revokeObjectURL(url)
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
     } catch (error: any) {
-      toast({ title: 'Unable to download certificate', description: error?.message, variant: 'destructive' })
+      toast({ title: 'Unable to download certificate', description: error?.message || 'Please try again.', variant: 'destructive' })
     }
   }
 
@@ -141,7 +151,10 @@ export default function KkmApprovalCertificate({ variantId, canManage, pendingFi
       if (metadataError) throw metadataError
 
       setCertificate(null)
-      const { error: storageError } = await supabase.storage.from(KKM_CERTIFICATE_BUCKET).remove([removing.storage_path])
+      const storagePath = normalizeKkmCertificateStoragePath(removing.storage_path, removing.product_variant_id)
+      const { error: storageError } = storagePath
+        ? await supabase.storage.from(KKM_CERTIFICATE_BUCKET).remove([storagePath])
+        : { error: null }
       if (storageError) console.error('Failed to clean up removed KKM certificate:', storageError)
       toast({ title: 'Certificate removed' })
     } catch (error: any) {

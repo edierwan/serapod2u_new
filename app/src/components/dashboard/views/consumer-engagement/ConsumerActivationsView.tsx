@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ScanIssuesTab from '@/components/dashboard/views/consumer-engagement/ScanIssuesTab'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Dialog,
   DialogContent,
@@ -651,20 +652,18 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
   }, [activeTab])
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Consumer Activity</h1>
-            <p className="text-gray-600 mt-1">Track consumer QR code scans and engagement</p>
-          </div>
-
+    <div className="sera-sc-page sera-page-enter">
+      <SupplyChainPageHeader
+        eyebrow="Customer & Growth"
+        title="Consumer Activity"
+        description="Track consumer QR code scans and engagement"
+        actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <div className="w-full sm:w-48">
               <Select value={selectedActivityType} onValueChange={setSelectedActivityType}>
-                <SelectTrigger>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
                   <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-500" />
+                    <Filter className="w-4 h-4 text-[var(--sera-muted)]" />
                     <SelectValue placeholder="Activity Type" />
                   </div>
                 </SelectTrigger>
@@ -678,9 +677,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
             </div>
             <div className="w-full sm:w-64">
               <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
-                <SelectTrigger>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
                   <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-500" />
+                    <Filter className="w-4 h-4 text-[var(--sera-muted)]" />
                     <SelectValue placeholder="Filter by Order" />
                   </div>
                 </SelectTrigger>
@@ -695,127 +694,99 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               </Select>
             </div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Statistics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Total Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total_scans.toLocaleString()}</p>
-              </div>
-              <Scan className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Total Scans</p>
+          <p className="sera-sc-kpi__value">{stats.total_scans.toLocaleString()}</p>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Unique Consumers</p>
-                <button
-                  onClick={loadUniqueConsumersList}
-                  disabled={loadingUniqueConsumers}
-                  className="text-xl sm:text-2xl font-bold text-green-600 hover:text-green-800 underline decoration-dotted underline-offset-4 cursor-pointer transition-colors disabled:opacity-50"
-                  title="Click to view unique consumers list"
-                >
-                  {loadingUniqueConsumers ? '...' : stats.unique_consumers.toLocaleString()}
-                </button>
-              </div>
-              <Users className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Unique Consumers</p>
+          <button
+            type="button"
+            onClick={loadUniqueConsumersList}
+            disabled={loadingUniqueConsumers}
+            className="sera-sc-kpi__value text-left text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] underline decoration-dotted underline-offset-4 disabled:opacity-50"
+            title="Click to view unique consumers list"
+          >
+            {loadingUniqueConsumers ? '...' : stats.unique_consumers.toLocaleString()}
+          </button>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Points Distributed</p>
-                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.total_points.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-1">Est. Cost: RM {stats.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Points Distributed</p>
+          <p className="sera-sc-kpi__value">{stats.total_points.toLocaleString()}</p>
+          <p className="text-xs text-[var(--sera-muted)] mt-1">Est. Cost: RM {stats.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 sm:pt-6 px-3 sm:px-6 pb-3 sm:pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div className="mb-2 sm:mb-0">
-                <p className="text-xs sm:text-sm text-gray-600">Today&apos;s Scans</p>
-                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.today_scans.toLocaleString()}</p>
-              </div>
-              <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-orange-600" />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="sera-sc-kpi">
+          <p className="sera-sc-kpi__label">Today&apos;s Scans</p>
+          <p className="sera-sc-kpi__value">{stats.today_scans.toLocaleString()}</p>
+        </div>
       </div>
 
       {/* Tabs for Activations and Feedback */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="activations">Recent Activations</TabsTrigger>
-          <TabsTrigger value="feedback" className="flex items-center gap-2">
+        <TabsList className="h-auto w-full flex flex-wrap justify-start gap-1 bg-[var(--sera-mist)] border border-[var(--sera-line)] p-1.5 rounded-xl mb-4">
+          <TabsTrigger value="activations" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30">Recent Activations</TabsTrigger>
+          <TabsTrigger value="feedback" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             Consumer Feedback
           </TabsTrigger>
-          <TabsTrigger value="scan_issues" className="flex items-center gap-2">
+          <TabsTrigger value="scan_issues" className="rounded-lg px-4 py-2 text-[var(--sera-muted)] data-[state=active]:bg-white data-[state=active]:text-[var(--sera-ink)] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-[var(--sera-orange)]/30 flex items-center gap-2">
             ⚠️ Scan Issues
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="activations">
-          {/* Recent Activations */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activations</CardTitle>
-              {/* Filters Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-                <Select value={filterProduct} onValueChange={setFilterProduct}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filter Product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Products</SelectItem>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          <div className="sera-sc-panel overflow-hidden">
+            <div className="sera-sc-panel__head">
+              <h2 className="sera-sc-panel__title">Recent Activations</h2>
+            </div>
+            <div className="sera-sc-filters">
+              <Select value={filterProduct} onValueChange={setFilterProduct}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="Filter Product" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Products</SelectItem>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.product_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-                <Input
-                  placeholder="MMYY (e.g. 1125)"
-                  value={filterMMYY}
-                  onChange={(e) => setFilterMMYY(e.target.value)}
-                />
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="MMYY (e.g. 1125)"
+                value={filterMMYY}
+                onChange={(e) => setFilterMMYY(e.target.value)}
+              />
 
-                <Input
-                  placeholder="Consumer Name/Phone"
-                  value={filterConsumer}
-                  onChange={(e) => setFilterConsumer(e.target.value)}
-                />
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Consumer Name/Phone"
+                value={filterConsumer}
+                onChange={(e) => setFilterConsumer(e.target.value)}
+              />
 
-                <Input
-                  placeholder="Shop Name"
-                  value={filterShop}
-                  onChange={(e) => setFilterShop(e.target.value)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Shop Name"
+                value={filterShop}
+                onChange={(e) => setFilterShop(e.target.value)}
+              />
+            </div>
+            <div className="sera-sc-panel__body">
+              <div className="overflow-x-auto -mx-1">
+                <table className="sera-sc-table">
+                  <thead>
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        #
-                      </th>
+                      <th>#</th>
                       {columnOrder.map((col) => {
                         if (col === 'order') {
                           return (
@@ -825,11 +796,11 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                               onDragStart={() => handleDragStart('order')}
                               onDragOver={handleDragOver}
                               onDrop={() => handleDrop('order')}
-                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                              className="is-draggable"
                             >
                               <div className="flex items-center gap-1">
                                 Ord No
-                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                                <span className="text-[10px] sera-sc-table__meta">(Drag)</span>
                               </div>
                             </th>
                           )
@@ -841,62 +812,62 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                               onDragStart={() => handleDragStart('product')}
                               onDragOver={handleDragOver}
                               onDrop={() => handleDrop('product')}
-                              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-move hover:bg-gray-100"
+                              className="is-draggable"
                               onClick={() => handleSort('product_id')}
                             >
                               <div className="flex items-center gap-1">
                                 Product <ArrowUpDown className="w-3 h-3" />
-                                <span className="text-[10px] text-gray-400">(Drag)</span>
+                                <span className="text-[10px] sera-sc-table__meta">(Drag)</span>
                               </div>
                             </th>
                           )
                         }
                       })}
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('sequence_number')}
                       >
                         <div className="flex items-center gap-1">Seq <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('updated_at')}
                       >
                         <div className="flex items-center gap-1">Date & Time <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('consumer_name')}
                       >
                         <div className="flex items-center gap-1">Consumer <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Shop</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                      <th>ID Shop</th>
+                      <th>User</th>
                       <th
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+                        className="is-sortable"
                         onClick={() => handleSort('points_value')}
                       >
                         <div className="flex items-center gap-1">Points <ArrowUpDown className="w-3 h-3" /></div>
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Redeem</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GameCard</th>
+                      <th>Redeem</th>
+                      <th>GameCard</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">Loading...</td>
+                        <td colSpan={10} className="sera-sc-table__empty">Loading...</td>
                       </tr>
                     ) : activations.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-gray-500">No activations found</td>
+                        <td colSpan={10} className="sera-sc-table__empty">No activations found</td>
                       </tr>
                     ) : (
                       activations.map((activation, index) => {
                         const rowNumber = (currentPage - 1) * pageSize + index + 1
                         return (
-                          <tr key={activation.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-xs text-gray-600 font-medium">
+                          <tr key={activation.id}>
+                            <td className="font-medium">
                               {rowNumber}
                             </td>
                             {columnOrder.map((col) => {
@@ -904,9 +875,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                 return (
                                   <td key="order" className="px-4 py-3">
                                     <div className="flex flex-col">
-                                      <span className="text-xs font-medium text-blue-600">{activation.order_doc_no}</span>
+                                      <span className="text-xs font-medium text-[var(--sera-orange)]">{activation.order_doc_no}</span>
                                       {activation.legacy_order_no && (
-                                        <span className="text-[10px] text-gray-500">Legacy: {activation.legacy_order_no}</span>
+                                        <span className="sera-sc-table__meta">Legacy: {activation.legacy_order_no}</span>
                                       )}
                                     </div>
                                   </td>
@@ -922,9 +893,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                         </Avatar>
                                       )}
                                       <div>
-                                        <p className="text-xs font-medium text-gray-900">{activation.product_name}</p>
+                                        <p className="text-xs font-medium text-[var(--sera-ink)]">{activation.product_name}</p>
                                         {activation.variant_name && (
-                                          <p className="text-[10px] text-gray-500">{activation.variant_name}</p>
+                                          <p className="sera-sc-table__meta">{activation.variant_name}</p>
                                         )}
                                       </div>
                                     </div>
@@ -947,13 +918,13 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                                   <button
                                     onClick={() => openConsumerDetail(activation.consumer_user_id, activation.consumer_phone)}
                                     disabled={loadingConsumerDetail}
-                                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left disabled:opacity-50"
+                                    className="text-xs font-medium text-[var(--sera-orange)] hover:text-[var(--sera-orange-deep)] hover:underline cursor-pointer text-left disabled:opacity-50"
                                     title="Click to view consumer details"
                                   >
                                     {activation.consumer_name || 'Anonymous'}
                                   </button>
                                 ) : (
-                                  <p className="text-xs font-medium text-gray-900">
+                                  <p className="text-xs font-medium text-[var(--sera-ink)]">
                                     {activation.consumer_name || 'Anonymous'}
                                   </p>
                                 )}
@@ -965,9 +936,9 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                             </td>
                             <td className="px-4 py-3">
                               {activation.independent_user_name ? (
-                                <span className="text-xs font-medium text-blue-600">{activation.independent_user_name}</span>
+                                <span className="text-[var(--sera-orange)] font-medium">{activation.independent_user_name}</span>
                               ) : (
-                                <span className="text-xs text-gray-500">-</span>
+                                <span className="text-[var(--sera-muted)]">-</span>
                               )}
                             </td>
                             <td className="px-4 py-3">
@@ -1024,8 +995,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
               </div>
 
               {/* Pagination */}
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-gray-500">
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--sera-line)]">
+                <div className="text-sm text-[var(--sera-muted)]">
                   Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
                 </div>
                 <div className="flex items-center gap-2">
@@ -1048,45 +1019,72 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="feedback">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5" />
-                Consumer Feedback
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Total Feedback</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.total}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Pending</p>
+                <p className="sera-sc-kpi__value text-[var(--sera-orange)]">{feedbackSummary.pending}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Reviewed</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.reviewed}</p>
+              </div>
+              <div className="sera-sc-kpi">
+                <p className="sera-sc-kpi__label">Resolved</p>
+                <p className="sera-sc-kpi__value">{feedbackSummary.resolved}</p>
+              </div>
+            </div>
+
+            <div className="sera-sc-panel overflow-hidden">
+              <div className="sera-sc-panel__head">
+                <h2 className="sera-sc-panel__title flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-[var(--sera-orange)]" />
+                  Consumer Feedback
+                </h2>
+              </div>
+              <div className="sera-sc-panel__body">
               {feedbackLoading ? (
-                <div className="text-center py-8 text-gray-500">Loading feedback...</div>
+                <div className="sera-sc-table__empty">Loading feedback...</div>
               ) : feedback.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No feedback received yet</div>
+                <div className="sera-sc-empty">
+                  <div className="sera-sc-empty__icon">
+                    <MessageSquare className="h-8 w-8" />
+                  </div>
+                  <p className="sera-sc-empty__title">No feedback yet</p>
+                  <p className="sera-sc-empty__text">Consumer feedback will appear here when submitted through the app.</p>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {feedback.map((item: any) => (
-                    <div key={item.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <h4 className="font-semibold text-gray-900">{item.title}</h4>
-                          <p className="text-sm text-gray-600">
+                    <div key={item.id} className="sera-sc-feed-card">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-[var(--sera-ink)]">{item.title}</h4>
+                          <p className="text-sm text-[var(--sera-muted)] mt-0.5">
                             From: {item.consumer_name || 'Anonymous'}
                             {item.consumer_phone && ` • ${item.consumer_phone}`}
                             {item.consumer_email && ` • ${item.consumer_email}`}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                            item.status === 'reviewed' ? 'bg-yellow-100 text-yellow-800' :
-                              item.status === 'resolved' ? 'bg-green-100 text-green-800' :
-                                'bg-gray-100 text-gray-800'
-                            }`}>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`sera-sc-badge ${
+                            item.status === 'new' ? 'sera-sc-badge--info' :
+                            item.status === 'reviewed' ? 'sera-sc-badge--orange' :
+                            item.status === 'resolved' ? 'sera-sc-badge--success' :
+                            'sera-sc-badge--ink'
+                          }`}>
                             {item.status || 'new'}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-[var(--sera-muted)]">
                             {new Date(item.created_at).toLocaleDateString()}
                           </span>
                           {isSuperAdmin && (
@@ -1102,13 +1100,14 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                           )}
                         </div>
                       </div>
-                      <p className="text-gray-700 whitespace-pre-wrap">{item.message}</p>
+                      <p className="text-sm text-[var(--sera-ink-soft)] whitespace-pre-wrap leading-relaxed">{item.message}</p>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Scan Issues Tab */}
@@ -1118,99 +1117,99 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
 
         {/* WhatsApp Activity Tab */}
         <TabsContent value="whatsapp">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="h-5 w-5 text-green-600" />
+          <div className="sera-sc-panel overflow-hidden">
+            <div className="sera-sc-panel__head">
+              <h2 className="sera-sc-panel__title flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-[var(--sera-orange)]" />
                 WhatsApp Activity
-              </CardTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-                <Select value={waFilterPurpose} onValueChange={(v) => { setWaFilterPurpose(v); setWaPage(1) }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Purposes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Purposes</SelectItem>
-                    <SelectItem value="password_reset">Password Reset</SelectItem>
-                    <SelectItem value="registration_verification">Registration</SelectItem>
-                    <SelectItem value="phone_verification">Phone Verification</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={waFilterStatus} onValueChange={(v) => { setWaFilterStatus(v); setWaPage(1) }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Statuses" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="sent">Sent</SelectItem>
-                    <SelectItem value="delivered">Delivered</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                    <SelectItem value="verified">Verified</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="rate_limited">Rate Limited</SelectItem>
-                    <SelectItem value="no_account">No Account</SelectItem>
-                    <SelectItem value="send_failed">Send Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Filter by phone..."
-                  value={waFilterPhone}
-                  onChange={(e) => { setWaFilterPhone(e.target.value); setWaPage(1) }}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
+              </h2>
+            </div>
+            <div className="sera-sc-filters sm:grid-cols-3">
+              <Select value={waFilterPurpose} onValueChange={(v) => { setWaFilterPurpose(v); setWaPage(1) }}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="All Purposes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Purposes</SelectItem>
+                  <SelectItem value="password_reset">Password Reset</SelectItem>
+                  <SelectItem value="registration_verification">Registration</SelectItem>
+                  <SelectItem value="phone_verification">Phone Verification</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={waFilterStatus} onValueChange={(v) => { setWaFilterStatus(v); setWaPage(1) }}>
+                <SelectTrigger className="border-[var(--sera-line)] bg-white">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="sent">Sent</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="rate_limited">Rate Limited</SelectItem>
+                  <SelectItem value="no_account">No Account</SelectItem>
+                  <SelectItem value="send_failed">Send Failed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                className="sera-sc-input border-[var(--sera-line)]"
+                placeholder="Filter by phone..."
+                value={waFilterPhone}
+                onChange={(e) => { setWaFilterPhone(e.target.value); setWaPage(1) }}
+              />
+            </div>
+            <div className="sera-sc-panel__body">
               {waLoading ? (
-                <div className="text-center py-8 text-gray-500">Loading WhatsApp activity...</div>
+                <div className="sera-sc-table__empty">Loading WhatsApp activity...</div>
               ) : waEvents.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No WhatsApp activity found</div>
+                <div className="sera-sc-table__empty">No WhatsApp activity found</div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b">
+                  <div className="overflow-x-auto -mx-1">
+                    <table className="sera-sc-table">
+                      <thead>
                         <tr>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Date & Time</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Phone</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Event</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Purpose</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Status</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Provider</th>
-                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Error</th>
+                          <th>Date & Time</th>
+                          <th>Phone</th>
+                          <th>Event</th>
+                          <th>Purpose</th>
+                          <th>Status</th>
+                          <th>Provider</th>
+                          <th>Error</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
+                      <tbody>
                         {waEvents.map((evt: any) => (
-                          <tr key={evt.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                          <tr key={evt.id}>
+                            <td className="whitespace-nowrap">
                               {new Date(evt.created_at).toLocaleString()}
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-900 font-mono">
+                            <td className="font-mono text-[var(--sera-ink)]">
                               {evt.recipient_phone || '-'}
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-700">
+                            <td>
                               {(evt.event_type || '').replace(/_/g, ' ')}
                             </td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-[10px]">
+                            <td>
+                              <Badge variant="outline" className="text-[10px] border-[var(--sera-line)]">
                                 {(evt.purpose || '').replace(/_/g, ' ')}
                               </Badge>
                             </td>
-                            <td className="px-3 py-2">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${evt.status === 'sent' ? 'bg-green-100 text-green-800' :
-                                evt.status === 'failed' || evt.status === 'send_failed' ? 'bg-red-100 text-red-800' :
-                                  evt.status === 'verified' ? 'bg-blue-100 text-blue-800' :
-                                    evt.status === 'completed' ? 'bg-emerald-100 text-emerald-800' :
-                                      evt.status === 'rate_limited' ? 'bg-orange-100 text-orange-800' :
-                                        evt.status === 'no_account' ? 'bg-gray-100 text-gray-600' :
-                                          'bg-gray-100 text-gray-800'
-                                }`}>
+                            <td>
+                              <span className={`sera-sc-badge ${
+                                evt.status === 'sent' || evt.status === 'completed' ? 'sera-sc-badge--success' :
+                                evt.status === 'failed' || evt.status === 'send_failed' ? 'sera-sc-badge--ink bg-red-50 text-red-700' :
+                                evt.status === 'verified' ? 'sera-sc-badge--info' :
+                                evt.status === 'rate_limited' ? 'sera-sc-badge--orange' :
+                                'sera-sc-badge--ink'
+                              }`}>
                                 {evt.status}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-xs text-gray-500">{evt.provider || '-'}</td>
-                            <td className="px-3 py-2 text-xs text-red-600 max-w-[200px] truncate" title={evt.error_message || ''}>
+                            <td className="text-[var(--sera-muted)]">{evt.provider || '-'}</td>
+                            <td className="text-red-600 max-w-[200px] truncate" title={evt.error_message || ''}>
                               {evt.error_message || '-'}
                             </td>
                           </tr>
@@ -1219,26 +1218,27 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                     </table>
                   </div>
 
-                  {/* Pagination */}
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <p className="text-sm text-gray-500">
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-[var(--sera-line)]">
+                    <p className="text-sm text-[var(--sera-muted)]">
                       Showing {(waPage - 1) * waPageSize + 1} to {Math.min(waPage * waPageSize, waTotal)} of {waTotal} results
                     </p>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="border-[var(--sera-line)]"
                         disabled={waPage <= 1}
                         onClick={() => setWaPage((p) => Math.max(1, p - 1))}
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-[var(--sera-ink)]">
                         Page {waPage} of {Math.max(1, Math.ceil(waTotal / waPageSize))}
                       </span>
                       <Button
                         variant="outline"
                         size="sm"
+                        className="border-[var(--sera-line)]"
                         disabled={waPage * waPageSize >= waTotal}
                         onClick={() => setWaPage((p) => p + 1)}
                       >
@@ -1248,8 +1248,8 @@ export default function ConsumerActivationsView({ userProfile, onViewChange }: C
                   </div>
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

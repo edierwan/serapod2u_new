@@ -15,12 +15,12 @@ export default function CartPage() {
   if (items.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        <ShoppingBag className="h-20 w-20 text-gray-200 mx-auto mb-6" />
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Your cart is empty</h1>
-        <p className="text-gray-500 mb-8">Looks like you haven't added anything yet.</p>
+        <ShoppingBag className="h-20 w-20 text-[var(--sera-muted)]/40 mx-auto mb-6" />
+        <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)] mb-2">Your cart is empty</h1>
+        <p className="text-[var(--sera-muted)] mb-8">Looks like you haven't added anything yet.</p>
         <Link
           href="/store/products"
-          className="inline-flex items-center gap-2 h-11 px-6 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition"
+          className="inline-flex items-center gap-2 h-11 px-6 bg-[var(--sera-ink)] text-white rounded-xl text-sm font-semibold hover:bg-[var(--sera-ink-soft)] transition"
         >
           <ShoppingCart className="h-4 w-4" />
           Browse Products
@@ -34,8 +34,8 @@ export default function CartPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Shopping Cart</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="font-display text-2xl font-semibold text-[var(--sera-ink)]">Shopping Cart</h1>
+          <p className="text-sm text-[var(--sera-muted)] mt-0.5">
             {totalItems} item{totalItems !== 1 ? 's' : ''}
           </p>
         </div>
@@ -52,14 +52,14 @@ export default function CartPage() {
         {items.map((item) => (
           <div
             key={item.variantId}
-            className="flex gap-4 p-4 bg-white rounded-xl border border-gray-100 shadow-sm"
+            className="flex gap-4 p-4 bg-white rounded-xl border border-[var(--sera-line)] shadow-sm"
           >
             {/* Image */}
-            <div className="flex-none w-20 h-20 rounded-lg bg-gray-50 border border-gray-100 overflow-hidden flex items-center justify-center">
+            <div className="flex-none w-20 h-20 rounded-lg bg-[var(--sera-mist)] border border-[var(--sera-line)] overflow-hidden flex items-center justify-center">
               {item.imageUrl ? (
                 <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
               ) : (
-                <ShoppingBag className="h-8 w-8 text-gray-200" />
+                <ShoppingBag className="h-8 w-8 text-[var(--sera-muted)]/40" />
               )}
             </div>
 
@@ -67,12 +67,12 @@ export default function CartPage() {
             <div className="flex-1 min-w-0">
               <Link
                 href={`/store/products/${item.productId}`}
-                className="text-sm font-semibold text-gray-900 hover:underline line-clamp-1"
+                className="text-sm font-semibold text-[var(--sera-ink)] hover:underline line-clamp-1"
               >
                 {item.productName}
               </Link>
-              <p className="text-xs text-gray-500 mt-0.5">{item.variantName}</p>
-              <p className="text-sm font-bold text-gray-900 mt-1">
+              <p className="text-xs text-[var(--sera-muted)] mt-0.5">{item.variantName}</p>
+              <p className="text-sm font-bold text-[var(--sera-ink)] mt-1">
                 {item.price != null && item.price > 0 ? formatPrice(item.price) : 'Price TBD'}
               </p>
             </div>
@@ -81,25 +81,25 @@ export default function CartPage() {
             <div className="flex flex-col items-end justify-between">
               <button
                 onClick={() => removeItem(item.variantId)}
-                className="text-gray-400 hover:text-red-500 transition"
+                className="text-[var(--sera-muted)]/70 hover:text-red-500 transition"
                 aria-label="Remove"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
 
-              <div className="inline-flex items-center border border-gray-200 rounded-lg overflow-hidden">
+              <div className="inline-flex items-center border border-[var(--sera-line)] rounded-lg overflow-hidden">
                 <button
                   onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
-                  className="h-8 w-8 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition"
+                  className="h-8 w-8 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition"
                 >
                   <Minus className="h-3 w-3" />
                 </button>
-                <span className="h-8 w-8 flex items-center justify-center text-xs font-semibold border-x border-gray-200">
+                <span className="h-8 w-8 flex items-center justify-center text-xs font-semibold border-x border-[var(--sera-line)]">
                   {item.quantity}
                 </span>
                 <button
                   onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
-                  className="h-8 w-8 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition"
+                  className="h-8 w-8 flex items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-mist)] transition"
                 >
                   <Plus className="h-3 w-3" />
                 </button>
@@ -110,16 +110,16 @@ export default function CartPage() {
       </div>
 
       {/* Summary */}
-      <div className="mt-8 bg-gray-50 rounded-xl p-6 border border-gray-100">
-        <div className="flex justify-between text-sm text-gray-600 mb-2">
+      <div className="mt-8 bg-[var(--sera-mist)] rounded-xl p-6 border border-[var(--sera-line)]">
+        <div className="flex justify-between text-sm text-[var(--sera-muted)] mb-2">
           <span>Subtotal</span>
-          <span className="font-semibold text-gray-900">{formatPrice(subtotal)}</span>
+          <span className="font-semibold text-[var(--sera-ink)]">{formatPrice(subtotal)}</span>
         </div>
-        <div className="flex justify-between text-sm text-gray-600 mb-4">
+        <div className="flex justify-between text-sm text-[var(--sera-muted)] mb-4">
           <span>Shipping</span>
-          <span className="text-gray-400">Calculated at checkout</span>
+          <span className="text-[var(--sera-muted)]/70">Calculated at checkout</span>
         </div>
-        <div className="border-t border-gray-200 pt-4 flex justify-between text-base font-bold text-gray-900">
+        <div className="border-t border-[var(--sera-line)] pt-4 flex justify-between text-base font-bold text-[var(--sera-ink)]">
           <span>Estimated Total</span>
           <span>{formatPrice(subtotal)}</span>
         </div>
@@ -134,8 +134,8 @@ export default function CartPage() {
           href="/store/checkout"
           className={`mt-6 w-full h-12 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition ${
             hasItemsWithoutPrice
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed pointer-events-none'
-              : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98]'
+              ? 'bg-[var(--sera-line)] text-[var(--sera-muted)] cursor-not-allowed pointer-events-none'
+              : 'bg-[var(--sera-orange)] text-white hover:bg-[var(--sera-orange-deep)] active:scale-[0.98]'
           }`}
         >
           Proceed to Checkout
@@ -143,7 +143,7 @@ export default function CartPage() {
 
         <Link
           href="/store/products"
-          className="flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mt-4 transition"
+          className="flex items-center justify-center gap-1.5 text-sm text-[var(--sera-muted)] hover:text-[var(--sera-ink)]/80 mt-4 transition"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Continue Shopping

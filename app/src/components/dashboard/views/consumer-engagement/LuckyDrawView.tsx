@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getStorageUrl } from '@/lib/utils'
+import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   Trophy,
   Plus,
@@ -569,21 +570,14 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-blue-50">
-      <div className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                <Trophy className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Lucky Draw Management</h1>
-                <p className="text-gray-600 mt-1">Manage order-specific lucky draw campaigns</p>
-              </div>
-            </div>
+    <div className="sera-sc-page sera-page-enter">
+      <SupplyChainPageHeader
+        eyebrow="Customer & Growth"
+        title="Lucky Draw Management"
+        description="Manage order-specific lucky draw campaigns"
+        actions={
             <Button
-              className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              className="gap-2 bg-[var(--sera-ink)] hover:bg-[var(--sera-ink)]/90 text-white"
               disabled={!selectedOrderId}
               onClick={() => {
                 if (campaigns.length > 0 && selectedCampaign) {
@@ -623,12 +617,10 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 </>
               )}
             </Button>
-          </div>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <Card className="mb-6 border-2">
+        <Card className="sera-sc-panel mb-6 border-0 shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Filter className="w-5 h-5" />
@@ -671,10 +663,10 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         </Card>
 
         {selectedOrder && selectedOrder.items && selectedOrder.items.length > 0 && (
-          <Card className="mb-6 border-2 bg-slate-50">
+          <Card className="sera-sc-panel mb-6 border-0 shadow-none bg-[var(--sera-mist)]/40">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Gift className="w-5 h-5 text-purple-500" />
+                <Gift className="w-5 h-5 text-[var(--sera-orange)]" />
                 Order Products
               </CardTitle>
             </CardHeader>
@@ -744,7 +736,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
         )}
 
         {selectedOrderId && (
-          <Card className="border-2">
+          <Card className="sera-sc-panel border-0 shadow-none">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
               <CardHeader className="border-b">
                 <TabsList className="grid w-full grid-cols-4">
@@ -762,7 +754,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                       <div className="text-center py-12">
                         <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500 mb-4">No campaigns yet</p>
-                        <Button onClick={() => setShowNewCampaignModal(true)} className="bg-purple-500 hover:bg-purple-600">
+                        <Button onClick={() => setShowNewCampaignModal(true)} className="sera-sc-btn-accent">
                           <Plus className="w-4 h-4 mr-2" />
                           Create First Campaign
                         </Button>
@@ -864,8 +856,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* PARTICIPANTS TAB */}
                 <TabsContent value="participants">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      <div className="flex-1 relative">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex-1 relative min-w-0">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <Input
                           placeholder="Search by name, phone, email, or entry number..."
@@ -874,7 +866,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                           className="pl-10"
                         />
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="flex items-center gap-2 text-sm text-gray-600 shrink-0">
                         <UserCheck className="w-4 h-4" />
                         <span>{stats.totalParticipants} participants</span>
                       </div>
@@ -890,8 +882,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                         </p>
                       </div>
                     ) : (
-                      <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full">
+                      <div className="border rounded-lg overflow-x-auto">
+                        <table className="w-full min-w-[720px]">
                           <thead className="bg-gray-50">
                             <tr>
                               <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 w-12">#</th>
@@ -956,7 +948,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                         Winner
                                       </Badge>
                                     ) : (
-                                      <Badge className="bg-blue-500 text-white text-[10px] px-1.5 h-5">
+                                      <Badge className="sera-sc-badge sera-sc-badge--info text-[10px] px-1.5 h-5">
                                         <CheckCircle2 className="w-3 h-3 mr-1" />
                                         Entered
                                       </Badge>
@@ -975,12 +967,12 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* PRIZES TAB */}
                 <TabsContent value="prizes">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <h3 className="text-lg font-semibold">Campaign Prizes</h3>
                         <p className="text-sm text-gray-600">Manage prizes for {selectedCampaign?.campaign_name}</p>
                       </div>
-                      <Button onClick={() => {
+                      <Button className="w-full sm:w-auto" onClick={() => {
                         setEditingPrizeIndex(null)
                         setNewPrize({ name: '', description: '', quantity: 1, image_url: '' })
                         setPrizeImageFile(null)
@@ -1018,7 +1010,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                                   <div className="flex-1">
                                     <div className="flex items-start justify-between mb-2">
                                       <div className="flex items-center gap-2">
-                                        <Gift className="w-5 h-5 text-purple-500" />
+                                        <Gift className="w-5 h-5 text-[var(--sera-orange)]" />
                                         <h4 className="font-semibold">{prize.name}</h4>
                                       </div>
                                       <div className="flex gap-1">
@@ -1074,42 +1066,36 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                 {/* DRAW TAB */}
                 <TabsContent value="draw">
                   <div className="space-y-6">
-                    <div className="text-center">
-                      <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-100 to-pink-100 rounded-full mb-4">
-                        <Zap className="w-10 h-10 text-purple-600" />
+                    <div className="sera-sc-empty">
+                      <div className="sera-sc-empty__icon">
+                        <Zap className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-bold mb-2">Lucky Draw</h3>
-                      <p className="text-gray-600 mb-6">Randomly select winners from participants</p>
+                      <h3 className="sera-sc-empty__title">Lucky Draw</h3>
+                      <p className="sera-sc-empty__text">Randomly select winners from participants</p>
                     </div>
 
                     {/* Stats Cards */}
                     <div className="grid grid-cols-3 gap-4">
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Users className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalParticipants}</div>
-                          <div className="text-xs text-gray-600">Participants</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Gift className="w-8 h-8 text-purple-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalPrizes}</div>
-                          <div className="text-xs text-gray-600">Total Prizes</div>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="p-4 text-center">
-                          <Trophy className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-                          <div className="text-2xl font-bold">{stats.totalWinners}</div>
-                          <div className="text-xs text-gray-600">Winners</div>
-                        </CardContent>
-                      </Card>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Users className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalParticipants}</p>
+                        <p className="sera-sc-kpi__label">Participants</p>
+                      </div>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Gift className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalPrizes}</p>
+                        <p className="sera-sc-kpi__label">Total Prizes</p>
+                      </div>
+                      <div className="sera-sc-kpi text-center items-center">
+                        <Trophy className="w-6 h-6 text-[var(--sera-orange)] mb-1" />
+                        <p className="sera-sc-kpi__value">{stats.totalWinners}</p>
+                        <p className="sera-sc-kpi__label">Winners</p>
+                      </div>
                     </div>
 
                     {/* Draw Status */}
                     {selectedCampaign?.drawn_at ? (
-                      <Alert className="bg-blue-50 border-blue-200">
+                      <Alert className="bg-[var(--sera-orange)]/8 border-[var(--sera-orange)]/25">
                         <CheckCircle2 className="h-4 w-4 text-blue-600" />
                         <AlertDescription className="text-blue-800">
                           <strong>Draw completed!</strong> Winners were selected on {new Date(selectedCampaign.drawn_at).toLocaleString()}
@@ -1149,7 +1135,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                             <Button
                               size="lg"
                               onClick={() => setShowDrawConfirmModal(true)}
-                              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                              className="sera-sc-btn-accent gap-2"
                             >
                               <Sparkles className="w-5 h-5 mr-2" />
                               Perform Lucky Draw
@@ -1169,8 +1155,8 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
                           <Trophy className="w-5 h-5 text-yellow-500" />
                           Winners ({stats.totalWinners})
                         </h4>
-                        <div className="border rounded-lg overflow-hidden">
-                          <table className="w-full">
+                        <div className="border rounded-lg overflow-x-auto">
+                          <table className="w-full min-w-[480px]">
                             <thead className="bg-yellow-50">
                               <tr>
                                 <th className="px-4 py-3 text-left text-xs font-medium">Name</th>
@@ -1207,7 +1193,6 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             </Tabs>
           </Card>
         )}
-      </div>
 
       {/* New Campaign Modal */}
       <Dialog open={showNewCampaignModal} onOpenChange={setShowNewCampaignModal}>
@@ -1347,7 +1332,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowNewCampaignModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateCampaign} className="bg-purple-500 hover:bg-purple-600">
+            <Button onClick={handleCreateCampaign} className="sera-sc-btn-accent">
               {campaigns.length > 0 ? 'Save Changes' : 'Create Campaign'}
             </Button>
           </DialogFooter>
@@ -1487,7 +1472,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowPrizeModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddPrize} className="bg-purple-500 hover:bg-purple-600">
+            <Button onClick={handleAddPrize} className="sera-sc-btn-accent">
               {editingPrizeIndex !== null ? 'Update Prize' : 'Add Prize'}
             </Button>
           </DialogFooter>
@@ -1515,7 +1500,7 @@ export default function LuckyDrawView({ userProfile, onViewChange, initialOrderI
             <Button variant="outline" onClick={() => setShowDrawConfirmModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handlePerformDraw} className="bg-gradient-to-r from-purple-500 to-pink-500">
+            <Button onClick={handlePerformDraw} className="sera-sc-btn-accent">
               <Sparkles className="w-4 h-4 mr-2" />
               Perform Draw
             </Button>

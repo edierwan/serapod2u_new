@@ -83,7 +83,7 @@ export default function MarketingTopNav({ currentView, onNavigate }: MarketingTo
 
     return (
         <div className="sticky top-0 z-30 bg-card border-b border-border print:hidden">
-            <div className="flex items-center h-12 px-3 gap-2">
+            <div className="sera-top-nav__inner">
                 <div className="flex items-center gap-1.5 shrink-0 mr-1">
                     <div className="flex items-center gap-1 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 px-2.5 py-0.5 rounded text-sm font-semibold">
                         <Megaphone className="h-3 w-3" />
@@ -152,7 +152,7 @@ export default function MarketingTopNav({ currentView, onNavigate }: MarketingTo
 
                 <div className="flex md:hidden flex-1 min-w-0">
                     <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Toggle Marketing menu">
-                        <MenuIcon className="h-4 w-4" /><span>Marketing Menu</span>
+                        <MenuIcon className="h-4 w-4" /><span>Menu</span>
                         <ChevronDown className={cn('h-3 w-3 transition-transform', mobileMenuOpen && 'rotate-180')} />
                     </button>
                 </div>
@@ -210,7 +210,7 @@ export default function MarketingTopNav({ currentView, onNavigate }: MarketingTo
             )}
 
             {breadcrumbs.length > 1 && (
-                <div className="flex items-center gap-1 px-3 py-1 text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
+                <div className="sera-top-nav__breadcrumb text-[11px] text-muted-foreground border-t border-border/50 bg-muted/30">
                     {breadcrumbs.map((crumb, i) => (
                         <span key={i} className="flex items-center gap-1">
                             {i > 0 && <ChevronRight className="h-2.5 w-2.5" />}

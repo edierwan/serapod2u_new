@@ -32,6 +32,28 @@ export interface StockCountCatalogRow {
   warehouseLocation: string | null
 }
 
+export interface StockCountLocation {
+  id: string
+  org_code: string
+  org_name: string
+  org_type_code: string
+}
+
+/**
+ * Regular counts remain warehouse-scoped. Initial classification also permits
+ * distributor inventory organizations because legacy balances are held there
+ * and posting is still performed against exactly one selected organization.
+ */
+export function getStockCountLocationOptions(
+  locations: StockCountLocation[],
+  isInitialClassification: boolean,
+): StockCountLocation[] {
+  const allowedTypes = isInitialClassification
+    ? new Set(['HQ', 'WH', 'DIST'])
+    : new Set(['HQ', 'WH'])
+  return locations.filter(location => allowedTypes.has(location.org_type_code))
+}
+
 function relation<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] || null
   return value || null

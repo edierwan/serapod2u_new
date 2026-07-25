@@ -36,11 +36,11 @@ export const responsiveTableClasses = {
  * Modal/Dialog responsive classes
  */
 export const modalClasses = {
-  overlay: 'fixed inset-0 z-50 bg-black/50',
-  content: 'fixed z-50 w-full sm:max-w-lg bottom-0 sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 rounded-t-2xl sm:rounded-lg',
-  header: 'sticky top-0 bg-white border-b px-4 py-3 sm:px-6 sm:py-4',
-  body: 'max-h-[80vh] overflow-y-auto px-4 py-4 sm:px-6',
-  footer: 'sticky bottom-0 bg-white border-t px-4 py-3 sm:px-6 flex gap-2 sm:gap-3',
+  overlay: 'sera-modal-overlay',
+  content: 'sera-modal-panel',
+  header: 'sera-modal-header is-sticky',
+  body: 'sera-modal-body',
+  footer: 'sera-modal-footer',
 }
 
 /**

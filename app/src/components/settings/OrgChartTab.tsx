@@ -982,19 +982,19 @@ export default function OrgChartTab({ organizationId, canEdit, onNavigateToDepar
                     </Tabs>
 
                     {/* People controls */}
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3">
                         {viewMode === 'people' && (
                             <>
-                                <div className="relative">
+                                <div className="relative w-full sm:w-auto">
                                     <Input
                                         value={peopleSearch}
                                         onChange={(e) => setPeopleSearch(e.target.value)}
                                         placeholder="Search people..."
-                                        className="w-[220px]"
+                                        className="w-full sm:w-[220px]"
                                     />
                                 </div>
                                 <Select value={selectedDepartmentFilter} onValueChange={setSelectedDepartmentFilter}>
-                                    <SelectTrigger className="w-[200px]">
+                                    <SelectTrigger className="w-full sm:w-[200px]">
                                         <SelectValue placeholder="Filter by department" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1014,7 +1014,7 @@ export default function OrgChartTab({ organizationId, canEdit, onNavigateToDepar
                             onValueChange={(value) => setChartStyle(value as 'modern' | 'classic')}
                             disabled={viewMode !== 'people'}
                         >
-                            <SelectTrigger className="w-[200px]">
+                            <SelectTrigger className="w-full sm:w-[200px]">
                                 <SelectValue placeholder="People chart style" />
                             </SelectTrigger>
                             <SelectContent>

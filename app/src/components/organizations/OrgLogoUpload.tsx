@@ -172,7 +172,7 @@ export default function OrgLogoUpload({
               className="object-contain"
             />
           ) : (
-            <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600">
+            <AvatarFallback className="rounded-lg bg-gradient-to-br from-[var(--sera-orange)]/15 to-[var(--sera-orange)]/5 text-[var(--sera-orange)]">
               <Building2 className="w-10 h-10" />
             </AvatarFallback>
           )}
@@ -204,10 +204,10 @@ export default function OrgLogoUpload({
               </Button>
             )}
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[var(--sera-muted)]">
             Recommended: Square image, max 5MB (JPG, PNG, GIF, WebP)
           </p>
-          <p className="text-xs text-blue-600">
+          <p className="text-xs text-[var(--sera-orange)]">
             ✨ Images will be automatically compressed to ~5-10KB (200×200px JPEG) for optimal performance
           </p>
           {error && (

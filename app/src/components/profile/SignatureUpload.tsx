@@ -533,13 +533,13 @@ export default function SignatureUpload({
 
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
+              className="cursor-pointer rounded-lg border-2 border-dashed border-[var(--sera-line)] p-8 text-center transition-colors hover:border-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.06]"
             >
-              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-sm font-medium text-gray-700 mb-1">
+              <Upload className="mx-auto mb-4 h-12 w-12 text-[var(--sera-muted)]" />
+              <p className="mb-1 text-sm font-medium text-[var(--sera-ink)]">
                 {isUploading ? 'Uploading...' : 'Click to upload signature'}
               </p>
-              <p className="text-xs text-gray-500">PNG, JPG up to 2MB</p>
+              <p className="text-xs text-[var(--sera-muted)]">PNG, JPG up to 2MB</p>
             </div>
 
             <input
@@ -554,7 +554,7 @@ export default function SignatureUpload({
         </Tabs>
       )}
 
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+      <div className="rounded-lg border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.06] p-4 text-sm text-[var(--sera-ink-soft)]">
         <p className="font-medium mb-2">Important Notes:</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
           <li>Your signature will be used to digitally sign Purchase Orders, Invoices, and other documents</li>

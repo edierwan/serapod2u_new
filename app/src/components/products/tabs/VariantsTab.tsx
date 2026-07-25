@@ -465,7 +465,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--sera-orange)] animate-spin" />
       </div>
     )
   }
@@ -477,7 +477,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           <select
             value={selectedProduct}
             onChange={(e) => setSelectedProduct(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sera-orange)]"
           >
             <option value="">All Products</option>
             {products.map(product => (
@@ -498,7 +498,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
           <Button variant="outline" onClick={handleExport} disabled={isExporting}>
             {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />} Download Excel
           </Button>
-          <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-blue-600 hover:bg-blue-700">
+          <Button onClick={() => { setEditingVariant(null); setDialogOpen(true) }} className="bg-[var(--sera-orange)] hover:bg-[var(--sera-orange-deep)]">
             <Plus className="w-4 h-4 mr-2" /> Add Variant
           </Button>
         </div>
@@ -559,7 +559,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                 const mediaCount = variant.media?.length || 0
                 return (
                   <TableRow key={variant.id} className="hover:bg-gray-50">
-                    <TableCell className="text-center text-sm text-gray-500 font-medium">{startIndex + index + 1}</TableCell>
+                    <TableCell className="text-center text-sm text-[var(--sera-muted)] font-medium">{startIndex + index + 1}</TableCell>
                     <TableCell>
                       <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center">
                         {preview ? (
@@ -570,7 +570,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                             <img src={preview.url} alt={variant.variant_name} className="w-full h-full object-cover" />
                           )
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-blue-600 text-xs font-semibold">
+                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 text-[var(--sera-orange)] text-xs font-semibold">
                             {getVariantInitials(variant.variant_name)}
                           </div>
                         )}
@@ -581,10 +581,10 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                     </TableCell>
                     <TableCell className="text-sm">
                       <div>{variant.variant_name}</div>
-                      {variant.alternative_name && <div className="mt-0.5 text-xs text-gray-500">Alternative: {variant.alternative_name}</div>}
+                      {variant.alternative_name && <div className="mt-0.5 text-xs text-[var(--sera-muted)]">Alternative: {variant.alternative_name}</div>}
                     </TableCell>
-                    <TableCell className="text-xs text-gray-600">{variant.product_name}</TableCell>
-                    <TableCell className="text-xs font-medium text-gray-700">{variant.product_code || '-'}</TableCell>
+                    <TableCell className="text-xs text-[var(--sera-muted)]">{variant.product_name}</TableCell>
+                    <TableCell className="text-xs font-medium text-[var(--sera-ink)]/80">{variant.product_code || '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.base_cost ? `$${variant.base_cost.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.suggested_retail_price ? `$${variant.suggested_retail_price.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right text-xs">{variant.other_price ? `$${variant.other_price.toFixed(2)}` : '-'}</TableCell>
@@ -608,7 +608,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-gray-500">No variants found</TableCell>
+                <TableCell colSpan={10} className="text-center py-8 text-[var(--sera-muted)]">No variants found</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -617,7 +617,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
 
       {/* Pagination Controls */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-[var(--sera-muted)]">
           Showing {totalItems > 0 ? startIndex + 1 : 0} - {Math.min(endIndex, totalItems)} of {totalItems} variants
         </div>
         {totalPages > 1 && (

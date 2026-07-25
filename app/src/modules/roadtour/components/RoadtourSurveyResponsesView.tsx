@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Eye, Loader2, RefreshCw, Search, ClipboardList, Inbox, Download } from 'lucide-react'
+import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 import { ResponseDetailsDialog, type ResponseRow } from './roadtour-survey-shared'
 
@@ -207,11 +208,12 @@ export function RoadtourSurveyResponsesView({ userProfile }: Props) {
     }
 
     return (
-        <div className="space-y-5">
+        <div className="sera-sc-page space-y-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h3 className="text-lg sm:text-xl font-semibold flex items-center gap-2">
-                        <ClipboardList className="h-5 w-5 text-primary" />
+                    <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
+                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl">
+                        <ClipboardList className="h-5 w-5 text-[var(--sera-orange)]" />
                         Survey Responses
                     </h3>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -276,7 +278,7 @@ export function RoadtourSurveyResponsesView({ userProfile }: Props) {
             <Card>
                 <CardContent className="p-0">
                     {loading ? (
-                        <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+                        <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-[var(--sera-orange)]" /></div>
                     ) : filtered.length === 0 ? (
                         <div className="py-16 text-center">
                             <Inbox className="h-10 w-10 mx-auto text-muted-foreground/40" />

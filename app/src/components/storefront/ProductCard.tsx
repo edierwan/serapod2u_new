@@ -18,7 +18,6 @@ function resolveMediaUrl(rawPath: string | null) {
 
   const cleanPath = rawPath.replace(/^\/+/, '')
 
-  // Detect bucket from path prefix
   const knownBuckets = ['product-variants', 'avatars']
   for (const bucket of knownBuckets) {
     if (cleanPath.startsWith(`${bucket}/`)) {
@@ -27,7 +26,6 @@ function resolveMediaUrl(rawPath: string | null) {
     }
   }
 
-  // Default to avatars bucket (admin uploads go there)
   return `${supabaseUrl}/storage/v1/object/public/avatars/${cleanPath}`
 }
 
@@ -55,8 +53,6 @@ export default function StorefrontProductCard({ product }: { product: Storefront
   const [imgError, setImgError] = useState(false)
   const [useFallback, setUseFallback] = useState(false)
 
-  // Prefer animation (video/gif) over static image — matching admin behavior.
-  // If both exist, show animation first. If it fails, fall back to image.
   const primaryUrl = animationUrl || imageUrl
   const fallbackUrl = animationUrl ? imageUrl : null
   const displayUrl = useFallback ? fallbackUrl : primaryUrl
@@ -64,7 +60,6 @@ export default function StorefrontProductCard({ product }: { product: Storefront
 
   const handleMediaError = () => {
     if (!useFallback && fallbackUrl) {
-      // Try the fallback URL before giving up
       setUseFallback(true)
     } else {
       setImgError(true)
@@ -74,10 +69,9 @@ export default function StorefrontProductCard({ product }: { product: Storefront
   return (
     <Link
       href={`/store/products/${product.id}`}
-      className="group block bg-white rounded-xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-gray-200 transition-all duration-300"
+      className="group block overflow-hidden rounded-2xl border border-[var(--sera-line)] bg-[var(--sera-surface)] shadow-[0_12px_32px_-22px_rgba(20,18,16,0.3)] transition-all duration-300 hover:border-[var(--sera-orange)]/30 hover:shadow-[0_16px_40px_-16px_rgba(20,18,16,0.28)]"
     >
-      {/* Media */}
-      <div className="relative aspect-[4/3] bg-gray-50 overflow-hidden">
+      <div className="relative aspect-[4/3] overflow-hidden bg-[var(--sera-surface)]">
         {displayUrl && !imgError ? (
           mediaType === 'video' ? (
             <video
@@ -87,52 +81,49 @@ export default function StorefrontProductCard({ product }: { product: Storefront
               loop
               playsInline
               autoPlay
-              className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
               onError={handleMediaError}
             />
           ) : (
             <img
               src={displayUrl}
               alt={product.product_name}
-              className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-500"
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
               loading="lazy"
               onError={handleMediaError}
             />
           )
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
-            <Package className="h-12 w-12 mb-2" />
+          <div className="flex h-full w-full flex-col items-center justify-center text-[var(--sera-muted)]/50">
+            <Package className="mb-2 h-12 w-12" />
             <span className="text-xs">No image</span>
           </div>
         )}
 
-        {/* Video play indicator */}
         {mediaType === 'video' && displayUrl && !imgError && (
-          <div className="absolute bottom-3 left-3 p-1.5 bg-black/60 backdrop-blur-sm rounded-full">
-            <Play className="h-3 w-3 text-white fill-white" />
+          <div className="absolute bottom-3 left-3 rounded-full bg-[var(--sera-ink)]/70 p-1.5 backdrop-blur-sm">
+            <Play className="h-3 w-3 fill-white text-white" />
           </div>
         )}
 
         {product.variant_count > 1 && (
-          <span className="absolute top-3 right-3 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-white bg-gray-900/80 backdrop-blur-sm rounded-full">
+          <span className="absolute top-3 right-3 rounded-lg bg-[var(--sera-ink)]/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
             {product.variant_count} Variants
           </span>
         )}
       </div>
 
-      {/* Info */}
-      <div className="p-4">
-        <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors">
+      <div className="p-4 sm:p-5">
+        <h3 className="font-display text-sm font-semibold text-[var(--sera-ink)] line-clamp-2 transition-colors group-hover:text-[var(--sera-orange)]">
           {product.product_name}
         </h3>
 
-        {/* Tags */}
         {product.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
+          <div className="mt-2 flex flex-wrap gap-1">
             {product.tags.slice(0, 2).map((tag) => (
               <span
                 key={tag}
-                className="px-2 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full"
+                className="rounded-md bg-[var(--sera-mist)] px-2 py-0.5 text-[10px] font-medium text-[var(--sera-muted)]"
               >
                 {tag}
               </span>
@@ -140,17 +131,16 @@ export default function StorefrontProductCard({ product }: { product: Storefront
           </div>
         )}
 
-        {/* Price */}
         <div className="mt-3">
           {product.starting_price != null && product.starting_price > 0 ? (
             <div>
-              <span className="text-xs text-gray-400">Starting from</span>
-              <p className="text-lg font-bold text-gray-900">
+              <span className="text-xs text-[var(--sera-muted)]">Starting from</span>
+              <p className="font-display text-lg font-semibold text-[var(--sera-ink)]">
                 {formatPrice(product.starting_price)}
               </p>
             </div>
           ) : (
-            <p className="text-sm font-medium text-gray-400 italic">Contact for price</p>
+            <p className="text-sm font-medium italic text-[var(--sera-muted)]">Contact for price</p>
           )}
         </div>
       </div>
