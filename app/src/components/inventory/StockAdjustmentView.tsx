@@ -36,12 +36,14 @@ import {
   getClassificationCardDisplay,
   summarizeClassificationRound,
 } from '@/lib/inventory/stock-count-classification'
-import { stockCountRowsSignature } from '@/lib/inventory/stock-count-snapshot'
+import { stockCountDraftSignature } from '@/lib/inventory/stock-count-snapshot'
 import {
   buildStockCountCatalogRows,
+  getStockCountLocationOptions,
   isStockCountCatalogRowVisible,
   matchesStockCountSearch,
   type StockCountCatalogRow,
+  type StockCountLocation,
 } from '@/lib/inventory/stock-count-catalog'
 import {
   buildStockCountWorksheet,
@@ -81,12 +83,6 @@ import {
 
 type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification'
 type SessionStatus = 'draft' | 'posted' | 'archived'
-
-interface WarehouseLocation {
-  id: string
-  org_code: string
-  org_name: string
-}
 
 interface CountRow extends StockCountCatalogRow {
   /** Live allocated qty on this configuration — classification never auto-clears it. */
@@ -164,11 +160,11 @@ const countTypeOptions: Array<{ value: CountType; label: string }> = [
   { value: 'full_count', label: 'Full Count' },
   { value: 'cycle_count', label: 'Cycle Count' },
   { value: 'spot_check', label: 'Spot Check' },
-  { value: 'initial_configuration_classification', label: 'Initial Configuration Classification' },
+  { value: 'initial_configuration_classification', label: 'Initial Physical Count & Configuration Classification' },
 ]
 // Signature of a Stock Count draft with nothing counted yet. A fresh or reset
 // session starts here so it is never falsely flagged as having unsaved changes.
-const EMPTY_SIGNATURE = stockCountRowsSignature([])
+const EMPTY_SIGNATURE = stockCountDraftSignature([])
 const UNSAVED_CHANGES_MESSAGE = 'Imported or edited counts have not been saved yet. Save the draft, then reopen Review & Post.'
 const DISCARD_DRAFT_CONFIRMATION =
   'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.'
@@ -213,7 +209,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const postingNoteRecheckTimerRef = useRef<number | null>(null)
   const postingNoteRecheckPendingRef = useRef(false)
 
-  const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>([])
+  const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [countDate, setCountDate] = useState(todayIso())
   const [countType, setCountType] = useState<CountType>('full_count')
@@ -253,10 +249,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [verificationCode, setVerificationCode] = useState('')
   const [verificationError, setVerificationError] = useState<string | null>(null)
   const [preflight, setPreflight] = useState<PreflightState>({ status: 'idle' })
+  const [allocationTargets, setAllocationTargets] = useState<Record<string, string>>({})
   const [verificationNow, setVerificationNow] = useState(Date.now())
   const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
   const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
   const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
+  const isClassificationMode = countType === 'initial_configuration_classification'
+  const locationOptions = useMemo(
+    () => getStockCountLocationOptions(warehouseLocations, isClassificationMode),
+    [warehouseLocations, isClassificationMode],
+  )
 
   useEffect(() => {
     if (!verification) return
@@ -268,6 +270,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (isReady) loadWarehouseLocations()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  useEffect(() => {
+    if (locationOptions.some(location => location.id === selectedWarehouse)) return
+    const preferred = locationOptions.find(
+      location => location.org_code === 'HQ' || location.org_name.toLowerCase().includes('warehouse'),
+    ) || locationOptions[0]
+    setSelectedWarehouse(preferred?.id || '')
+  }, [locationOptions, selectedWarehouse])
 
   useEffect(() => {
     if (!selectedWarehouse) {
@@ -288,6 +298,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setVerification(null)
     setVerifiedSignature(null)
     setImportSummary(null)
+    setAllocationTargets({})
     setManagingDrafts(false)
     setSelectedDraftIds(new Set())
     setDiscardConfirmIds(null)
@@ -297,8 +308,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const loadWarehouseLocations = async () => {
     const { data, error } = await supabase
       .from('organizations')
-      .select('id, org_code, org_name')
-      .in('org_type_code', ['HQ', 'WH'])
+      .select('id, org_code, org_name, org_type_code')
+      .in('org_type_code', ['HQ', 'WH', 'DIST'])
       .eq('is_active', true)
       .order('org_name')
 
@@ -307,10 +318,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
 
-    const locations = data || []
+    const locations = (data || []) as StockCountLocation[]
     setWarehouseLocations(locations)
-    const preferred = locations.find(loc => loc.org_code === 'HQ' || loc.org_name.toLowerCase().includes('warehouse')) || locations[0]
-    if (preferred) setSelectedWarehouse(preferred.id)
   }
 
   const loadDrafts = async (warehouseId: string) => {
@@ -430,8 +439,6 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   }, [visibleRows, selectedGroupId])
 
-  const isClassificationMode = countType === 'initial_configuration_classification'
-
   // Derived purely from already-loaded rows — no extra fetch. A variant is
   // in scope for classification only while it still has a real balance on
   // its Legacy/Unclassified configuration at this warehouse.
@@ -492,12 +499,27 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       : visibleRows
   ), [isClassificationMode, classificationGroups, visibleRows])
 
-  const currentSignature = useMemo(() => stockCountRowsSignature(draftRows.map(row => ({
+  const allocationResolutionRows = useMemo(() => (
+    isClassificationMode
+      ? classificationGroups
+        .filter(group =>
+          group.legacyRow.quantityAllocated > 0
+          && allocationTargets[group.variantId]
+          && group.targetRows.some(row => parseCount(row.physicalCount) !== null),
+        )
+        .map(group => ({
+          variantId: group.variantId,
+          targetStockConfigId: allocationTargets[group.variantId],
+        }))
+      : []
+  ), [allocationTargets, classificationGroups, isClassificationMode])
+
+  const currentSignature = useMemo(() => stockCountDraftSignature(draftRows.map(row => ({
     stockConfigId: row.stockConfigId,
     variantId: row.variantId,
     physicalCount: parseCount(row.physicalCount),
     note: row.note,
-  }))), [draftRows])
+  })), allocationResolutionRows), [allocationResolutionRows, draftRows])
 
   // Variants that still carry a Legacy/Unclassified balance at this warehouse.
   // Their 20NB/50NB/50OB configurations must be filled through Initial
@@ -614,6 +636,23 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         if (itemError) throw itemError
       }
 
+      const { error: resolutionDeleteError } = await supabase
+        .from('stock_count_classification_allocation_resolutions' as any)
+        .delete()
+        .eq('session_id', sessionId)
+      if (resolutionDeleteError) throw resolutionDeleteError
+      if (isClassificationMode && allocationResolutionRows.length > 0) {
+        const { error: resolutionInsertError } = await supabase
+          .from('stock_count_classification_allocation_resolutions' as any)
+          .insert(allocationResolutionRows.map((resolution) => ({
+            session_id: sessionId,
+            variant_id: resolution.variantId,
+            target_stock_config_id: resolution.targetStockConfigId,
+            created_by: userProfile?.id || null,
+          })))
+        if (resolutionInsertError) throw resolutionInsertError
+      }
+
       // The screen and the saved draft are now identical — clear the dirty flag.
       setLastSavedSignature(savedSignature)
       if (!options.silent) toast({ title: 'Draft saved', description: `${draftRows.length} counted or noted row(s) saved.` })
@@ -678,6 +717,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       toast({ title: 'Open draft failed', description: scopeError.message, variant: 'destructive' })
       return
     }
+    const { data: allocationResolutions, error: allocationResolutionError } = await supabase
+      .from('stock_count_classification_allocation_resolutions' as any)
+      .select('variant_id,target_stock_config_id')
+      .eq('session_id', sessionId)
+    if (allocationResolutionError) {
+      toast({ title: 'Open draft failed', description: allocationResolutionError.message, variant: 'destructive' })
+      return
+    }
 
     const legacyItem = (items || []).find((item: any) => !item.stock_config_id)
     if (legacyItem) {
@@ -703,14 +750,22 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       const item = itemMap.get(row.stockConfigId) as any
       return item ? { ...row, physicalCount: item.physical_quantity === null ? '' : String(item.physical_quantity), note: item.note || '' } : { ...row, physicalCount: '', note: '' }
     }))
+    const loadedAllocationTargets = Object.fromEntries((allocationResolutions || []).map((resolution: any) => [
+      resolution.variant_id,
+      resolution.target_stock_config_id,
+    ]))
+    setAllocationTargets(loadedAllocationTargets)
     // The freshly loaded rows exactly match what is persisted, so seed the
     // saved-signature baseline from the loaded items (not from the pre-load
     // memo, which has not recomputed yet) to avoid a false "unsaved" flag.
-    setLastSavedSignature(stockCountRowsSignature((items || []).map((item: any) => ({
+    setLastSavedSignature(stockCountDraftSignature((items || []).map((item: any) => ({
       stockConfigId: item.stock_config_id ?? null,
       variantId: item.variant_id,
       physicalCount: item.physical_quantity === null || item.physical_quantity === undefined ? null : Number(item.physical_quantity),
       note: typeof item.note === 'string' ? item.note : '',
+    })), (allocationResolutions || []).map((resolution: any) => ({
+      variantId: resolution.variant_id,
+      targetStockConfigId: resolution.target_stock_config_id,
     }))))
     setVerification(null)
     setVerifiedSignature(null)
@@ -836,6 +891,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setVerification(null)
     setVerifiedSignature(null)
     setImportSummary(null)
+    setAllocationTargets({})
   }
 
   const downloadExcel = async () => {
@@ -1065,7 +1121,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setPreflight({
         status: 'error',
         code: 'classification_misuse',
-        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use the "Initial Configuration Classification" count type to move that balance into 20ml/50ml boxes — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
+        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Initial Physical Count & Configuration Classification" to record the actual box balances and clear Legacy — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
       })
       return
     }
@@ -1101,7 +1157,30 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         variantName: entry.group.variantName,
         requestedTotal: entry.classifiedTotal,
         selected: entry.selected,
+        allocationTargetStockConfigId: allocationTargets[entry.group.variantId] || null,
       }))
+      const invalidAllocationTarget = classificationSummary.perGroup.find((entry) => {
+        if (!entry.selected || entry.group.legacyRow.quantityAllocated <= 0) return false
+        const targetId = allocationTargets[entry.group.variantId]
+        if (!targetId) return false
+        const target = entry.group.targetRows.find(row => row.stockConfigId === targetId)
+        const targetPhysical = target ? parseCount(target.physicalCount) : null
+        return !target
+          || targetPhysical === null
+          || targetPhysical < target.quantityAllocated + entry.group.legacyRow.quantityAllocated
+      })
+      if (invalidAllocationTarget) {
+        const target = invalidAllocationTarget.group.targetRows.find(
+          row => row.stockConfigId === allocationTargets[invalidAllocationTarget.group.variantId],
+        )
+        const required = (target?.quantityAllocated || 0) + invalidAllocationTarget.group.legacyRow.quantityAllocated
+        setPreflight({
+          status: 'error',
+          code: 'classification_allocated_blocks_post',
+          message: `${invalidAllocationTarget.group.productName} — ${invalidAllocationTarget.group.variantName}: the selected reservation target must have a final Physical Count of at least ${formatNumber(required)}. Increase that target count or choose another counted configuration.`,
+        })
+        return
+      }
       const classificationGate = evaluateClassificationPostable(flavours, liveLegacyByVariant)
       if (!classificationGate.ok) {
         setPreflight({
@@ -1149,7 +1228,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setPreflight({
         status: 'error',
         code: 'classification_misuse',
-        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use the "Initial Configuration Classification" count type to move that balance into 20ml/50ml boxes — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
+        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Initial Physical Count & Configuration Classification" to record the actual box balances and clear Legacy — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
       })
       return
     }
@@ -1357,11 +1436,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       <Card>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Warehouse Location <span className="text-red-500">*</span></label>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              {isClassificationMode ? 'Inventory Organization' : 'Warehouse Location'} <span className="text-red-500">*</span>
+            </label>
             <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-              <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
-              <SelectContent>{warehouseLocations.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name} ({loc.org_code})</SelectItem>)}</SelectContent>
+              <SelectTrigger><SelectValue placeholder={isClassificationMode ? 'Select inventory organization' : 'Select warehouse'} /></SelectTrigger>
+              <SelectContent>{locationOptions.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name} ({loc.org_code})</SelectItem>)}</SelectContent>
             </Select>
+            {isClassificationMode && (
+              <p className="mt-1 text-xs text-slate-500">Includes distributor organizations that hold Legacy / Unclassified stock.</p>
+            )}
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Date <span className="text-red-500">*</span></label>
@@ -1479,7 +1563,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-semibold">This looks like a classification, not a {countTypeOptions.find(option => option.value === countType)?.label}.</p>
-              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Switch Count Type to <strong>Initial Configuration Classification</strong> so the legacy balance is drawn down instead of adding phantom stock. Posting is blocked until this is resolved.</p>
+              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Switch Count Type to <strong>Initial Physical Count &amp; Configuration Classification</strong> so the actual box balances are recorded and Legacy is cleared without adding phantom stock. Posting is blocked until this is resolved.</p>
             </div>
           </CardContent>
         </Card>
@@ -1572,7 +1656,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="font-semibold text-slate-950">{group.productName} — {group.variantName}</h3>
-                    <p className="text-xs text-slate-500">Classify the Legacy/Unclassified balance into 20ml New Box, 50ml New Box, and 50ml Old Box.</p>
+                    <p className="text-xs text-slate-500">Enter the actual physical opening balance by box configuration. The final total may be above or below Legacy; the difference is posted as an approved stock-count variance.</p>
                   </div>
                   {!selected
                     ? <Badge variant="outline" className="border-slate-300 text-slate-500">Deferred — not this round</Badge>
@@ -1588,13 +1672,52 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 )}
 
                 {group.legacyRow.quantityAllocated > 0 && (
-                  <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      This Legacy inventory still has {group.legacyRow.quantityAllocated} allocated{' '}
-                      {group.legacyRow.quantityAllocated === 1 ? 'unit' : 'units'} and cannot be fully classified.
-                      Release or resolve the allocation before posting.
-                    </span>
+                  <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        Legacy contains {group.legacyRow.quantityAllocated} reserved{' '}
+                        {group.legacyRow.quantityAllocated === 1 ? 'unit' : 'units'} from an active order.
+                        Choose which counted configuration will inherit the reservation. The reservation is moved only after OTP approval, in the same transaction as this physical count; it is never silently released.
+                      </span>
+                    </div>
+                    <div className="grid gap-1.5 sm:max-w-md">
+                      <span className="font-semibold">Reservation target configuration</span>
+                      <Select
+                        value={allocationTargets[group.variantId] || ''}
+                        disabled={currentStatus === 'posted'}
+                        onValueChange={(targetStockConfigId) => {
+                          invalidatePendingVerification()
+                          setAllocationTargets(prev => ({ ...prev, [group.variantId]: targetStockConfigId }))
+                        }}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Select a counted target…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {group.targetRows.map((row) => {
+                            const physical = parseCount(row.physicalCount)
+                            const required = row.quantityAllocated + group.legacyRow.quantityAllocated
+                            const lifecycleAllowsReservation = row.configStatus === 'active'
+                            const eligible = lifecycleAllowsReservation && physical !== null && physical >= required
+                            return (
+                              <SelectItem key={row.stockConfigId} value={row.stockConfigId} disabled={!eligible}>
+                                {row.configLabel} {eligible
+                                  ? `(final ${formatNumber(physical!)})`
+                                  : !lifecycleAllowsReservation
+                                    ? '(not available for an active order reservation)'
+                                    : `(enter at least ${formatNumber(required)})`}
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
+                      {allocationTargets[group.variantId] && (
+                        <span className="text-emerald-800">
+                          Ready to carry the reservation atomically. If the owning order changed, server verification will stop and identify it before posting.
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 

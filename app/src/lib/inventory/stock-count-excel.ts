@@ -532,6 +532,16 @@ function resolveClassificationImportHeaders(sheet: ExcelJS.Worksheet): Map<strin
   const duplicates = REQUIRED_CLASSIFICATION_IMPORT_HEADERS.filter(
     (header) => (indexes.get(normalizeHeader(header))?.length || 0) > 1,
   )
+  const isStandardStockCountWorkbook = REQUIRED_IMPORT_HEADERS.every(
+    (header) => indexes.has(normalizeHeader(header)),
+  ) && !indexes.has(normalizeHeader('Classification Reference'))
+  if (isStandardStockCountWorkbook) {
+    throw new Error(
+      'This is a standard Stock Count workbook, not an Initial Configuration Classification workbook. '
+      + 'To load it as a regular stock count, change Count Type to Full Count, Cycle Count, or Spot Check before importing. '
+      + 'To reclassify Legacy / Unclassified stock, download a fresh Initial Configuration Classification template for the selected inventory organization.',
+    )
+  }
   if (missing.includes('Stock Configuration ID')) {
     throw new Error('This Initial Configuration Classification file uses an older template and cannot be imported. Export a new template and copy the physical counts into it.')
   }

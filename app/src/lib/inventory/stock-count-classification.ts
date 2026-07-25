@@ -216,6 +216,8 @@ export interface ClassificationPostableFlavourInput {
   requestedTotal: number
   /** True when this flavour is selected for the current round. */
   selected: boolean
+  /** Explicit target selected to inherit any live Legacy allocation. */
+  allocationTargetStockConfigId?: string | null
 }
 
 export type ClassificationPostableFailure = {
@@ -230,9 +232,10 @@ export type ClassificationPostableFailure = {
 
 /**
  * Client/preflight mirror of stock_count_assert_classification_postable.
- * Uses live UNC balances (not the stale Excel/draft system qty) and never
- * mutates allocations. Target totals above or below Legacy are allowed as
- * genuine physical-count variance.
+ * Uses live UNC balances (not the stale Excel/draft system qty). Target totals
+ * above or below Legacy are allowed as genuine physical-count variance.
+ * Allocated Legacy stock is postable only when the user has explicitly chosen
+ * the target configuration that will inherit the reservation atomically.
  */
 export function evaluateClassificationPostable(
   flavours: ClassificationPostableFlavourInput[],
@@ -249,15 +252,15 @@ export function evaluateClassificationPostable(
       return {
         ok: false,
         code: 'classification_already_fully_classified',
-        message: `This product has already been fully classified (${label}). Download a new Initial Classification template or use Full Count to update its quantity.`,
+        message: `This product has already been fully classified (${label}). Download a new Initial Physical Count template for currently eligible products, or use Full Count to update this product’s configured quantity.`,
       }
     }
-    if (liveAllocated > 0) {
+    if (liveAllocated > 0 && !flavour.allocationTargetStockConfigId) {
       const unitLabel = liveAllocated === 1 ? 'unit' : 'units'
       return {
         ok: false,
         code: 'classification_allocated_blocks_post',
-        message: `This Legacy inventory for ${label} still has ${liveAllocated} allocated ${unitLabel} and cannot be fully classified. Release or resolve the allocation before posting.`,
+        message: `This Legacy inventory for ${label} has ${liveAllocated} allocated ${unitLabel}. Select the counted target configuration that should inherit the reservation, or ask Order Management to release/cancel the owning transaction before posting.`,
       }
     }
     // flavour.requestedTotal vs liveOnHand is variance, not a hard error.

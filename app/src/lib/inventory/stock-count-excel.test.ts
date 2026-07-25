@@ -323,6 +323,17 @@ describe('Initial Configuration Classification Excel', () => {
     )
   })
 
+  it('identifies a standard Stock Count workbook with actionable mode guidance', () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = buildStockCountWorksheet(workbook, sourceRows)
+
+    expect(() => parseClassificationWorksheet(sheet, classificationTargets())).toThrow(
+      'This is a standard Stock Count workbook, not an Initial Configuration Classification workbook. '
+      + 'To load it as a regular stock count, change Count Type to Full Count, Cycle Count, or Spot Check before importing. '
+      + 'To reclassify Legacy / Unclassified stock, download a fresh Initial Configuration Classification template for the selected inventory organization.',
+    )
+  })
+
   it('rejects duplicate Configuration IDs', () => {
     const workbook = new ExcelJS.Workbook()
     const sheet = buildClassificationWorksheet(workbook, classificationRows)

@@ -117,6 +117,28 @@ describe('Initial Classification eligibility and postable guards', () => {
     expect(result.message).not.toMatch(/auto-clear|delete|move the allocation/i)
   })
 
+  it('allows allocated Legacy only when the user explicitly selects its reservation target', () => {
+    const result = evaluateClassificationPostable(
+      [{
+        variantId: 'v1',
+        productName: 'Cellera Zero',
+        variantName: 'Potato',
+        requestedTotal: 5674,
+        selected: true,
+        allocationTargetStockConfigId: '20nb',
+      }],
+      new Map([['v1', {
+        variantId: 'v1',
+        productName: 'Cellera Zero',
+        variantName: 'Potato',
+        liveOnHand: 100,
+        liveAllocated: 1,
+      }]]),
+    )
+
+    expect(result).toEqual({ ok: true })
+  })
+
   it('blocks already fully classified flavours in a stale draft', () => {
     const result = evaluateClassificationPostable(
       [{
@@ -138,7 +160,7 @@ describe('Initial Classification eligibility and postable guards', () => {
     if (result.ok) return
     expect(result.code).toBe('classification_already_fully_classified')
     expect(result.message).toContain('already been fully classified')
-    expect(result.message).toContain('Download a new Initial Classification template')
+    expect(result.message).toContain('Download a new Initial Physical Count template')
   })
 
   it('treats a successful prior classification as non-repeatable (live UNC gone)', () => {

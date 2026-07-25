@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalizeCountedRows, stockCountRowsSignature } from './stock-count-snapshot'
+import { canonicalizeCountedRows, stockCountDraftSignature, stockCountRowsSignature } from './stock-count-snapshot'
 
 const row = (
   stockConfigId: string,
@@ -92,5 +92,33 @@ describe('stockCountRowsSignature', () => {
       { stockConfigId: '20NB', variantId: 'v1', physicalCount: 50, note: '' },
     ])
     expect(client).toBe(persisted)
+  })
+})
+
+describe('stockCountDraftSignature', () => {
+  it('changes when the explicit reservation target changes', () => {
+    const rows = [row('20NB', 'v1', 5674), row('UNC', 'v1', 0)]
+    const twenty = stockCountDraftSignature(rows, [{
+      variantId: 'v1',
+      targetStockConfigId: '20NB',
+    }])
+    const fifty = stockCountDraftSignature(rows, [{
+      variantId: 'v1',
+      targetStockConfigId: '50NB',
+    }])
+    expect(twenty).not.toBe(fifty)
+  })
+
+  it('is independent of reservation input order', () => {
+    const rows = [row('20NB', 'v1', 5674)]
+    const first = stockCountDraftSignature(rows, [
+      { variantId: 'v2', targetStockConfigId: '50NB' },
+      { variantId: 'v1', targetStockConfigId: '20NB' },
+    ])
+    const second = stockCountDraftSignature(rows, [
+      { variantId: 'v1', targetStockConfigId: '20NB' },
+      { variantId: 'v2', targetStockConfigId: '50NB' },
+    ])
+    expect(first).toBe(second)
   })
 })

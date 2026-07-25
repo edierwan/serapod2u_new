@@ -96,6 +96,16 @@ describe('stock count verification errors', () => {
         expect(fully.message).toContain('Download a new Initial Classification template')
     })
 
+    it('surfaces the owning order and required action for allocation carry errors', () => {
+        const mapped = mapStockCountDatabaseError(
+            'stock_count_allocation_target_required: Cellera Zero [Potato] has 1 reserved unit (SO26000085). Select the counted target configuration that should inherit the reservation.',
+            'preflight',
+        )
+        expect(mapped.code).toBe('classification_allocated_blocks_post')
+        expect(mapped.message).toContain('SO26000085')
+        expect(mapped.message).toContain('Select the counted target configuration')
+    })
+
     it('still maps historical exceeds-legacy SQL from pre-phase-18 databases', () => {
         const exceeds = mapStockCountDatabaseError(
             'stock_count_classification_exceeds_legacy: Classification for P [V] requests 150 units but only 100 remain in Legacy/Unclassified. Reduce the target counts or refresh the template.',
