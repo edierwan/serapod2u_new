@@ -77,12 +77,12 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     expired_code: { message: 'The verification code has expired. Please request a new code.', status: 400, recoverable: true },
     code_already_used: { message: 'This verification code has already been used. Please request a new code.', status: 409, recoverable: true },
     invalid_or_expired_code: { message: 'The verification code is incorrect. Please check the code and try again.', status: 400, recoverable: true },
-    classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Configuration Classification.', status: 409, recoverable: true },
+    classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Physical Count & Configuration Classification.', status: 409, recoverable: true },
     classification_legacy_not_cleared: { message: 'The Legacy/Unclassified balance must be fully cleared (counted at 0) before this classification can post.', status: 409, recoverable: true },
-    classification_already_fully_classified: { message: 'This product has already been fully classified. Download a new Initial Classification template or use Full Count to update its quantity.', status: 409, recoverable: true },
-    classification_allocated_blocks_post: { message: 'This Legacy inventory still has allocated units and cannot be fully classified. Release or resolve the allocation before posting.', status: 409, recoverable: true },
+    classification_already_fully_classified: { message: 'This product has already been fully classified. Download a new Initial Physical Count template for currently eligible products, or use Full Count to update this product’s configured quantity.', status: 409, recoverable: true },
+    classification_allocated_blocks_post: { message: 'This Legacy inventory has reserved units. Select the counted target configuration that should inherit the reservation, or ask Order Management to release/cancel the owning transaction before posting.', status: 409, recoverable: true },
     classification_exceeds_legacy: { message: 'The requested classification quantity exceeds the remaining Legacy/Unclassified balance. Reduce the target counts or refresh the template.', status: 409, recoverable: true },
-    full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use the “Initial Configuration Classification” count type to move it into 20ml/50ml boxes — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
+    full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use “Initial Physical Count & Configuration Classification” to record its actual 20ml/50ml balances and clear Legacy — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
     wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
     posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
     posting_timeout: { message: 'Posting took too long and was safely cancelled — no inventory was changed and your verification code is still valid. Please try posting again. If this keeps happening on a very large count, contact your administrator.', status: 503, recoverable: true },
@@ -171,6 +171,11 @@ export function mapStockCountDatabaseError(
     const detailed: Array<[string, StockCountVerificationErrorCode]> = [
         ['stock_count_already_fully_classified', 'classification_already_fully_classified'],
         ['stock_count_allocated_blocks_post', 'classification_allocated_blocks_post'],
+        ['stock_count_allocation_target_required', 'classification_allocated_blocks_post'],
+        ['stock_count_allocation_target_invalid', 'classification_allocated_blocks_post'],
+        ['stock_count_allocation_target_insufficient', 'classification_allocated_blocks_post'],
+        ['stock_count_allocation_target_not_sellable', 'classification_allocated_blocks_post'],
+        ['stock_count_allocation_owner_unresolved', 'classification_allocated_blocks_post'],
         ['stock_count_classification_exceeds_legacy', 'classification_exceeds_legacy'],
     ]
     for (const [prefix, code] of detailed) {
