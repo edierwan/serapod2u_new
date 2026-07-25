@@ -39,9 +39,11 @@ import {
 import { stockCountRowsSignature } from '@/lib/inventory/stock-count-snapshot'
 import {
   buildStockCountCatalogRows,
+  getStockCountLocationOptions,
   isStockCountCatalogRowVisible,
   matchesStockCountSearch,
   type StockCountCatalogRow,
+  type StockCountLocation,
 } from '@/lib/inventory/stock-count-catalog'
 import {
   buildStockCountWorksheet,
@@ -81,12 +83,6 @@ import {
 
 type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification'
 type SessionStatus = 'draft' | 'posted' | 'archived'
-
-interface WarehouseLocation {
-  id: string
-  org_code: string
-  org_name: string
-}
 
 interface CountRow extends StockCountCatalogRow {
   /** Live allocated qty on this configuration — classification never auto-clears it. */
@@ -213,7 +209,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const postingNoteRecheckTimerRef = useRef<number | null>(null)
   const postingNoteRecheckPendingRef = useRef(false)
 
-  const [warehouseLocations, setWarehouseLocations] = useState<WarehouseLocation[]>([])
+  const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
   const [countDate, setCountDate] = useState(todayIso())
   const [countType, setCountType] = useState<CountType>('full_count')
@@ -257,6 +253,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
   const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
   const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
+  const isClassificationMode = countType === 'initial_configuration_classification'
+  const locationOptions = useMemo(
+    () => getStockCountLocationOptions(warehouseLocations, isClassificationMode),
+    [warehouseLocations, isClassificationMode],
+  )
 
   useEffect(() => {
     if (!verification) return
@@ -268,6 +269,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (isReady) loadWarehouseLocations()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
+
+  useEffect(() => {
+    if (locationOptions.some(location => location.id === selectedWarehouse)) return
+    const preferred = locationOptions.find(
+      location => location.org_code === 'HQ' || location.org_name.toLowerCase().includes('warehouse'),
+    ) || locationOptions[0]
+    setSelectedWarehouse(preferred?.id || '')
+  }, [locationOptions, selectedWarehouse])
 
   useEffect(() => {
     if (!selectedWarehouse) {
@@ -297,8 +306,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const loadWarehouseLocations = async () => {
     const { data, error } = await supabase
       .from('organizations')
-      .select('id, org_code, org_name')
-      .in('org_type_code', ['HQ', 'WH'])
+      .select('id, org_code, org_name, org_type_code')
+      .in('org_type_code', ['HQ', 'WH', 'DIST'])
       .eq('is_active', true)
       .order('org_name')
 
@@ -307,10 +316,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
 
-    const locations = data || []
+    const locations = (data || []) as StockCountLocation[]
     setWarehouseLocations(locations)
-    const preferred = locations.find(loc => loc.org_code === 'HQ' || loc.org_name.toLowerCase().includes('warehouse')) || locations[0]
-    if (preferred) setSelectedWarehouse(preferred.id)
   }
 
   const loadDrafts = async (warehouseId: string) => {
@@ -429,8 +436,6 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       varianceTotal: scoped.reduce((sum, row) => sum + (varianceForRow(row) || 0), 0),
     }
   }, [visibleRows, selectedGroupId])
-
-  const isClassificationMode = countType === 'initial_configuration_classification'
 
   // Derived purely from already-loaded rows — no extra fetch. A variant is
   // in scope for classification only while it still has a real balance on
@@ -1357,11 +1362,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       <Card>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Warehouse Location <span className="text-red-500">*</span></label>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              {isClassificationMode ? 'Inventory Organization' : 'Warehouse Location'} <span className="text-red-500">*</span>
+            </label>
             <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-              <SelectTrigger><SelectValue placeholder="Select warehouse" /></SelectTrigger>
-              <SelectContent>{warehouseLocations.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name} ({loc.org_code})</SelectItem>)}</SelectContent>
+              <SelectTrigger><SelectValue placeholder={isClassificationMode ? 'Select inventory organization' : 'Select warehouse'} /></SelectTrigger>
+              <SelectContent>{locationOptions.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name} ({loc.org_code})</SelectItem>)}</SelectContent>
             </Select>
+            {isClassificationMode && (
+              <p className="mt-1 text-xs text-slate-500">Includes distributor organizations that hold Legacy / Unclassified stock.</p>
+            )}
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Date <span className="text-red-500">*</span></label>

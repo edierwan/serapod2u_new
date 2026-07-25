@@ -36,4 +36,19 @@ describe('Stock Count configuration scope migration', () => {
     expect(stockAdjustmentView).toContain('buildStockCountWorksheet(workbook, visibleRows.map')
     expect(stockAdjustmentView).toContain('parseStockCountWorksheet(sheet, visibleRows.map')
   })
+
+  it('uses one classification scope for the screen, new-draft snapshot, export, and import', () => {
+    expect(stockAdjustmentView).toContain('buildInitialClassificationGroups(rows)')
+    expect(stockAdjustmentView).toContain('classificationGroups.flatMap(group => [group.legacyRow, ...group.targetRows])')
+    expect(stockAdjustmentView).toContain('classificationSummary.perGroup.flatMap')
+    expect(stockAdjustmentView).toContain('const targets = classificationGroups.flatMap')
+    expect(stockAdjustmentView).toContain('parseClassificationWorksheet(sheet, targets)')
+    expect(stockAdjustmentView).toContain('baseCatalogRows.filter(row => scopeIds.has(row.stockConfigId))')
+  })
+
+  it('loads distributor inventory organizations without widening regular stock counts', () => {
+    expect(stockAdjustmentView).toContain(".in('org_type_code', ['HQ', 'WH', 'DIST'])")
+    expect(stockAdjustmentView).toContain('getStockCountLocationOptions(warehouseLocations, isClassificationMode)')
+    expect(stockAdjustmentView).toContain('locationOptions.map(loc =>')
+  })
 })
