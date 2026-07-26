@@ -1,4 +1,9 @@
 import { normalizeBaseCost } from './stock-count-costing'
+import {
+  evaluateStockConfigEligibility,
+  resolveStockConfigProfile,
+  type StockConfigProfile,
+} from './stock-count-config-eligibility'
 
 export const STOCK_COUNT_UNGROUPED_ID = 'ungrouped'
 
@@ -19,6 +24,10 @@ export interface StockCountCatalogRow {
   groupId: string
   groupName: string
   groupDescription: string | null
+  /** Explicit configuration profile of the owning group (see eligibility). */
+  groupConfigProfile: StockConfigProfile
+  /** Whether this configuration is eligible to be counted for its group. */
+  eligible: boolean
   brandLogoUrl: string | null
   variantName: string
   alternativeName: string | null
@@ -112,6 +121,21 @@ export function buildStockCountCatalogRows(
     const category: any = relation(product.product_categories)
     const balance = balancesByConfig.get(stockConfigId)
 
+    const groupConfigProfile = resolveStockConfigProfile(group?.stock_config_profile)
+    const systemQuantity = Number(balance?.quantity_on_hand || 0)
+    const eligible = evaluateStockConfigEligibility({
+      configCode: config.config_code,
+      volumeMl: config.volume_ml,
+      packaging: config.packaging,
+      groupProfile: groupConfigProfile,
+      // At catalog-build time only the persisted balance is known; physical
+      // count / note are entered later. A concentration config on a non-flavour
+      // group is ineligible regardless of activity, but the visibility rule
+      // (see isStockCountCatalogRowVisible) still keeps any ineligible config
+      // that carries a real balance so stock is never silently hidden.
+      hasActivity: systemQuantity !== 0,
+    }).eligible
+
     return {
       inventoryId: balance?.id || null,
       stockConfigId,
@@ -129,6 +153,8 @@ export function buildStockCountCatalogRows(
       groupId: group?.id || brand?.id || STOCK_COUNT_UNGROUPED_ID,
       groupName: group?.group_name || brand?.brand_name || 'Ungrouped',
       groupDescription: group?.group_description || null,
+      groupConfigProfile,
+      eligible,
       brandLogoUrl: brand?.logo_url || null,
       variantName: variant.variant_name || 'Unnamed variant',
       alternativeName: variant.alternative_name || null,
@@ -136,7 +162,7 @@ export function buildStockCountCatalogRows(
       manufacturerSku: variant.manufacturer_sku || null,
       manualSku: variant.manual_sku || null,
       imageUrl: variant.image_url || null,
-      systemQuantity: Number(balance?.quantity_on_hand || 0),
+      systemQuantity,
       quantityAllocated: Number(balance?.quantity_allocated || 0),
       physicalCount: '',
       note: '',
@@ -157,10 +183,52 @@ export function stockCountRowHasActivity(row: Pick<StockCountCatalogRow, 'system
 
 export function isStockCountCatalogRowVisible(row: StockCountCatalogRow, showInactive: boolean): boolean {
   const hasActivity = stockCountRowHasActivity(row)
+  // A configuration that is ineligible for its group (e.g. an invalid 20mg/50mg
+  // configuration generated on a Device group) is hidden — but only while it
+  // carries no balance. An ineligible config that still holds real stock stays
+  // visible so nothing is silently dropped; it is corrected via the reviewed
+  // cleanup migration, not hidden from the operator.
+  if (!row.eligible && !hasActivity) return false
   if (row.configCode === 'UNCLASSIFIED' && !hasActivity) return false
   if (row.configStatus === 'inactive') return showInactive
   if (row.configStatus === 'phase_out' && !hasActivity) return showInactive
   return true
+}
+
+/**
+ * The immutable Opening Balance scope captured at draft-creation time. Category
+ * membership is validated HERE so the persisted snapshot can never include a
+ * configuration from another Product Category. This is what stops a snapshot
+ * being polluted with out-of-category rows that would then be dropped on reopen.
+ */
+export function buildOpeningBalanceScopeRows<T extends Pick<StockCountCatalogRow, 'categoryId' | 'configCode' | 'configStatus' | 'systemQuantity' | 'physicalCount' | 'note' | 'eligible'>>(
+  rows: T[],
+  categoryId: string,
+): T[] {
+  if (!categoryId) return []
+  return rows.filter(row => row.categoryId === categoryId && isStockCountCatalogRowVisible(row as unknown as StockCountCatalogRow, false))
+}
+
+/**
+ * The rows an Opening Balance draft displays (and therefore exports to Excel).
+ *
+ *  - A NEW draft (no session id yet) shows the live, category-scoped eligible
+ *    catalog — the same set that becomes the immutable scope on first save.
+ *  - A REOPENED draft is bound to its immutable snapshot scope: every row whose
+ *    configuration is in `scopeIds` is shown, WITHOUT re-applying the live
+ *    Product Category filter. A snapshot row must never disappear because its
+ *    product was later recategorized, deactivated, or otherwise drifted from the
+ *    live catalog — the frozen snapshot is authoritative. This is the fix for a
+ *    140-row draft collapsing to a single surviving item on reopen.
+ */
+export function resolveOpeningBalanceVisibleRows<T extends Pick<StockCountCatalogRow, 'stockConfigId' | 'categoryId' | 'configCode' | 'configStatus' | 'systemQuantity' | 'physicalCount' | 'note' | 'eligible'>>(
+  rows: T[],
+  options: { currentSessionId: string | null; selectedCategory: string; scopeIds: Set<string> },
+): T[] {
+  if (options.currentSessionId) {
+    return rows.filter(row => options.scopeIds.has(row.stockConfigId))
+  }
+  return buildOpeningBalanceScopeRows(rows, options.selectedCategory)
 }
 
 export function matchesStockCountSearch(row: StockCountCatalogRow, search: string): boolean {

@@ -214,4 +214,71 @@ describe('Stock Count configuration-first catalog', () => {
     expect(resolveStockCountDefaultWarehouseId('distributor', 'shop', warehouses)).toBe('')
     expect(resolveStockCountDefaultWarehouseId(null, null, warehouses)).toBe('')
   })
+
+  describe('group configuration eligibility', () => {
+    const deviceProduct = {
+      id: 'device-product', product_name: 'Serapod Device',
+      product_groups: { id: 'device-group', group_name: 'Serapod Device S.Line', group_description: null, stock_config_profile: 'standard' },
+      brands: null,
+    }
+    const deviceVariant = (variantId: string) => ({
+      id: variantId, variant_name: variantId, alternative_name: null,
+      variant_code: variantId.toUpperCase(), product_code: variantId.toUpperCase(),
+      manufacturer_sku: null, manual_sku: null, image_url: null, base_cost: 10,
+      products: deviceProduct,
+    })
+    const deviceConfig = (id: string, variantId: string, code: string, volume: number | null, packaging: string | null, status = 'active') => ({
+      id, variant_id: variantId, config_code: code, config_label: code, stock_sku: `${id}-SKU`,
+      volume_ml: volume, packaging, status, product_variants: deviceVariant(variantId),
+    })
+
+    it('marks Device concentration configurations ineligible and hides zero-balance phantoms', () => {
+      const rows = buildStockCountCatalogRows([
+        deviceConfig('dev-std', 'arctic', 'STD', null, null),
+        deviceConfig('dev-unc', 'arctic', 'UNCLASSIFIED', null, null, 'phase_out'),
+        deviceConfig('dev-20nb', 'arctic', '20NB', 20, 'new_box'),
+        deviceConfig('dev-50nb', 'arctic', '50NB', 50, 'new_box'),
+      ], [
+        // Device carries real Unclassified stock (like Arctic 1,072).
+        { id: 'inv-unc', stock_config_id: 'dev-unc', variant_id: 'arctic', quantity_on_hand: 1072, quantity_allocated: 0, warehouse_location: null },
+      ])
+      const byId = new Map(rows.map(row => [row.stockConfigId, row]))
+      // Concentration configs are ineligible for the Device (standard) group.
+      expect(byId.get('dev-20nb')?.eligible).toBe(false)
+      expect(byId.get('dev-50nb')?.eligible).toBe(false)
+      // The single Standard config and the Unclassified balance are eligible.
+      expect(byId.get('dev-std')?.eligible).toBe(true)
+      expect(byId.get('dev-unc')?.eligible).toBe(true)
+      // Zero-balance phantom concentration configs disappear from the UI.
+      expect(isStockCountCatalogRowVisible(byId.get('dev-20nb')!, false)).toBe(false)
+      expect(isStockCountCatalogRowVisible(byId.get('dev-50nb')!, false)).toBe(false)
+      // Standard config + Unclassified-with-balance remain visible.
+      expect(isStockCountCatalogRowVisible(byId.get('dev-std')!, false)).toBe(true)
+      expect(isStockCountCatalogRowVisible(byId.get('dev-unc')!, false)).toBe(true)
+    })
+
+    it('keeps an ineligible configuration visible if it still holds a balance (never silently dropped)', () => {
+      const [row] = buildStockCountCatalogRows(
+        [deviceConfig('dev-20nb', 'arctic', '20NB', 20, 'new_box')],
+        [{ id: 'inv', stock_config_id: 'dev-20nb', variant_id: 'arctic', quantity_on_hand: 5, quantity_allocated: 0, warehouse_location: null }],
+      )
+      expect(row.eligible).toBe(false)
+      expect(isStockCountCatalogRowVisible(row, false)).toBe(true)
+    })
+
+    it('does not filter Cartridge concentration configs (explicit concentration profile)', () => {
+      const cartConfig = (id: string, code: string, volume: number, packaging: string) => ({
+        id, variant_id: 'durian', config_code: code, config_label: code, stock_sku: `${id}-SKU`,
+        volume_ml: volume, packaging, status: 'active',
+        product_variants: {
+          id: 'durian', variant_name: 'Durian', alternative_name: null, variant_code: 'DUR', product_code: 'DUR',
+          manufacturer_sku: null, manual_sku: null, image_url: null, base_cost: 12,
+          products: { id: 'cart-product', product_name: 'Cellera', product_groups: { id: 'cartridge', group_name: 'Cartridge', group_description: null, stock_config_profile: 'concentration' }, brands: null },
+        },
+      })
+      const rows = buildStockCountCatalogRows([cartConfig('c20', '20NB', 20, 'new_box'), cartConfig('c50', '50NB', 50, 'new_box')], [])
+      expect(rows.every(row => row.eligible)).toBe(true)
+      expect(rows.every(row => isStockCountCatalogRowVisible(row, false))).toBe(true)
+    })
+  })
 })

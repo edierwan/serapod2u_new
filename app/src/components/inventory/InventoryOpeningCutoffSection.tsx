@@ -21,6 +21,10 @@ interface Props {
   userProfile: any
   sessionId: string | null
   warehouseOrganizationId: string
+  /** Human-readable warehouse name (never the raw UUID). */
+  warehouseName?: string
+  /** Human-readable draft reference, e.g. "OB-20260727" (never the raw UUID). */
+  draftReference?: string
   productCategoryId: string
   productCategoryName: string
   countsReady: boolean
@@ -39,6 +43,8 @@ export default function InventoryOpeningCutoffSection({
   userProfile,
   sessionId,
   warehouseOrganizationId,
+  warehouseName,
+  draftReference,
   productCategoryId,
   productCategoryName,
   countsReady,
@@ -62,6 +68,13 @@ export default function InventoryOpeningCutoffSection({
   const isHqAdmin = userProfile?.organizations?.org_type_code === 'HQ'
     && Number(userProfile?.roles?.role_level) <= 10
   const activeCutoff = cutoff?.status === 'counting' ? cutoff : null
+
+  // User-facing labels. Raw UUIDs (session/warehouse/category) are kept only for
+  // routing and API calls; they are never rendered. When a name cannot be
+  // resolved we show a neutral fallback rather than leaking an internal ID.
+  const warehouseLabel = warehouseName?.trim() || 'Warehouse unavailable'
+  const categoryLabel = productCategoryName?.trim() || 'Category unavailable'
+  const draftLabel = draftReference?.trim() || 'Opening Balance Draft'
 
   const load = useCallback(async () => {
     if (!isReady) return
@@ -285,8 +298,8 @@ export default function InventoryOpeningCutoffSection({
           <div className="grid gap-4 lg:grid-cols-[1fr_280px_auto] lg:items-end">
             <div>
               <Label>Saved Opening Balance draft</Label>
-              <p className="rounded-md border bg-slate-50 px-3 py-2 font-mono text-xs">{sessionId}</p>
-              <p className="mt-1 text-xs text-slate-500">Warehouse: {warehouseOrganizationId || 'Not selected'} · Category: {productCategoryName || productCategoryId || 'Not selected'}</p>
+              <p className="rounded-md border bg-slate-50 px-3 py-2 text-sm font-semibold">{draftLabel}</p>
+              <p className="mt-1 text-xs text-slate-500">Warehouse: {warehouseLabel} · Category: {categoryLabel}</p>
               {!countsReady && <p className="mt-1 text-xs font-medium text-amber-700">Enter and save a physical count for every visible eligible configuration before freezing.</p>}
             </div>
             <div><Label>Proposed cut-off date/time</Label><Input type="datetime-local" value={proposedAt} onChange={event => setProposedAt(event.target.value)} /></div>
@@ -325,7 +338,7 @@ export default function InventoryOpeningCutoffSection({
         {showHistory && <div className="rounded-lg border p-3 text-sm">
           {reports.length === 0 ? 'No posted cut-off reports.' : reports.map(item => (
             <button key={item.id} className="block w-full border-b p-2 text-left last:border-0" onClick={() => setReport(item.report_payload)}>
-              {new Date(item.generated_at).toLocaleString()} · {item.readiness} · {item.cutoff_id}
+              {new Date(item.generated_at).toLocaleString()} · {item.readiness}
             </button>
           ))}
         </div>}
@@ -334,7 +347,7 @@ export default function InventoryOpeningCutoffSection({
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Opening Balance readiness</p><Badge className={readinessColor}>{report.readiness}</Badge></div>
             <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Cut-off date/time</p><p className="font-semibold">{new Date(report.proposed_cutoff_at).toLocaleString()}</p></div>
-            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Warehouse / category</p><p className="font-mono text-xs">{report.warehouse_organization_id}<br />{report.product_category_name || productCategoryName}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Warehouse / category</p><p className="text-sm font-semibold">{warehouseLabel}<br />{report.product_category_name || categoryLabel}</p></div>
             <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Freeze / count draft</p><p className="font-semibold">{report.freeze_active ? 'Frozen — count active' : 'Open'} · Physical {physicalSummary.toLocaleString()}</p></div>
           </div>
 

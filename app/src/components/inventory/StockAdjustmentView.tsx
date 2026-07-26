@@ -39,14 +39,17 @@ import {
 import { stockCountDraftSignature } from '@/lib/inventory/stock-count-snapshot'
 import InventoryOpeningCutoffSection from '@/components/inventory/InventoryOpeningCutoffSection'
 import {
+  buildOpeningBalanceScopeRows,
   buildStockCountCatalogRows,
   getStockCountLocationOptions,
   isStockCountCatalogRowVisible,
   matchesStockCountSearch,
+  resolveOpeningBalanceVisibleRows,
   resolveStockCountDefaultWarehouseId,
   type StockCountCatalogRow,
   type StockCountLocation,
 } from '@/lib/inventory/stock-count-catalog'
+import { findIneligibleStockConfigs } from '@/lib/inventory/stock-count-config-eligibility'
 import {
   buildStockCountWorksheet,
   parseStockCountWorksheet,
@@ -631,7 +634,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               products!inner (
                 id, product_name, is_active, category_id, group_id, brand_id,
                 product_categories!inner (id, category_name, is_active),
-                product_groups (id, group_name, group_description),
+                product_groups (id, group_name, group_description, stock_config_profile),
                 brands (id, brand_name, logo_url)
               )
             )
@@ -677,11 +680,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const visibleRows = useMemo(
     () => {
       if (isOpeningBalanceMode) {
-        return rows.filter(row =>
-          Boolean(selectedCategory) && row.categoryId === selectedCategory
-          && (currentSessionId
-            ? openingDraftScopeIds.has(row.stockConfigId)
-            : isStockCountCatalogRowVisible(row, false)))
+        // Reopened drafts are bound to their immutable snapshot scope and are
+        // NOT re-filtered by the live Product Category, so a saved 140-row
+        // snapshot always reopens (and exports) with all 140 rows even if a
+        // product later drifted from the live catalog. New drafts show the
+        // live, category-scoped eligible set (row.categoryId === selectedCategory).
+        return resolveOpeningBalanceVisibleRows(rows, {
+          currentSessionId,
+          selectedCategory,
+          scopeIds: openingDraftScopeIds,
+        })
       }
       return countableRows.filter(row => !selectedCategory || row.categoryId === selectedCategory)
     },
@@ -800,9 +808,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     isClassificationMode
       ? classificationGroups.flatMap(group => [group.legacyRow, ...group.targetRows])
       : isOpeningBalanceMode
-        ? visibleRows
+        // Snapshot only category-validated rows so the persisted scope can never
+        // include a configuration from another Product Category (which would
+        // then be dropped on reopen). Equivalent to the new-draft visibleRows,
+        // but explicit and independent of the reopen display path.
+        ? buildOpeningBalanceScopeRows(rows, selectedCategory)
         : countableRows
-  ), [isClassificationMode, isOpeningBalanceMode, classificationGroups, visibleRows, countableRows])
+  ), [isClassificationMode, isOpeningBalanceMode, classificationGroups, rows, selectedCategory, countableRows])
 
   const allocationResolutionRows = useMemo(() => (
     isClassificationMode
@@ -846,6 +858,30 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [isClassificationMode, isOpeningBalanceMode, draftRows, unclassifiedVariantIds, postedOpeningCategoryIds])
   const hasClassificationMisuse = classificationMisuseRows.length > 0
 
+  // Centralized configuration-eligibility guard (client mirror of the DB guard).
+  // A configuration that is ineligible for its product group — e.g. an invalid
+  // 20mg/50mg configuration on a Device group — must never be counted or posted.
+  // We only block when a count/note was actually entered against such a row, so
+  // an untouched legacy phantom in an old snapshot never strands the operator;
+  // the reviewed cleanup migration removes those. The DB trigger is authoritative.
+  const configEligibilityViolations = useMemo(
+    () => findIneligibleStockConfigs(
+      draftRows
+        .filter(row => parseCount(row.physicalCount) !== null || row.note.trim() !== '')
+        .map(row => ({
+          stockConfigId: row.stockConfigId,
+          configCode: row.configCode,
+          variantId: row.variantId,
+          volumeMl: row.volumeMl,
+          packaging: row.packagingVersion,
+          groupProfile: row.groupConfigProfile,
+          hasActivity: true,
+        })),
+    ),
+    [draftRows],
+  )
+  const hasConfigEligibilityViolation = configEligibilityViolations.length > 0
+
   // On-screen counts differ from the saved draft. Review & Post must never run
   // against a dirty draft, and an issued code is void once the counts change.
   const hasUnsavedChanges = currentSignature !== lastSavedSignature
@@ -863,6 +899,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   // selected; a partial (incomplete) selection still opens Review so the block
   // can be shown, and the preflight/DB reject it.
   const canPost = !isOpeningBalanceMode && canSave
+    && !hasConfigEligibilityViolation
     && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
 
   const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
@@ -899,6 +936,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
     if (!selectedWarehouseIsValid) {
       toast({ title: 'Invalid warehouse', description: ACTIVE_WAREHOUSE_REQUIRED_MESSAGE, variant: 'destructive' })
+      return null
+    }
+    if (hasConfigEligibilityViolation) {
+      toast({
+        title: 'Invalid configuration for this product group',
+        description: configEligibilityViolations[0]?.message
+          || 'A counted configuration is not valid for its product group.',
+        variant: 'destructive',
+      })
       return null
     }
     if (!canSave) return null
@@ -1152,7 +1198,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               products!inner (
                 id, product_name, is_active, category_id, group_id, brand_id,
                 product_categories!inner (id, category_name, is_active),
-                product_groups (id, group_name, group_description),
+                product_groups (id, group_name, group_description, stock_config_profile),
                 brands (id, brand_name, logo_url)
               )
             )
@@ -1933,7 +1979,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               {invalidWarehouseDrafts.slice(0, 10).map(draft => (
                 <li key={draft.id}>
                   {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Stock Count'} · {draft.count_date}
-                  <span className="ml-1 font-mono text-xs">({draft.warehouse_organization_id})</span>
+                  <span className="ml-1 text-xs">({warehouseLocations.find(location => location.id === draft.warehouse_organization_id)?.org_name || draft.warehouse_name || 'Warehouse unavailable'})</span>
                 </li>
               ))}
             </ul>
@@ -2182,6 +2228,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         </Card>
       )}
 
+      {hasConfigEligibilityViolation && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-semibold">Invalid configuration for this product group</p>
+              <p className="mt-1">{configEligibilityViolations.length} counted configuration{configEligibilityViolations.length === 1 ? '' : 's'} are not valid for their product group (for example a 20mg/50mg concentration configuration on a Device group). Remove these counts before saving or posting. {configEligibilityViolations[0]?.message}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {isClassificationMode && (
         <div className="grid gap-4 md:grid-cols-4">
           <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Flavours with Legacy balance</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.totalFlavours)}</p></CardContent></Card>
@@ -2240,7 +2298,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                         const adjustmentValue = adjustmentValueForRow(row)
                         return (
                           <TableRow key={row.stockConfigId}>
-                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge><span className="font-mono text-xs text-slate-500">{skuForRow(row)}</span></div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
+                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge>{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
                             <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                             <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
@@ -2386,6 +2444,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           userProfile={userProfile}
           sessionId={currentSessionId}
           warehouseOrganizationId={selectedWarehouse}
+          warehouseName={warehouseName}
+          draftReference={referenceName.trim() || (countDate ? `OB-${countDate.replace(/-/g, '')}` : 'Opening Balance Draft')}
           productCategoryId={selectedCategory}
           productCategoryName={selectedCategoryName}
           countsReady={openingCountsComplete && !hasUnsavedChanges}
