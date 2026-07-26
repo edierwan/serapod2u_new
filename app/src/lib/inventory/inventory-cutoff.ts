@@ -1,5 +1,5 @@
 export type CutoffReadiness = 'Ready' | 'Review Required' | 'Blocked'
-export type CutoffDecision = 'carry_forward' | 'cancel_release' | 'carry_forward_incoming'
+export type CutoffDecision = 'carry_forward' | 'cancel_release' | 'carry_forward_incoming' | 'history_only'
 
 export interface CutoffReport {
   cutoff_id: string

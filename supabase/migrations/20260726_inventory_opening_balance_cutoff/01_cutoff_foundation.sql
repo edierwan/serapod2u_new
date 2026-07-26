@@ -78,6 +78,19 @@ create table if not exists public.inventory_cutoff_reports (
   generated_at timestamptz not null default now()
 );
 
+-- Unforgeable transaction-scoped posting context. Ordinary roles receive no
+-- privileges on this table; only the SECURITY DEFINER posting function may add
+-- the current backend/transaction tuple. This replaces a custom GUC, because
+-- PostgreSQL permits ordinary roles to set arbitrary two-part custom settings.
+create table if not exists public.inventory_cutoff_posting_context (
+  backend_pid integer not null,
+  transaction_id bigint not null,
+  cutoff_id uuid not null references public.inventory_opening_cutoffs(id) on delete cascade,
+  created_by uuid not null references public.users(id),
+  created_at timestamptz not null default clock_timestamp(),
+  primary key (backend_pid, transaction_id, cutoff_id)
+);
+
 create index if not exists inventory_cutoff_decisions_cutoff_idx
   on public.inventory_cutoff_decisions(cutoff_id, transaction_kind);
 create index if not exists inventory_cutoff_audit_cutoff_idx
@@ -89,6 +102,7 @@ alter table public.inventory_opening_cutoffs enable row level security;
 alter table public.inventory_cutoff_decisions enable row level security;
 alter table public.inventory_cutoff_audit_events enable row level security;
 alter table public.inventory_cutoff_reports enable row level security;
+alter table public.inventory_cutoff_posting_context enable row level security;
 
 drop policy if exists inventory_cutoffs_read on public.inventory_opening_cutoffs;
 create policy inventory_cutoffs_read on public.inventory_opening_cutoffs for select
@@ -139,14 +153,19 @@ returns boolean language sql stable security definer set search_path = public, p
 $$;
 
 create or replace function public.inventory_cutoff_assert_not_frozen(p_warehouse_id uuid)
-returns void language plpgsql stable security definer set search_path = public, pg_temp as $$
+returns void language plpgsql volatile security definer set search_path = public, pg_temp as $$
 declare v_cutoff uuid;
 begin
   select id into v_cutoff from public.inventory_opening_cutoffs
   where warehouse_organization_id = p_warehouse_id and status = 'counting'
   order by started_at desc limit 1;
-  if v_cutoff is not null
-     and current_setting('app.inventory_cutoff_bypass', true) is distinct from v_cutoff::text then
+  if v_cutoff is not null and not exists (
+    select 1 from public.inventory_cutoff_posting_context ctx
+    where ctx.cutoff_id=v_cutoff
+      and ctx.backend_pid=pg_backend_pid()
+      and ctx.transaction_id=txid_current()
+      and ctx.created_by=auth.uid()
+  ) then
     raise exception 'inventory_cutoff_warehouse_frozen: Warehouse inventory is frozen while opening balance count % is active.', v_cutoff;
   end if;
 end;
@@ -244,6 +263,7 @@ grant select on public.inventory_opening_cutoffs, public.inventory_cutoff_decisi
 revoke insert, update, delete, truncate on public.inventory_opening_cutoffs,
   public.inventory_cutoff_decisions, public.inventory_cutoff_audit_events,
   public.inventory_cutoff_reports from authenticated;
+revoke all on public.inventory_cutoff_posting_context from public, anon, authenticated;
 
 comment on function public.inventory_cutoff_assert_not_frozen(uuid) is
   'Warehouse-scoped freeze gate. product_inventory and stock_movements triggers make allocation, dispatch, receiving, transfer, repack, returns and manual adjustments fail closed during an active opening count.';

@@ -46,6 +46,30 @@ export async function POST(request: NextRequest) {
             }))
         }
         const { organizationId: orgId, recipients, session } = preflight
+        if (session.count_type === 'opening_balance_cutoff') {
+            const { data: cutoff, error: cutoffError } = await (supabase as any)
+                .from('inventory_opening_cutoffs')
+                .select('id,status')
+                .eq('stock_count_session_id', sessionId)
+                .maybeSingle()
+            if (cutoffError || !cutoff || cutoff.status !== 'counting') {
+                return jsonError(stockCountVerificationError('invalid_count_data', {
+                    stage: 'request',
+                    message: 'The Inventory Opening Balance Cut-off is not active.',
+                }))
+            }
+            const { data: cutoffPreview, error: previewError } = await (supabase as any)
+                .rpc('inventory_cutoff_preview', { p_cutoff_id: cutoff.id })
+            if (previewError) throw previewError
+            if (cutoffPreview?.readiness !== 'Ready') {
+                const blockers = Array.isArray(cutoffPreview?.blockers)
+                    ? cutoffPreview.blockers.join(' ')
+                    : 'Resolve all cut-off blockers before requesting verification.'
+                return jsonError(stockCountVerificationError('invalid_count_data', {
+                    stage: 'request', message: blockers,
+                }))
+            }
+        }
         const [warehouseResult, organizationResult, requestedByResult] = await Promise.all([
             admin.from('organizations').select('org_name').eq('id', session.warehouse_organization_id).single(),
             admin.from('organizations').select('org_name').eq('id', orgId).single(),
@@ -77,6 +101,20 @@ export async function POST(request: NextRequest) {
         })
         if (prepareError) throw prepareError
         preparedRequestId = prepared?.request_id || null
+        if (session.count_type === 'opening_balance_cutoff') {
+            const { data: cutoff } = await (supabase as any)
+                .from('inventory_opening_cutoffs')
+                .select('id')
+                .eq('stock_count_session_id', sessionId)
+                .eq('status', 'counting')
+                .single()
+            const { error: bindError } = await (supabase as any)
+                .rpc('bind_inventory_cutoff_verification_snapshot', {
+                    p_request_id: prepared.request_id,
+                    p_cutoff_id: cutoff.id,
+                })
+            if (bindError) throw bindError
+        }
 
         const deliveries = await Promise.all(recipients.map((to) => sendTransactionalHtmlEmail(admin, orgId, {
             to, subject: email.subject, text: email.text, html: email.html, fromName: 'Serapod2U Notifications',

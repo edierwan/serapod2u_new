@@ -25,6 +25,7 @@ declare
   v_cancelled integer := 0;
   v_carried integer := 0;
   v_incoming integer := 0;
+  v_history_orders integer := 0;
 begin
   if v_user is null or not public.inventory_cutoff_is_hq_admin() then raise exception 'permission_denied'; end if;
   select * into v_request from public.stock_count_verification_requests
@@ -47,7 +48,7 @@ begin
   end if;
   if v_request.status<>'active' then raise exception 'invalid_verification_code'; end if;
 
-  v_current_snapshot := public.stock_count_snapshot_hash(v_session.id);
+  v_current_snapshot := public.inventory_cutoff_snapshot_hash(v_cutoff.id);
   if v_current_snapshot is distinct from v_request.snapshot_hash then
     update public.stock_count_verification_requests set status='invalidated',
       invalidated_at=now(),snapshot_mismatch=true where id=p_request_id;
@@ -84,6 +85,35 @@ begin
     where d.cutoff_id=v_cutoff.id and d.transaction_kind='distributor'
     group by d.order_id having count(distinct d.decision)>1
   ) then raise exception 'inventory_cutoff_mixed_order_decisions'; end if;
+  if exists (
+    select 1 from public.inventory_cutoff_decisions d
+    where d.cutoff_id=v_cutoff.id and d.transaction_kind='manufacturer'
+    group by d.order_id having count(distinct d.decision)>1
+  ) then raise exception 'inventory_cutoff_mixed_manufacturer_order_decisions'; end if;
+
+  -- Decisions contain server-derived quantities, never client quantities. Still
+  -- recheck them under the order locks so edits/receipts after selection cannot
+  -- turn a once-valid decision into a stale posting input.
+  if exists (
+    select 1 from public.inventory_cutoff_decisions d
+    join public.order_items oi on oi.id=d.order_item_id
+    join public.orders o on o.id=d.order_id
+    where d.cutoff_id=v_cutoff.id and d.transaction_kind='distributor'
+      and (o.status<>'submitted' or o.order_type not in ('D2H','S2D')
+        or d.quantity<>oi.qty)
+  ) then raise exception 'inventory_cutoff_distributor_decision_stale'; end if;
+  if exists (
+    select 1 from public.inventory_cutoff_decisions d
+    join public.order_items oi on oi.id=d.order_item_id
+    join public.orders o on o.id=d.order_id
+    left join (
+      select order_id,variant_id,sum(received_now)::integer received_qty
+      from public.warehouse_receipt_items group by order_id,variant_id
+    ) r on r.order_id=o.id and r.variant_id=oi.variant_id
+    where d.cutoff_id=v_cutoff.id and d.transaction_kind='manufacturer'
+      and (o.status not in ('approved','closed') or o.order_type<>'H2M'
+        or d.quantity<>greatest(oi.qty-coalesce(r.received_qty,0),0))
+  ) then raise exception 'inventory_cutoff_manufacturer_decision_stale'; end if;
 
   -- Every live configured reservation at the warehouse must reconcile to an
   -- explicitly selected submitted order item. No unidentified allocation is reset.
@@ -98,7 +128,9 @@ begin
       ),0)
   ) then raise exception 'inventory_cutoff_allocation_owner_unresolved'; end if;
 
-  perform set_config('app.inventory_cutoff_bypass',v_cutoff.id::text,true);
+  insert into public.inventory_cutoff_posting_context(
+    backend_pid,transaction_id,cutoff_id,created_by
+  ) values(pg_backend_pid(),txid_current(),v_cutoff.id,v_user);
 
   -- Cancel whole eligible submitted orders and release their allocations through
   -- the established audited deallocation function. History is retained.
@@ -212,6 +244,34 @@ begin
     v_carried:=v_carried+v_item.quantity;
   end loop;
 
+  -- A dedicated manufacturer History Only choice closes the whole H2M lifecycle
+  -- object. Mixed choices on one order are rejected above. Existing receipts and
+  -- history remain; cancelled status removes it from incoming views and the
+  -- receiving RPC's approved/closed allowlist.
+  for v_order in
+    select o.* from public.orders o
+    where exists(select 1 from public.inventory_cutoff_decisions d
+      where d.cutoff_id=v_cutoff.id and d.transaction_kind='manufacturer'
+        and d.order_id=o.id and d.decision='history_only')
+    order by o.id for update
+  loop
+    if v_order.order_type<>'H2M' or v_order.status not in ('approved','closed') then
+      raise exception 'inventory_cutoff_manufacturer_not_eligible';
+    end if;
+    update public.orders set status='cancelled',
+      notes=concat_ws(E'\n',nullif(notes,''),
+        'Marked History Only during Inventory Opening Balance Cut-off'),
+      updated_by=v_user,updated_at=now()
+      where id=v_order.id and status in ('approved','closed');
+    insert into public.inventory_cutoff_audit_events(
+      cutoff_id,event_type,actor_id,order_id,details
+    ) values(v_cutoff.id,'manufacturer_order_marked_history_only',v_user,v_order.id,
+      jsonb_build_object('previous_status',v_order.status,
+        'reason','History Only during Inventory Opening Balance Cut-off',
+        'future_receiving_allowed',false));
+    v_history_orders:=v_history_orders+1;
+  end loop;
+
   -- Manufacturer carry-forward is intentionally non-posting. The existing order
   -- and item configuration remain the source for later partial receiving.
   for v_item in select * from public.inventory_cutoff_decisions
@@ -248,6 +308,7 @@ begin
     values(v_cutoff.id,'cutoff_posted_and_warehouse_reopened',v_user,jsonb_build_object(
       'variance_movements',v_variances,'cancelled_orders',v_cancelled,
       'carried_distributor_quantity',v_carried,'carried_manufacturer_incoming',v_incoming,
+      'manufacturer_history_only_orders',v_history_orders,
       'qr_impact','none'));
 
   update public.stock_count_verification_requests set status='posted',verified_by=v_user,
@@ -255,14 +316,19 @@ begin
     code_hash=encode(extensions.digest(extensions.gen_random_bytes(32),'sha256'),'hex'),
     posting_result=jsonb_build_object('status','posted','cutoff_id',v_cutoff.id,
       'cancelled_orders',v_cancelled,'carried_distributor_quantity',v_carried,
-      'carried_manufacturer_incoming',v_incoming,'variance_movements',v_variances)
+      'carried_manufacturer_incoming',v_incoming,
+      'manufacturer_history_only_orders',v_history_orders,'variance_movements',v_variances)
     where id=p_request_id;
   update public.stock_count_verification_requests set status='invalidated',invalidated_at=now()
     where session_id=v_session.id and id<>p_request_id and status in ('pending_delivery','active');
+  delete from public.inventory_cutoff_posting_context
+    where backend_pid=pg_backend_pid() and transaction_id=txid_current()
+      and cutoff_id=v_cutoff.id and created_by=v_user;
   return jsonb_build_object('status','posted','cutoff_id',v_cutoff.id,
     'session_id',v_session.id,'cancelled_orders',v_cancelled,
     'carried_distributor_quantity',v_carried,
-    'carried_manufacturer_incoming',v_incoming,'variance_movements',v_variances,
+    'carried_manufacturer_incoming',v_incoming,
+    'manufacturer_history_only_orders',v_history_orders,'variance_movements',v_variances,
     'qr_impact','none');
 end;
 $$;
@@ -314,19 +380,18 @@ declare
   v_total_extra_added integer := 0;
   v_items_out jsonb := '[]'::jsonb;
 begin
-  if auth.uid() is null or p_received_by is distinct from auth.uid() then
+  if coalesce(auth.role(),'')<>'service_role'
+     and (auth.uid() is null or p_received_by is distinct from auth.uid()) then
     raise exception 'permission_denied';
   end if;
   if p_receipt_type not in ('full','partial') then raise exception 'invalid_receipt_type'; end if;
   if jsonb_typeof(p_items)<>'array' then raise exception 'receipt_items_required'; end if;
-  select * into v_order from public.orders where id=p_order_id for update;
-  if not found or v_order.order_type<>'H2M' or v_order.status not in ('approved','closed')
-     or v_order.company_id<>p_company_id or v_order.seller_org_id<>p_manufacturer_org_id
-     or public.resolve_order_destination_warehouse(v_order.buyer_org_id)<>p_warehouse_org_id then
-    raise exception 'warehouse_receipt_order_mismatch';
-  end if;
-  perform public.inventory_cutoff_assert_not_frozen(p_warehouse_org_id);
+  if jsonb_array_length(p_items) <> (
+    select count(distinct value->>'variant_id') from jsonb_array_elements(p_items)
+  ) then raise exception 'warehouse_receipt_duplicate_variant_items'; end if;
 
+  -- A retry of an already committed receipt is always safe, including after a
+  -- later cut-off marks the order History Only or freezes the warehouse.
   if nullif(trim(p_idempotency_key),'') is not null then
     select * into v_existing from public.warehouse_receipts
       where idempotency_key=p_idempotency_key limit 1;
@@ -336,6 +401,14 @@ begin
       'cumulative_received',v_existing.cumulative_received,
       'extra_received',v_existing.extra_received,'idempotent_replay',true); end if;
   end if;
+
+  select * into v_order from public.orders where id=p_order_id for update;
+  if not found or v_order.order_type<>'H2M' or v_order.status not in ('approved','closed')
+     or v_order.company_id<>p_company_id or v_order.seller_org_id<>p_manufacturer_org_id
+     or public.resolve_order_destination_warehouse(v_order.buyer_org_id)<>p_warehouse_org_id then
+    raise exception 'warehouse_receipt_order_mismatch';
+  end if;
+  perform public.inventory_cutoff_assert_not_frozen(p_warehouse_org_id);
 
   perform pg_advisory_xact_lock(hashtextextended('warehouse-receipt:'||p_batch_id::text,0));
   select coalesce(sum(received_now),0)::integer into v_order_previous
@@ -370,6 +443,9 @@ begin
     if v_ordered<=0 then raise exception 'warehouse_receipt_variant_not_ordered'; end if;
     select coalesce(sum(received_now),0)::integer into v_previous
       from public.warehouse_receipt_items where order_id=p_order_id and variant_id=v_variant;
+    if v_received>0 and v_previous>=v_ordered then
+      raise exception 'warehouse_receipt_order_already_fully_received: variant %',v_variant;
+    end if;
     v_cumulative:=v_previous+v_received;
     v_extra:=greatest(v_cumulative-v_ordered,0);
     v_previous_extra:=greatest(v_previous-v_ordered,0);

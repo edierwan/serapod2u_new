@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Download, Eye, History, Loader2, Lock, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Download, Eye, History, Loader2, Lock, ShieldCheck } from 'lucide-react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -291,7 +291,7 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
           <div>
             <h3 className="mb-2 font-semibold">Manufacturer incoming decisions</h3>
             <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>Order / status</TableHead><TableHead>Manufacturer</TableHead><TableHead>Variant</TableHead><TableHead>Remaining incoming</TableHead><TableHead>Selected configuration</TableHead><TableHead>Decision</TableHead></TableRow></TableHeader>
-              <TableBody>{report.manufacturer_incoming.map(row => <TableRow key={row.order_item_id}><TableCell>{row.order_number}<br /><Badge variant="outline">{row.status}</Badge></TableCell><TableCell>{row.manufacturer}</TableCell><TableCell>{row.variant}</TableCell><TableCell>{row.remaining_incoming_quantity}</TableCell><TableCell>{row.stock_configuration || <span className="text-red-700">Missing — blocked</span>}</TableCell><TableCell><Button size="sm" variant={row.decision ? 'default' : 'outline'} disabled={!row.stock_config_id || busy} onClick={() => void decide(row.order_item_id, 'carry_forward_incoming')}>{row.decision ? <CheckCircle2 className="mr-2 h-4 w-4" /> : null}Carry Forward as Incoming</Button></TableCell></TableRow>)}</TableBody>
+              <TableBody>{report.manufacturer_incoming.map(row => <TableRow key={row.order_item_id}><TableCell>{row.order_number}<br /><Badge variant="outline">{row.status}</Badge></TableCell><TableCell>{row.manufacturer}</TableCell><TableCell>{row.variant}</TableCell><TableCell>{row.remaining_incoming_quantity}</TableCell><TableCell>{row.stock_configuration || <span className="text-red-700">Missing — carry-forward blocked</span>}</TableCell><TableCell><Select value={row.decision || ''} disabled={busy} onValueChange={value => void decide(row.order_item_id, value as CutoffDecision)}><SelectTrigger className="w-56"><SelectValue placeholder="Choose action" /></SelectTrigger><SelectContent><SelectItem value="carry_forward_incoming" disabled={!row.stock_config_id}>Carry Forward as Incoming</SelectItem><SelectItem value="history_only">History Only — no receiving</SelectItem></SelectContent></Select></TableCell></TableRow>)}</TableBody>
             </Table></div>
           </div>
 

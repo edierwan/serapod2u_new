@@ -53,7 +53,7 @@ begin
     end if;
   elsif v_order.order_type='H2M' then
     v_kind := 'manufacturer';
-    if p_decision <> 'carry_forward_incoming'
+    if p_decision not in ('carry_forward_incoming','history_only')
        or v_order.status not in ('approved','closed') then
       raise exception 'inventory_cutoff_manufacturer_not_eligible';
     end if;
@@ -63,8 +63,12 @@ begin
       from public.warehouse_receipt_items
       where order_id=v_order.id and variant_id=v_item.variant_id;
     if v_item.qty-v_received <= 0 then raise exception 'inventory_cutoff_no_outstanding_incoming'; end if;
+    if (select count(*) from public.order_items oi where oi.order_id=v_order.id
+      and oi.variant_id=v_item.variant_id) <> 1 then
+      raise exception 'inventory_cutoff_manufacturer_variant_lines_conflicting';
+    end if;
     v_config := v_item.stock_config_id;
-    if not exists(select 1 from public.inventory_stock_configurations c
+    if p_decision='carry_forward_incoming' and not exists(select 1 from public.inventory_stock_configurations c
       where c.id=v_config and c.variant_id=v_item.variant_id and c.status='active' and c.allow_ord)
     then raise exception 'inventory_cutoff_manufacturer_config_missing'; end if;
   else
@@ -82,6 +86,16 @@ begin
     quantity=excluded.quantity,decided_by=excluded.decided_by,
     decided_at=now(),updated_at=now()
   returning * into v_saved;
+
+  -- A verification code approves an exact reviewed decision set. Changing any
+  -- decision invalidates pending/active codes so a fresh review and OTP are
+  -- required; direct table writes are not granted to authenticated users.
+  update public.stock_count_verification_requests vr
+  set status='invalidated',invalidated_at=now(),
+    request_metadata=coalesce(request_metadata,'{}'::jsonb)
+      || jsonb_build_object('invalidated_reason','inventory_cutoff_decision_changed')
+  where vr.session_id=v_cutoff.stock_count_session_id
+    and vr.status in ('pending_delivery','active');
 
   insert into public.inventory_cutoff_audit_events(
     cutoff_id,event_type,actor_id,order_id,order_item_id,details
@@ -133,7 +147,8 @@ begin
       when o.status='submitted' and d.decision='carry_forward' then 'Carry Forward'
       when o.status='submitted' and d.decision='cancel_release' then 'Cancel & Release'
       when o.status='submitted' then 'Blocked'
-      when o.status in ('approved','warehouse_packed','shipped_distributor') then 'Stock in Transit'
+      when o.status in ('approved','warehouse_packed') then 'Complete Before Cut-off'
+      when o.status='shipped_distributor' then 'Stock in Transit'
       when o.status in ('closed','cancelled') then 'History Only'
       else 'Complete Before Cut-off' end,
     'available_actions',case when o.status='submitted'
@@ -156,7 +171,8 @@ begin
     'remaining_incoming_quantity',x.remaining_qty,
     'stock_config_id',x.stock_config_id,'stock_configuration',x.stock_configuration,
     'decision',x.decision,
-    'classification',case when x.stock_config_id is null then 'Blocked'
+    'classification',case when x.decision='history_only' then 'History Only'
+      when x.stock_config_id is null then 'Blocked'
       when x.decision='carry_forward_incoming' then 'Carry Forward' else 'Blocked' end
   ) order by x.created_at,x.order_id,x.order_item_id),'[]'::jsonb) into v_manufacturer
   from (
@@ -244,9 +260,21 @@ begin
     where o.order_type='H2M' and o.status in ('approved','closed')
       and public.resolve_order_destination_warehouse(o.buyer_org_id)=v_cutoff.warehouse_organization_id
       and greatest(oi.qty-coalesce(r.qty,0),0)>0
-      and (oi.stock_config_id is null or not exists(select 1 from public.inventory_cutoff_decisions d
+      and not exists(select 1 from public.inventory_cutoff_decisions d
         where d.cutoff_id=v_cutoff.id and d.transaction_kind='manufacturer'
-          and d.order_item_id=oi.id and d.decision='carry_forward_incoming'))
+          and d.order_item_id=oi.id and (
+            d.decision='history_only' or
+            (d.decision='carry_forward_incoming' and oi.stock_config_id is not null)
+          ))
+    union all
+    select format('Manufacturer order %s / %s has duplicate variant lines; outstanding quantity and configuration are ambiguous.',
+      coalesce(o.display_doc_no,o.order_no),pv.variant_name)
+    from public.orders o join public.order_items oi on oi.order_id=o.id
+    join public.product_variants pv on pv.id=oi.variant_id
+    where o.order_type='H2M' and o.status in ('approved','closed')
+      and public.resolve_order_destination_warehouse(o.buyer_org_id)=v_cutoff.warehouse_organization_id
+    group by o.id,o.display_doc_no,o.order_no,pv.id,pv.variant_name
+    having count(*)>1
     union all
     select format('Carried allocation exceeds physical opening quantity for %s (%s): physical %s, carried %s.',
       pv.variant_name,c.config_label,i.physical_quantity,sum(d.quantity))
@@ -292,12 +320,18 @@ begin
     select format('Stock adjustment %s is %s and must be completed before cut-off.',a.id,a.status)
     from public.stock_adjustments a where a.organization_id=v_cutoff.warehouse_organization_id
       and coalesce(a.status,'completed')<>'completed'
+    union all
+    select format('Distributor order %s is %s. Approval already posted order_fulfillment, but physical shipment is not confirmed; complete or safely reverse it before restarting cut-off.',
+      coalesce(o.display_doc_no,o.order_no),o.status)
+    from public.orders o where o.order_type in ('D2H','S2D')
+      and o.status in ('approved','warehouse_packed')
+      and public.order_inventory_organization(o.id)=v_cutoff.warehouse_organization_id
   ) b;
 
   select coalesce(jsonb_agg(message),'[]'::jsonb) into v_review from (
     select 'Review stock-in-transit distributor transactions; they are not cancellable by cut-off.' message
     where exists(select 1 from public.orders o where o.order_type in ('D2H','S2D')
-      and o.status in ('approved','warehouse_packed','shipped_distributor')
+      and o.status='shipped_distributor'
       and public.order_inventory_organization(o.id)=v_cutoff.warehouse_organization_id)
     union all
     select 'Another open Stock Count draft must be completed or archived before cut-off.'
@@ -329,9 +363,53 @@ begin
 end;
 $$;
 
+create or replace function public.inventory_cutoff_snapshot_hash(p_cutoff_id uuid)
+returns text language sql stable security definer set search_path = public, extensions, pg_temp as $$
+  select encode(extensions.digest(
+    concat_ws('|',
+      c.id::text,c.stock_count_session_id::text,c.proposed_cutoff_at::text,
+      public.stock_count_snapshot_hash(c.stock_count_session_id),
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'kind',d.transaction_kind,'order_id',d.order_id,
+          'order_item_id',d.order_item_id,'decision',d.decision,
+          'stock_config_id',d.stock_config_id,'quantity',d.quantity
+        ) order by d.transaction_kind,d.order_id,d.order_item_id)::text
+        from public.inventory_cutoff_decisions d where d.cutoff_id=c.id
+      ),'[]')
+    ),'sha256'),'hex')
+  from public.inventory_opening_cutoffs c where c.id=p_cutoff_id;
+$$;
+
+create or replace function public.bind_inventory_cutoff_verification_snapshot(
+  p_request_id uuid,p_cutoff_id uuid
+) returns text language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_user uuid:=auth.uid();
+  v_cutoff public.inventory_opening_cutoffs%rowtype;
+  v_hash text;
+begin
+  if v_user is null then raise exception 'unauthorized'; end if;
+  select * into v_cutoff from public.inventory_opening_cutoffs
+    where id=p_cutoff_id for update;
+  if not found or v_cutoff.status<>'counting' then raise exception 'inventory_cutoff_not_active'; end if;
+  if not exists(select 1 from public.stock_count_verification_requests vr
+    where vr.id=p_request_id and vr.session_id=v_cutoff.stock_count_session_id
+      and vr.requesting_user_id=v_user and vr.status='pending_delivery')
+  then raise exception 'inventory_cutoff_verification_request_invalidated'; end if;
+  v_hash:=public.inventory_cutoff_snapshot_hash(v_cutoff.id);
+  update public.stock_count_verification_requests
+    set snapshot_hash=v_hash where id=p_request_id and status='pending_delivery';
+  return v_hash;
+end;
+$$;
+
 revoke all on function public.set_inventory_cutoff_decision(uuid,uuid,text) from public;
 grant execute on function public.set_inventory_cutoff_decision(uuid,uuid,text) to authenticated;
 grant execute on function public.inventory_cutoff_preview(uuid) to authenticated;
+revoke all on function public.inventory_cutoff_snapshot_hash(uuid) from public;
+revoke all on function public.bind_inventory_cutoff_verification_snapshot(uuid,uuid) from public;
+grant execute on function public.bind_inventory_cutoff_verification_snapshot(uuid,uuid) to authenticated;
 
 comment on function public.inventory_cutoff_preview(uuid) is
   'Strictly read-only opening cut-off report. It performs no INSERT, UPDATE, DELETE or QR operation.';
