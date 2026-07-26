@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
             if (cutoffError || !cutoff || cutoff.status !== 'counting') {
                 return jsonError(stockCountVerificationError('invalid_count_data', {
                     stage: 'request',
-                    message: 'The Inventory Opening Balance Cut-off is not active.',
+                    message: 'The Inventory Opening Balance & Initial Classification freeze is not active.',
                 }))
             }
             const { data: cutoffPreview, error: previewError } = await (supabase as any)

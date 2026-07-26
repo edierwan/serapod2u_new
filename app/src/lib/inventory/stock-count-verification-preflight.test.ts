@@ -16,6 +16,7 @@ const session = {
 function dependencies(overrides: Partial<StockCountPreflightDependencies> = {}): StockCountPreflightDependencies {
     return {
         loadAccessibleSession: async () => session,
+        loadActiveWarehouse: async () => ({ id: 'warehouse-1' }),
         loadVariantBaseCosts: async () => [{ id: 'variant-1', base_cost: '14.00' }],
         loadClassificationLiveLegacy: async () => [],
         loadVariantLabels: async () => [],
@@ -33,6 +34,17 @@ function dependencies(overrides: Partial<StockCountPreflightDependencies> = {}):
 }
 
 describe('Stock Count verification preflight', () => {
+    it('rejects a session whose organization is not an active warehouse', async () => {
+        const result = await evaluateStockCountPreflight(dependencies({
+            loadActiveWarehouse: async () => null,
+        }), 'user-1', 'session-1')
+        expect(result).toEqual({
+            ok: false,
+            code: 'invalid_warehouse',
+            message: 'Selected organization is not an active warehouse.',
+        })
+    })
+
     it('allows an authorized user only after every preflight dependency succeeds', async () => {
         const result = await evaluateStockCountPreflight(dependencies(), 'user-1', 'session-1')
         expect(result).toMatchObject({
@@ -171,7 +183,7 @@ describe('Stock Count verification preflight', () => {
         })
     })
 
-    describe('Initial Classification live Legacy guards', () => {
+    describe('retired Initial Classification and unified Opening Balance', () => {
         const classificationSession = {
             id: 'session-cls',
             status: 'draft',
@@ -218,49 +230,27 @@ describe('Stock Count verification preflight', () => {
             ],
         }
 
-        it('blocks when live Legacy still has allocated units', async () => {
+        it('keeps an old Initial Classification draft read-only', async () => {
             const result = await evaluateStockCountPreflight(dependencies({
                 loadAccessibleSession: async () => classificationSession,
-                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
-                loadVariantLabels: async () => [{ id: 'v1', variant_name: 'Buttercake', product_name: 'Cellera Zero' }],
-                loadClassificationLiveLegacy: async () => [{
-                    variantId: 'v1',
-                    productName: 'Cellera Zero',
-                    variantName: 'Buttercake',
-                    liveOnHand: 100,
-                    liveAllocated: 1,
-                }],
             }), 'user-1', 'session-cls')
-            expect(result.ok).toBe(false)
-            if (result.ok) return
-            expect(result.code).toBe('classification_allocated_blocks_post')
-            expect(result.message).toContain('Cellera Zero [Buttercake]')
-            expect(result.message).toContain('1 allocated unit')
+            expect(result).toEqual({
+                ok: false,
+                code: 'invalid_count_data',
+                message: 'Legacy Initial Classification drafts are read-only. Create an Inventory Opening Balance & Initial Classification draft instead.',
+            })
         })
 
-        it('allows allocated Legacy only after an explicit target is persisted and signs that target', async () => {
+        it('allows the unified Opening Balance through shared preflight', async () => {
             const result = await evaluateStockCountPreflight(dependencies({
-                loadAccessibleSession: async () => classificationSession,
-                loadVariantBaseCosts: async () => [{ id: 'v1', base_cost: '14.00' }],
-                loadVariantLabels: async () => [{ id: 'v1', variant_name: 'Potato', product_name: 'Cellera Zero' }],
-                loadClassificationLiveLegacy: async () => [{
-                    variantId: 'v1',
-                    productName: 'Cellera Zero',
-                    variantName: 'Potato',
-                    liveOnHand: 100,
-                    liveAllocated: 1,
-                }],
-                loadClassificationAllocationResolutions: async () => [{
-                    variant_id: 'v1',
-                    target_stock_config_id: '20nb',
-                }],
-            }), 'user-1', 'session-cls')
+                loadAccessibleSession: async () => ({
+                    ...session,
+                    count_type: 'opening_balance_cutoff',
+                    warehouse_organization_id: 'wh-1',
+                }),
+            }), 'user-1', 'session-opening')
 
             expect(result.ok).toBe(true)
-            if (!result.ok) return
-            expect(result.persistedSignature).toContain(
-                '"variantId":"v1","targetStockConfigId":"20nb"',
-            )
         })
     })
 })

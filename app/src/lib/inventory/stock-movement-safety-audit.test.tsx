@@ -34,6 +34,7 @@ const cutoffMigrations = [
   '01_cutoff_foundation.sql',
   '02_cutoff_preview_and_decisions.sql',
   '03_cutoff_atomic_posting.sql',
+  '04_unified_opening_balance_flow.sql',
 ].map(name => repoFile(`supabase/migrations/20260726_inventory_opening_balance_cutoff/${name}`))
 
 // Reconstruct the final installed definitions by applying each CREATE OR
@@ -95,6 +96,7 @@ describe('stock movement writer audit contract', () => {
       'record_stock_movement',
       'release_allocation_for_order',
       'set_order_item_stock_config',
+      'stock_count_carry_classification_allocations',
       'verify_and_post_inventory_opening_cutoff',
       'wms_record_movement_from_summary',
     ])

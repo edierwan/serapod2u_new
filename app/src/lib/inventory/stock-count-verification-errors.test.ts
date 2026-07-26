@@ -5,6 +5,14 @@ import {
 } from './stock-count-verification-errors'
 
 describe('stock count verification errors', () => {
+    it('maps the database active-warehouse guard to the clear warehouse error', () => {
+        expect(mapStockCountDatabaseError('stock_count_active_warehouse_required', 'post')).toMatchObject({
+            code: 'invalid_warehouse',
+            message: 'Selected organization is not an active warehouse.',
+            status: 400,
+        })
+    })
+
     it('keeps request/verify/post unexpected errors stage-specific and referenced', () => {
         const request = stockCountVerificationError('unexpected_error', { stage: 'request', reference: 'SC-TEST-1' })
         const post = stockCountVerificationError('unexpected_error', { stage: 'post', reference: 'SC-TEST-2' })

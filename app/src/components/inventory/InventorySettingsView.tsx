@@ -29,7 +29,6 @@ import {
 import ProductThumbnail from './ProductThumbnail'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import BulkEnableStockConfigurationsPanel from '@/components/products/BulkEnableStockConfigurationsPanel'
-import InventoryOpeningCutoffSection from './InventoryOpeningCutoffSection'
 import {
   buildIncomingMap,
   getIncomingBreakdown,
@@ -529,11 +528,6 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           userProfile?.organizations?.org_type_code === 'HQ' &&
           [1, 10].includes(Number(userProfile?.roles?.role_level))
         }
-      />
-
-      <InventoryOpeningCutoffSection
-        userProfile={userProfile}
-        onOpenStockCount={() => onViewChange?.('stock-adjustment')}
       />
 
       {/* Info Alert */}

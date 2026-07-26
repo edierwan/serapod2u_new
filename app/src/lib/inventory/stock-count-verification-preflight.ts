@@ -50,6 +50,7 @@ interface StockCountSessionItem {
 
 export interface StockCountPreflightDependencies {
     loadAccessibleSession: (sessionId: string) => Promise<any | null>
+    loadActiveWarehouse: (warehouseId: string) => Promise<{ id: string } | null>
     loadVariantBaseCosts: (variantIds: string[]) => Promise<Array<{ id: string; base_cost: number | string | null }>>
     loadClassificationLiveLegacy: (
         warehouseId: string,
@@ -91,7 +92,22 @@ export async function evaluateStockCountPreflight(
 ): Promise<StockCountPreflightResult> {
     const session = await deps.loadAccessibleSession(sessionId)
     if (!session) return { ok: false, code: 'stock_count_access_denied' }
+    const warehouse = await deps.loadActiveWarehouse(session.warehouse_organization_id)
+    if (!warehouse) {
+        return {
+            ok: false,
+            code: 'invalid_warehouse',
+            message: 'Selected organization is not an active warehouse.',
+        }
+    }
     if (session.status !== 'draft') return { ok: false, code: 'already_posted' }
+    if (session.count_type === 'initial_configuration_classification') {
+        return {
+            ok: false,
+            code: 'invalid_count_data',
+            message: 'Legacy Initial Classification drafts are read-only. Create an Inventory Opening Balance & Initial Classification draft instead.',
+        }
+    }
 
     const permission = await deps.checkPermission(userId, STOCK_COUNT_POST_PERMISSION)
     if (!permission.allowed || !permission.context?.organization_id) return { ok: false, code: 'permission_denied' }
@@ -230,6 +246,16 @@ export function createStockCountPreflightDependencies(supabase: any, admin: any)
                         : null,
                 })),
             }
+        },
+        loadActiveWarehouse: async (warehouseId) => {
+            const { data } = await admin
+                .from('organizations')
+                .select('id')
+                .eq('id', warehouseId)
+                .eq('org_type_code', 'WH')
+                .eq('is_active', true)
+                .maybeSingle()
+            return data || null
         },
         loadVariantBaseCosts: async (variantIds) => {
             if (!variantIds.length) return []

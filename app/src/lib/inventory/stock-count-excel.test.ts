@@ -73,6 +73,41 @@ describe('Stock Count Excel', () => {
     expect(result.updated).toBe(2)
   })
 
+  it('merges a partial import without clearing counts saved by earlier imports', () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = buildStockCountWorksheet(workbook, sourceRows)
+    const existingTargets = targets().map(target =>
+      target.stockConfigId === 'config-20nb'
+        ? { ...target, physicalCount: '17', note: 'counted yesterday' }
+        : target)
+    sheet.getCell('L2').value = null
+    sheet.getCell('M2').value = null
+    sheet.getCell('L3').value = 0
+
+    const result = parseStockCountWorksheet(sheet, existingTargets)
+
+    expect(result.patches.has('config-20nb')).toBe(false)
+    expect(result.rows[0].message).toContain('did not replace the saved count')
+    expect(result.patches.get('config-50nb')).toEqual({ physicalCount: '0', note: '' })
+  })
+
+  it('binds an Opening Balance workbook to its Product Category', () => {
+    const workbook = new ExcelJS.Workbook()
+    const sheet = buildStockCountWorksheet(workbook, sourceRows, {
+      warehouseId: 'warehouse-1',
+      sessionId: 'session-1',
+      countType: 'opening_balance_cutoff',
+      categoryId: 'category-vape',
+    })
+
+    expect(() => parseStockCountWorksheet(sheet, targets(), {
+      warehouseId: 'warehouse-1',
+      sessionId: 'session-1',
+      countType: 'opening_balance_cutoff',
+      categoryId: 'category-pet-food',
+    })).toThrow('different Product Category')
+  })
+
   it('rejects old variant-only templates with a clear compatibility message', () => {
     const workbook = new ExcelJS.Workbook()
     const sheet = workbook.addWorksheet('Old Stock Count')

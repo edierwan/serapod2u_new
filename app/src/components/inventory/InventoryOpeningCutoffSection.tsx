@@ -19,7 +19,14 @@ import {
 
 interface Props {
   userProfile: any
-  onOpenStockCount?: () => void
+  sessionId: string | null
+  warehouseOrganizationId: string
+  productCategoryId: string
+  productCategoryName: string
+  countsReady: boolean
+  savedDraftSignature: string
+  openingBalancePosted: boolean
+  onPosted?: () => void | Promise<void>
 }
 
 const localDateTime = () => {
@@ -28,54 +35,70 @@ const localDateTime = () => {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
-export default function InventoryOpeningCutoffSection({ userProfile, onOpenStockCount }: Props) {
+export default function InventoryOpeningCutoffSection({
+  userProfile,
+  sessionId,
+  warehouseOrganizationId,
+  productCategoryId,
+  productCategoryName,
+  countsReady,
+  savedDraftSignature,
+  openingBalancePosted,
+  onPosted,
+}: Props) {
   const { supabase, isReady } = useSupabaseAuth()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [drafts, setDrafts] = useState<any[]>([])
-  const [cutoffs, setCutoffs] = useState<any[]>([])
+  const [cutoff, setCutoff] = useState<any | null>(null)
   const [reports, setReports] = useState<any[]>([])
-  const [selectedSession, setSelectedSession] = useState('')
   const [proposedAt, setProposedAt] = useState(localDateTime)
   const [report, setReport] = useState<CutoffReport | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [requestId, setRequestId] = useState('')
   const [otp, setOtp] = useState('')
+  const [cancelReason, setCancelReason] = useState('')
 
   const isHqAdmin = userProfile?.organizations?.org_type_code === 'HQ'
     && Number(userProfile?.roles?.role_level) <= 10
-  const activeCutoff = cutoffs.find(cutoff => cutoff.status === 'counting') || null
+  const activeCutoff = cutoff?.status === 'counting' ? cutoff : null
 
   const load = useCallback(async () => {
     if (!isReady) return
+    if (!sessionId) {
+      setCutoff(null)
+      setReports([])
+      setReport(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
-      const [draftResult, cutoffResult, reportResult] = await Promise.all([
-        (supabase as any).from('stock_count_sessions')
-          .select('id,reference_name,count_date,warehouse_organization_id,updated_at')
-          .eq('count_type', 'opening_balance_cutoff').eq('status', 'draft')
-          .order('updated_at', { ascending: false }),
-        (supabase as any).from('inventory_opening_cutoffs')
+      const cutoffResult = await (supabase as any).from('inventory_opening_cutoffs')
           .select('id,status,stock_count_session_id,warehouse_organization_id,proposed_cutoff_at,posted_at,created_at')
-          .order('created_at', { ascending: false }),
-        (supabase as any).from('inventory_cutoff_reports')
-          .select('id,cutoff_id,readiness,report_payload,generated_at')
-          .order('generated_at', { ascending: false }),
-      ])
-      if (draftResult.error) throw draftResult.error
+          .eq('stock_count_session_id', sessionId)
+          .maybeSingle()
       if (cutoffResult.error) throw cutoffResult.error
-      if (reportResult.error) throw reportResult.error
-      setDrafts(draftResult.data || [])
-      setCutoffs(cutoffResult.data || [])
-      setReports(reportResult.data || [])
-      if (!selectedSession && draftResult.data?.[0]) setSelectedSession(draftResult.data[0].id)
+      setCutoff(cutoffResult.data || null)
+      if (cutoffResult.data?.id) {
+        const reportResult = await (supabase as any).from('inventory_cutoff_reports')
+          .select('id,cutoff_id,readiness,report_payload,generated_at')
+          .eq('cutoff_id', cutoffResult.data.id)
+          .order('generated_at', { ascending: false })
+        if (reportResult.error) throw reportResult.error
+        setReports(reportResult.data || [])
+        if (cutoffResult.data.status === 'posted' && reportResult.data?.[0]?.report_payload) {
+          setReport(reportResult.data[0].report_payload)
+        }
+      } else {
+        setReports([])
+      }
     } catch (error: any) {
       toast({ title: 'Cut-off data unavailable', description: error.message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
-  }, [isReady, selectedSession, supabase, toast])
+  }, [isReady, sessionId, supabase, toast])
 
   useEffect(() => { void load() }, [load])
 
@@ -98,11 +121,11 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
   }, [activeCutoff?.id, preview, report])
 
   const startCutoff = async () => {
-    if (!selectedSession) return
+    if (!sessionId || !countsReady) return
     setBusy(true)
     try {
       const { error } = await (supabase as any).rpc('start_inventory_opening_cutoff', {
-        p_session_id: selectedSession,
+        p_session_id: sessionId,
         p_proposed_cutoff_at: new Date(proposedAt).toISOString(),
       })
       if (error) throw error
@@ -111,6 +134,26 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
       await load()
     } catch (error: any) {
       toast({ title: 'Could not start cut-off', description: error.message, variant: 'destructive' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const cancelCutoff = async () => {
+    if (!activeCutoff || !cancelReason.trim()) return
+    setBusy(true)
+    try {
+      const { error } = await (supabase as any).rpc('cancel_inventory_opening_cutoff', {
+        p_cutoff_id: activeCutoff.id,
+        p_reason: cancelReason.trim(),
+      })
+      if (error) throw error
+      toast({ title: 'Warehouse freeze cancelled', description: 'Inventory operations are open again. Create a new Opening Balance draft before retrying.' })
+      setCancelReason('')
+      setReport(null)
+      await load()
+    } catch (error: any) {
+      toast({ title: 'Could not cancel freeze', description: error.message, variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -180,9 +223,10 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
       })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Cut-off failed')
-      toast({ title: 'Go-live cut-off posted', description: 'Opening inventory is official and the warehouse freeze has been removed.' })
+      toast({ title: 'Opening Balance posted', description: 'Opening inventory is official and the warehouse freeze has been removed.' })
       setRequestId(''); setOtp(''); setReport(null)
       await load()
+      await onPosted?.()
     } catch (error: any) {
       toast({ title: 'Cut-off not posted', description: error.message, variant: 'destructive' })
     } finally {
@@ -209,14 +253,20 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
     && report?.cutoff_id === activeCutoff?.id
   const physicalSummary = useMemo(() => report?.inventory.reduce((sum, row) => sum + Number(row.physical_quantity || 0), 0) || 0, [report])
 
+  useEffect(() => {
+    if (!activeCutoff?.id || !savedDraftSignature) return
+    setReport(null)
+    void preview(activeCutoff.id)
+  }, [activeCutoff?.id, preview, savedDraftSignature])
+
   return (
     <section className="overflow-hidden rounded-xl border-2 border-orange-300 bg-white shadow-sm" aria-labelledby="inventory-cutoff-title">
       <div className="bg-gradient-to-r from-orange-600 to-amber-500 p-5 text-white">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-100">Controlled posting workflow</p>
-            <h2 id="inventory-cutoff-title" className="mt-1 text-2xl font-bold">Inventory Go-Live &amp; Cut-off</h2>
-            <p className="mt-1 max-w-3xl text-sm text-orange-50">Make an Initial Stock Take the official opening balance while retaining all pre-cut-off history.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-100">Steps 5–10 · controlled posting</p>
+            <h2 id="inventory-cutoff-title" className="mt-1 text-2xl font-bold">Opening Balance Review, Freeze &amp; Posting</h2>
+            <p className="mt-1 max-w-3xl text-sm text-orange-50">Continue the same Stock Count draft through order decisions, readiness review, OTP and atomic official posting.</p>
           </div>
           <div className="flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-sm font-semibold">
             <ShieldCheck className="h-5 w-5" /> QR: Protected — No Impact
@@ -229,20 +279,39 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
           Preview only — no inventory, order, allocation, or QR data will be changed.
         </div>
 
-        {!activeCutoff && (
+        {!sessionId && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Save this Opening Balance draft before activating the warehouse freeze.</div>}
+
+        {sessionId && !cutoff && !openingBalancePosted && (
           <div className="grid gap-4 lg:grid-cols-[1fr_280px_auto] lg:items-end">
             <div>
-              <Label>Existing Opening Balance Stock Count draft</Label>
-              <Select value={selectedSession} onValueChange={setSelectedSession}>
-                <SelectTrigger><SelectValue placeholder="Create and save an Opening Balance Cut-off count first" /></SelectTrigger>
-                <SelectContent>{drafts.map(draft => (
-                  <SelectItem key={draft.id} value={draft.id}>{draft.reference_name || draft.count_date} · {draft.warehouse_organization_id}</SelectItem>
-                ))}</SelectContent>
-              </Select>
-              {drafts.length === 0 && <Button variant="link" className="h-auto p-0 text-orange-700" onClick={onOpenStockCount}>Open Stock Count to create the draft</Button>}
+              <Label>Saved Opening Balance draft</Label>
+              <p className="rounded-md border bg-slate-50 px-3 py-2 font-mono text-xs">{sessionId}</p>
+              <p className="mt-1 text-xs text-slate-500">Warehouse: {warehouseOrganizationId || 'Not selected'} · Category: {productCategoryName || productCategoryId || 'Not selected'}</p>
+              {!countsReady && <p className="mt-1 text-xs font-medium text-amber-700">Enter and save a physical count for every visible eligible configuration before freezing.</p>}
             </div>
             <div><Label>Proposed cut-off date/time</Label><Input type="datetime-local" value={proposedAt} onChange={event => setProposedAt(event.target.value)} /></div>
-            <Button onClick={startCutoff} disabled={!selectedSession || busy || !isHqAdmin}><Lock className="mr-2 h-4 w-4" />Activate Count &amp; Freeze</Button>
+            <Button onClick={startCutoff} disabled={!countsReady || busy || !isHqAdmin}><Lock className="mr-2 h-4 w-4" />Activate Count &amp; Freeze</Button>
+          </div>
+        )}
+
+        {(openingBalancePosted || cutoff?.status === 'posted') && (
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+            <p className="font-semibold">Official Opening Balance posted</p>
+            <p className="mt-1">This warehouse/category scope must use normal Full or Partial / Cycle Counts for later inventory corrections.</p>
+          </div>
+        )}
+
+        {cutoff?.status === 'cancelled' && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">This cut-off was cancelled and the warehouse was reopened.</p>
+            <p className="mt-1">The cancelled session is retained for audit. Create a new Opening Balance draft to retry.</p>
+          </div>
+        )}
+
+        {activeCutoff && (
+          <div className="grid gap-3 rounded-lg border border-red-200 bg-red-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+            <div><Label>Cancel active freeze</Label><Input value={cancelReason} onChange={event => setCancelReason(event.target.value)} placeholder="Required operational reason" /></div>
+            <Button variant="destructive" onClick={cancelCutoff} disabled={busy || !cancelReason.trim() || !isHqAdmin}>Cancel Freeze &amp; Reopen Warehouse</Button>
           </div>
         )}
 
@@ -263,9 +332,9 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
 
         {report && <>
           <div className="grid gap-3 md:grid-cols-4">
-            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Go-live readiness</p><Badge className={readinessColor}>{report.readiness}</Badge></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Opening Balance readiness</p><Badge className={readinessColor}>{report.readiness}</Badge></div>
             <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Cut-off date/time</p><p className="font-semibold">{new Date(report.proposed_cutoff_at).toLocaleString()}</p></div>
-            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Warehouse / organization</p><p className="font-mono text-xs">{report.warehouse_organization_id}<br />{report.company_id}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Warehouse / category</p><p className="font-mono text-xs">{report.warehouse_organization_id}<br />{report.product_category_name || productCategoryName}</p></div>
             <div className="rounded-lg border p-3"><p className="text-xs text-slate-500">Freeze / count draft</p><p className="font-semibold">{report.freeze_active ? 'Frozen — count active' : 'Open'} · Physical {physicalSummary.toLocaleString()}</p></div>
           </div>
 
@@ -306,12 +375,12 @@ export default function InventoryOpeningCutoffSection({ userProfile, onOpenStock
 
           <div className="rounded-lg border-2 border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <div><p className="font-semibold">Execute Go-Live Cut-off</p><p className="text-sm text-slate-600">HQ Admin only. Server readiness is rechecked atomically after OTP verification.</p></div>
-              {!requestId ? <Button onClick={requestVerification} disabled={!executable || busy}>Request OTP</Button> : <div className="flex items-end gap-2"><div><Label>8-digit verification code</Label><Input value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 8))} className="w-52 font-mono tracking-widest" /></div><Button className="bg-red-700 hover:bg-red-800" onClick={execute} disabled={!executable || otp.length !== 8 || busy}>Execute Go-Live Cut-off</Button></div>}
+              <div><p className="font-semibold">Post Official Opening Balance</p><p className="text-sm text-slate-600">HQ Admin only. Server readiness is rechecked atomically after OTP verification.</p></div>
+              {!requestId ? <Button onClick={requestVerification} disabled={!executable || busy}>Request OTP</Button> : <div className="flex items-end gap-2"><div><Label>8-digit verification code</Label><Input value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, '').slice(0, 8))} className="w-52 font-mono tracking-widest" /></div><Button className="bg-red-700 hover:bg-red-800" onClick={execute} disabled={!executable || otp.length !== 8 || busy}>Post Official Opening Balance</Button></div>}
             </div>
           </div>
         </>}
-        {loading && <p className="text-sm text-slate-500">Loading Inventory Go-Live &amp; Cut-off…</p>}
+        {loading && <p className="text-sm text-slate-500">Loading Opening Balance controls…</p>}
       </div>
     </section>
   )

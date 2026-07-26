@@ -37,11 +37,13 @@ import {
   summarizeClassificationRound,
 } from '@/lib/inventory/stock-count-classification'
 import { stockCountDraftSignature } from '@/lib/inventory/stock-count-snapshot'
+import InventoryOpeningCutoffSection from '@/components/inventory/InventoryOpeningCutoffSection'
 import {
   buildStockCountCatalogRows,
   getStockCountLocationOptions,
   isStockCountCatalogRowVisible,
   matchesStockCountSearch,
+  resolveStockCountDefaultWarehouseId,
   type StockCountCatalogRow,
   type StockCountLocation,
 } from '@/lib/inventory/stock-count-catalog'
@@ -94,7 +96,21 @@ interface DraftSession {
   count_date: string
   count_type: CountType
   status: SessionStatus
+  warehouse_organization_id: string
+  product_category_id: string | null
+  created_at: string
   updated_at: string | null
+  created_by: string | null
+  warehouse_name?: string
+  category_name?: string
+  created_by_name?: string
+  scope_count?: number
+  counted_count?: number
+  deletable?: boolean
+}
+
+interface InvalidWarehouseDraft extends DraftSession {
+  warehouse_organization_id: string
 }
 
 interface ImportSummary {
@@ -152,21 +168,34 @@ interface StockAdjustmentViewProps {
   onViewChange?: (view: string) => void
 }
 
+interface ProductCategoryOption {
+  id: string
+  category_name: string
+  category_code: string | null
+}
+
 const ALL_GROUP_ID = 'all'
+// Radix Select forbids an empty-string item value, so "All Categories" (which
+// maps to selectedCategory === '') uses this sentinel in the trigger only.
+const ALL_CATEGORIES_VALUE = '__all_categories__'
 // Kept as one policy constant so this can move to organization settings later.
 const HIGH_IMPACT_VALUE_THRESHOLD = 10_000
 const todayIso = () => new Date().toISOString().slice(0, 10)
 const countTypeOptions: Array<{ value: CountType; label: string }> = [
-  { value: 'full_count', label: 'Full Count' },
-  { value: 'cycle_count', label: 'Cycle Count' },
+  { value: 'full_count', label: 'Full Physical Count' },
+  { value: 'cycle_count', label: 'Partial / Cycle Count' },
   { value: 'spot_check', label: 'Spot Check' },
-  { value: 'initial_configuration_classification', label: 'Initial Physical Count & Configuration Classification' },
-  { value: 'opening_balance_cutoff', label: 'Inventory Opening Balance Cut-off' },
+  { value: 'initial_configuration_classification', label: 'Legacy Initial Classification — Read Only' },
+  { value: 'opening_balance_cutoff', label: 'Inventory Opening Balance & Initial Classification' },
 ]
+const countTypeCreationOptions = countTypeOptions.filter(
+  option => option.value !== 'initial_configuration_classification',
+)
 // Signature of a Stock Count draft with nothing counted yet. A fresh or reset
 // session starts here so it is never falsely flagged as having unsaved changes.
 const EMPTY_SIGNATURE = stockCountDraftSignature([])
 const UNSAVED_CHANGES_MESSAGE = 'Imported or edited counts have not been saved yet. Save the draft, then reopen Review & Post.'
+const ACTIVE_WAREHOUSE_REQUIRED_MESSAGE = 'Selected organization is not an active warehouse.'
 const DISCARD_DRAFT_CONFIRMATION =
   'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.'
 const DISCARD_SUCCESS_TOAST = 'Draft discarded successfully. Inventory was not changed.'
@@ -175,6 +204,15 @@ const DISCARD_INELIGIBLE_MESSAGE =
 const formatNumber = (value: number) => value.toLocaleString('en-MY')
 const draftLabel = (draft: DraftSession) =>
   `${draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · ${draft.count_date}`
+const LEGACY_RESET_REQUIRED_LABEL = 'Legacy Draft – Reset Required'
+// Old drafts created under the previous global (category-less) logic, or any old
+// unposted Initial Classification draft. They cannot Review / request OTP / Post
+// (enforced by migration 04 and prepare_stock_count_verification); an authorized
+// admin may only Discard & Start New.
+const isLegacyResetRequiredDraft = (draft: DraftSession) =>
+  draft.status === 'draft'
+  && (draft.count_type === 'initial_configuration_classification'
+    || (draft.count_type === 'opening_balance_cutoff' && !draft.product_category_id))
 const isDiscardNotEligibleError = (message: string) =>
   /stock_count_not_discardable|stock_count_already_posted|not a draft/i.test(message)
 const formatMoney = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -211,13 +249,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const postingNoteRecheckPendingRef = useRef(false)
 
   const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
+  const [configuredDefaultWarehouseId, setConfiguredDefaultWarehouseId] = useState<string | null>(null)
+  const [invalidWarehouseDrafts, setInvalidWarehouseDrafts] = useState<InvalidWarehouseDraft[]>([])
   const [selectedWarehouse, setSelectedWarehouse] = useState('')
+  const [productCategories, setProductCategories] = useState<ProductCategoryOption[]>([])
+  const [selectedCategory, setSelectedCategory] = useState('')
   const [countDate, setCountDate] = useState(todayIso())
   const [countType, setCountType] = useState<CountType>('full_count')
   const [referenceName, setReferenceName] = useState('')
   const [notes, setNotes] = useState('')
   const [rows, setRows] = useState<CountRow[]>([])
   const [catalogRows, setCatalogRows] = useState<CountRow[]>([])
+  const [openingDraftScopeIds, setOpeningDraftScopeIds] = useState<Set<string>>(new Set())
   const [drafts, setDrafts] = useState<DraftSession[]>([])
   const [staleDraftIds, setStaleDraftIds] = useState<Set<string>>(new Set())
   const [managingDrafts, setManagingDrafts] = useState(false)
@@ -229,6 +272,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [selectedGroupId, setSelectedGroupId] = useState(ALL_GROUP_ID)
   const [searchTerm, setSearchTerm] = useState('')
   const [showVarianceOnly, setShowVarianceOnly] = useState(false)
+  const [showNotCountedOnly, setShowNotCountedOnly] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
   const [groupExpanded, setGroupExpanded] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -251,15 +295,41 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [verificationError, setVerificationError] = useState<string | null>(null)
   const [preflight, setPreflight] = useState<PreflightState>({ status: 'idle' })
   const [allocationTargets, setAllocationTargets] = useState<Record<string, string>>({})
+  const [openingBalancePosted, setOpeningBalancePosted] = useState(false)
+  const [postedOpeningCategoryIds, setPostedOpeningCategoryIds] = useState<Set<string>>(new Set())
   const [verificationNow, setVerificationNow] = useState(Date.now())
   const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
   const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
   const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
-  const isClassificationMode = countType === 'initial_configuration_classification'
+  const isLegacyInitialReadOnly = countType === 'initial_configuration_classification'
+  // The retired type is displayed through the regular configuration table in
+  // read-only mode. Its former specialised editor remains unavailable.
+  const isClassificationMode = false
+  const isOpeningBalanceMode = countType === 'opening_balance_cutoff'
+  const selectedCategoryName = productCategories.find(category => category.id === selectedCategory)?.category_name || '—'
   const locationOptions = useMemo(
-    () => getStockCountLocationOptions(warehouseLocations, isClassificationMode),
-    [warehouseLocations, isClassificationMode],
+    () => getStockCountLocationOptions(warehouseLocations),
+    [warehouseLocations],
   )
+  const selectedWarehouseIsValid = locationOptions.some(location => location.id === selectedWarehouse)
+  const openingCategoryLocked = Boolean(currentSessionId)
+    || (isOpeningBalanceMode && Boolean(selectedCategory)
+      && rows.some(row => row.categoryId === selectedCategory
+        && (row.physicalCount.trim() !== '' || row.note.trim() !== '')))
+  // At most one active Opening Balance draft may exist per warehouse/category.
+  // When the operator picks a warehouse+category that already has one and is not
+  // already editing it, they must continue that draft rather than start a second.
+  const existingOpeningDraft = useMemo(
+    () => (isOpeningBalanceMode && selectedCategory
+      ? drafts.find(draft =>
+        draft.count_type === 'opening_balance_cutoff'
+        && draft.status === 'draft'
+        && draft.product_category_id === selectedCategory
+        && draft.id !== currentSessionId)
+      : undefined),
+    [drafts, isOpeningBalanceMode, selectedCategory, currentSessionId],
+  )
+  const mustContinueExistingOpeningDraft = Boolean(!currentSessionId && existingOpeningDraft)
 
   useEffect(() => {
     if (!verification) return
@@ -268,22 +338,43 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [verification])
 
   useEffect(() => {
-    if (isReady) loadWarehouseLocations()
+    if (isReady) {
+      loadWarehouseLocations()
+      loadProductCategories()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady])
 
+  const loadProductCategories = async () => {
+    const { data, error } = await supabase
+      .from('product_categories')
+      .select('id, category_name, category_code')
+      .eq('is_active', true)
+      .order('category_name')
+    if (error) {
+      toast({ title: 'Product Category load failed', description: error.message, variant: 'destructive' })
+      return
+    }
+    setProductCategories((data || []) as ProductCategoryOption[])
+  }
+
   useEffect(() => {
     if (locationOptions.some(location => location.id === selectedWarehouse)) return
-    const preferred = locationOptions.find(
-      location => location.org_code === 'HQ' || location.org_name.toLowerCase().includes('warehouse'),
-    ) || locationOptions[0]
-    setSelectedWarehouse(preferred?.id || '')
-  }, [locationOptions, selectedWarehouse])
+    setSelectedWarehouse(resolveStockCountDefaultWarehouseId(
+      configuredDefaultWarehouseId,
+      userProfile?.organization_id || userProfile?.organizations?.id,
+      locationOptions,
+    ))
+  }, [configuredDefaultWarehouseId, locationOptions, selectedWarehouse, userProfile?.organization_id, userProfile?.organizations?.id])
 
   useEffect(() => {
     if (!selectedWarehouse) {
       setRows([])
       setDrafts([])
+      setOpeningBalancePosted(false)
+      setPostedOpeningCategoryIds(new Set())
+      setSelectedCategory('')
+      setOpeningDraftScopeIds(new Set())
       setManagingDrafts(false)
       setSelectedDraftIds(new Set())
       setDiscardConfirmIds(null)
@@ -291,6 +382,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
     loadCountRows(selectedWarehouse)
     loadDrafts(selectedWarehouse)
+    loadPostedOpeningCategories(selectedWarehouse)
     setSelectedGroupId(ALL_GROUP_ID)
     setSearchTerm('')
     setCurrentSessionId(null)
@@ -306,39 +398,219 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWarehouse])
 
+  const loadPostedOpeningCategories = async (warehouseId: string) => {
+    const { data, error } = await (supabase as any)
+      .from('inventory_opening_cutoffs')
+      .select('product_category_id')
+      .eq('warehouse_organization_id', warehouseId)
+      .eq('status', 'posted')
+    if (error) {
+      toast({ title: 'Opening Balance status unavailable', description: error.message, variant: 'destructive' })
+      return
+    }
+    setPostedOpeningCategoryIds(new Set((data || []).map((row: any) => row.product_category_id || '*')))
+  }
+
+  useEffect(() => {
+    if (!selectedWarehouse || !isOpeningBalanceMode || !selectedCategory) {
+      setOpeningBalancePosted(false)
+      return
+    }
+    void loadOpeningBalancePosted(selectedWarehouse, selectedCategory)
+    setSelectedGroupId(ALL_GROUP_ID)
+    setSearchTerm('')
+    setShowNotCountedOnly(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpeningBalanceMode, selectedCategory])
+
+  // Group tabs are secondary filters *within* the selected category, so a
+  // category change resets the active group tab and search to the recalculated,
+  // category-scoped set for every count type.
+  useEffect(() => {
+    setSelectedGroupId(ALL_GROUP_ID)
+    setSearchTerm('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory])
+
+  const loadOpeningBalancePosted = async (warehouseId: string, categoryId: string) => {
+    const { data, error } = await (supabase as any)
+      .from('inventory_opening_cutoffs')
+      .select('id')
+      .eq('warehouse_organization_id', warehouseId)
+      .eq('product_category_id', categoryId)
+      .eq('status', 'posted')
+      .limit(1)
+    if (error) {
+      toast({ title: 'Opening Balance status unavailable', description: error.message, variant: 'destructive' })
+      return
+    }
+    setOpeningBalancePosted((data || []).length > 0)
+  }
+
   const loadWarehouseLocations = async () => {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select('id, org_code, org_name, org_type_code')
-      .in('org_type_code', ['HQ', 'WH', 'DIST'])
-      .eq('is_active', true)
-      .order('org_name')
+    const currentOrganizationId = userProfile?.organization_id || userProfile?.organizations?.id
+    const [warehousesResult, defaultResult, draftCandidatesResult] = await Promise.all([
+      supabase
+        .from('organizations')
+        .select('id, org_code, org_name, org_type_code, is_active')
+        .eq('org_type_code', 'WH')
+        .eq('is_active', true)
+        .order('org_name'),
+      currentOrganizationId
+        ? supabase
+          .from('organizations')
+          .select('default_warehouse_org_id')
+          .eq('id', currentOrganizationId)
+          .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      supabase
+        .from('stock_count_sessions' as any)
+        .select('id, reference_name, count_date, count_type, status, updated_at, warehouse_organization_id')
+        .eq('status', 'draft')
+        .order('updated_at', { ascending: false })
+        .limit(100),
+    ])
+    const { data, error } = warehousesResult
 
     if (error) {
       toast({ title: 'Warehouse load failed', description: error.message, variant: 'destructive' })
       return
     }
+    if (defaultResult.error) {
+      toast({ title: 'Default warehouse unavailable', description: defaultResult.error.message, variant: 'destructive' })
+    }
 
     const locations = (data || []) as StockCountLocation[]
     setWarehouseLocations(locations)
+    setConfiguredDefaultWarehouseId((defaultResult.data as any)?.default_warehouse_org_id || null)
+    if (draftCandidatesResult.error) {
+      toast({ title: 'Draft warehouse validation unavailable', description: draftCandidatesResult.error.message, variant: 'destructive' })
+      setInvalidWarehouseDrafts([])
+    } else {
+      const validWarehouseIds = new Set(locations.map(location => location.id))
+      setInvalidWarehouseDrafts(
+        ((draftCandidatesResult.data || []) as unknown as InvalidWarehouseDraft[])
+          .filter(draft => !validWarehouseIds.has(draft.warehouse_organization_id)),
+      )
+    }
+  }
+
+  const validateActiveWarehouse = async (warehouseId = selectedWarehouse): Promise<boolean> => {
+    if (!warehouseId) return false
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', warehouseId)
+      .eq('org_type_code', 'WH')
+      .eq('is_active', true)
+      .maybeSingle()
+    if (error) return false
+    return Boolean(data)
+  }
+
+  // Minimal, authorized read of "posting has started" (active OTP request or a
+  // counting/posted cut-off) for the given drafts. The protected verification
+  // table is never touched from the browser. Failure degrades safely: drafts are
+  // treated as posting-started (not deletable) so nothing unsafe is offered.
+  const loadPostingStartedIds = async (sessionIds: string[]): Promise<Set<string>> => {
+    if (sessionIds.length === 0) return new Set<string>()
+    try {
+      const response = await fetch('/api/inventory/stock-count/drafts/posting-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionIds }),
+      })
+      if (!response.ok) return new Set<string>(sessionIds)
+      const payload = await response.json()
+      return new Set<string>(Array.isArray(payload?.postingStartedSessionIds) ? payload.postingStartedSessionIds : sessionIds)
+    } catch {
+      return new Set<string>(sessionIds)
+    }
   }
 
   const loadDrafts = async (warehouseId: string) => {
-    const { data, error } = await supabase
-      .from('stock_count_sessions' as any)
-      .select('id, reference_name, count_date, count_type, status, updated_at')
-      .eq('warehouse_organization_id', warehouseId)
-      .eq('status', 'draft')
-      .order('updated_at', { ascending: false })
-      .limit(50)
+    const [draftResult, legacyHistoryResult] = await Promise.all([
+      supabase
+        .from('stock_count_sessions' as any)
+        .select('id, reference_name, count_date, count_type, status, warehouse_organization_id, product_category_id, created_at, updated_at, created_by')
+        .eq('warehouse_organization_id', warehouseId)
+        .eq('status', 'draft')
+        .order('updated_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('stock_count_sessions' as any)
+        .select('id, reference_name, count_date, count_type, status, warehouse_organization_id, product_category_id, created_at, updated_at, created_by')
+        .eq('warehouse_organization_id', warehouseId)
+        .eq('count_type', 'initial_configuration_classification')
+        .in('status', ['posted', 'archived'])
+        .order('updated_at', { ascending: false })
+        .limit(50),
+    ])
+    const { data, error } = draftResult
 
-    if (error) {
-      if (error.code !== '42P01') toast({ title: 'Draft load failed', description: error.message, variant: 'destructive' })
+    if (error || legacyHistoryResult.error) {
+      const loadError = error || legacyHistoryResult.error
+      if (loadError?.code !== '42P01') toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
       return
     }
-    const nextDrafts = (data || []) as unknown as DraftSession[]
+    const sessionsById = new Map<string, DraftSession>()
+    for (const session of [...(data || []), ...(legacyHistoryResult.data || [])] as unknown as DraftSession[]) {
+      sessionsById.set(session.id, session)
+    }
+    const rawDrafts = [...sessionsById.values()]
+    const sessionIds = rawDrafts.map(draft => draft.id)
+    const creatorIds = [...new Set(rawDrafts.map(draft => draft.created_by).filter(Boolean))] as string[]
+    const categoryIds = [...new Set(rawDrafts.map(draft => draft.product_category_id).filter(Boolean))] as string[]
+    const [scopeResult, itemResult, creatorResult, categoryResult, postingStatusResult] = await Promise.all([
+      sessionIds.length
+        ? supabase.from('stock_count_session_scope' as any).select('session_id').in('session_id', sessionIds)
+        : Promise.resolve({ data: [], error: null }),
+      sessionIds.length
+        ? supabase.from('stock_count_session_items' as any).select('session_id, physical_quantity').in('session_id', sessionIds)
+        : Promise.resolve({ data: [], error: null }),
+      creatorIds.length
+        ? supabase.from('users').select('id, full_name, email').in('id', creatorIds)
+        : Promise.resolve({ data: [], error: null }),
+      categoryIds.length
+        ? supabase.from('product_categories').select('id, category_name').in('id', categoryIds)
+        : Promise.resolve({ data: [], error: null }),
+      // OTP verification requests are server-only (they hold code hashes and are
+      // REVOKEd from authenticated). Read the minimum "posting has started"
+      // status through an authorized server route instead of the raw table, so
+      // Manage Drafts no longer triggers "permission denied for table
+      // stock_count_verification_requests".
+      loadPostingStartedIds(sessionIds),
+    ])
+    const detailError = scopeResult.error || itemResult.error || creatorResult.error || categoryResult.error
+    if (detailError) {
+      toast({ title: 'Draft details unavailable', description: detailError.message, variant: 'destructive' })
+    }
+    const scopeCounts = new Map<string, number>()
+    for (const entry of (scopeResult.data || []) as any[]) {
+      scopeCounts.set(entry.session_id, (scopeCounts.get(entry.session_id) || 0) + 1)
+    }
+    const countedCounts = new Map<string, number>()
+    for (const item of (itemResult.data || []) as any[]) {
+      if (item.physical_quantity !== null && item.physical_quantity !== undefined) {
+        countedCounts.set(item.session_id, (countedCounts.get(item.session_id) || 0) + 1)
+      }
+    }
+    const creators = new Map((creatorResult.data || []).map((user: any) => [user.id, user.full_name || user.email]))
+    const categories = new Map((categoryResult.data || []).map((category: any) => [category.id, category.category_name]))
+    const postingStartedIds = postingStatusResult
+    const warehouseName = warehouseLocations.find(location => location.id === warehouseId)?.org_name || warehouseId
+    const nextDrafts = rawDrafts.map(draft => ({
+      ...draft,
+      warehouse_name: warehouseName,
+      category_name: draft.product_category_id ? categories.get(draft.product_category_id) || 'Unknown category' : 'Legacy / not recorded',
+      created_by_name: draft.created_by ? creators.get(draft.created_by) || 'Unknown user' : 'System',
+      scope_count: scopeCounts.get(draft.id) || 0,
+      counted_count: countedCounts.get(draft.id) || 0,
+      deletable: draft.status === 'draft' && !postingStartedIds.has(draft.id),
+    })).sort((a, b) =>
+      String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
     setDrafts(nextDrafts)
-    const eligibleIds = new Set(nextDrafts.map(draft => draft.id))
+    const eligibleIds = new Set(nextDrafts.filter(draft => draft.deletable).map(draft => draft.id))
     setSelectedDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
     setStaleDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
   }
@@ -357,7 +629,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             product_variants!inner (
               id, variant_name, alternative_name, variant_code, product_code, manufacturer_sku, manual_sku, image_url, base_cost, is_active,
               products!inner (
-                id, product_name, is_active, group_id, brand_id,
+                id, product_name, is_active, category_id, group_id, brand_id,
+                product_categories!inner (id, category_name, is_active),
                 product_groups (id, group_name, group_description),
                 brands (id, brand_name, logo_url)
               )
@@ -387,9 +660,32 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   }
 
-  const visibleRows = useMemo(
+  // Full / Partial / Spot counts operate over every eligible configuration at
+  // the warehouse. The Product Category selector is a working lens on top of
+  // this set (see visibleRows) and never removes entered counts from the saved
+  // draft, so switching category can never lose work.
+  const countableRows = useMemo(
     () => rows.filter(row => isStockCountCatalogRowVisible(row, showInactive)),
     [rows, showInactive],
+  )
+
+  // Category is the PRIMARY scope selector for every count type. Group tabs,
+  // summaries, search and Excel export all derive from this, so they are always
+  // recalculated within the selected category. Opening Balance requires exactly
+  // one category and is additionally bound to its immutable scope snapshot;
+  // Full / Partial / Spot allow "All Categories" (selectedCategory === '').
+  const visibleRows = useMemo(
+    () => {
+      if (isOpeningBalanceMode) {
+        return rows.filter(row =>
+          Boolean(selectedCategory) && row.categoryId === selectedCategory
+          && (currentSessionId
+            ? openingDraftScopeIds.has(row.stockConfigId)
+            : isStockCountCatalogRowVisible(row, false)))
+      }
+      return countableRows.filter(row => !selectedCategory || row.categoryId === selectedCategory)
+    },
+    [rows, countableRows, isOpeningBalanceMode, selectedCategory, currentSessionId, openingDraftScopeIds],
   )
 
   const groups = useMemo(() => {
@@ -409,10 +705,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     return scoped.filter(row => {
       const variance = varianceForRow(row)
       if (showVarianceOnly && (!variance || variance === 0)) return false
+      if (showNotCountedOnly && parseCount(row.physicalCount) !== null) return false
       if (!query) return true
       return matchesStockCountSearch(row, query)
     })
-  }, [visibleRows, searchTerm, selectedGroupId, showVarianceOnly])
+  }, [visibleRows, searchTerm, selectedGroupId, showVarianceOnly, showNotCountedOnly])
 
   const pageSummary = useMemo(() => {
     const counted = visibleRows.filter(row => parseCount(row.physicalCount) !== null)
@@ -488,8 +785,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           { ...group.legacyRow, physicalCount: '0' },
           ...group.targetRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim()),
         ])
-      : visibleRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim())
-  ), [isClassificationMode, classificationGroups, visibleRows])
+      : isOpeningBalanceMode
+        ? visibleRows
+      // Full / Partial / Spot persist every entered count across all categories,
+      // independent of the current category lens, so navigating categories never
+      // drops saved work.
+      : countableRows.filter(row => parseCount(row.physicalCount) !== null || row.note.trim())
+  ), [isClassificationMode, isOpeningBalanceMode, classificationGroups, visibleRows, countableRows])
 
   // Snapshot the complete eligible catalog on first save, not only rows that
   // already have a physical count. Reopening a draft then remains stable even
@@ -497,8 +799,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const draftScopeRows = useMemo<CountRow[]>(() => (
     isClassificationMode
       ? classificationGroups.flatMap(group => [group.legacyRow, ...group.targetRows])
-      : visibleRows
-  ), [isClassificationMode, classificationGroups, visibleRows])
+      : isOpeningBalanceMode
+        ? visibleRows
+        : countableRows
+  ), [isClassificationMode, isOpeningBalanceMode, classificationGroups, visibleRows, countableRows])
 
   const allocationResolutionRows = useMemo(() => (
     isClassificationMode
@@ -532,12 +836,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     [rows],
   )
   const classificationMisuseRows = useMemo(() => {
-    if (isClassificationMode) return [] as CountRow[]
+    if (isClassificationMode || isOpeningBalanceMode) return [] as CountRow[]
     return draftRows.filter(row =>
       parseCount(row.physicalCount) !== null
       && (TARGET_CONFIG_CODES as readonly string[]).includes(row.configCode)
-      && unclassifiedVariantIds.has(row.variantId))
-  }, [isClassificationMode, draftRows, unclassifiedVariantIds])
+      && unclassifiedVariantIds.has(row.variantId)
+      && !postedOpeningCategoryIds.has(row.categoryId)
+      && !postedOpeningCategoryIds.has('*'))
+  }, [isClassificationMode, isOpeningBalanceMode, draftRows, unclassifiedVariantIds, postedOpeningCategoryIds])
   const hasClassificationMisuse = classificationMisuseRows.length > 0
 
   // On-screen counts differ from the saved draft. Review & Post must never run
@@ -545,14 +851,22 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const hasUnsavedChanges = currentSignature !== lastSavedSignature
   const verificationStale = Boolean(verification) && verifiedSignature !== null && verifiedSignature !== currentSignature
 
-  const canSave = Boolean(selectedWarehouse && countDate && currentStatus !== 'posted'
-    && (isClassificationMode ? classificationGroups.length > 0 : visibleRows.length > 0))
+  const canSave = Boolean(selectedWarehouse && selectedWarehouseIsValid
+    && countDate && currentStatus !== 'posted' && !isLegacyInitialReadOnly
+    && (!isOpeningBalanceMode || selectedCategory)
+    && !(isOpeningBalanceMode && openingBalancePosted)
+    && !mustContinueExistingOpeningDraft
+    && (isClassificationMode
+      ? classificationGroups.length > 0
+      : isOpeningBalanceMode ? visibleRows.length > 0 : countableRows.length > 0))
   // In classification mode the round is postable once at least one flavour is
   // selected; a partial (incomplete) selection still opens Review so the block
   // can be shown, and the preflight/DB reject it.
-  const canPost = canSave && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
+  const canPost = !isOpeningBalanceMode && canSave
+    && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
 
   const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
+    if (isLegacyInitialReadOnly || !selectedWarehouseIsValid || currentStatus === 'posted') return
     setRows(prev => prev.map(row => row.stockConfigId === stockConfigId ? { ...row, ...patch } : row))
   }
 
@@ -567,6 +881,26 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const saveDraft = async (options: { noteOverride?: string; silent?: boolean } = {}): Promise<string | null> => {
+    if (isLegacyInitialReadOnly) {
+      toast({
+        title: 'Legacy draft is read-only',
+        description: 'Create an Inventory Opening Balance & Initial Classification draft for the official go-live process.',
+        variant: 'destructive',
+      })
+      return null
+    }
+    if (isOpeningBalanceMode && openingBalancePosted) {
+      toast({
+        title: 'Opening Balance already posted',
+        description: 'This warehouse already has its official Opening Balance. Use a Full or Partial / Cycle Count for later corrections.',
+        variant: 'destructive',
+      })
+      return null
+    }
+    if (!selectedWarehouseIsValid) {
+      toast({ title: 'Invalid warehouse', description: ACTIVE_WAREHOUSE_REQUIRED_MESSAGE, variant: 'destructive' })
+      return null
+    }
     if (!canSave) return null
     if (countDate > todayIso()) {
       toast({ title: 'Invalid count date', description: 'Count date cannot be in the future.', variant: 'destructive' })
@@ -575,8 +909,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
     setSaving(true)
     try {
+      if (!await validateActiveWarehouse()) throw new Error(ACTIVE_WAREHOUSE_REQUIRED_MESSAGE)
       const payload = {
         warehouse_organization_id: selectedWarehouse,
+        product_category_id: isOpeningBalanceMode ? selectedCategory : null,
         count_date: countDate,
         count_type: countType,
         reference_name: referenceName.trim() || null,
@@ -593,7 +929,34 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         if (error) throw error
       } else {
         const { data, error } = await supabase.from('stock_count_sessions' as any).insert(payload).select('id').single()
-        if (error) throw error
+        if (error) {
+          // Safe get-existing-or-create: the DB partial unique index only allows
+          // one active Opening Balance draft per warehouse/category. A concurrent
+          // request or double-click loses the race (unique_violation) and instead
+          // continues the winning draft rather than creating a duplicate.
+          if (isOpeningBalanceMode && (error as any).code === '23505') {
+            const { data: existing } = await supabase
+              .from('stock_count_sessions' as any)
+              .select('id')
+              .eq('warehouse_organization_id', selectedWarehouse)
+              .eq('product_category_id', selectedCategory)
+              .eq('count_type', 'opening_balance_cutoff')
+              .eq('status', 'draft')
+              .limit(1)
+              .maybeSingle()
+            const existingId = (existing as any)?.id
+            if (existingId) {
+              await loadDraft(existingId)
+              loadDrafts(selectedWarehouse)
+              toast({
+                title: 'Continuing existing Opening Balance draft',
+                description: 'This warehouse and category already have an active draft, which has been opened for you.',
+              })
+              return existingId
+            }
+          }
+          throw error
+        }
         sessionId = (data as any).id
         setCurrentSessionId(sessionId)
       }
@@ -610,6 +973,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           .insert(draftScopeRows.map(row => ({ session_id: sessionId, stock_config_id: row.stockConfigId })))
         if (scopeInsertError) throw scopeInsertError
       }
+      if (isOpeningBalanceMode) {
+        setOpeningDraftScopeIds(new Set(
+          (existingScope || []).length > 0
+            ? (existingScope || []).map((entry: any) => entry.stock_config_id)
+            : draftScopeRows.map(row => row.stockConfigId),
+        ))
+      }
 
       // Classification sessions always force the Legacy/Unclassified row to a
       // physical count of exactly 0 (it is never user-typed — see
@@ -618,9 +988,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       // the shared `draftRows` memo so the persisted set and the client
       // signature can never disagree.
       const savedSignature = currentSignature
-      await supabase.from('stock_count_session_items' as any).delete().eq('session_id', sessionId)
+      if (!isOpeningBalanceMode) {
+        const { error: deleteError } = await supabase
+          .from('stock_count_session_items' as any)
+          .delete()
+          .eq('session_id', sessionId)
+        if (deleteError) throw deleteError
+      }
       if (draftRows.length > 0) {
-        const { error: itemError } = await supabase.from('stock_count_session_items' as any).insert(draftRows.map(row => {
+        const itemPayload = draftRows.map(row => {
           const physical = parseCount(row.physicalCount)
           return {
             session_id: sessionId,
@@ -633,7 +1009,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             unit_cost: row.unitCost,
             note: row.note.trim() || null,
           }
-        }))
+        })
+        // Opening Balance always persists the complete snapshot, including
+        // null physical quantities. One atomic upsert preserves earlier counts
+        // across partial imports and avoids a delete/insert gap.
+        const itemWrite = isOpeningBalanceMode
+          ? supabase.from('stock_count_session_items' as any).upsert(itemPayload, {
+            onConflict: 'session_id,stock_config_id',
+          })
+          : supabase.from('stock_count_session_items' as any).insert(itemPayload)
+        const { error: itemError } = await itemWrite
         if (itemError) throw itemError
       }
 
@@ -697,14 +1082,26 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }, [pendingAutoSave])
 
   const loadDraft = async (sessionId: string) => {
-    const baseCatalogRows = catalogRows.length > 0
-      ? catalogRows
-      : selectedWarehouse ? await loadCountRows(selectedWarehouse) : []
-    const { data: session, error } = await supabase.from('stock_count_sessions' as any).select('id, count_date, count_type, reference_name, notes, status').eq('id', sessionId).single()
+    const { data: session, error } = await supabase.from('stock_count_sessions' as any)
+      .select('id, warehouse_organization_id, product_category_id, count_date, count_type, reference_name, notes, status, created_at, updated_at')
+      .eq('id', sessionId)
+      .single()
     if (error) {
       toast({ title: 'Open draft failed', description: error.message, variant: 'destructive' })
       return
     }
+    const draftWarehouseId = String((session as any).warehouse_organization_id || '')
+    if (draftWarehouseId !== selectedWarehouse || !await validateActiveWarehouse(draftWarehouseId)) {
+      toast({
+        title: 'Invalid warehouse on saved Stock Count',
+        description: `${ACTIVE_WAREHOUSE_REQUIRED_MESSAGE} This historical record remains unchanged; create a new draft using a valid warehouse.`,
+        variant: 'destructive',
+      })
+      return
+    }
+    const baseCatalogRows = catalogRows.length > 0
+      ? catalogRows
+      : await loadCountRows(draftWarehouseId)
     const { data: items, error: itemError } = await supabase.from('stock_count_session_items' as any).select('stock_config_id, variant_id, physical_quantity, note').eq('session_id', sessionId)
     if (itemError) {
       toast({ title: 'Open draft failed', description: itemError.message, variant: 'destructive' })
@@ -739,12 +1136,53 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
     const itemMap = new Map((items || []).map((item: any) => [item.stock_config_id, item]))
     const scopeIds = new Set((scope || []).map((entry: any) => entry.stock_config_id))
-    const scopedCatalogRows = baseCatalogRows.filter(row => scopeIds.has(row.stockConfigId))
+    const effectiveScopeIds = scopeIds.size > 0 ? scopeIds : new Set(itemMap.keys())
+    setOpeningDraftScopeIds((session as any).count_type === 'opening_balance_cutoff' ? effectiveScopeIds : new Set())
+    let scopedCatalogRows = baseCatalogRows.filter(row => effectiveScopeIds.has(row.stockConfigId))
+    const loadedScopeIds = new Set(scopedCatalogRows.map(row => row.stockConfigId))
+    const missingScopeIds = [...effectiveScopeIds].filter(id => !loadedScopeIds.has(id))
+    if (missingScopeIds.length > 0) {
+      const [historicalConfigResult, historicalBalanceResult] = await Promise.all([
+        (supabase as any)
+          .from('inventory_stock_configurations')
+          .select(`
+            id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, status, sort_order,
+            product_variants!inner (
+              id, variant_name, alternative_name, variant_code, product_code, manufacturer_sku, manual_sku, image_url, base_cost, is_active,
+              products!inner (
+                id, product_name, is_active, category_id, group_id, brand_id,
+                product_categories!inner (id, category_name, is_active),
+                product_groups (id, group_name, group_description),
+                brands (id, brand_name, logo_url)
+              )
+            )
+          `)
+          .in('id', missingScopeIds),
+        (supabase as any)
+          .from('product_inventory')
+          .select('id, variant_id, stock_config_id, quantity_on_hand, quantity_allocated, warehouse_location')
+          .eq('organization_id', draftWarehouseId)
+          .in('stock_config_id', missingScopeIds),
+      ])
+      if (historicalConfigResult.error || historicalBalanceResult.error) {
+        toast({
+          title: 'Historical draft scope unavailable',
+          description: historicalConfigResult.error?.message || historicalBalanceResult.error?.message,
+          variant: 'destructive',
+        })
+        return
+      }
+      scopedCatalogRows = [
+        ...scopedCatalogRows,
+        ...buildStockCountCatalogRows(historicalConfigResult.data || [], historicalBalanceResult.data || []),
+      ]
+    }
     if (scopedCatalogRows.some(row => itemMap.has(row.stockConfigId) && row.configStatus !== 'active' && row.systemQuantity === 0)) setShowInactive(true)
     setCurrentSessionId((session as any).id)
     setCurrentStatus((session as any).status)
     setCountDate((session as any).count_date)
     setCountType((session as any).count_type)
+    setSelectedCategory((session as any).product_category_id || '')
     setReferenceName((session as any).reference_name || '')
     setNotes((session as any).notes || '')
     setRows(scopedCatalogRows.map(row => {
@@ -770,7 +1208,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }))))
     setVerification(null)
     setVerifiedSignature(null)
-    toast({ title: 'Draft opened', description: 'Saved counts are loaded for review.' })
+    const legacyInitial = (session as any).count_type === 'initial_configuration_classification'
+    toast({
+      title: legacyInitial ? 'Legacy Initial draft opened read-only' : 'Draft opened',
+      description: legacyInitial
+        ? 'Historical counts remain viewable, but this retired workflow cannot be edited or posted.'
+        : 'Saved counts are loaded for review.',
+    })
   }
 
   const exitManageDrafts = () => {
@@ -780,7 +1224,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const selectAllDrafts = () => {
-    setSelectedDraftIds(new Set(drafts.map(draft => draft.id)))
+    setSelectedDraftIds(new Set(drafts.filter(draft => draft.deletable).map(draft => draft.id)))
   }
 
   const deselectAllDrafts = () => {
@@ -885,6 +1329,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setCurrentStatus('draft')
     setCountDate(todayIso())
     setCountType('full_count')
+    setSelectedCategory('')
+    setOpeningDraftScopeIds(new Set())
     setReferenceName('')
     setNotes('')
     setRows(catalogRows.map(row => ({ ...row, physicalCount: '', note: '' })))
@@ -896,6 +1342,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const downloadExcel = async () => {
+    if (isLegacyInitialReadOnly) {
+      toast({
+        title: 'Legacy draft is read-only',
+        description: 'Historical Initial Classification templates are no longer generated.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!selectedWarehouseIsValid || !await validateActiveWarehouse()) {
+      toast({ title: 'Excel download blocked', description: ACTIVE_WAREHOUSE_REQUIRED_MESSAGE, variant: 'destructive' })
+      return
+    }
     if (isClassificationMode) {
       if (classificationGroups.length === 0) return
       const ExcelJS = (await import('exceljs')).default
@@ -932,6 +1390,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
 
     if (visibleRows.length === 0) return
+    let templateSessionId = currentSessionId
+    if (!templateSessionId) {
+      templateSessionId = await saveDraft({ silent: true })
+      if (!templateSessionId) return
+    }
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
     buildStockCountWorksheet(workbook, visibleRows.map(row => ({
@@ -947,13 +1410,20 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       systemQuantity: row.systemQuantity,
       physicalCount: row.physicalCount,
       note: row.note,
-    })))
+    })), {
+      warehouseId: selectedWarehouse,
+      sessionId: templateSessionId,
+      countType,
+      categoryId: selectedCategory || undefined,
+    })
     const buffer = await workbook.xlsx.writeBuffer()
     const blob = new Blob([new Uint8Array(buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `Serapod2U_Stock_Count_${countDate}.xlsx`
+    link.download = isOpeningBalanceMode
+      ? `Serapod2U_Opening_Balance_Initial_Classification_${countDate}.xlsx`
+      : `Serapod2U_Stock_Count_${countDate}.xlsx`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -982,6 +1452,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
   const importExcel = async (file: File) => {
     try {
+      if (isLegacyInitialReadOnly) {
+        throw new Error('This Legacy Initial Classification draft is read-only and cannot accept imports.')
+      }
+      if (!selectedWarehouseIsValid || !await validateActiveWarehouse()) {
+        throw new Error(ACTIVE_WAREHOUSE_REQUIRED_MESSAGE)
+      }
+      if (!currentSessionId) {
+        throw new Error('Save this Stock Count draft or download its template before importing.')
+      }
       const ExcelJS = (await import('exceljs')).default
       const workbook = new ExcelJS.Workbook()
       await workbook.xlsx.load(await file.arrayBuffer())
@@ -1034,7 +1513,12 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         stockSku: row.stockSku,
         physicalCount: row.physicalCount,
         note: row.note,
-      })))
+      })), {
+        warehouseId: selectedWarehouse,
+        sessionId: currentSessionId,
+        countType,
+        categoryId: selectedCategory || undefined,
+      })
       setRows(prev => prev.map(row => result.patches.has(row.stockConfigId) ? { ...row, ...result.patches.get(row.stockConfigId)! } : row))
       setImportSummary({
         updated: result.updated,
@@ -1122,7 +1606,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setPreflight({
         status: 'error',
         code: 'classification_misuse',
-        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Initial Physical Count & Configuration Classification" to record the actual box balances and clear Legacy — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
+        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Inventory Opening Balance & Initial Classification" for the official go-live count — a normal Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
       })
       return
     }
@@ -1229,7 +1713,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setPreflight({
         status: 'error',
         code: 'classification_misuse',
-        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Initial Physical Count & Configuration Classification" to record the actual box balances and clear Legacy — a Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
+        message: `${names.join('; ')}${classificationMisuseRows.length > names.length ? '; …' : ''} still ${names.length === 1 ? 'has' : 'have'} a Legacy/Unclassified balance. Use "Inventory Opening Balance & Initial Classification" for the official go-live count — a normal Full/Cycle/Spot count would add phantom stock on top of the unclassified balance.`,
       })
       return
     }
@@ -1356,6 +1840,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     { label: 'Estimated Value', value: formatMoney(pageSummary.estimatedValue), sub: 'Based on variance', icon: FileSpreadsheet, color: 'text-purple-600 bg-purple-50' },
   ]
   const warehouseName = warehouseLocations.find(location => location.id === selectedWarehouse)?.org_name || '—'
+  const currentDraftMetadata = drafts.find(draft => draft.id === currentSessionId)
   const expirySeconds = verification ? Math.max(0, Math.ceil((new Date(verification.expiresAt).getTime() - verificationNow) / 1000)) : 0
   const resendSeconds = verification ? Math.max(0, Math.ceil((new Date(verification.resendAvailableAt).getTime() - verificationNow) / 1000)) : 0
   const reviewCounted = isClassificationMode ? classificationSummary.completeFlavours : pageSummary.counted
@@ -1365,6 +1850,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const reviewNetAdjustment = isClassificationMode ? classificationSummary.netVariance : pageSummary.netAdjustment
   const reviewEstimatedValue = isClassificationMode ? classificationSummary.estimatedValue : pageSummary.estimatedValue
   const highImpact = Math.abs(reviewEstimatedValue) >= HIGH_IMPACT_VALUE_THRESHOLD || Math.abs(reviewNetAdjustment) >= 1000
+  const openingCountsComplete = isOpeningBalanceMode
+    && visibleRows.length > 0
+    && visibleRows.every(row => parseCount(row.physicalCount) !== null)
 
   // Per-configuration breakdown shown in Review & Post so the exact lines that
   // will post (system → physical → variance for each configuration, plus the
@@ -1416,11 +1904,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           <Button
             variant="outline"
             onClick={downloadExcel}
-            disabled={isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0}
+            disabled={isLegacyInitialReadOnly || (isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0)}
           >
             <Download className="mr-2 h-4 w-4" /> Download Excel Template
           </Button>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
+          <Button variant="outline" disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={event => {
             const file = event.target.files?.[0]
             if (file) importExcel(file)
@@ -1430,42 +1918,129 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Unsaved changes</Badge>
           )}
           <Button variant={hasUnsavedChanges ? 'default' : 'outline'} onClick={() => void saveDraft()} disabled={!canSave || saving} className={hasUnsavedChanges && currentStatus !== 'posted' ? 'bg-amber-600 hover:bg-amber-700' : ''}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}</Button>
-          <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
+          {!isOpeningBalanceMode && !isLegacyInitialReadOnly && (
+            <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
+          )}
         </div>
       </div>
 
+      {invalidWarehouseDrafts.length > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4 text-sm text-red-900">
+            <p className="font-semibold">Stock Count drafts blocked by invalid warehouse master data</p>
+            <p className="mt-1">{ACTIVE_WAREHOUSE_REQUIRED_MESSAGE} These drafts remain unchanged and cannot be edited, exported, verified, or posted. Select an active warehouse and create a new draft.</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {invalidWarehouseDrafts.slice(0, 10).map(draft => (
+                <li key={draft.id}>
+                  {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Stock Count'} · {draft.count_date}
+                  <span className="ml-1 font-mono text-xs">({draft.warehouse_organization_id})</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {isOpeningBalanceMode && (
+        <Card className="border-orange-200 bg-orange-50">
+          <CardContent className="p-4 text-sm text-orange-950">
+            <p className="font-semibold">One official pre-go-live workflow</p>
+            <p className="mt-1">Count every eligible configuration, including 20NB, 50NB, 50OB and any visible Legacy / Unclassified balance. Save the draft, then continue below to review orders, freeze the warehouse, preview, request OTP and post atomically.</p>
+            {selectedCategory && pageSummary.notCounted > 0 && (
+              <p className="mt-2 font-semibold">Opening Balance is incomplete: {pageSummary.notCounted} of {pageSummary.totalItems} items have not been counted. You may save and continue later.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {mustContinueExistingOpeningDraft && existingOpeningDraft && (
+        <Card className="border-blue-300 bg-blue-50">
+          <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4 text-sm text-blue-950">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-semibold">An Opening Balance draft already exists for this warehouse &amp; category</p>
+                <p className="mt-1">Only one active Opening Balance draft is allowed per warehouse and category. Continue the existing draft instead of starting a second one — your earlier counts are preserved.</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLegacyInitialReadOnly && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="flex items-start gap-3 p-4 text-sm text-amber-950">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div><p className="font-semibold">Legacy Initial Classification — read only</p><p className="mt-1">This historical draft remains viewable but cannot be edited, imported, converted or posted. Start a new Inventory Opening Balance &amp; Initial Classification draft instead.</p></div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
-        <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-5">
+        <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">
               {isClassificationMode ? 'Inventory Organization' : 'Warehouse Location'} <span className="text-red-500">*</span>
             </label>
-            <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+            <Select value={selectedWarehouse} disabled={Boolean(currentSessionId)} onValueChange={setSelectedWarehouse}>
               <SelectTrigger><SelectValue placeholder={isClassificationMode ? 'Select inventory organization' : 'Select warehouse'} /></SelectTrigger>
-              <SelectContent>{locationOptions.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name} ({loc.org_code})</SelectItem>)}</SelectContent>
+              <SelectContent>{locationOptions.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.org_name}</SelectItem>)}</SelectContent>
             </Select>
-            {isClassificationMode && (
-              <p className="mt-1 text-xs text-slate-500">Includes distributor organizations that hold Legacy / Unclassified stock.</p>
-            )}
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Date <span className="text-red-500">*</span></label>
-            <Input type="date" max={todayIso()} value={countDate} onChange={event => setCountDate(event.target.value)} />
+            <Input type="date" max={todayIso()} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} value={countDate} onChange={event => setCountDate(event.target.value)} />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Type <span className="text-red-500">*</span></label>
-            <Select value={countType} onValueChange={value => setCountType(value as CountType)}>
+            <Select value={countType} disabled={Boolean(currentSessionId)} onValueChange={value => {
+              setCountType(value as CountType)
+              if (value !== 'opening_balance_cutoff') setSelectedCategory('')
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{countTypeOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {(isLegacyInitialReadOnly ? countTypeOptions : countTypeCreationOptions).map(option => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    disabled={option.value === 'opening_balance_cutoff' && openingBalancePosted}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
+            {openingBalancePosted && !isLegacyInitialReadOnly && <p className="mt-1 text-xs text-slate-500">Opening Balance is already posted for this warehouse/category; use a normal count.</p>}
           </div>
           <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Product Category {isOpeningBalanceMode && <span className="text-red-500">*</span>}
+            </label>
+            <Select
+              value={isOpeningBalanceMode ? selectedCategory : (selectedCategory || ALL_CATEGORIES_VALUE)}
+              disabled={isLegacyInitialReadOnly || currentStatus === 'posted' || (isOpeningBalanceMode && openingCategoryLocked)}
+              onValueChange={value => setSelectedCategory(value === ALL_CATEGORIES_VALUE ? '' : value)}
+            >
+              <SelectTrigger><SelectValue placeholder={isOpeningBalanceMode ? 'Select active category' : 'All Categories'} /></SelectTrigger>
+              <SelectContent>
+                {!isOpeningBalanceMode && <SelectItem value={ALL_CATEGORIES_VALUE}>All Categories</SelectItem>}
+                {productCategories.map(category => (
+                  <SelectItem key={category.id} value={category.id}>{category.category_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isOpeningBalanceMode && !selectedCategory && <p className="mt-1 text-xs text-amber-700">Select a category to create the draft scope.</p>}
+            {isOpeningBalanceMode && openingCategoryLocked && <p className="mt-1 text-xs text-slate-500">Category is locked after counting starts. Start a new count to choose another category.</p>}
+            {!isOpeningBalanceMode && <p className="mt-1 text-xs text-slate-500">Scopes items, group tabs, totals and Excel to this category. Group tabs are secondary filters within it.</p>}
+          </div>
+          <div className="xl:col-span-1">
             <label className="mb-2 block text-sm font-semibold text-slate-700">Reference / Batch Name</label>
-            <Input value={referenceName} onChange={event => setReferenceName(event.target.value)} placeholder="e.g. Monthly Count" />
+            <Input value={referenceName} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onChange={event => setReferenceName(event.target.value)} placeholder="e.g. Monthly Count" />
           </div>
-          <div>
+          <div className="xl:col-span-1">
             <label className="mb-2 block text-sm font-semibold text-slate-700">Notes (Optional)</label>
-            <Input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Add notes..." />
+            <Input value={notes} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onChange={event => setNotes(event.target.value)} placeholder="Add notes..." />
           </div>
         </CardContent>
       </Card>
@@ -1474,14 +2049,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         <Card className="border-blue-100 bg-[var(--sera-orange)]/[0.06]/50">
           <CardContent className="space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-blue-950">Open draft:</span>
+              <span className="text-sm font-semibold text-blue-950">Saved counts and legacy history:</span>
               {!managingDrafts ? (
                 <Button variant="outline" size="sm" onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
                   Manage Drafts
                 </Button>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || drafts.length === 0}>
+                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || !drafts.some(draft => draft.deletable)}>
                     Select All
                   </Button>
                   <Button variant="outline" size="sm" onClick={deselectAllDrafts} disabled={discardingDrafts || selectedDraftIds.size === 0}>
@@ -1501,32 +2076,20 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 </div>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            {!managingDrafts ? <div className="flex flex-wrap items-center gap-2">
               {drafts.map(draft => (
                 <div key={draft.id} className="flex items-center gap-1">
-                  {managingDrafts && (
-                    <Checkbox
-                      checked={selectedDraftIds.has(draft.id)}
-                      disabled={discardingDrafts}
-                      onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)}
-                      aria-label={`Select ${draftLabel(draft)}`}
-                    />
-                  )}
                   <Button
                     variant={currentSessionId === draft.id ? 'default' : staleDraftIds.has(draft.id) ? 'destructive' : 'outline'}
                     size="sm"
                     disabled={discardingDrafts}
                     onClick={() => {
-                      if (managingDrafts) {
-                        toggleDraftSelection(draft.id, !selectedDraftIds.has(draft.id))
-                        return
-                      }
                       void loadDraft(draft.id)
                     }}
                   >
                     {draftLabel(draft)}
                   </Button>
-                  {!managingDrafts && (
+                  {!managingDrafts && draft.deletable && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="sm" className="h-8 w-8 px-0" aria-label={`Draft actions for ${draftLabel(draft)}`}>
@@ -1547,15 +2110,64 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 </div>
               ))}
               <Button variant="ghost" size="sm" onClick={resetSession} disabled={discardingDrafts}>New count</Button>
-            </div>
+            </div> : (
+              <div className="overflow-x-auto rounded-lg border bg-white">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="w-10">Select</TableHead><TableHead>Batch / draft</TableHead>
+                    <TableHead>Warehouse</TableHead><TableHead>Category</TableHead><TableHead>Count type</TableHead>
+                    <TableHead>Progress</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead>
+                    <TableHead>Last updated</TableHead><TableHead>Created by</TableHead><TableHead>Open</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {drafts.filter(draft => draft.deletable).map(draft => {
+                      const total = draft.scope_count || 0
+                      const counted = draft.counted_count || 0
+                      const legacyReset = isLegacyResetRequiredDraft(draft)
+                      const status = legacyReset
+                        ? LEGACY_RESET_REQUIRED_LABEL
+                        : total > 0 && counted === total ? 'Ready for Review' : counted > 0 ? 'Incomplete' : 'Draft'
+                      return <TableRow key={draft.id}>
+                        <TableCell><Checkbox checked={selectedDraftIds.has(draft.id)} disabled={discardingDrafts} onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)} aria-label={`Select ${draftLabel(draft)}`} /></TableCell>
+                        <TableCell className="font-medium">{draft.reference_name || 'Unnamed draft'}</TableCell>
+                        <TableCell>{draft.warehouse_name}</TableCell><TableCell>{draft.category_name}</TableCell>
+                        <TableCell>{countTypeOptions.find(option => option.value === draft.count_type)?.label}</TableCell>
+                        <TableCell>{counted}/{total}</TableCell>
+                        <TableCell><Badge variant="outline" className={legacyReset ? 'border-red-300 text-red-700' : status === 'Ready for Review' ? 'border-emerald-300 text-emerald-700' : status === 'Incomplete' ? 'border-amber-300 text-amber-700' : ''}>{status}</Badge></TableCell>
+                        <TableCell>{new Date(draft.created_at).toLocaleString()}</TableCell>
+                        <TableCell>{draft.updated_at ? new Date(draft.updated_at).toLocaleString() : '—'}</TableCell>
+                        <TableCell>{draft.created_by_name}</TableCell>
+                        <TableCell><Button variant="outline" size="sm" onClick={() => void loadDraft(draft.id)}>Open</Button></TableCell>
+                      </TableRow>
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
       {!isClassificationMode && (
+        <>
+        {isOpeningBalanceMode && selectedCategory && (
+          <Card className="border-orange-200">
+            <CardContent className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div><span className="text-slate-500">Warehouse</span><strong className="block">{warehouseName}</strong></div>
+              <div><span className="text-slate-500">Category</span><strong className="block">{selectedCategoryName}</strong></div>
+              <div><span className="text-slate-500">Count type</span><strong className="block">Opening Balance &amp; Initial Classification</strong></div>
+              <div><span className="text-slate-500">Progress</span><strong className="block">{pageSummary.counted}/{pageSummary.totalItems} ({pageSummary.totalItems ? Math.round(pageSummary.counted / pageSummary.totalItems * 100) : 0}%)</strong></div>
+              <div><span className="text-slate-500">Total in scope</span><strong className="block">{pageSummary.totalItems}</strong></div>
+              <div><span className="text-slate-500">Counted</span><strong className="block">{pageSummary.counted}</strong></div>
+              <div><span className="text-slate-500">Not counted</span><strong className="block">{pageSummary.notCounted}</strong></div>
+              <div><span className="text-slate-500">Draft dates</span><strong className="block">{currentDraftMetadata ? `Created ${new Date(currentDraftMetadata.created_at).toLocaleString()} · Updated ${currentDraftMetadata.updated_at ? new Date(currentDraftMetadata.updated_at).toLocaleString() : '—'}` : 'Not created yet'}</strong></div>
+            </CardContent>
+          </Card>
+        )}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {summaryCards.map(card => <Card key={card.label}><CardContent className="flex items-center gap-4 p-4"><div className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.color}`}><card.icon className="h-6 w-6" /></div><div className="min-w-0"><p className="text-sm font-semibold text-slate-600">{card.label}</p><p className="truncate text-xl font-bold text-slate-950">{card.value}</p><p className="text-xs text-slate-500">{card.sub}</p></div></CardContent></Card>)}
         </div>
+        </>
       )}
 
       {hasClassificationMisuse && (
@@ -1564,7 +2176,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <p className="font-semibold">This looks like a classification, not a {countTypeOptions.find(option => option.value === countType)?.label}.</p>
-              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Switch Count Type to <strong>Initial Physical Count &amp; Configuration Classification</strong> so the actual box balances are recorded and Legacy is cleared without adding phantom stock. Posting is blocked until this is resolved.</p>
+              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Use <strong>Inventory Opening Balance &amp; Initial Classification</strong> for the official go-live baseline. Posting this as a normal count is blocked.</p>
             </div>
           </CardContent>
         </Card>
@@ -1589,7 +2201,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input className="w-72 pl-9" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder={selectedGroupId === ALL_GROUP_ID ? 'Search all variants...' : 'Search variants in this group...'} /></div>
                 <div className="flex items-center gap-2"><Switch checked={showVarianceOnly} onCheckedChange={setShowVarianceOnly} /><span className="text-sm font-semibold text-slate-700">Show Variance Only</span></div>
-                <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><span className="text-sm font-semibold text-slate-700">Show inactive</span></div>
+                {isOpeningBalanceMode && <div className="flex items-center gap-2"><Switch checked={showNotCountedOnly} onCheckedChange={setShowNotCountedOnly} /><span className="text-sm font-semibold text-slate-700">Not Counted</span></div>}
+                {!isOpeningBalanceMode && <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><span className="text-sm font-semibold text-slate-700">Show inactive</span></div>}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="outline"><Columns3 className="mr-2 h-4 w-4" /> Columns</Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -1629,11 +2242,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                           <TableRow key={row.stockConfigId}>
                             <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge><span className="font-mono text-xs text-slate-500">{skuForRow(row)}</span></div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
-                            <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted'} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
+                            <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                             <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
                             {visibleColumns.unitCost && <TableCell className="text-right tabular-nums">{row.unitCost === null ? '—' : formatMoney(row.unitCost)}</TableCell>}
                             {visibleColumns.adjustmentValue && <TableCell className={`text-right font-semibold tabular-nums ${!adjustmentValue ? 'text-slate-600' : adjustmentValue > 0 ? 'text-green-600' : 'text-red-600'}`}>{adjustmentValue === null ? '-' : formatMoney(adjustmentValue)}</TableCell>}
-                            {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted'} onChange={event => updateRow(row.stockConfigId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
+                            {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => updateRow(row.stockConfigId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
                           </TableRow>
                         )
                       })}
@@ -1686,7 +2299,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                       <span className="font-semibold">Reservation target configuration</span>
                       <Select
                         value={allocationTargets[group.variantId] || ''}
-                        disabled={currentStatus === 'posted'}
+                        disabled={currentStatus === 'posted' || isLegacyInitialReadOnly}
                         onValueChange={(targetStockConfigId) => {
                           invalidatePendingVerification()
                           setAllocationTargets(prev => ({ ...prev, [group.variantId]: targetStockConfigId }))
@@ -1749,7 +2362,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                           <TableCell><Badge variant="secondary">{row.configLabel}</Badge></TableCell>
                           <TableCell><Badge className="bg-[var(--sera-orange)]/[0.06] text-blue-700 hover:bg-[var(--sera-orange)]/[0.06]">Target Configuration</Badge></TableCell>
                           <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
-                          <TableCell><Input inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted'} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
+                          <TableCell><Input inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1768,6 +2381,26 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         </div>
       )}
 
+      {isOpeningBalanceMode && (
+        <InventoryOpeningCutoffSection
+          userProfile={userProfile}
+          sessionId={currentSessionId}
+          warehouseOrganizationId={selectedWarehouse}
+          productCategoryId={selectedCategory}
+          productCategoryName={selectedCategoryName}
+          countsReady={openingCountsComplete && !hasUnsavedChanges}
+          savedDraftSignature={lastSavedSignature}
+          openingBalancePosted={openingBalancePosted}
+          onPosted={async () => {
+            setCurrentStatus('posted')
+            setLastSavedSignature(EMPTY_SIGNATURE)
+            await loadCountRows(selectedWarehouse)
+            await loadDrafts(selectedWarehouse)
+            await loadPostedOpeningCategories(selectedWarehouse)
+          }}
+        />
+      )}
+
       {importSummary && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
 
       <AlertDialog
@@ -1781,7 +2414,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             <AlertDialogTitle>
               {(discardConfirmIds?.length || 0) > 1 ? 'Discard selected drafts?' : 'Discard Draft?'}
             </AlertDialogTitle>
-            <AlertDialogDescription>{DISCARD_DRAFT_CONFIRMATION}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {DISCARD_DRAFT_CONFIRMATION}
+              <span className="mt-3 block font-medium text-slate-900">Exact targets:</span>
+              {(discardConfirmIds || []).map(id => {
+                const draft = drafts.find(item => item.id === id)
+                return <span key={id} className="block">• {draft ? `${draft.reference_name || 'Unnamed draft'} — ${draft.warehouse_name} — ${draft.category_name}` : id}</span>
+              })}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={discardingDrafts}>Cancel</AlertDialogCancel>

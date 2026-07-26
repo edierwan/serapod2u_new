@@ -7,6 +7,7 @@ import {
   getStockCountLocationOptions,
   isStockCountCatalogRowVisible,
   matchesStockCountSearch,
+  resolveStockCountDefaultWarehouseId,
 } from './stock-count-catalog'
 
 function config(overrides: Record<string, unknown> = {}) {
@@ -189,17 +190,28 @@ describe('Stock Count configuration-first catalog', () => {
     expect(catalogRows.filter(row => row.variantId === 'hero-flavour')).toHaveLength(4)
   })
 
-  it('allows distributor stock locations only for Initial Configuration Classification', () => {
+  it('returns only active WH organizations for every Stock Count type', () => {
     const locations = [
-      { id: 'hq', org_code: 'HQ', org_name: 'HQ', org_type_code: 'HQ' },
-      { id: 'warehouse', org_code: 'WH001', org_name: 'Balakong Warehouse', org_type_code: 'WH' },
-      { id: 'distributor', org_code: 'D001', org_name: 'Distributor One', org_type_code: 'DIST' },
-      { id: 'shop', org_code: 'S001', org_name: 'Shop One', org_type_code: 'SHOP' },
+      { id: 'hq', org_code: 'HQ', org_name: 'Headquarters', org_type_code: 'HQ', is_active: true },
+      { id: 'balakong', org_code: 'WH003', org_name: 'Serapod Warehouse Balakong', org_type_code: 'WH', is_active: true },
+      { id: 'alma', org_code: 'WH002', org_name: 'Serapod Warehouse Alma', org_type_code: 'WH', is_active: true },
+      { id: 'hq-warehouse', org_code: 'WH001', org_name: 'Serapod HQ Warehouse', org_type_code: 'WH', is_active: true },
+      { id: 'inactive-wh', org_code: 'WH009', org_name: 'Inactive Warehouse', org_type_code: 'WH', is_active: false },
+      { id: 'distributor', org_code: 'DT003', org_name: 'Distributor1', org_type_code: 'DIST', is_active: true },
+      { id: 'manufacturer', org_code: 'M001', org_name: 'Manufacturer', org_type_code: 'MFG', is_active: true },
+      { id: 'shop', org_code: 'S001', org_name: 'Shop One', org_type_code: 'SHOP', is_active: true },
+      { id: 'consumer', org_code: 'C001', org_name: 'End User', org_type_code: 'CONSUMER', is_active: true },
     ]
 
-    expect(getStockCountLocationOptions(locations, false).map(location => location.id))
-      .toEqual(['hq', 'warehouse'])
-    expect(getStockCountLocationOptions(locations, true).map(location => location.id))
-      .toEqual(['hq', 'warehouse', 'distributor'])
+    expect(getStockCountLocationOptions(locations).map(location => location.id))
+      .toEqual(['hq-warehouse', 'alma', 'balakong'])
+  })
+
+  it('uses only a valid configured or current-organization warehouse as default', () => {
+    const warehouses = [{ id: 'alma' }, { id: 'balakong' }]
+    expect(resolveStockCountDefaultWarehouseId('balakong', 'alma', warehouses)).toBe('balakong')
+    expect(resolveStockCountDefaultWarehouseId('distributor', 'alma', warehouses)).toBe('alma')
+    expect(resolveStockCountDefaultWarehouseId('distributor', 'shop', warehouses)).toBe('')
+    expect(resolveStockCountDefaultWarehouseId(null, null, warehouses)).toBe('')
   })
 })

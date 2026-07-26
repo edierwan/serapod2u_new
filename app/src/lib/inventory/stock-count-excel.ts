@@ -1,5 +1,14 @@
 import type ExcelJS from 'exceljs'
 
+const STOCK_COUNT_METADATA_SHEET = '_Serapod2U_Metadata'
+
+export interface StockCountWorkbookContext {
+  warehouseId: string
+  sessionId: string
+  countType: string
+  categoryId?: string
+}
+
 export const STOCK_COUNT_EXCEL_HEADERS = [
   'Stock Configuration ID',
   'Stock SKU',
@@ -76,6 +85,7 @@ export function formatPackagingVersion(packaging: string | null): string {
 export function buildStockCountWorksheet(
   workbook: ExcelJS.Workbook,
   rows: StockCountExcelRow[],
+  context?: StockCountWorkbookContext,
 ): ExcelJS.Worksheet {
   const worksheet = workbook.addWorksheet('Stock Count')
   worksheet.addRow([...STOCK_COUNT_EXCEL_HEADERS])
@@ -120,6 +130,18 @@ export function buildStockCountWorksheet(
   worksheet.getColumn(11).numFmt = '#,##0'
   worksheet.getColumn(12).numFmt = '#,##0'
 
+  if (context) {
+    const metadata = workbook.addWorksheet(STOCK_COUNT_METADATA_SHEET)
+    metadata.addRows([
+      ['format', 'serapod2u-stock-count-v2'],
+      ['warehouse_id', context.warehouseId],
+      ['session_id', context.sessionId],
+      ['count_type', context.countType],
+      ['category_id', context.categoryId || ''],
+    ])
+    metadata.state = 'veryHidden'
+  }
+
   return worksheet
 }
 
@@ -155,7 +177,34 @@ function resolveImportHeaders(sheet: ExcelJS.Worksheet): Map<string, number> {
 export function parseStockCountWorksheet(
   sheet: ExcelJS.Worksheet,
   targets: StockCountImportTarget[],
+  expectedContext?: StockCountWorkbookContext,
 ): StockCountImportResult {
+  if (expectedContext) {
+    const metadata = sheet.workbook.getWorksheet(STOCK_COUNT_METADATA_SHEET)
+    if (!metadata) {
+      throw new Error('This Opening Balance workbook has no session identity. Download a fresh template from the selected Opening Balance draft.')
+    }
+    const values = new Map<string, string>()
+    metadata.eachRow((row) => {
+      const key = row.getCell(1).text.trim()
+      if (key) values.set(key, row.getCell(2).text.trim())
+    })
+    if (values.get('format') !== 'serapod2u-stock-count-v2') {
+      throw new Error('This Opening Balance workbook uses an unsupported template version. Download a fresh template.')
+    }
+    if (values.get('warehouse_id') !== expectedContext.warehouseId) {
+      throw new Error('This template belongs to a different warehouse and cannot update the selected Opening Balance draft.')
+    }
+    if (values.get('session_id') !== expectedContext.sessionId) {
+      throw new Error('This template belongs to a different Stock Count session and cannot update the selected draft.')
+    }
+    if (values.get('count_type') !== expectedContext.countType) {
+      throw new Error('This template belongs to a different Stock Count type and cannot update the selected draft.')
+    }
+    if ((values.get('category_id') || '') !== (expectedContext.categoryId || '')) {
+      throw new Error('This template belongs to a different Product Category and cannot update the selected Opening Balance draft.')
+    }
+  }
   const headers = resolveImportHeaders(sheet)
   const column = (name: string) => headers.get(normalizeHeader(name))!
   const stockConfigIdColumn = column('Stock Configuration ID')
@@ -201,15 +250,27 @@ export function parseStockCountWorksheet(
       return
     }
 
-    const changed = matched.physicalCount !== physicalString || matched.note !== note
-    patches.set(matched.stockConfigId, { physicalCount: physicalString, note })
+    // A blank import cell means "no update", never "replace the saved count
+    // with zero/blank". This lets users import small completed subsets over
+    // several days without erasing earlier work. Explicit 0 remains a count.
+    const mergedPhysicalCount = physicalString === '' ? matched.physicalCount : physicalString
+    const mergedNote = note === '' ? matched.note : note
+    const changed = matched.physicalCount !== mergedPhysicalCount || matched.note !== mergedNote
+    if (changed) {
+      patches.set(matched.stockConfigId, {
+        physicalCount: mergedPhysicalCount,
+        note: mergedNote,
+      })
+    }
     if (changed) updated += 1
     else unchanged += 1
     results.push({
       row: rowNumber,
       sku: sku || matched.stockSku,
       status: changed ? 'Updated' : 'Unchanged',
-      message: physicalString === '' ? 'Blank physical count kept as not counted.' : changed ? 'Loaded into draft.' : 'No change from current draft.',
+      message: physicalString === ''
+        ? (matched.physicalCount === '' ? 'Blank physical count remains not counted.' : 'Blank physical count did not replace the saved count.')
+        : changed ? 'Loaded into draft.' : 'No change from current draft.',
     })
   })
 

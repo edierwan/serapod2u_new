@@ -35,21 +35,40 @@ export async function POST(request: NextRequest) {
         if (!requestId || !sessionId || !/^\d{8}$/.test(String(code || ''))) {
             return jsonError(stockCountVerificationError('invalid_code', { stage: 'verify' }))
         }
-        const { data: accessibleSession } = await (supabase as any).from('stock_count_sessions').select('id,status,count_type').eq('id', sessionId).maybeSingle()
+        const { data: accessibleSession } = await (supabase as any)
+            .from('stock_count_sessions')
+            .select('id,status,count_type,warehouse_organization_id')
+            .eq('id', sessionId)
+            .maybeSingle()
         if (!accessibleSession) {
             return jsonError(stockCountVerificationError('stock_count_access_denied', { stage: 'verify' }))
         }
+        const admin = createAdminClient() as any
+        const { data: activeWarehouse } = await admin
+            .from('organizations')
+            .select('id')
+            .eq('id', accessibleSession.warehouse_organization_id)
+            .eq('org_type_code', 'WH')
+            .eq('is_active', true)
+            .maybeSingle()
+        if (!activeWarehouse) {
+            return jsonError(stockCountVerificationError('invalid_warehouse', { stage: 'post' }))
+        }
         if (accessibleSession.status === 'posted') {
             return jsonError(stockCountVerificationError('already_posted', { stage: 'post' }))
+        }
+        if (accessibleSession.count_type === 'initial_configuration_classification') {
+            return jsonError(stockCountVerificationError('invalid_count_data', {
+                stage: 'post',
+                message: 'Legacy Initial Classification drafts are read-only. Use Inventory Opening Balance & Initial Classification.',
+            }))
         }
         const permission = await checkPermissionForUser(user.id, STOCK_COUNT_POST_PERMISSION)
         if (!permission.allowed || !permission.context?.organization_id) {
             return jsonError(stockCountVerificationError('permission_denied', { stage: 'verify' }))
         }
         const codeHash = hashStockCountCode(String(code), permission.context.organization_id, sessionId, user.id)
-        const postingFunction = accessibleSession.count_type === 'initial_configuration_classification'
-            ? 'verify_and_post_stock_classification'
-            : accessibleSession.count_type === 'opening_balance_cutoff'
+        const postingFunction = accessibleSession.count_type === 'opening_balance_cutoff'
                 ? 'verify_and_post_inventory_opening_cutoff'
                 : 'verify_and_post_stock_count'
         const { data, error } = await (supabase as any).rpc(postingFunction, {

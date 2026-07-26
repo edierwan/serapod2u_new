@@ -6,6 +6,8 @@ export interface CutoffReport {
   status: 'counting' | 'posted' | 'cancelled'
   proposed_cutoff_at: string
   warehouse_organization_id: string
+  product_category_id?: string
+  product_category_name?: string
   company_id: string
   readiness: CutoffReadiness
   freeze_active: boolean
@@ -28,9 +30,10 @@ const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""'
 
 export function inventoryCutoffReportCsv(report: CutoffReport): string {
   const lines: string[] = [
-    ['Inventory Opening Balance Cut-off Report'],
+    ['Inventory Opening Balance & Initial Classification Report'],
     ['Proposed cut-off', report.proposed_cutoff_at],
     ['Warehouse', report.warehouse_organization_id],
+    ['Product Category', report.product_category_name || report.product_category_id],
     ['Organization', report.company_id],
     ['Readiness', report.readiness],
     ['QR status', report.qr_status],
