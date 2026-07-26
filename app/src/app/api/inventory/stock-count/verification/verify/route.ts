@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
         const codeHash = hashStockCountCode(String(code), permission.context.organization_id, sessionId, user.id)
         const postingFunction = accessibleSession.count_type === 'initial_configuration_classification'
             ? 'verify_and_post_stock_classification'
-            : 'verify_and_post_stock_count'
+            : accessibleSession.count_type === 'opening_balance_cutoff'
+                ? 'verify_and_post_inventory_opening_cutoff'
+                : 'verify_and_post_stock_count'
         const { data, error } = await (supabase as any).rpc(postingFunction, {
             p_request_id: requestId, p_code_hash: codeHash,
         })

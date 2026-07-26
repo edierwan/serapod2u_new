@@ -30,15 +30,20 @@ const stockConfigMigrations = [
   '20260719_stock_config_19_collision_safe_stock_sku_generator.sql',
   '20260719_stock_config_20_view_contract_compatibility.sql',
 ].map(name => repoFile(`supabase/migrations/${name}`))
+const cutoffMigrations = [
+  '01_cutoff_foundation.sql',
+  '02_cutoff_preview_and_decisions.sql',
+  '03_cutoff_atomic_posting.sql',
+].map(name => repoFile(`supabase/migrations/20260726_inventory_opening_balance_cutoff/${name}`))
 
 // Reconstruct the final installed definitions by applying each CREATE OR
 // REPLACE in migration order. This keeps the writer inventory deterministic
 // even when a developer's ignored staging-schema snapshot predates Migrations
 // 01-20.
 const finalFunctionBodies = new Map<string, string>()
-for (const sql of [schema, ...stockConfigMigrations]) {
+for (const sql of [schema, ...stockConfigMigrations, ...cutoffMigrations]) {
   for (const match of sql.matchAll(
-    /CREATE(?: OR REPLACE)? FUNCTION public\.([a-zA-Z0-9_]+)\([^;]*?AS \$\$(.*?)\$\$;/gs,
+    /CREATE(?: OR REPLACE)? FUNCTION public\.([a-zA-Z0-9_]+)\([^;]*?AS \$\$(.*?)\$\$;/gsi,
   )) {
     finalFunctionBodies.set(match[1], match[2])
   }
@@ -75,7 +80,7 @@ describe('stock movement consumer audit contract', () => {
 describe('stock movement writer audit contract', () => {
   it('keeps an explicit inventory of every direct SQL writer in the staging schema', () => {
     const directWriters = functionBodies
-      .filter(fn => fn.body.includes('INSERT INTO public.stock_movements'))
+      .filter(fn => /INSERT\s+INTO\s+public\.stock_movements/i.test(fn.body))
       .map(fn => fn.name)
       .sort()
 
@@ -90,6 +95,7 @@ describe('stock movement writer audit contract', () => {
       'record_stock_movement',
       'release_allocation_for_order',
       'set_order_item_stock_config',
+      'verify_and_post_inventory_opening_cutoff',
       'wms_record_movement_from_summary',
     ])
   })
@@ -104,6 +110,7 @@ describe('stock movement writer audit contract', () => {
       'delete_scratch_campaign',
       'dispatch_stock_transfer',
       'post_manual_stock_addition',
+      'post_return_case_inventory',
       'post_stock_transfer_configured',
       'post_warehouse_receipt',
       'receive_stock_transfer',

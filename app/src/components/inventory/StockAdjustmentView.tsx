@@ -81,7 +81,7 @@ import {
   Warehouse,
 } from 'lucide-react'
 
-type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification'
+type CountType = 'full_count' | 'cycle_count' | 'spot_check' | 'initial_configuration_classification' | 'opening_balance_cutoff'
 type SessionStatus = 'draft' | 'posted' | 'archived'
 
 interface CountRow extends StockCountCatalogRow {
@@ -161,6 +161,7 @@ const countTypeOptions: Array<{ value: CountType; label: string }> = [
   { value: 'cycle_count', label: 'Cycle Count' },
   { value: 'spot_check', label: 'Spot Check' },
   { value: 'initial_configuration_classification', label: 'Initial Physical Count & Configuration Classification' },
+  { value: 'opening_balance_cutoff', label: 'Inventory Opening Balance Cut-off' },
 ]
 // Signature of a Stock Count draft with nothing counted yet. A fresh or reset
 // session starts here so it is never falsely flagged as having unsaved changes.

@@ -181,7 +181,10 @@ export async function POST(request: NextRequest) {
   // 1. Post inventory FIRST (durable receipt + stock movements, atomic & idempotent).
   //    If this fails we have NOT started any QR work, so the user can simply retry.
   //    This prevents the previous "QR completed but inventory failed silently" bug.
-  const { data: postResult, error: postError } = await supabase.rpc('post_warehouse_receipt', {
+  // Use the caller's authenticated JWT for the security-definer RPC. The RPC
+  // verifies p_received_by = auth.uid(); the admin client is intentionally not
+  // used for the inventory mutation.
+  const { data: postResult, error: postError } = await authClient.rpc('post_warehouse_receipt', {
     p_batch_id: batch_id,
     p_order_id: order_id,
     p_company_id: companyId,
