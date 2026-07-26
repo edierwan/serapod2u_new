@@ -43,12 +43,15 @@ describe('Stock Count configuration scope migration', () => {
     expect(stockAdjustmentView).toContain('classificationSummary.perGroup.flatMap')
     expect(stockAdjustmentView).toContain('const targets = classificationGroups.flatMap')
     expect(stockAdjustmentView).toContain('parseClassificationWorksheet(sheet, targets)')
-    expect(stockAdjustmentView).toContain('baseCatalogRows.filter(row => scopeIds.has(row.stockConfigId))')
+    expect(stockAdjustmentView).toContain('baseCatalogRows.filter(row => effectiveScopeIds.has(row.stockConfigId))')
   })
 
-  it('loads distributor inventory organizations without widening regular stock counts', () => {
-    expect(stockAdjustmentView).toContain(".in('org_type_code', ['HQ', 'WH', 'DIST'])")
-    expect(stockAdjustmentView).toContain('getStockCountLocationOptions(warehouseLocations, isClassificationMode)')
+  it('loads only active WH master records and validates every save', () => {
+    expect(stockAdjustmentView).toContain(".eq('org_type_code', 'WH')")
+    expect(stockAdjustmentView).toContain(".eq('is_active', true)")
+    expect(stockAdjustmentView).toContain('getStockCountLocationOptions(warehouseLocations)')
+    expect(stockAdjustmentView).toContain('validateActiveWarehouse')
+    expect(stockAdjustmentView).toContain('resolveStockCountDefaultWarehouseId')
     expect(stockAdjustmentView).toContain('locationOptions.map(loc =>')
   })
 })

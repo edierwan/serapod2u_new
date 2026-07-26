@@ -113,10 +113,11 @@ describe('Phase 8 Initial Configuration Classification SQL contract', () => {
     expect(migration).toContain("SET status = 'archived'")
   })
 
-  it('the verify route dispatches to the classification posting function only for classification sessions', () => {
-    expect(verifyRoute).toContain("select('id,status,count_type')")
+  it('the verify route keeps legacy classification read-only and dispatches Opening Balance separately', () => {
+    expect(verifyRoute).toContain("select('id,status,count_type,warehouse_organization_id')")
     expect(verifyRoute).toContain("accessibleSession.count_type === 'initial_configuration_classification'")
-    expect(verifyRoute).toContain("'verify_and_post_stock_classification'")
+    expect(verifyRoute).not.toContain("'verify_and_post_stock_classification'")
+    expect(verifyRoute).toContain("'verify_and_post_inventory_opening_cutoff'")
     expect(verifyRoute).toContain("'verify_and_post_stock_count'")
   })
 

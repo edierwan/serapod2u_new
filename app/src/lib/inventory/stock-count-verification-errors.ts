@@ -7,6 +7,7 @@ export type StockCountVerificationErrorCode =
     | 'stock_count_access_denied'
     | 'permission_denied'
     | 'stock_count_not_found'
+    | 'invalid_warehouse'
     | 'already_posted'
     | 'invalid_count_data'
     | 'configuration_identity_missing'
@@ -57,6 +58,7 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     stock_count_access_denied: { message: 'You do not have access to this Stock Count organization.', status: 403, recoverable: false },
     permission_denied: { message: 'You do not have permission to request or post this Stock Count. Please contact your administrator.', status: 403, recoverable: false },
     stock_count_not_found: { message: 'This Stock Count could not be found.', status: 404, recoverable: false },
+    invalid_warehouse: { message: 'Selected organization is not an active warehouse.', status: 400, recoverable: true },
     already_posted: { message: 'This Stock Count has already been posted.', status: 409, recoverable: false },
     invalid_count_data: { message: 'This Stock Count does not contain valid counted quantities.', status: 400, recoverable: true },
     configuration_identity_missing: { message: 'This Stock Count uses a legacy variant-only draft and cannot be posted safely. Start a new configuration-aware Stock Count.', status: 409, recoverable: true },
@@ -77,12 +79,12 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     expired_code: { message: 'The verification code has expired. Please request a new code.', status: 400, recoverable: true },
     code_already_used: { message: 'This verification code has already been used. Please request a new code.', status: 409, recoverable: true },
     invalid_or_expired_code: { message: 'The verification code is incorrect. Please check the code and try again.', status: 400, recoverable: true },
-    classification_incomplete: { message: 'Enter a physical count for all three target configurations (20ml New Box, 50ml New Box, 50ml Old Box) before posting this Initial Physical Count & Configuration Classification.', status: 409, recoverable: true },
+    classification_incomplete: { message: 'This retired Legacy Initial Classification draft is incomplete and cannot be posted. Create an Inventory Opening Balance & Initial Classification draft.', status: 409, recoverable: true },
     classification_legacy_not_cleared: { message: 'The Legacy/Unclassified balance must be fully cleared (counted at 0) before this classification can post.', status: 409, recoverable: true },
     classification_already_fully_classified: { message: 'This product has already been fully classified. Download a new Initial Physical Count template for currently eligible products, or use Full Count to update this product’s configured quantity.', status: 409, recoverable: true },
     classification_allocated_blocks_post: { message: 'This Legacy inventory has reserved units. Select the counted target configuration that should inherit the reservation, or ask Order Management to release/cancel the owning transaction before posting.', status: 409, recoverable: true },
     classification_exceeds_legacy: { message: 'The requested classification quantity exceeds the remaining Legacy/Unclassified balance. Reduce the target counts or refresh the template.', status: 409, recoverable: true },
-    full_count_on_unclassified: { message: 'This variant still has a Legacy/Unclassified balance. Use “Initial Physical Count & Configuration Classification” to record its actual 20ml/50ml balances and clear Legacy — an ordinary count would add phantom stock on top of the unclassified balance.', status: 409, recoverable: true },
+    full_count_on_unclassified: { message: 'This warehouse has not posted its official Opening Balance yet, and the variant still has a Legacy/Unclassified balance. Use “Inventory Opening Balance & Initial Classification” before using normal counts.', status: 409, recoverable: true },
     wrong_posting_function: { message: 'This Stock Count was posted with the wrong posting function for its count type. Please refresh and try again.', status: 409, recoverable: true },
     posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
     posting_timeout: { message: 'Posting took too long and was safely cancelled — no inventory was changed and your verification code is still valid. Please try posting again. If this keeps happening on a very large count, contact your administrator.', status: 503, recoverable: true },
@@ -190,6 +192,10 @@ export function mapStockCountDatabaseError(
         [/canceling statement due to lock timeout/i, 'posting_conflict'],
         [/deadlock detected/i, 'posting_conflict'],
         ['permission_lost', 'permission_denied'],
+        ['stock_count_active_warehouse_required', 'invalid_warehouse'],
+        ['stock_count_legacy_initial_read_only', 'invalid_count_data'],
+        ['inventory_opening_balance_already_posted', 'already_posted'],
+        ['inventory_opening_balance_count_incomplete', 'invalid_count_data'],
         ['stock_count_already_posted', 'already_posted'],
         ['stock_count_snapshot_changed', 'snapshot_changed'],
         ['verification_code_expired', 'expired_code'],

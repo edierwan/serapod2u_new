@@ -14,6 +14,8 @@ export interface StockCountCatalogRow {
   variantId: string
   productName: string
   productCode: string
+  categoryId: string
+  categoryName: string
   groupId: string
   groupName: string
   groupDescription: string | null
@@ -37,21 +39,36 @@ export interface StockCountLocation {
   org_code: string
   org_name: string
   org_type_code: string
+  is_active: boolean
 }
 
 /**
- * Regular counts remain warehouse-scoped. Initial classification also permits
- * distributor inventory organizations because legacy balances are held there
- * and posting is still performed against exactly one selected organization.
+ * Stock Count is always scoped to an active WH organization from Organization
+ * master data. Historical sessions may retain other organization IDs, but they
+ * are never eligible creation/posting locations.
  */
 export function getStockCountLocationOptions(
   locations: StockCountLocation[],
-  isInitialClassification: boolean,
 ): StockCountLocation[] {
-  const allowedTypes = isInitialClassification
-    ? new Set(['HQ', 'WH', 'DIST'])
-    : new Set(['HQ', 'WH'])
-  return locations.filter(location => allowedTypes.has(location.org_type_code))
+  return locations
+    .filter(location => location.org_type_code === 'WH' && location.is_active === true)
+    .sort((a, b) => a.org_name.localeCompare(b.org_name))
+}
+
+export function resolveStockCountDefaultWarehouseId(
+  configuredDefaultWarehouseId: string | null | undefined,
+  currentOrganizationId: string | null | undefined,
+  eligibleWarehouses: Array<{ id: string }>,
+): string {
+  if (configuredDefaultWarehouseId
+    && eligibleWarehouses.some(warehouse => warehouse.id === configuredDefaultWarehouseId)) {
+    return configuredDefaultWarehouseId
+  }
+  if (currentOrganizationId
+    && eligibleWarehouses.some(warehouse => warehouse.id === currentOrganizationId)) {
+    return currentOrganizationId
+  }
+  return ''
 }
 
 function relation<T>(value: T | T[] | null | undefined): T | null {
@@ -92,6 +109,7 @@ export function buildStockCountCatalogRows(
     }
     const group: any = relation(product.product_groups)
     const brand: any = relation(product.brands)
+    const category: any = relation(product.product_categories)
     const balance = balancesByConfig.get(stockConfigId)
 
     return {
@@ -106,6 +124,8 @@ export function buildStockCountCatalogRows(
       variantId: variant.id,
       productName: product.product_name || 'Unnamed product',
       productCode: variant.product_code || '',
+      categoryId: product.category_id || '',
+      categoryName: category?.category_name || 'Uncategorized',
       groupId: group?.id || brand?.id || STOCK_COUNT_UNGROUPED_ID,
       groupName: group?.group_name || brand?.brand_name || 'Ungrouped',
       groupDescription: group?.group_description || null,
