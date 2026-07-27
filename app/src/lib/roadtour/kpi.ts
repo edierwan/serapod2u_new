@@ -458,7 +458,8 @@ export function hasMetAmAchievementGate(
 /**
  * Compute AM incentive using the selected model.
  * - volume_tiers: actual scans × bracket RM/scan (no % gate)
- * - achievement_tiers (hybrid, default): same volume payout once an achievement gate is met
+ * - achievement_tiers (hybrid, default): add RM amount (X) from the best matching achievement % tier,
+ *   then add progressive volume-table payout once the achievement gate is met.
  */
 export function computeAmIncentiveEarnings(
     mode: KpiAmIncentiveMode,
@@ -475,18 +476,24 @@ export function computeAmIncentiveEarnings(
         return amount
     }
     const volumeRate = resolveVolumeTierRate(args.actualScans)
-    const eligibleForVolumePayout = mode === 'volume_tiers'
-        || hasMetAmAchievementGate(args.amRules, args.achievementPercent, args.teamId)
-    const volumeIncentive = eligibleForVolumePayout
-        ? computeVolumeIncentive(args.actualScans, undefined)
+    const hasAchievementGate = hasMetAmAchievementGate(args.amRules, args.achievementPercent, args.teamId)
+
+    // Hybrid expectation:
+    // - achievement_tiers: first earn an achievement RM amount (X) from the best matching % tier
+    //   then add the progressive volume-table payout once the achievement gate is met.
+    // - volume_tiers: volume payout only (no % tier RM amount).
+    const eligibleForVolumePayout = mode === 'volume_tiers' || hasAchievementGate
+    const volumeIncentive = eligibleForVolumePayout ? computeVolumeIncentive(args.actualScans, undefined) : 0
+    const achievementBonus = mode === 'achievement_tiers' && hasAchievementGate
+        ? computeAmIncentive(args.amRules, args.achievementPercent, args.teamId, undefined)
         : 0
 
     return {
         incentiveMode: mode,
         volumeTierRate: eligibleForVolumePayout ? volumeRate : 0,
         volumeIncentive,
-        achievementBonus: 0,
-        incentiveEarned: capTotal(volumeIncentive),
+        achievementBonus,
+        incentiveEarned: capTotal(volumeIncentive + achievementBonus),
     }
 }
 
@@ -533,8 +540,9 @@ export interface AmTierInput {
  * Validate a single AM incentive tier against the rest of the AM tier set and
  * the per-AM cap. Returns a human-readable error message, or null when valid.
  *
- * When `asAchievementGate` is true (hybrid mode), the % threshold only unlocks
- * volume-table payout — RM amounts are not required / not compared.
+ * When `asAchievementGate` is true (hybrid mode), the % threshold unlocks
+ * the volume-table payout and also contributes the achievement RM amount (X).
+ * (RM amounts are optional for gate-only configs and therefore not validated.)
  */
 export function validateAmIncentiveTier(
     candidate: AmTierInput,

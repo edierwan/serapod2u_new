@@ -412,6 +412,13 @@ describe('volume tiers + hybrid AM incentive', () => {
         status: 'active',
     }]
 
+    const gate100WithBonus = [{
+        applies_to: 'all_ams' as const,
+        achievement_threshold_percent: 100,
+        incentive_amount: 500,
+        status: 'active',
+    }]
+
     it('resolves RM/scan brackets from the standard volume table', () => {
         expect(resolveVolumeTierRate(0)).toBe(0)
         expect(resolveVolumeTierRate(10_000)).toBe(0)
@@ -440,6 +447,29 @@ describe('volume tiers + hybrid AM incentive', () => {
         expect(unlocked.volumeTierRate).toBe(0.12)
         // Progressive: 10,001-20,000 => 10,000*0.10, 20,001-25,000 => 5,000*0.12
         expect(unlocked.incentiveEarned).toBe(1_600)
+    })
+
+    it('adds achievement tier RM (X) on top of progressive volume payout (hybrid)', () => {
+        const blocked = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 25_000,
+            achievementPercent: 80,
+            amRules: gate100WithBonus,
+            maxIncentivePerAm: 10_000,
+        })
+        expect(blocked.incentiveEarned).toBe(0)
+        expect(blocked.volumeTierRate).toBe(0)
+        expect(blocked.achievementBonus).toBe(0)
+
+        const unlocked = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 25_000,
+            achievementPercent: 100,
+            amRules: gate100WithBonus,
+            maxIncentivePerAm: 10_000,
+        })
+        expect(unlocked.volumeTierRate).toBe(0.12)
+        expect(unlocked.volumeIncentive).toBe(1_600)
+        expect(unlocked.achievementBonus).toBe(500)
+        expect(unlocked.incentiveEarned).toBe(2_100)
     })
 
     it('applies Max Incentive / AM cap after volume payout', () => {
