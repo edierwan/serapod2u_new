@@ -8,6 +8,7 @@ import {
     achievementPercent,
     compareKpiMonth,
     computeAmIncentive,
+    computeAmIncentiveEarnings,
     computeLeaderBonus,
     currentKpiMonth,
     deriveEffectiveFromOptions,
@@ -22,6 +23,7 @@ import {
     monthKeyFromDate,
     previousKpiMonth,
     resolveLeaderId,
+    resolveVolumeTierRate,
     teamPerformanceStatus,
     validateAmIncentiveTier,
 } from './kpi'
@@ -399,5 +401,70 @@ describe('deriveEffectiveToOptions (bounded by From and event end)', () => {
     it('unions configured endpoint months (>= from) so an existing To stays visible', () => {
         const opts = deriveEffectiveToOptions({ from: '2026-07', endDate: null, configuredMonths: ['2026-11'] })
         expect(opts).toEqual(['2026-07', '2026-08', '2026-11'])
+    })
+})
+
+describe('volume tiers + hybrid AM incentive', () => {
+    const gate100 = [{
+        applies_to: 'all_ams' as const,
+        achievement_threshold_percent: 100,
+        incentive_amount: 0,
+        status: 'active',
+    }]
+
+    it('resolves RM/scan brackets from the standard volume table', () => {
+        expect(resolveVolumeTierRate(0)).toBe(0)
+        expect(resolveVolumeTierRate(10_000)).toBe(0)
+        expect(resolveVolumeTierRate(10_001)).toBe(0.10)
+        expect(resolveVolumeTierRate(25_000)).toBe(0.12)
+        expect(resolveVolumeTierRate(35_000)).toBe(0.15)
+        expect(resolveVolumeTierRate(50_000)).toBe(0.20)
+    })
+
+    it('pays progressive volume incentive only after achievement gate is met (hybrid)', () => {
+        const blocked = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 25_000,
+            achievementPercent: 80,
+            amRules: gate100,
+            maxIncentivePerAm: 10_000,
+        })
+        expect(blocked.incentiveEarned).toBe(0)
+        expect(blocked.volumeTierRate).toBe(0)
+
+        const unlocked = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 25_000,
+            achievementPercent: 100,
+            amRules: gate100,
+            maxIncentivePerAm: 10_000,
+        })
+        expect(unlocked.volumeTierRate).toBe(0.12)
+        // Progressive: 10,001-20,000 => 10,000*0.10, 20,001-25,000 => 5,000*0.12
+        expect(unlocked.incentiveEarned).toBe(1_600)
+    })
+
+    it('applies Max Incentive / AM cap after volume payout', () => {
+        const capped = computeAmIncentiveEarnings('achievement_tiers', {
+            actualScans: 50_000,
+            achievementPercent: 120,
+            amRules: gate100,
+            maxIncentivePerAm: 5_000,
+        })
+        // Progressive total at 50,000 = 5,700 → capped to 5,000
+        expect(capped.incentiveEarned).toBe(5_000)
+    })
+
+    it('validates AM gates by % uniqueness without requiring RM amounts', () => {
+        expect(validateAmIncentiveTier(
+            { achievement_threshold_percent: 100, incentive_amount: 0 },
+            [],
+            null,
+            { asAchievementGate: true },
+        )).toBeNull()
+        expect(validateAmIncentiveTier(
+            { achievement_threshold_percent: 100, incentive_amount: 0 },
+            [{ achievement_threshold_percent: 100, incentive_amount: 0 }],
+            null,
+            { asAchievementGate: true },
+        )).toMatch(/already exists/)
     })
 })

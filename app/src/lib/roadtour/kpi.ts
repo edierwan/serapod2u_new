@@ -11,6 +11,8 @@ export type KpiRuleAppliesTo = 'all_ams' | 'team_leader' | 'specific_team'
 export type KpiBonusType = 'cash' | 'other'
 export type KpiTeamStatus = 'draft' | 'active'
 export type KpiPerformanceStatus = 'achieved' | 'on_track' | 'at_risk' | 'needs_focus'
+/** AM payout model: volume only, or hybrid (achievement % gate unlocks volume table payout). */
+export type KpiAmIncentiveMode = 'volume_tiers' | 'achievement_tiers'
 
 export const KPI_TZ_OFFSET = '+08:00'
 
@@ -332,14 +334,168 @@ export interface KpiIncentiveRuleLike {
     team_id?: string | null
 }
 
+/** Volume bracket for KPI incentive and point-value RM (flat rate per scan in bracket). */
+export interface KpiVolumeTier {
+    /** Inclusive lower bound (monthly successful scans). */
+    min: number
+    /** Inclusive upper bound; null = open-ended. */
+    max: number | null
+    /** RM earned per scan when total monthly volume falls in this bracket. */
+    ratePerScan: number
+}
+
 /**
- * AM incentive: tiered — the highest-threshold active rule the AM has met wins
- * (e.g. Base 100% = RM200, Exceed 120% = RM300 → an AM at 125% earns RM300).
- * Rules scoped to a specific team only apply to that team's members.
+ * Standard RoadTour KPI / point-value tiers (flat bracket rate).
+ * Below 10,001 scans → no incentive (rate 0).
+ */
+export const DEFAULT_KPI_VOLUME_TIERS: KpiVolumeTier[] = [
+    { min: 0, max: 10_000, ratePerScan: 0 },
+    { min: 10_001, max: 20_000, ratePerScan: 0.10 },
+    { min: 20_001, max: 30_000, ratePerScan: 0.12 },
+    { min: 30_001, max: 40_000, ratePerScan: 0.15 },
+    { min: 40_001, max: null, ratePerScan: 0.20 },
+]
+
+export function resolveVolumeTier(
+    volume: number,
+    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
+): KpiVolumeTier {
+    const v = Math.max(0, Math.floor(Number(volume) || 0))
+    for (const tier of tiers) {
+        if (v >= tier.min && (tier.max === null || v <= tier.max)) return tier
+    }
+    return tiers[0]
+}
+
+/** RM per scan for the monthly volume bracket (same rate used for KPI incentive). */
+export function resolveVolumeTierRate(
+    volume: number,
+    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
+): number {
+    return resolveVolumeTier(volume, tiers).ratePerScan
+}
+
+export function formatVolumeTierRange(tier: KpiVolumeTier): string {
+    if (tier.max === null) return `${tier.min.toLocaleString()}+`
+    return `${tier.min.toLocaleString()} — ${tier.max.toLocaleString()}`
+}
+
+/**
+ * Monthly AM KPI incentive (progressive tiers):
+ * each bracket contributes only its slice of volume.
+ * Optional per-AM cap still applies after calculation.
+ *
+ * Example at 25,000 scans:
+ *   0–10,000     → 10,000 × 0.00 = 0
+ *   10,001–20,000 → 10,000 × 0.10 = 1,000
+ *   20,001–25,000 →  5,000 × 0.12 = 600
+ *   Total = RM 1,600
+ */
+export function computeVolumeIncentive(
+    volume: number,
+    maxIncentivePerAm?: number | null,
+    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
+): number {
+    const v = Math.max(0, Math.floor(Number(volume) || 0))
+    let payout = 0
+    for (const tier of tiers) {
+        if (v < tier.min) continue
+        // Inclusive brackets: [min, max]. Slice size = end - previousBoundary.
+        const previousBoundary = tier.min > 0 ? tier.min - 1 : 0
+        const end = Math.min(v, tier.max ?? v)
+        const sliceVolume = Math.max(0, end - previousBoundary)
+        if (sliceVolume <= 0) continue
+        payout += sliceVolume * tier.ratePerScan
+    }
+    if (maxIncentivePerAm && maxIncentivePerAm > 0) return Math.min(payout, maxIncentivePerAm)
+    return payout
+}
+
+/**
+ * Point value (RM per point) aligned with the volume tier.
+ * Converts the per-scan bracket rate using points granted per successful reward.
+ */
+export function resolvePointValueRmForVolume(
+    volume: number,
+    pointsPerReward = 20,
+    tiers: KpiVolumeTier[] = DEFAULT_KPI_VOLUME_TIERS,
+): number {
+    const pts = Math.max(1, Math.floor(Number(pointsPerReward) || 1))
+    return resolveVolumeTierRate(volume, tiers) / pts
+}
+
+/** Normalize plan/cycle incentive mode. Default = hybrid (achievement gates + volume payout). */
+export function normalizeAmIncentiveMode(value: unknown): KpiAmIncentiveMode {
+    return value === 'volume_tiers' ? 'volume_tiers' : 'achievement_tiers'
+}
+
+export interface AmIncentiveEarningsResult {
+    incentiveEarned: number
+    volumeTierRate: number | null
+    incentiveMode: KpiAmIncentiveMode
+    volumeIncentive: number
+    achievementBonus: number
+}
+
+/** True when an AM meets at least one active achievement gate tier. */
+export function hasMetAmAchievementGate(
+    rules: KpiIncentiveRuleLike[],
+    amPercent: number,
+    teamId?: string | null,
+): boolean {
+    let hasActiveTiers = false
+    for (const rule of rules) {
+        if (rule.status !== 'active') continue
+        if (rule.applies_to === 'team_leader') continue
+        if (rule.applies_to === 'specific_team' && rule.team_id !== teamId) continue
+        hasActiveTiers = true
+        if (amPercent >= rule.achievement_threshold_percent) return true
+    }
+    // No configured tiers → default gate at 100% achievement.
+    return !hasActiveTiers && amPercent >= 100
+}
+
+/**
+ * Compute AM incentive using the selected model.
+ * - volume_tiers: actual scans × bracket RM/scan (no % gate)
+ * - achievement_tiers (hybrid, default): same volume payout once an achievement gate is met
+ */
+export function computeAmIncentiveEarnings(
+    mode: KpiAmIncentiveMode,
+    args: {
+        actualScans: number
+        achievementPercent: number
+        amRules: KpiIncentiveRuleLike[]
+        teamId?: string | null
+        maxIncentivePerAm?: number | null
+    },
+): AmIncentiveEarningsResult {
+    const capTotal = (amount: number) => {
+        if (args.maxIncentivePerAm && args.maxIncentivePerAm > 0) return Math.min(amount, args.maxIncentivePerAm)
+        return amount
+    }
+    const volumeRate = resolveVolumeTierRate(args.actualScans)
+    const eligibleForVolumePayout = mode === 'volume_tiers'
+        || hasMetAmAchievementGate(args.amRules, args.achievementPercent, args.teamId)
+    const volumeIncentive = eligibleForVolumePayout
+        ? computeVolumeIncentive(args.actualScans, undefined)
+        : 0
+
+    return {
+        incentiveMode: mode,
+        volumeTierRate: eligibleForVolumePayout ? volumeRate : 0,
+        volumeIncentive,
+        achievementBonus: 0,
+        incentiveEarned: capTotal(volumeIncentive),
+    }
+}
+
+/**
+ * Legacy AM incentive: highest % tier RM amount wins.
+ * Prefer computeAmIncentiveEarnings for RoadTour hybrid payouts.
  *
  * `maxIncentivePerAm` is the per-AM monthly cap (from the AM's team). When set
- * and positive, the winning tier payout is clamped to it — an individual AM can
- * never earn more than the cap, no matter how many tiers they clear. The cap
+ * and positive, the winning tier payout is clamped to it. The cap
  * applies ONLY to AM incentive; leader bonus (computeLeaderBonus) is separate
  * and additive.
  */
@@ -376,34 +532,34 @@ export interface AmTierInput {
 /**
  * Validate a single AM incentive tier against the rest of the AM tier set and
  * the per-AM cap. Returns a human-readable error message, or null when valid.
- * Shared by the settings modal (inline error + disabled Save) and the API so
- * the rules can never be persisted in an illogical state. Rules enforced:
- *  1. threshold >= 100%
- *  2. threshold unique within the AM tier set
- *  3. amount > 0
- *  4. amount <= Max Incentive / AM (when a cap is configured)
- *  5. a higher threshold must pay strictly more than every lower tier
- *  6. a lower threshold must pay strictly less than every higher tier
+ *
+ * When `asAchievementGate` is true (hybrid mode), the % threshold only unlocks
+ * volume-table payout — RM amounts are not required / not compared.
  */
 export function validateAmIncentiveTier(
     candidate: AmTierInput,
     existingTiers: AmTierInput[],
     maxIncentivePerAm?: number | null,
+    options?: { asAchievementGate?: boolean },
 ): string | null {
     const threshold = Number(candidate.achievement_threshold_percent)
     const amount = Number(candidate.incentive_amount)
+    const asGate = Boolean(options?.asAchievementGate)
     if (!Number.isFinite(threshold) || threshold < 100) {
         return 'Achievement threshold must be at least 100%.'
+    }
+    const others = existingTiers.filter((t) => !(candidate.id && t.id === candidate.id))
+    if (others.some((t) => Number(t.achievement_threshold_percent) === threshold)) {
+        return `A tier for ${threshold}% already exists.`
+    }
+    if (asGate) {
+        return null
     }
     if (!Number.isFinite(amount) || amount <= 0) {
         return 'Incentive amount must be greater than RM0.'
     }
     if (maxIncentivePerAm && maxIncentivePerAm > 0 && amount > maxIncentivePerAm) {
         return `Incentive cannot exceed the RM${formatRm(maxIncentivePerAm)} max incentive per AM.`
-    }
-    const others = existingTiers.filter((t) => !(candidate.id && t.id === candidate.id))
-    if (others.some((t) => Number(t.achievement_threshold_percent) === threshold)) {
-        return `A tier for ${threshold}% already exists.`
     }
     let lower: AmTierInput | null = null // greatest threshold below the candidate
     let higher: AmTierInput | null = null // least threshold above the candidate

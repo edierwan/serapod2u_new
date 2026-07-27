@@ -15,12 +15,13 @@ import {
     achievementPercent,
     amPerformanceStatus,
     attributeScans,
-    computeAmIncentive,
+    computeAmIncentiveEarnings,
     computeLeaderBonus,
     deriveKpiMonthPeriod,
     effectiveIncentiveRules,
     isMonthInEffectiveRange,
     kpiMonthFromDate,
+    normalizeAmIncentiveMode,
     teamPerformanceStatus,
     type KpiPerformanceStatus,
 } from './kpi'
@@ -68,6 +69,8 @@ export interface KpiReportAmRow {
     assigned_target: number
     actual_scans: number
     achievement_percent: number
+    volume_tier_rate: number
+    volume_incentive: number
     incentive_earned: number
     rank: number
     status: KpiPerformanceStatus
@@ -243,7 +246,8 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
     }
     const teamById = new Map<string, any>(teams.map((t: any) => [t.id, t]))
 
-    // AM rows.
+    // AM rows — hybrid default: achievement % gates unlock volume-table payout.
+    const incentiveMode = normalizeAmIncentiveMode((cycle as any)?.am_incentive_mode ?? (cycle as any)?.incentive_mode)
     let amRows: Omit<KpiReportAmRow, 'rank'>[] = members.map((m: any) => {
         const team = teamById.get(m.team_id)
         const target = m.manual_target_scans ?? m.auto_target_scans
@@ -251,6 +255,13 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
         const percent = achievementPercent(actual, target)
         // Per-AM incentive cap ("Max Incentive / AM"), held on the team.
         const maxIncentivePerAm = Number(team?.incentive_budget) || 0
+        const earnings = computeAmIncentiveEarnings(incentiveMode, {
+            actualScans: actual,
+            achievementPercent: percent,
+            amRules: rules,
+            teamId: m.team_id,
+            maxIncentivePerAm,
+        })
         return {
             am_user_id: m.am_user_id,
             am_name: nameById.get(m.am_user_id) || 'Unknown',
@@ -259,7 +270,9 @@ export async function computeKpiReport(admin: any, filters: KpiReportFilters): P
             assigned_target: target,
             actual_scans: actual,
             achievement_percent: percent,
-            incentive_earned: computeAmIncentive(rules, percent, m.team_id, maxIncentivePerAm),
+            volume_tier_rate: Number(earnings.volumeTierRate) || 0,
+            volume_incentive: earnings.volumeIncentive,
+            incentive_earned: earnings.incentiveEarned,
             status: amPerformanceStatus(percent),
         }
     })

@@ -23,6 +23,7 @@ import {
 } from '@/lib/roadtour/kpi'
 import type { KpiAmOption, KpiPlanRow, KpiTeamRow } from '@/modules/roadtour/types/kpi'
 import { EmptyBlock, LoadingBlock, PageHeader } from './analytics/shared'
+import { KpiVolumeTierTable } from './KpiVolumeTierTable'
 
 interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 
@@ -33,6 +34,8 @@ const POLICY_RULES = [
     'For shop recovery or AM takeover, create a new Campaign under the same Event — not a new Event.',
     'New campaign QR scans count to the new campaign/AM.',
     'Historical scan attribution is not rewritten when the AM or campaign changes.',
+    'AM incentive is hybrid: achievement % gates unlock payout; amount = monthly scans × volume-tier RM/scan.',
+    'Point value (RM) for RoadTour follows the same volume tiers as KPI incentive.',
     'Leader bonus is optional and additive; the AM incentive cap applies only to individual AM incentive.',
 ]
 
@@ -174,22 +177,22 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
         [plan],
     )
 
-    // Live validation for the incentive tier dialog. AM tiers must be capped and
-    // strictly monotonic (shared logic with the API); leader tiers only need a
-    // positive threshold + amount. Save is disabled while this is non-null.
+    // Live validation for the incentive tier dialog.
+    // Hybrid AM gates: % unlocks volume payout (RM amount unused). Leader tiers still need RM.
     const tierError = useMemo<string | null>(() => {
         const threshold = Number(tierForm.achievement_threshold_percent)
         const amount = Number(tierForm.incentive_amount)
-        if (tierForm.incentive_amount.trim() === '' || !Number.isFinite(amount)) return 'Enter an incentive amount.'
         if (tierForm.applies_to === 'team_leader') {
+            if (tierForm.incentive_amount.trim() === '' || !Number.isFinite(amount)) return 'Enter an incentive amount.'
             if (!Number.isFinite(threshold) || threshold <= 0) return 'Team achievement % must be greater than 0.'
             if (amount <= 0) return 'Bonus amount must be greater than RM0.'
             return null
         }
         return validateAmIncentiveTier(
-            { id: tierForm.id, achievement_threshold_percent: threshold, incentive_amount: amount },
+            { id: tierForm.id, achievement_threshold_percent: threshold, incentive_amount: 0 },
             amTiers.map((r: any) => ({ id: r.id, achievement_threshold_percent: Number(r.achievement_threshold_percent), incentive_amount: Number(r.incentive_amount) })),
             maxIncentiveCap,
+            { asAchievementGate: true },
         )
     }, [tierForm, amTiers, maxIncentiveCap])
 
@@ -370,11 +373,12 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
     const handleSaveTier = useCallback(async () => {
         if (!plan || !configCycleId) return
         const payload = {
-            rule_name: tierForm.rule_name.trim() || (tierForm.applies_to === 'team_leader' ? 'Leader bonus' : 'AM incentive'),
+            rule_name: tierForm.rule_name.trim() || (tierForm.applies_to === 'team_leader' ? 'Leader bonus' : 'AM achievement gate'),
             applies_to: tierForm.applies_to,
             team_id: null,
             achievement_threshold_percent: Number(tierForm.achievement_threshold_percent),
-            incentive_amount: Number(tierForm.incentive_amount),
+            // Hybrid: AM gate stores 0 — payout comes from volume tiers. Leader bonus keeps RM.
+            incentive_amount: tierForm.applies_to === 'team_leader' ? Number(tierForm.incentive_amount) : 0,
             bonus_type: 'cash',
             status: tierForm.status,
         }
@@ -810,33 +814,48 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                 </CardContent>
                             </Card>
 
-                            {/* AM Incentive Tiers */}
+                            {/* Volume tiers (payout table) + AM achievement gates */}
+                            <Card>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                        <BarChart3 className="h-4 w-4 text-[var(--sera-orange)]" /> Volume tiers (RM / scan)
+                                    </CardTitle>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Progressive RoadTour payout table. After an AM clears an achievement gate, each bracket contributes its own slice (then Max Incentive / AM cap).
+                                    </p>
+                                </CardHeader>
+                                <CardContent>
+                                    <KpiVolumeTierTable compact />
+                                </CardContent>
+                            </Card>
+
+                            {/* AM Achievement Gates */}
                             <Card>
                                 <CardHeader className="pb-2">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <CardTitle className="text-base flex items-center gap-2">
-                                                <Wallet className="h-4 w-4 text-[var(--sera-orange)]" /> AM Incentive Tiers
+                                                <Wallet className="h-4 w-4 text-[var(--sera-orange)]" /> AM Achievement Gates
                                             </CardTitle>
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                Applies to every AM (including the leader). Based on the AM&apos;s actual scans vs their assigned monthly target.
-                                                <span className="font-medium text-[var(--sera-orange-deep)]"> Highest achieved tier wins</span> — payouts are not stacked.
+                                                % of assigned monthly target required to unlock volume-tier payout.
+                                                <span className="font-medium text-[var(--sera-orange-deep)]"> Gates do not set RM amounts</span> — payout comes from the volume table above.
                                             </p>
                                         </div>
                                         <Button size="sm" variant="outline" onClick={() => { setTierForm(emptyTierForm('all_ams')); setTierDialogOpen(true) }}>
-                                            <Plus className="h-4 w-4 mr-1" /> Add Tier
+                                            <Plus className="h-4 w-4 mr-1" /> Add Gate
                                         </Button>
                                     </div>
                                 </CardHeader>
                                 <CardContent>
                                     {amTiers.length === 0 ? (
-                                        <EmptyBlock title="No AM tiers yet" description="e.g. 100% = RM200, 120% = RM300, 140% = RM400." />
+                                        <EmptyBlock title="No achievement gates yet" description="e.g. 100% of target unlocks volume payout. Optional higher gates (120%, 140%) also unlock the same volume table." />
                                     ) : (
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>
-                                                    <TableHead>Achievement</TableHead>
-                                                    <TableHead className="text-right">Incentive</TableHead>
+                                                    <TableHead>Achievement gate</TableHead>
+                                                    <TableHead>Unlocks</TableHead>
                                                     <TableHead>Status</TableHead>
                                                     <TableHead className="text-right">Actions</TableHead>
                                                 </TableRow>
@@ -845,11 +864,11 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                                                 {[...amTiers].sort((a, b) => Number(a.achievement_threshold_percent) - Number(b.achievement_threshold_percent)).map((r) => (
                                                     <TableRow key={r.id}>
                                                         <TableCell className="font-medium">{Number(r.achievement_threshold_percent)}% of target</TableCell>
-                                                        <TableCell className="text-right">RM {Number(r.incentive_amount).toLocaleString()}</TableCell>
+                                                        <TableCell className="text-muted-foreground text-sm">Volume tier payout</TableCell>
                                                         <TableCell>{r.status === 'active' ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</TableCell>
                                                         <TableCell className="text-right">
                                                             <div className="flex justify-end gap-1">
-                                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setTierForm({ id: r.id, rule_name: r.rule_name, applies_to: 'all_ams', achievement_threshold_percent: String(Number(r.achievement_threshold_percent)), incentive_amount: String(Number(r.incentive_amount)), status: r.status }); setTierDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setTierForm({ id: r.id, rule_name: r.rule_name, applies_to: 'all_ams', achievement_threshold_percent: String(Number(r.achievement_threshold_percent)), incentive_amount: '0', status: r.status }); setTierDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
                                                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-600" onClick={() => handleDeleteTier(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                                             </div>
                                                         </TableCell>
@@ -1010,24 +1029,26 @@ export function RoadtourKpiSettingsView({ userProfile }: Props) {
                         <DialogContent className="sm:max-w-md">
                             <DialogHeader>
                                 <DialogTitle>
-                                    {tierForm.id ? 'Edit' : 'Add'} {tierForm.applies_to === 'team_leader' ? 'Leader Bonus Tier' : 'AM Incentive Tier'}
+                                    {tierForm.id ? 'Edit' : 'Add'} {tierForm.applies_to === 'team_leader' ? 'Leader Bonus Tier' : 'AM Achievement Gate'}
                                 </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-3">
                                 <div className="rounded-md border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.08] px-3 py-2 text-xs text-[var(--sera-ink-soft)]">
                                     {tierForm.applies_to === 'team_leader'
                                         ? 'Leader bonus is additive and based on total team achievement.'
-                                        : `AM incentive uses highest-tier-wins based on the AM’s achievement vs target. Higher achievement must pay more, and payouts are capped at Max Incentive / AM${maxIncentiveCap > 0 ? ` (RM${maxIncentiveCap.toLocaleString()})` : ''}.`}
+                                        : 'This % gate only unlocks progressive volume-tier payout. It does not set a fixed RM amount.'}
                                 </div>
-                                <div className="grid gap-3 grid-cols-2">
+                                <div className={`grid gap-3 ${tierForm.applies_to === 'team_leader' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                     <div>
-                                        <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Team Achievement (%)' : 'Achievement (%)'}</label>
+                                        <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Team Achievement (%)' : 'Achievement gate (%)'}</label>
                                         <Input type="number" min={tierForm.applies_to === 'team_leader' ? 1 : 100} value={tierForm.achievement_threshold_percent} onChange={(e) => setTierForm((p) => ({ ...p, achievement_threshold_percent: e.target.value }))} />
                                     </div>
+                                    {tierForm.applies_to === 'team_leader' && (
                                     <div>
-                                        <label className="text-xs font-medium text-muted-foreground">{tierForm.applies_to === 'team_leader' ? 'Bonus (RM)' : 'Incentive (RM)'}</label>
+                                        <label className="text-xs font-medium text-muted-foreground">Bonus (RM)</label>
                                         <Input type="number" min={0} value={tierForm.incentive_amount} onChange={(e) => setTierForm((p) => ({ ...p, incentive_amount: e.target.value }))} placeholder="e.g. 200" />
                                     </div>
+                                    )}
                                 </div>
                                 {tierError && (
                                     <p className="text-xs text-red-600">{tierError}</p>

@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
             { header: 'Assigned Target (Scans)', key: 'target', width: 20 },
             { header: 'Actual Scans', key: 'actual', width: 14 },
             { header: 'Achievement %', key: 'percent', width: 15 },
+            { header: 'Volume RM/scan', key: 'rate', width: 14 },
             { header: 'Incentive Earned (RM)', key: 'incentive', width: 20 },
             { header: 'Status', key: 'status', width: 14 },
         ]
@@ -120,6 +121,7 @@ export async function GET(request: NextRequest) {
                 target: a.assigned_target,
                 actual: a.actual_scans,
                 percent: Number(a.achievement_percent.toFixed(1)),
+                rate: Number((a.volume_tier_rate ?? 0).toFixed(2)),
                 incentive: Number(a.incentive_earned.toFixed(2)),
                 status: KPI_STATUS_LABEL[a.status],
             })

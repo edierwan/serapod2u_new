@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AlertCircle, CheckCircle2, Coins, Info, Loader2, Map, Save, Sparkles } from 'lucide-react'
 import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
+import { resolvePointValueRmForVolume, resolveVolumeTierRate } from '@/lib/roadtour/kpi'
+import { KpiVolumeTierTable } from '@/modules/roadtour/components/KpiVolumeTierTable'
 
 interface RoadtourRewardSettingsProps {
     userProfile: any
@@ -107,6 +109,14 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
     }, [companyId, supabase])
 
     const estimatedCost = useMemo(() => defaultPoints * pointValueRm, [defaultPoints, pointValueRm])
+    const volumeExamples = useMemo(() => {
+        const volumes = [8_000, 15_000, 25_000, 35_000, 50_000]
+        return volumes.map((volume) => {
+            const rate = resolveVolumeTierRate(volume)
+            const pointRm = resolvePointValueRmForVolume(volume, Math.max(1, defaultPoints || 20))
+            return { volume, rate, pointRm, rewardCost: pointRm * Math.max(1, defaultPoints || 20) }
+        })
+    }, [defaultPoints])
 
     const summary = useMemo(() => {
         const parts = [`Each successful RoadTour reward grants ${defaultPoints} points.`]
@@ -212,7 +222,41 @@ export function RoadtourRewardSettings({ userProfile }: RoadtourRewardSettingsPr
                         <div className="space-y-2">
                             <Label>Point Value (RM)</Label>
                             <Input value={pointValueRm.toFixed(2)} readOnly disabled />
-                            <p className="text-xs text-muted-foreground">This follows the organization point value configured under Point Collection.</p>
+                            <p className="text-xs text-muted-foreground">
+                                Org baseline from Point Collection (planning only). RoadTour KPI / AM economics follow the volume tiers below.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-4">
+                        <div>
+                            <Label className="text-sm font-semibold">RoadTour volume tiers (shared with KPI)</Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Same table as Monthly KPI: payout is progressive by volume slices; effective RM per point uses the current bracket rate ÷ reward points.
+                            </p>
+                        </div>
+                        <KpiVolumeTierTable compact />
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-left text-muted-foreground">
+                                        <th className="py-1 pr-3">Example volume</th>
+                                        <th className="py-1 pr-3">RM / scan</th>
+                                        <th className="py-1 pr-3">RM / point</th>
+                                        <th className="py-1">Est. cost / reward</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {volumeExamples.map((row) => (
+                                        <tr key={row.volume} className="border-t">
+                                            <td className="py-1.5 pr-3 tabular-nums">{row.volume.toLocaleString()}</td>
+                                            <td className="py-1.5 pr-3 tabular-nums">RM {row.rate.toFixed(2)}</td>
+                                            <td className="py-1.5 pr-3 tabular-nums">RM {row.pointRm.toFixed(4)}</td>
+                                            <td className="py-1.5 tabular-nums">RM {row.rewardCost.toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 

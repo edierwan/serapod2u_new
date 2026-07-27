@@ -66,15 +66,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         const teamId = updates.team_id !== undefined ? updates.team_id : rule.team_id
         if (appliesTo === 'specific_team' && !teamId) return jsonError('A team is required for team-specific rules.')
 
-        // Re-validate the whole AM tier set against the edited values (self excluded).
+        // Hybrid: force AM gate amount to 0 (volume table pays out).
+        if (appliesTo === 'all_ams') {
+            updates.incentive_amount = 0
+        }
+
+        // Re-validate AM achievement gates (self excluded).
         if (appliesTo === 'all_ams') {
             const effectiveThreshold = updates.achievement_threshold_percent ?? Number(rule.achievement_threshold_percent)
-            const effectiveAmount = updates.incentive_amount ?? Number(rule.incentive_amount)
             const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, rule.kpi_cycle_id, ruleId)
             const tierError = validateAmIncentiveTier(
-                { id: ruleId, achievement_threshold_percent: effectiveThreshold, incentive_amount: effectiveAmount },
+                { id: ruleId, achievement_threshold_percent: effectiveThreshold, incentive_amount: 0 },
                 existingTiers,
                 maxIncentivePerAm,
+                { asAchievementGate: true },
             )
             if (tierError) return jsonError(tierError)
         }

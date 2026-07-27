@@ -30,18 +30,21 @@ export async function POST(request: NextRequest) {
         if (!ALLOWED_BONUS_TYPES.has(bonusType)) return jsonError('Invalid bonus type.')
         const threshold = Number(body?.achievement_threshold_percent)
         if (!Number.isFinite(threshold) || threshold <= 0) return jsonError('Achievement threshold must be a positive percentage.')
-        const amount = Number(body?.incentive_amount)
-        if (!Number.isFinite(amount) || amount < 0) return jsonError('Incentive amount must be non-negative.')
+        const rawAmount = Number(body?.incentive_amount)
+        if (!Number.isFinite(rawAmount) || rawAmount < 0) return jsonError('Incentive amount must be non-negative.')
+        // Hybrid: AM rules are achievement gates only — payout comes from volume tiers.
+        const amount = appliesTo === 'all_ams' ? 0 : rawAmount
         const teamId = String(body?.team_id || '').trim() || null
         if (appliesTo === 'specific_team' && !teamId) return jsonError('A team is required for team-specific rules.')
 
-        // AM incentive tiers must form a logical, capped, strictly-increasing set.
+        // AM achievement gates: unique % thresholds (>=100 enforced in validator).
         if (appliesTo === 'all_ams') {
             const { existingTiers, maxIncentivePerAm } = await loadAmTierContext(ctx.admin, cycleId)
             const tierError = validateAmIncentiveTier(
                 { achievement_threshold_percent: threshold, incentive_amount: amount },
                 existingTiers,
                 maxIncentivePerAm,
+                { asAchievementGate: true },
             )
             if (tierError) return jsonError(tierError)
         }

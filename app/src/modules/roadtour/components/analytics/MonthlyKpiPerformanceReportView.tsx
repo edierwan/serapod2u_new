@@ -256,11 +256,13 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
 
             autoTable(doc, {
                 startY: (doc as any).lastAutoTable.finalY + 8,
-                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Achievement %', 'Incentive Earned', 'Status']],
+                head: [['Rank', 'AM Name', 'Team', 'Assigned Target', 'Actual Scans', 'Achievement %', 'Volume RM/scan', 'Incentive Earned', 'Status']],
                 body: report.ams.map((a) => [
                     a.rank, a.am_name, a.team_name,
                     a.assigned_target.toLocaleString(), a.actual_scans.toLocaleString(),
-                    `${a.achievement_percent.toFixed(1)}%`, `RM ${a.incentive_earned.toLocaleString()}`,
+                    `${a.achievement_percent.toFixed(1)}%`,
+                    `RM ${(a.volume_tier_rate ?? 0).toFixed(2)}`,
+                    `RM ${a.incentive_earned.toLocaleString()}`,
                     KPI_STATUS_LABEL[a.status],
                 ]),
                 headStyles: { fillColor: [30, 64, 175] },
@@ -578,6 +580,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                     <TableHead className="text-right">Assigned Target</TableHead>
                                                     <TableHead className="text-right">Actual</TableHead>
                                                     <TableHead className="text-right">Achievement %</TableHead>
+                                                    <TableHead className="text-right">RM / scan</TableHead>
                                                     <TableHead className="text-right">Incentive</TableHead>
                                                     <TableHead className="text-right">Rank</TableHead>
                                                     <TableHead>Status</TableHead>
@@ -591,6 +594,7 @@ export function MonthlyKpiPerformanceReportView({ userProfile, onViewChange }: P
                                                         <TableCell className="text-right">{formatNumber(a.assigned_target)}</TableCell>
                                                         <TableCell className="text-right">{formatNumber(a.actual_scans)}</TableCell>
                                                         <TableCell className="text-right font-medium">{a.achievement_percent.toFixed(1)}%</TableCell>
+                                                        <TableCell className="text-right">RM {(a.volume_tier_rate ?? 0).toFixed(2)}</TableCell>
                                                         <TableCell className="text-right">RM {formatNumber(Math.round(a.incentive_earned))}</TableCell>
                                                         <TableCell className="text-right">{a.rank}</TableCell>
                                                         <TableCell><KpiStatusPill status={a.status} /></TableCell>
