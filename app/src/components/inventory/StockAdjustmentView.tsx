@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { useToast } from '@/components/ui/use-toast'
 import { getStorageUrl } from '@/lib/utils'
 import { normalizeBaseCost, stockCountImpact, sumStockCountImpacts } from '@/lib/inventory/stock-count-costing'
@@ -169,6 +170,8 @@ interface PreflightState {
 interface StockAdjustmentViewProps {
   userProfile: any
   onViewChange?: (view: string) => void
+  /** UI focus only — same logic as picking Opening Balance count type on the main page. */
+  mode?: 'default' | 'opening-balance'
 }
 
 interface ProductCategoryOption {
@@ -239,7 +242,7 @@ const formatVerificationApiError = (
   return `${base} Reference: ${result.reference}.`
 }
 
-export default function StockAdjustmentView({ userProfile, onViewChange }: StockAdjustmentViewProps) {
+export default function StockAdjustmentView({ userProfile, onViewChange, mode = 'default' }: StockAdjustmentViewProps) {
   const { isReady, supabase } = useSupabaseAuth()
   const { hasPermission, loading: permissionLoading } = usePermissions(
     userProfile?.roles?.role_level,
@@ -250,6 +253,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const postingNoteRecheckTimerRef = useRef<number | null>(null)
   const postingNoteRecheckPendingRef = useRef(false)
+  const openingBalanceModeSeededRef = useRef(false)
+
+  const [wizardStep, setWizardStep] = useState<'setup' | 'count' | 'review'>('setup')
+  const [draftsOpen, setDraftsOpen] = useState(false)
 
   const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [configuredDefaultWarehouseId, setConfiguredDefaultWarehouseId] = useState<string | null>(null)
@@ -301,7 +308,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [openingBalancePosted, setOpeningBalancePosted] = useState(false)
   const [postedOpeningCategoryIds, setPostedOpeningCategoryIds] = useState<Set<string>>(new Set())
   const [verificationNow, setVerificationNow] = useState(Date.now())
-  const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
+  const [visibleColumns, setVisibleColumns] = useState({ unitCost: false, adjustmentValue: false, note: true })
   const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
   const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
   const isLegacyInitialReadOnly = countType === 'initial_configuration_classification'
@@ -309,6 +316,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   // read-only mode. Its former specialised editor remains unavailable.
   const isClassificationMode = false
   const isOpeningBalanceMode = countType === 'opening_balance_cutoff'
+  const isOpeningBalancePage = mode === 'opening-balance'
+
+  // Seed Opening Balance count type once when landing on the dedicated page.
+  // Does not lock the type — user can still change it (same as the main page).
+  useEffect(() => {
+    if (!isOpeningBalancePage || openingBalanceModeSeededRef.current || currentSessionId) return
+    openingBalanceModeSeededRef.current = true
+    setCountType('opening_balance_cutoff')
+  }, [isOpeningBalancePage, currentSessionId])
   const selectedCategoryName = productCategories.find(category => category.id === selectedCategory)?.category_name || '—'
   const locationOptions = useMemo(
     () => getStockCountLocationOptions(warehouseLocations),
@@ -1935,15 +1951,36 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     return Array.from(byVariant.values())
   }, [isClassificationMode, classificationSummary, draftRows])
 
+  const wizardSteps = [
+    { id: 'setup' as const, n: '1', label: 'Setup', hint: 'Warehouse & session' },
+    { id: 'count' as const, n: '2', label: 'Count', hint: 'Enter physical counts' },
+    { id: 'review' as const, n: '3', label: isOpeningBalanceMode ? 'Freeze & Post' : 'Review', hint: isOpeningBalanceMode ? 'Verify and post opening balance' : 'Verify and post' },
+  ]
+  const wizardStepIndex = wizardSteps.findIndex(step => step.id === wizardStep)
+  const issueCount = [
+    invalidWarehouseDrafts.length > 0,
+    isOpeningBalanceMode,
+    mustContinueExistingOpeningDraft,
+    isLegacyInitialReadOnly,
+    hasClassificationMisuse,
+    hasConfigEligibilityViolation,
+  ].filter(Boolean).length
+  const pageTitle = isOpeningBalancePage || isOpeningBalanceMode
+    ? 'Opening Balance Count'
+    : 'Stock Count'
+  const pageSubtitle = isOpeningBalanceMode
+    ? 'Official pre-go-live count: setup, count, then freeze & post.'
+    : 'Setup the session, count items, then review and post.'
+
   return (
-    <div className="space-y-5">
+    <div className="sera-stock-count space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
-            <span>Supply Chain</span><ChevronRight className="h-4 w-4" /><span>Inventory</span><ChevronRight className="h-4 w-4" /><span className="font-medium text-slate-900">Stock Count</span>
+            <span>Supply Chain</span><ChevronRight className="h-4 w-4" /><span>Inventory</span><ChevronRight className="h-4 w-4" /><span className="font-medium text-slate-900">{pageTitle}</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-normal text-slate-950">Stock Count</h1>
-          <p className="mt-1 text-sm text-slate-600">Count inventory faster with grouped variants and Excel bulk update.</p>
+          <h1 className="text-3xl font-bold tracking-normal text-slate-950">{pageTitle}</h1>
+          <p className="mt-1 text-sm text-slate-600">{pageSubtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {onViewChange && <Button variant="outline" onClick={() => onViewChange('inventory')}><ArrowLeft className="mr-2 h-4 w-4" /> Inventory</Button>}
@@ -1954,7 +1991,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           >
             <Download className="mr-2 h-4 w-4" /> Download Excel Template
           </Button>
-          <Button variant="outline" disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
+          <Button
+            variant="outline"
+            disabled={isLegacyInitialReadOnly || currentStatus === 'posted'}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="mr-2 h-4 w-4" /> Import Updated Excel
+          </Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={event => {
             const file = event.target.files?.[0]
             if (file) importExcel(file)
@@ -1965,64 +2008,131 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           )}
           <Button variant={hasUnsavedChanges ? 'default' : 'outline'} onClick={() => void saveDraft()} disabled={!canSave || saving} className={hasUnsavedChanges && currentStatus !== 'posted' ? 'bg-amber-600 hover:bg-amber-700' : ''}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}</Button>
           {!isOpeningBalanceMode && !isLegacyInitialReadOnly && (
-            <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <Button onClick={() => { setWizardStep('review'); openPostReview() }} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
           )}
         </div>
       </div>
 
-      {invalidWarehouseDrafts.length > 0 && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-900">
-            <p className="font-semibold">Stock Count drafts blocked by invalid warehouse master data</p>
-            <p className="mt-1">{ACTIVE_WAREHOUSE_REQUIRED_MESSAGE} These drafts remain unchanged and cannot be edited, exported, verified, or posted. Select an active warehouse and create a new draft.</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {invalidWarehouseDrafts.slice(0, 10).map(draft => (
-                <li key={draft.id}>
-                  {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Stock Count'} · {draft.count_date}
-                  <span className="ml-1 text-xs">({warehouseLocations.find(location => location.id === draft.warehouse_organization_id)?.org_name || draft.warehouse_name || 'Warehouse unavailable'})</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+      <nav className="sera-stock-count__steps" aria-label="Stock count steps">
+        {wizardSteps.map((step, index) => {
+          const isActive = wizardStep === step.id
+          const isDone = index < wizardStepIndex
+          return (
+            <Fragment key={step.id}>
+              {index > 0 && (
+                <div
+                  className={`sera-stock-count__connector${index <= wizardStepIndex ? ' is-done' : ''}`}
+                  aria-hidden
+                />
+              )}
+              <button
+                type="button"
+                aria-current={isActive ? 'step' : undefined}
+                className={`sera-stock-count__step${isActive ? ' is-active' : ''}${isDone ? ' is-done' : ''}`}
+                onClick={() => setWizardStep(step.id)}
+              >
+                <span className="sera-stock-count__step-index" aria-hidden>
+                  {isDone ? <CheckCircle2 className="h-4 w-4" /> : step.n}
+                </span>
+                <span className="sera-stock-count__step-copy">
+                  <span className="sera-stock-count__step-label">{step.label}</span>
+                  <span className="sera-stock-count__step-hint">{step.hint}</span>
+                </span>
+              </button>
+            </Fragment>
+          )
+        })}
+      </nav>
+
+      {issueCount > 0 && (
+        <Accordion type="single" collapsible defaultValue={invalidWarehouseDrafts.length > 0 || hasClassificationMisuse || hasConfigEligibilityViolation || mustContinueExistingOpeningDraft || isLegacyInitialReadOnly ? 'issues' : undefined}>
+          <AccordionItem value="issues" className="rounded-xl border border-slate-200 bg-white px-4">
+            <AccordionTrigger className="py-3 text-sm font-semibold hover:no-underline">
+              Issues & guidance ({issueCount})
+            </AccordionTrigger>
+            <AccordionContent className="space-y-3 pb-4">
+              {invalidWarehouseDrafts.length > 0 && (
+                <Card className="border-red-200 bg-red-50">
+                  <CardContent className="p-4 text-sm text-red-900">
+                    <p className="font-semibold">Stock Count drafts blocked by invalid warehouse master data</p>
+                    <p className="mt-1">{ACTIVE_WAREHOUSE_REQUIRED_MESSAGE} These drafts remain unchanged and cannot be edited, exported, verified, or posted. Select an active warehouse and create a new draft.</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      {invalidWarehouseDrafts.slice(0, 10).map(draft => (
+                        <li key={draft.id}>
+                          {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Stock Count'} · {draft.count_date}
+                          <span className="ml-1 text-xs">({warehouseLocations.find(location => location.id === draft.warehouse_organization_id)?.org_name || draft.warehouse_name || 'Warehouse unavailable'})</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isOpeningBalanceMode && (
+                <Card className="border-orange-200 bg-orange-50">
+                  <CardContent className="p-4 text-sm text-orange-950">
+                    <p className="font-semibold">One official pre-go-live workflow</p>
+                    <p className="mt-1">Count every eligible configuration, including 20NB, 50NB, 50OB and any visible Legacy / Unclassified balance. Save the draft, then continue below to review orders, freeze the warehouse, preview, request OTP and post atomically.</p>
+                    {selectedCategory && pageSummary.notCounted > 0 && (
+                      <p className="mt-2 font-semibold">Opening Balance is incomplete: {pageSummary.notCounted} of {pageSummary.totalItems} items have not been counted. You may save and continue later.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {mustContinueExistingOpeningDraft && existingOpeningDraft && (
+                <Card className="border-blue-300 bg-blue-50">
+                  <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4 text-sm text-blue-950">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                      <div>
+                        <p className="font-semibold">An Opening Balance draft already exists for this warehouse &amp; category</p>
+                        <p className="mt-1">Only one active Opening Balance draft is allowed per warehouse and category. Continue the existing draft instead of starting a second one — your earlier counts are preserved.</p>
+                      </div>
+                    </div>
+                    <Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isLegacyInitialReadOnly && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="flex items-start gap-3 p-4 text-sm text-amber-950">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div><p className="font-semibold">Legacy Initial Classification — read only</p><p className="mt-1">This historical draft remains viewable but cannot be edited, imported, converted or posted. Start a new Inventory Opening Balance &amp; Initial Classification draft instead.</p></div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {hasClassificationMisuse && (
+                <Card className="border-red-200 bg-red-50">
+                  <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="font-semibold">This looks like a classification, not a {countTypeOptions.find(option => option.value === countType)?.label}.</p>
+                      <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Use <strong>Inventory Opening Balance &amp; Initial Classification</strong> for the official go-live baseline. Posting this as a normal count is blocked.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {hasConfigEligibilityViolation && (
+                <Card className="border-red-200 bg-red-50">
+                  <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="font-semibold">Invalid configuration for this product group</p>
+                      <p className="mt-1">{configEligibilityViolations.length} counted configuration{configEligibilityViolations.length === 1 ? '' : 's'} are not valid for their product group (for example a 20mg/50mg concentration configuration on a Device group). Remove these counts before saving or posting. {configEligibilityViolations[0]?.message}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       )}
 
-      {isOpeningBalanceMode && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="p-4 text-sm text-orange-950">
-            <p className="font-semibold">One official pre-go-live workflow</p>
-            <p className="mt-1">Count every eligible configuration, including 20NB, 50NB, 50OB and any visible Legacy / Unclassified balance. Save the draft, then continue below to review orders, freeze the warehouse, preview, request OTP and post atomically.</p>
-            {selectedCategory && pageSummary.notCounted > 0 && (
-              <p className="mt-2 font-semibold">Opening Balance is incomplete: {pageSummary.notCounted} of {pageSummary.totalItems} items have not been counted. You may save and continue later.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {mustContinueExistingOpeningDraft && existingOpeningDraft && (
-        <Card className="border-blue-300 bg-blue-50">
-          <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4 text-sm text-blue-950">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-              <div>
-                <p className="font-semibold">An Opening Balance draft already exists for this warehouse &amp; category</p>
-                <p className="mt-1">Only one active Opening Balance draft is allowed per warehouse and category. Continue the existing draft instead of starting a second one — your earlier counts are preserved.</p>
-              </div>
-            </div>
-            <Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLegacyInitialReadOnly && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-amber-950">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div><p className="font-semibold">Legacy Initial Classification — read only</p><p className="mt-1">This historical draft remains viewable but cannot be edited, imported, converted or posted. Start a new Inventory Opening Balance &amp; Initial Classification draft instead.</p></div>
-          </CardContent>
-        </Card>
-      )}
-
+      <div className={wizardStep === 'setup' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'setup'}>
       <Card>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
           <div>
@@ -2095,9 +2205,24 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         <Card className="border-blue-100 bg-[var(--sera-orange)]/[0.06]/50">
           <CardContent className="space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-blue-950">Saved counts and legacy history:</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto px-1 py-1 text-sm font-semibold text-blue-950"
+                onClick={() => setDraftsOpen(open => !open)}
+              >
+                Drafts & history ({drafts.length})
+                <ChevronDown className={`ml-1 h-4 w-4 transition ${draftsOpen ? '' : '-rotate-90'}`} />
+              </Button>
+              {currentSessionId && (
+                <Badge variant="outline" className="border-orange-300 text-orange-800">
+                  Current: {draftLabel(drafts.find(d => d.id === currentSessionId) || drafts[0])}
+                </Badge>
+              )}
+              <Button variant="ghost" size="sm" onClick={resetSession} disabled={discardingDrafts}>New count</Button>
               {!managingDrafts ? (
-                <Button variant="outline" size="sm" onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
+                <Button variant="outline" size="sm" onClick={() => { setDraftsOpen(true); setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
                   Manage Drafts
                 </Button>
               ) : (
@@ -2122,7 +2247,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                 </div>
               )}
             </div>
-            {!managingDrafts ? <div className="flex flex-wrap items-center gap-2">
+            {(draftsOpen || managingDrafts) && (!managingDrafts ? <div className="flex flex-wrap items-center gap-2">
               {drafts.map(draft => (
                 <div key={draft.id} className="flex items-center gap-1">
                   <Button
@@ -2155,7 +2280,6 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                   )}
                 </div>
               ))}
-              <Button variant="ghost" size="sm" onClick={resetSession} disabled={discardingDrafts}>New count</Button>
             </div> : (
               <div className="overflow-x-auto rounded-lg border bg-white">
                 <Table>
@@ -2189,13 +2313,20 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                   </TableBody>
                 </Table>
               </div>
-            )}
+            ))}
           </CardContent>
         </Card>
       )}
 
+      <div className="flex justify-end gap-2">
+        <Button type="button" onClick={() => setWizardStep('count')} className="bg-orange-600 hover:bg-orange-700">
+          Continue to Count <ArrowRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
+      </div>
+
       {!isClassificationMode && (
-        <>
+        <div className={wizardStep === 'count' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'count'}>
         {isOpeningBalanceMode && selectedCategory && (
           <Card className="border-orange-200">
             <CardContent className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -2213,44 +2344,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {summaryCards.map(card => <Card key={card.label}><CardContent className="flex items-center gap-4 p-4"><div className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.color}`}><card.icon className="h-6 w-6" /></div><div className="min-w-0"><p className="text-sm font-semibold text-slate-600">{card.label}</p><p className="truncate text-xl font-bold text-slate-950">{card.value}</p><p className="text-xs text-slate-500">{card.sub}</p></div></CardContent></Card>)}
         </div>
-        </>
-      )}
 
-      {hasClassificationMisuse && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">This looks like a classification, not a {countTypeOptions.find(option => option.value === countType)?.label}.</p>
-              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Use <strong>Inventory Opening Balance &amp; Initial Classification</strong> for the official go-live baseline. Posting this as a normal count is blocked.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* classification/eligibility alerts live in Issues accordion above — keep table functional blocks */}
 
-      {hasConfigEligibilityViolation && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Invalid configuration for this product group</p>
-              <p className="mt-1">{configEligibilityViolations.length} counted configuration{configEligibilityViolations.length === 1 ? '' : 's'} are not valid for their product group (for example a 20mg/50mg concentration configuration on a Device group). Remove these counts before saving or posting. {configEligibilityViolations[0]?.message}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isClassificationMode && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Flavours with Legacy balance</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.totalFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Selected this round</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.selectedFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-emerald-700">Fully classified (selected)</p><p className="text-xl font-bold text-emerald-700">{formatNumber(classificationSummary.completeFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-500">Deferred (blank)</p><p className="text-xl font-bold text-slate-500">{formatNumber(classificationSummary.deferredFlavours)}</p></CardContent></Card>
-        </div>
-      )}
-
-      {!isClassificationMode && (
-        <Card>
+      <Card>
           <CardContent className="space-y-4 p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex flex-wrap gap-2">
@@ -2315,10 +2412,24 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             </div>
           </CardContent>
         </Card>
+
+        <div className="flex justify-between gap-2">
+          <Button type="button" variant="outline" onClick={() => setWizardStep('setup')}>Back to Setup</Button>
+          <Button type="button" onClick={() => setWizardStep('review')} className="bg-orange-600 hover:bg-orange-700">
+            Continue to {isOpeningBalanceMode ? 'Freeze & Post' : 'Review'} <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+        </div>
       )}
 
       {isClassificationMode && (
-        <div className="space-y-4">
+        <div className={wizardStep === 'count' ? 'space-y-4' : 'hidden'} aria-hidden={wizardStep !== 'count'}>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Flavours with Legacy balance</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.totalFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Selected this round</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.selectedFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-emerald-700">Fully classified (selected)</p><p className="text-xl font-bold text-emerald-700">{formatNumber(classificationSummary.completeFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-500">Deferred (blank)</p><p className="text-xl font-bold text-slate-500">{formatNumber(classificationSummary.deferredFlavours)}</p></CardContent></Card>
+          </div>
           {classificationSummary.perGroup.length === 0 && (
             <Card><CardContent className="p-8 text-center text-sm text-slate-500">No flavour at this warehouse has a Legacy/Unclassified balance to classify.</CardContent></Card>
           )}
@@ -2436,8 +2547,32 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               </CardContent>
             </Card>
           ))}
+          <div className="flex justify-between gap-2">
+            <Button type="button" variant="outline" onClick={() => setWizardStep('setup')}>Back to Setup</Button>
+            <Button type="button" onClick={() => setWizardStep('review')} className="bg-orange-600 hover:bg-orange-700">
+              Continue to Review <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
+
+      <div className={wizardStep === 'review' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'review'}>
+        <Card>
+          <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div><p className="text-xs font-semibold text-slate-500">Counted</p><p className="text-xl font-bold">{formatNumber(pageSummary.counted)} / {formatNumber(pageSummary.totalItems)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Variance items</p><p className="text-xl font-bold">{formatNumber(pageSummary.varianceItems)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Net adjustment</p><p className="text-xl font-bold">{pageSummary.netAdjustment > 0 ? '+' : ''}{formatNumber(pageSummary.netAdjustment)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Est. value</p><p className="text-xl font-bold">{formatMoney(pageSummary.estimatedValue)}</p></div>
+          </CardContent>
+        </Card>
+        <div className="flex flex-wrap justify-between gap-2">
+          <Button type="button" variant="outline" onClick={() => setWizardStep('count')}>Back to Count</Button>
+          {!isOpeningBalanceMode && !isLegacyInitialReadOnly && (
+            <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">
+              Review & Post Count <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
       {isOpeningBalanceMode && (
         <InventoryOpeningCutoffSection
@@ -2462,6 +2597,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       )}
 
       {importSummary && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
+      </div>
+
+      {importSummary && wizardStep !== 'review' && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
 
       <AlertDialog
         open={discardConfirmIds !== null}

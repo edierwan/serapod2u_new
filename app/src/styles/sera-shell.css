@@ -1992,3 +1992,148 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* --- Stock Count wizard chrome (UI only) --- */
+.sera-stock-count__steps {
+  display: grid;
+  grid-template-columns: auto minmax(1.25rem, 1fr) auto minmax(1.25rem, 1fr) auto;
+  align-items: start;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--sera-line, #e8eaed);
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #ffffff 0%, var(--sera-paper, #fafbfc) 100%);
+}
+
+/*
+  Connector sits in the 1fr columns between steps.
+  Height matches the circle row (button top-padding + circle),
+  then the 2px line is vertically centered inside that row.
+*/
+.sera-stock-count__connector {
+  box-sizing: border-box;
+  width: 100%;
+  height: 2.45rem; /* 0.35rem pad + 1.75rem circle + 0.35rem pad mirror */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(
+    var(--sera-line, #e8eaed),
+    var(--sera-line, #e8eaed)
+  ) center / 100% 2px no-repeat;
+  pointer-events: none;
+}
+
+.sera-stock-count__connector.is-done {
+  background-image: linear-gradient(
+    var(--sera-orange, #e85d04),
+    var(--sera-orange, #e85d04)
+  );
+}
+
+.sera-stock-count__step {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--sera-muted, #6b7280);
+  border-radius: 0.65rem;
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sera-stock-count__step:hover {
+  color: var(--sera-ink, #141210);
+  background: rgba(232, 93, 4, 0.05);
+}
+
+.sera-stock-count__step-index {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--sera-line, #e8eaed);
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--sera-muted, #6b7280);
+}
+
+.sera-stock-count__step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.sera-stock-count__step-label {
+  font-size: 0.875rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: inherit;
+}
+
+.sera-stock-count__step-hint {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--sera-muted, #6b7280);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sera-stock-count__step.is-active {
+  color: var(--sera-ink, #141210);
+  background: rgba(232, 93, 4, 0.08);
+}
+
+.sera-stock-count__step.is-active .sera-stock-count__step-index {
+  border-color: var(--sera-orange, #e85d04);
+  background: var(--sera-orange, #e85d04);
+  color: #ffffff;
+}
+
+.sera-stock-count__step.is-active .sera-stock-count__step-hint {
+  color: var(--sera-orange-deep, #c44a00);
+}
+
+.sera-stock-count__step.is-done {
+  color: var(--sera-ink, #141210);
+}
+
+.sera-stock-count__step.is-done .sera-stock-count__step-index {
+  border-color: rgba(232, 93, 4, 0.35);
+  background: rgba(232, 93, 4, 0.1);
+  color: var(--sera-orange-deep, #c44a00);
+}
+
+@media (max-width: 640px) {
+  .sera-stock-count__steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.65rem;
+  }
+
+  .sera-stock-count__connector {
+    display: none;
+  }
+
+  .sera-stock-count__step {
+    width: 100%;
+  }
+
+  .sera-stock-count__step-hint {
+    white-space: normal;
+  }
+}
