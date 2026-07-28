@@ -258,6 +258,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
 
   const [wizardStep, setWizardStep] = useState<'setup' | 'count' | 'review'>('setup')
   const [draftsOpen, setDraftsOpen] = useState(false)
+  const [draftsReady, setDraftsReady] = useState(false)
 
   const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [configuredDefaultWarehouseId, setConfiguredDefaultWarehouseId] = useState<string | null>(null)
@@ -391,6 +392,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
     if (!selectedWarehouse) {
       setRows([])
       setDrafts([])
+      setDraftsReady(false)
       setOpeningBalancePosted(false)
       setPostedOpeningCategoryIds(new Set())
       setSelectedCategory('')
@@ -400,6 +402,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
       setDiscardConfirmIds(null)
       return
     }
+    setDraftsReady(false)
     loadCountRows(selectedWarehouse)
     loadDrafts(selectedWarehouse)
     loadPostedOpeningCategories(selectedWarehouse)
@@ -571,6 +574,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
     if (error || legacyHistoryResult.error) {
       const loadError = error || legacyHistoryResult.error
       if (loadError?.code !== '42P01') toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
+      setDraftsReady(true)
       return
     }
     const sessionsById = new Map<string, DraftSession>()
@@ -630,6 +634,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
     })).sort((a, b) =>
       String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
     setDrafts(nextDrafts)
+    setDraftsReady(true)
     const eligibleIds = new Set(nextDrafts.filter(draft => draft.deletable).map(draft => draft.id))
     setSelectedDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
     setStaleDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
@@ -908,16 +913,78 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
     && countDate && currentStatus !== 'posted' && !isLegacyInitialReadOnly
     && (!isOpeningBalanceMode || selectedCategory)
     && !(isOpeningBalanceMode && openingBalancePosted)
+    && !(isOpeningBalanceMode && !currentSessionId && !draftsReady)
     && !mustContinueExistingOpeningDraft
     && (isClassificationMode
       ? classificationGroups.length > 0
       : isOpeningBalanceMode ? visibleRows.length > 0 : countableRows.length > 0))
+  const saveBlockedReason = (() => {
+    if (isLegacyInitialReadOnly) {
+      return 'Legacy Initial Classification drafts are read-only. Start a new Opening Balance draft instead.'
+    }
+    if (!selectedWarehouse || !selectedWarehouseIsValid) {
+      return ACTIVE_WAREHOUSE_REQUIRED_MESSAGE
+    }
+    if (!countDate) return 'Select a count date before saving.'
+    if (currentStatus === 'posted') return 'This count is already posted and cannot be saved again.'
+    if (isOpeningBalanceMode && !selectedCategory) return 'Select a product category before saving.'
+    if (isOpeningBalanceMode && openingBalancePosted) {
+      return 'This warehouse already has its official Opening Balance posted.'
+    }
+    if (mustContinueExistingOpeningDraft) {
+      return 'An Opening Balance draft already exists for this warehouse and category. Click Continue Existing Draft before saving or downloading Excel.'
+    }
+    if (isOpeningBalanceMode && !draftsReady) {
+      return 'Loading saved drafts for this warehouse. Wait a moment, then try again.'
+    }
+    if (isClassificationMode ? classificationGroups.length === 0 : isOpeningBalanceMode ? visibleRows.length === 0 : countableRows.length === 0) {
+      return 'No countable items are in scope yet.'
+    }
+    return null
+  })()
+  const canContinueToCount = Boolean(
+    selectedWarehouse
+    && selectedWarehouseIsValid
+    && countDate
+    && (!isOpeningBalanceMode || selectedCategory)
+    && (!isOpeningBalanceMode || draftsReady)
+    && !mustContinueExistingOpeningDraft
+    && !isLegacyInitialReadOnly
+    && !(isOpeningBalanceMode && openingBalancePosted),
+  )
+  const canDownloadExcel = !isLegacyInitialReadOnly
+    && (isClassificationMode
+      ? classificationGroups.length > 0
+      : visibleRows.length > 0 && Boolean(currentSessionId || canSave))
   // In classification mode the round is postable once at least one flavour is
   // selected; a partial (incomplete) selection still opens Review so the block
   // can be shown, and the preflight/DB reject it.
   const canPost = !isOpeningBalanceMode && canSave
     && !hasConfigEligibilityViolation
     && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
+
+  const goToWizardStep = (step: 'setup' | 'count' | 'review') => {
+    if (step === 'count' && !canContinueToCount) {
+      toast({
+        title: 'Cannot continue to Count',
+        description: saveBlockedReason
+          || (isOpeningBalanceMode && !selectedCategory
+            ? 'Select a product category first.'
+            : 'Complete Setup before counting.'),
+        variant: 'destructive',
+      })
+      return
+    }
+    if (step === 'review' && isOpeningBalanceMode && !currentSessionId) {
+      toast({
+        title: 'Save the draft first',
+        description: 'Create or continue an Opening Balance draft before Freeze & Post.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setWizardStep(step)
+  }
 
   const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
     if (isLegacyInitialReadOnly || !selectedWarehouseIsValid || currentStatus === 'posted') return
@@ -964,7 +1031,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
       })
       return null
     }
-    if (!canSave) return null
+    if (!canSave) {
+      if (!options.silent) {
+        toast({
+          title: 'Cannot save draft',
+          description: saveBlockedReason || 'Complete Setup and resolve blocking issues before saving.',
+          variant: 'destructive',
+        })
+      }
+      return null
+    }
     if (countDate > todayIso()) {
       toast({ title: 'Invalid count date', description: 'Count date cannot be in the future.', variant: 'destructive' })
       return null
@@ -1278,6 +1354,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
         ? 'Historical counts remain viewable, but this retired workflow cannot be edited or posted.'
         : 'Saved counts are loaded for review.',
     })
+    if (!legacyInitial) setWizardStep('count')
   }
 
   const exitManageDrafts = () => {
@@ -1452,11 +1529,29 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
       return
     }
 
-    if (visibleRows.length === 0) return
+    if (visibleRows.length === 0) {
+      toast({ title: 'Excel download blocked', description: 'No countable items are in scope yet.', variant: 'destructive' })
+      return
+    }
     let templateSessionId = currentSessionId
     if (!templateSessionId) {
+      if (!canSave) {
+        toast({
+          title: 'Excel download blocked',
+          description: saveBlockedReason || 'Save or continue the Opening Balance draft before downloading the template.',
+          variant: 'destructive',
+        })
+        return
+      }
       templateSessionId = await saveDraft({ silent: true })
-      if (!templateSessionId) return
+      if (!templateSessionId) {
+        toast({
+          title: 'Excel download blocked',
+          description: saveBlockedReason || 'Could not create a draft session for the Excel template. Fix Save Draft first, then retry.',
+          variant: 'destructive',
+        })
+        return
+      }
     }
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
@@ -1986,8 +2081,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
           {onViewChange && <Button variant="outline" onClick={() => onViewChange('inventory')}><ArrowLeft className="mr-2 h-4 w-4" /> Inventory</Button>}
           <Button
             variant="outline"
-            onClick={downloadExcel}
-            disabled={isLegacyInitialReadOnly || (isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0)}
+            onClick={() => void downloadExcel()}
+            disabled={!canDownloadExcel}
           >
             <Download className="mr-2 h-4 w-4" /> Download Excel Template
           </Button>
@@ -2016,7 +2111,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
       <StockCountWizardSteps
         steps={wizardSteps}
         currentStep={wizardStep}
-        onStepChange={setWizardStep}
+        onStepChange={goToWizardStep}
       />
 
       <StockCountIssuesPanel
@@ -2136,8 +2231,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange, mode = 
       />
 
       <div className="flex justify-end gap-2">
-        <Button type="button" onClick={() => setWizardStep('count')} className="bg-orange-600 hover:bg-orange-700">
-          Continue to Count <ArrowRight className="ml-2 h-4 w-4" />
+        <Button
+          type="button"
+          onClick={() => goToWizardStep('count')}
+          disabled={!canContinueToCount}
+          className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+        >
+          {isOpeningBalanceMode && !draftsReady
+            ? 'Loading drafts...'
+            : mustContinueExistingOpeningDraft
+              ? 'Continue Existing Draft first'
+              : <>Continue to Count <ArrowRight className="ml-2 h-4 w-4" /></>}
         </Button>
       </div>
       </div>
