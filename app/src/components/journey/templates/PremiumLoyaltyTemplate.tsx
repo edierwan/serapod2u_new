@@ -8387,6 +8387,7 @@ export default function PremiumLoyaltyTemplate({
             {/* Forgot Password Modal */}
             <ForgotPasswordModal
                 isOpen={showForgotPasswordModal}
+                initialEmail={loginEmail}
                 onClose={() => setShowForgotPasswordModal(false)}
                 onBackToLogin={() => {
                     setShowForgotPasswordModal(false)

@@ -1,13 +1,12 @@
 /**
  * POST /api/auth/password-reset/verify
  *
- * Step C: Verify the 4-digit OTP. If valid, issue a short-lived reset token
- * so the client can proceed to Step D (set new password).
+ * Verify the 4-digit email OTP and issue a short-lived reset token.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { normalizePhoneE164 } from '@/utils/phone'
+import { isValidEmail, normalizeEmail } from '@/lib/auth/password-reset-otp-email'
 import {
     findActiveCode,
     hashOtp,
@@ -19,42 +18,45 @@ import {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        const phoneRaw: string | undefined = body?.phone
+        const emailRaw: string | undefined = body?.email
         const code: string | undefined = body?.code
 
-        if (!phoneRaw || !code || typeof code !== 'string') {
-            return NextResponse.json({ error: 'Phone and code are required.' }, { status: 400 })
+        if (!emailRaw || !code || typeof code !== 'string') {
+            return NextResponse.json({ error: 'Email and code are required.' }, { status: 400 })
+        }
+
+        if (!isValidEmail(emailRaw)) {
+            return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
         }
 
         if (!/^\d{4}$/.test(code)) {
             return NextResponse.json({ error: 'Code must be a 4-digit number.' }, { status: 400 })
         }
 
-        const phone = normalizePhoneE164(phoneRaw.trim())
+        const email = normalizeEmail(emailRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const admin = createAdminClient()
 
-        // Find latest active code
-        const activeCode = await findActiveCode(admin, phone)
+        const activeCode = await findActiveCode(admin, email)
         if (!activeCode) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                phone,
+                email,
                 status: 'failed',
                 errorMessage: 'No active code found or code expired',
                 ip,
             })
             return NextResponse.json(
                 { error: 'Code expired or invalid. Please request a new code.' },
-                { status: 400 }
+                { status: 400 },
             )
         }
 
-        // Check attempt count
         if (activeCode.attempt_count >= activeCode.max_attempts) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                phone,
+                email,
+                phone: activeCode.phone_normalized,
                 userId: activeCode.user_id,
                 status: 'failed',
                 errorMessage: 'Max attempts exceeded',
@@ -63,20 +65,19 @@ export async function POST(req: NextRequest) {
             })
             return NextResponse.json(
                 { error: 'Too many attempts. Please request a new code.' },
-                { status: 429 }
+                { status: 429 },
             )
         }
 
-        // Increment attempt count regardless of result
         await incrementAttemptCount(admin, activeCode.id, activeCode.attempt_count)
 
-        // Compare hashed code
         const inputHash = hashOtp(code)
         if (inputHash !== activeCode.code_hash) {
             const remaining = activeCode.max_attempts - (activeCode.attempt_count + 1)
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_verify_failed',
-                phone,
+                email,
+                phone: activeCode.phone_normalized,
                 userId: activeCode.user_id,
                 status: 'failed',
                 errorMessage: 'Invalid code',
@@ -88,16 +89,16 @@ export async function POST(req: NextRequest) {
                     error: 'Invalid code. Please try again.',
                     attemptsRemaining: remaining,
                 },
-                { status: 400 }
+                { status: 400 },
             )
         }
 
-        // Code is valid — mark verified & issue reset token
         const resetToken = await markCodeVerified(admin, activeCode.id)
 
         await logNotificationEvent(admin, {
             eventType: 'password_reset_otp_verified',
-            phone,
+            email,
+            phone: activeCode.phone_normalized,
             userId: activeCode.user_id,
             status: 'verified',
             meta: { codeId: activeCode.id },
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
         console.error('Password reset verify error:', err)
         return NextResponse.json(
             { error: 'Something went wrong. Please try again later.' },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
