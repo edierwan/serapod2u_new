@@ -1,144 +1,150 @@
 /**
  * POST /api/auth/password-reset/resend
  *
- * Resend OTP via WhatsApp. Invalidates prior code & generates a fresh one.
- * Rate-limited separately from initial request.
+ * Resend password-reset OTP via email. Invalidates prior code & generates a fresh one.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { normalizePhoneE164 } from '@/utils/phone'
+import { isValidEmail, normalizeEmail } from '@/lib/auth/password-reset-otp-email'
 import {
-    lookupConsumerByPhone,
+    lookupConsumerByEmail,
     checkResendRateLimit,
     invalidateExistingCodes,
     generateOtp,
     hashOtp,
     createVerificationCode,
-    sendOtpViaWhatsApp,
+    sendOtpViaEmail,
     logNotificationEvent,
-    resolveOrgForWhatsApp,
+    resolveOrgForEmail,
     RESEND_COOLDOWN_SECONDS,
+    GENERIC_EMAIL_OTP_MESSAGE,
 } from '@/server/auth/passwordResetService'
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        const phoneRaw: string | undefined = body?.phone
+        const emailRaw: string | undefined = body?.email
 
-        if (!phoneRaw || typeof phoneRaw !== 'string' || phoneRaw.trim().length < 6) {
+        if (!emailRaw || typeof emailRaw !== 'string' || !isValidEmail(emailRaw)) {
             return NextResponse.json(
-                { error: 'Please enter a valid phone number.' },
-                { status: 400 }
+                { error: 'Please enter a valid email address.' },
+                { status: 400 },
             )
         }
 
-        const phone = normalizePhoneE164(phoneRaw.trim())
+        const email = normalizeEmail(emailRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
         const ua = req.headers.get('user-agent') || null
         const admin = createAdminClient()
 
-        // Rate limit resends
-        const rateCheck = await checkResendRateLimit(admin, phone)
+        const rateCheck = await checkResendRateLimit(admin, email)
         if (!rateCheck.allowed) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_resend_rate_limited',
-                phone,
+                email,
                 status: 'rate_limited',
                 meta: { reason: 'resend_limit_exceeded' },
                 ip,
             })
             return NextResponse.json({
-                message: 'If this phone number exists, we will send a verification code via WhatsApp.',
+                message: GENERIC_EMAIL_OTP_MESSAGE,
                 resendCooldown: RESEND_COOLDOWN_SECONDS,
             })
         }
 
-        // Lookup consumer
-        const consumer = await lookupConsumerByPhone(admin, phoneRaw)
+        const consumer = await lookupConsumerByEmail(admin, email)
         if (!consumer) {
-            // Generic response
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_resend',
-                phone,
+                email,
                 status: 'no_account',
                 meta: { anonymous: true },
                 ip,
             })
             return NextResponse.json({
-                message: 'If this phone number exists, we will send a verification code via WhatsApp.',
+                message: GENERIC_EMAIL_OTP_MESSAGE,
                 resendCooldown: RESEND_COOLDOWN_SECONDS,
             })
         }
 
-        // Invalidate prior codes
-        await invalidateExistingCodes(admin, phone)
+        await invalidateExistingCodes(admin, email)
 
-        // Generate new OTP
         const code = generateOtp()
         const codeHash = hashOtp(code)
-        const codeId = await createVerificationCode(admin, phone, codeHash, consumer.userId, ip, ua)
+        const codeId = await createVerificationCode(
+            admin,
+            email,
+            codeHash,
+            consumer.userId,
+            ip,
+            ua,
+            consumer.phone,
+        )
 
-        // Resolve org for WhatsApp config
-        const orgId = await resolveOrgForWhatsApp(admin)
+        const orgId = await resolveOrgForEmail(admin)
         if (!orgId) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_send_failed',
-                phone,
+                email,
+                phone: consumer.phone,
                 userId: consumer.userId,
                 status: 'failed',
-                errorMessage: 'No WhatsApp provider configured',
+                errorMessage: 'No email provider configured',
                 ip,
             })
             return NextResponse.json({
-                message: 'If this phone number exists, we will send a verification code via WhatsApp.',
+                message: GENERIC_EMAIL_OTP_MESSAGE,
                 resendCooldown: RESEND_COOLDOWN_SECONDS,
             })
         }
 
-        // Send OTP
-        const sendResult = await sendOtpViaWhatsApp(admin, phone, code, orgId)
+        const sendResult = await sendOtpViaEmail(admin, email, code, orgId, consumer.fullName)
 
         if (sendResult.success) {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_resend_sent',
-                phone,
+                email,
+                phone: consumer.phone,
                 userId: consumer.userId,
                 status: 'sent',
-                providerMessageId: sendResult.providerMessageId,
+                provider: sendResult.providerName,
                 meta: { codeId },
                 ip,
             })
         } else {
             await logNotificationEvent(admin, {
                 eventType: 'password_reset_otp_send_failed',
-                phone,
+                email,
+                phone: consumer.phone,
                 userId: consumer.userId,
                 status: 'failed',
+                provider: sendResult.providerName,
                 errorMessage: sendResult.error,
-                meta: { codeId, isResend: true },
+                meta: { codeId, isResend: true, notConfigured: sendResult.notConfigured === true },
                 ip,
             })
         }
 
-        // Log resend event
         await logNotificationEvent(admin, {
             eventType: 'password_reset_otp_resend',
-            phone,
+            email,
+            phone: consumer.phone,
             userId: consumer.userId,
             status: sendResult.success ? 'sent' : 'send_failed',
+            provider: sendResult.providerName,
             ip,
         })
 
         return NextResponse.json({
-            message: 'If this phone number exists, we will send a verification code via WhatsApp.',
+            message: GENERIC_EMAIL_OTP_MESSAGE,
             resendCooldown: RESEND_COOLDOWN_SECONDS,
         })
     } catch (err: any) {
         console.error('Password reset resend error:', err)
         return NextResponse.json(
             { error: 'Something went wrong. Please try again later.' },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }

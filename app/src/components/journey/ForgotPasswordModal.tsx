@@ -1,30 +1,24 @@
 'use client'
 
 /**
- * ForgotPasswordModal — multi-step WhatsApp OTP password reset flow
- *
- * Steps:
- *   1. Enter phone number → sends OTP via WhatsApp
- *   2. Enter 4-digit code → verifies OTP
- *   3. Enter new password → updates password
- *   4. Success → prompts user to log in
- *
- * All OTP logic is server-side via /api/auth/password-reset/* endpoints.
+ * ForgotPasswordModal — multi-step email OTP password reset flow
+ * Used from Collect Points / loyalty login on /track/product/...
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { KeyRound, Phone, ShieldCheck, Lock, CheckCircle2, Eye, EyeOff, ArrowLeft } from 'lucide-react'
-import { maskPhone } from '@/utils/phone'
+import { Mail, ShieldCheck, Lock, CheckCircle2, Eye, EyeOff, ArrowLeft } from 'lucide-react'
+import { isValidEmail, maskEmail, normalizeEmail } from '@/lib/auth/password-reset-otp-email'
 
-type Step = 'phone' | 'verify' | 'new-password' | 'success'
+type Step = 'email' | 'verify' | 'new-password' | 'success'
 
 interface ForgotPasswordModalProps {
     isOpen: boolean
     onClose: () => void
-    /** Called when the user finishes the flow and wants to go back to login */
     onBackToLogin: () => void
     primaryColor: string
     buttonColor: string
+    /** Prefill from Collect Points login field when available */
+    initialEmail?: string
 }
 
 export default function ForgotPasswordModal({
@@ -33,9 +27,10 @@ export default function ForgotPasswordModal({
     onBackToLogin,
     primaryColor,
     buttonColor,
+    initialEmail = '',
 }: ForgotPasswordModalProps) {
-    const [step, setStep] = useState<Step>('phone')
-    const [phone, setPhone] = useState('')
+    const [step, setStep] = useState<Step>('email')
+    const [email, setEmail] = useState('')
     const [code, setCode] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
@@ -45,16 +40,12 @@ export default function ForgotPasswordModal({
     const [error, setError] = useState('')
     const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(null)
     const [resetToken, setResetToken] = useState('')
-
-    // Resend cooldown
     const [resendCooldown, setResendCooldown] = useState(0)
-    const [resendCount, setResendCount] = useState(0)
 
-    // Reset all state when modal opens/closes
     useEffect(() => {
         if (!isOpen) {
-            setStep('phone')
-            setPhone('')
+            setStep('email')
+            setEmail('')
             setCode('')
             setNewPassword('')
             setConfirmPassword('')
@@ -65,11 +56,12 @@ export default function ForgotPasswordModal({
             setAttemptsRemaining(null)
             setResetToken('')
             setResendCooldown(0)
-            setResendCount(0)
+            return
         }
-    }, [isOpen])
+        const prefill = String(initialEmail || '').trim()
+        if (prefill.includes('@')) setEmail(normalizeEmail(prefill))
+    }, [isOpen, initialEmail])
 
-    // Countdown timer for resend cooldown
     useEffect(() => {
         if (resendCooldown <= 0) return
         const timer = setInterval(() => {
@@ -78,10 +70,9 @@ export default function ForgotPasswordModal({
         return () => clearInterval(timer)
     }, [resendCooldown])
 
-    // ── Step 1: Request OTP ──────────────────────────────────────────────
     const handleRequestOtp = useCallback(async () => {
-        if (!phone.trim() || phone.trim().length < 6) {
-            setError('Please enter a valid phone number.')
+        if (!isValidEmail(email)) {
+            setError('Please enter a valid email address.')
             return
         }
 
@@ -92,7 +83,7 @@ export default function ForgotPasswordModal({
             const res = await fetch('/api/auth/password-reset/request', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: phone.trim() }),
+                body: JSON.stringify({ email: normalizeEmail(email) }),
             })
 
             let data: any
@@ -108,7 +99,6 @@ export default function ForgotPasswordModal({
                 return
             }
 
-            // Move to verify step regardless (generic response)
             setResendCooldown(data.resendCooldown || 60)
             setStep('verify')
         } catch {
@@ -116,9 +106,8 @@ export default function ForgotPasswordModal({
         } finally {
             setLoading(false)
         }
-    }, [phone])
+    }, [email])
 
-    // ── Step 2: Verify OTP ───────────────────────────────────────────────
     const handleVerifyOtp = useCallback(async () => {
         if (!/^\d{4}$/.test(code)) {
             setError('Please enter the 4-digit code.')
@@ -132,7 +121,7 @@ export default function ForgotPasswordModal({
             const res = await fetch('/api/auth/password-reset/verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: phone.trim(), code }),
+                body: JSON.stringify({ email: normalizeEmail(email), code }),
             })
 
             let data: any
@@ -158,9 +147,8 @@ export default function ForgotPasswordModal({
         } finally {
             setLoading(false)
         }
-    }, [phone, code])
+    }, [email, code])
 
-    // ── Step 2b: Resend OTP ──────────────────────────────────────────────
     const handleResend = useCallback(async () => {
         if (resendCooldown > 0) return
 
@@ -171,7 +159,7 @@ export default function ForgotPasswordModal({
             const res = await fetch('/api/auth/password-reset/resend', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: phone.trim() }),
+                body: JSON.stringify({ email: normalizeEmail(email) }),
             })
 
             let data: any
@@ -182,8 +170,12 @@ export default function ForgotPasswordModal({
                 return
             }
 
+            if (!res.ok && data.error) {
+                setError(data.error)
+                return
+            }
+
             setResendCooldown(data.resendCooldown || 60)
-            setResendCount((prev) => prev + 1)
             setCode('')
             setAttemptsRemaining(null)
             setError('')
@@ -192,9 +184,8 @@ export default function ForgotPasswordModal({
         } finally {
             setLoading(false)
         }
-    }, [phone, resendCooldown])
+    }, [email, resendCooldown])
 
-    // ── Step 3: Set New Password ─────────────────────────────────────────
     const handleSetPassword = useCallback(async () => {
         if (newPassword.length < 6) {
             setError('Password must be at least 6 characters.')
@@ -213,7 +204,7 @@ export default function ForgotPasswordModal({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    phone: phone.trim(),
+                    email: normalizeEmail(email),
                     resetToken,
                     newPassword,
                     confirmPassword,
@@ -239,28 +230,27 @@ export default function ForgotPasswordModal({
         } finally {
             setLoading(false)
         }
-    }, [phone, resetToken, newPassword, confirmPassword])
+    }, [email, resetToken, newPassword, confirmPassword])
 
     if (!isOpen) return null
 
-    // ── Step icons ────────────────────────────────────────────────────────
     const StepIcon = {
-        phone: Phone,
+        email: Mail,
         verify: ShieldCheck,
         'new-password': Lock,
         success: CheckCircle2,
     }[step]
 
     const stepTitle = {
-        phone: 'Forgot Password',
+        email: 'Forgot Password',
         verify: 'Verify Code',
         'new-password': 'Set New Password',
         success: 'Password Updated',
     }[step]
 
     const stepDescription = {
-        phone: 'Enter your phone number to receive a reset code via WhatsApp.',
-        verify: `We sent a 4-digit code to ${maskPhone(phone)}`,
+        email: 'Enter your email address to receive a reset code.',
+        verify: `We sent a 4-digit code to ${maskEmail(email)}`,
         'new-password': 'Create a new password for your account.',
         success: 'Password updated successfully. Please log in to continue.',
     }[step]
@@ -268,7 +258,6 @@ export default function ForgotPasswordModal({
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
-                {/* Header */}
                 <div className="text-center">
                     <div
                         className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
@@ -280,28 +269,27 @@ export default function ForgotPasswordModal({
                     <p className="text-sm text-gray-500 mt-1">{stepDescription}</p>
                 </div>
 
-                {/* ── Step 1: Phone Input ──────────────────────────────────────── */}
-                {step === 'phone' && (
+                {step === 'email' && (
                     <div className="space-y-3">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Mobile Number
+                                Email Address
                             </label>
                             <input
-                                type="tel"
-                                value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
-                                placeholder="e.g. 0123456789"
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="e.g. name@example.com"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2"
                                 style={{ '--tw-ring-color': primaryColor } as any}
                                 disabled={loading}
                                 autoFocus
+                                autoComplete="email"
                             />
                         </div>
                     </div>
                 )}
 
-                {/* ── Step 2: OTP Input ────────────────────────────────────────── */}
                 {step === 'verify' && (
                     <div className="space-y-3">
                         <div>
@@ -327,7 +315,6 @@ export default function ForgotPasswordModal({
                             )}
                         </div>
 
-                        {/* Resend button with cooldown */}
                         <div className="text-center">
                             <button
                                 onClick={handleResend}
@@ -343,7 +330,6 @@ export default function ForgotPasswordModal({
                     </div>
                 )}
 
-                {/* ── Step 3: New Password ─────────────────────────────────────── */}
                 {step === 'new-password' && (
                     <div className="space-y-3">
                         <div>
@@ -404,15 +390,13 @@ export default function ForgotPasswordModal({
                     </div>
                 )}
 
-                {/* Error display */}
                 {error && (
                     <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
                         <p className="text-sm text-red-600 text-center">{error}</p>
                     </div>
                 )}
 
-                {/* ── Buttons ──────────────────────────────────────────────────── */}
-                {step === 'phone' && (
+                {step === 'email' && (
                     <div className="flex gap-3 pt-2">
                         <button
                             onClick={onClose}
@@ -422,7 +406,7 @@ export default function ForgotPasswordModal({
                         </button>
                         <button
                             onClick={handleRequestOtp}
-                            disabled={loading || !phone.trim()}
+                            disabled={loading || !email.trim()}
                             className="flex-1 py-3 px-4 rounded-xl font-medium text-white transition-colors disabled:opacity-50"
                             style={{ backgroundColor: buttonColor }}
                         >
@@ -432,7 +416,7 @@ export default function ForgotPasswordModal({
                                     Sending...
                                 </span>
                             ) : (
-                                'Send Code via WhatsApp'
+                                'Send Code via Email'
                             )}
                         </button>
                     </div>
@@ -457,14 +441,14 @@ export default function ForgotPasswordModal({
                         </button>
                         <button
                             onClick={() => {
-                                setStep('phone')
+                                setStep('email')
                                 setCode('')
                                 setError('')
                                 setAttemptsRemaining(null)
                             }}
                             className="w-full py-2 text-sm font-medium text-gray-500 hover:text-gray-700 flex items-center justify-center gap-1"
                         >
-                            <ArrowLeft className="w-4 h-4" /> Change phone number
+                            <ArrowLeft className="w-4 h-4" /> Change email
                         </button>
                     </div>
                 )}

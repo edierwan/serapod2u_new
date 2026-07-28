@@ -22,6 +22,7 @@ export type NotificationKey =
     | 'user_deactivated'
     | 'password_changed'
     | 'password_reset_request'
+    | 'password_reset_otp'
     | 'login_suspicious'
     | 'po_created'
     | 'po_acknowledged'
@@ -680,6 +681,17 @@ export const notificationTemplates: Record<string, Template[]> = {
             channel: 'email',
             subject: 'Password Reset Request — {{user_email}}',
             body: `A password reset has been requested.\n\nUser: {{user_name}}\nEmail: {{user_email}}\nRequested At: {{requested_at}}\n\nIf this request was not authorized, please review your security settings.\n\nRegards,\nSerapod2U System`
+        }
+    ],
+
+    'password_reset_otp': [
+        {
+            id: 'password_reset_otp_email_1',
+            name: 'Consumer Password Reset OTP',
+            description: 'One-time email code for Collect Points / loyalty forgot-password',
+            channel: 'email',
+            subject: 'Your Serapod2U password reset code',
+            body: `PASSWORD RESET\n\nYour verification code: {{verification_code}}\nValid for {{otp_expiry_minutes}} minutes. Single use only.\n\nIf you did not request this, ignore this email.\n\nSerapod2U`
         }
     ],
 
