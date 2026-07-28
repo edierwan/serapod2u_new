@@ -1,22 +1,27 @@
 /**
  * Password Reset OTP Service
  *
- * Handles OTP generation, hashing, verification, and lifecycle management
- * for the WhatsApp-based password reset flow.
+ * Consumer Collect Points / loyalty forgot-password flow.
+ * Primary channel: email (Dynamic Config email providers).
+ * WhatsApp helpers remain for legacy/admin use only.
  *
- * Tables used:
- *   - auth_verification_codes  – stores hashed OTP, expiry, attempts
- *   - notification_events      – audit trail for every action
- *   - users                    – consumer lookup by phone
- *
- * All OTP generation/verification is server-side only.
+ * Tables:
+ *   - auth_verification_codes
+ *   - notification_events
+ *   - users
+ *   - notification_provider_configs
  */
 
 import crypto from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
+import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
+import {
+    buildPasswordResetOtpEmail,
+    isValidEmail,
+    normalizeEmail,
+} from '@/lib/auth/password-reset-otp-email'
 
-// ── Constants ───────────────────────────────────────────────────────────
 export const OTP_LENGTH = 4
 export const OTP_EXPIRY_MINUTES = 5
 export const RESEND_COOLDOWN_SECONDS = 60
@@ -26,50 +31,63 @@ export const MAX_RESEND_PER_15MIN = 5
 export const RESET_TOKEN_EXPIRY_MINUTES = 10
 
 const PURPOSE = 'password_reset'
-const CHANNEL = 'whatsapp'
-const PROVIDER = 'baileys'
+/** Consumer password-reset OTP uses email (Dynamic Config / notification providers). */
+export const CHANNEL = 'email' as const
+const EMAIL_PROVIDER_FALLBACK = 'email'
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-/** Generate a cryptographically secure 4-digit OTP */
 export function generateOtp(): string {
     const num = crypto.randomInt(0, 10000)
     return num.toString().padStart(OTP_LENGTH, '0')
 }
 
-/** SHA-256 hash (sufficient for a 4-digit code with short expiry + rate limits) */
 export function hashOtp(code: string): string {
     return crypto.createHash('sha256').update(code).digest('hex')
 }
 
-/** Generate a short-lived reset token (opaque, URL-safe) */
 export function generateResetToken(): string {
     return crypto.randomBytes(32).toString('base64url')
 }
-
-// ── User Lookup ─────────────────────────────────────────────────────────
 
 export interface ConsumerLookupResult {
     userId: string
     email: string
     fullName: string | null
-    phone: string
+    phone: string | null
 }
 
-/**
- * Look up a consumer/user by phone number.
- * Returns null if not found (callers must NOT reveal existence to client).
- */
+export async function lookupConsumerByEmail(
+    admin: SupabaseClient,
+    emailRaw: string,
+): Promise<ConsumerLookupResult | null> {
+    const email = normalizeEmail(emailRaw)
+    if (!isValidEmail(email)) return null
+
+    const { data } = await admin
+        .from('users')
+        .select('id, email, full_name, phone')
+        .ilike('email', email)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
+    if (!data?.email) return null
+    return {
+        userId: data.id,
+        email: normalizeEmail(data.email),
+        fullName: data.full_name,
+        phone: data.phone ? normalizePhoneE164(data.phone) : null,
+    }
+}
+
+/** @deprecated Prefer lookupConsumerByEmail for consumer Collect Points reset. */
 export async function lookupConsumerByPhone(
     admin: SupabaseClient,
-    phoneRaw: string
+    phoneRaw: string,
 ): Promise<ConsumerLookupResult | null> {
     const phone = normalizePhoneE164(phoneRaw)
     const phoneDigits = phone.replace(/^\+/, '')
 
-    // Query with both +60 and 60 formats (separate queries to avoid PostgREST .or() encoding issues)
     let data: any = null
-
     const { data: d1 } = await admin
         .from('users')
         .select('id, email, full_name, phone')
@@ -77,7 +95,6 @@ export async function lookupConsumerByPhone(
         .eq('is_active', true)
         .limit(1)
         .maybeSingle()
-
     data = d1
 
     if (!data) {
@@ -94,25 +111,21 @@ export async function lookupConsumerByPhone(
     if (!data) return null
     return {
         userId: data.id,
-        email: data.email,
+        email: normalizeEmail(data.email || ''),
         fullName: data.full_name,
-        phone: phone,
+        phone,
     }
 }
 
-// ── Rate Limiting (DB-based) ────────────────────────────────────────────
-
-/** Check if too many OTP sends happened recently for this phone */
 export async function checkSendRateLimit(
     admin: SupabaseClient,
-    phone: string
+    email: string,
 ): Promise<{ allowed: boolean; retryAfterSec?: number }> {
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-
     const { count } = await admin
         .from('notification_events')
         .select('id', { count: 'exact', head: true })
-        .eq('recipient_phone', phone)
+        .eq('recipient_email', email)
         .eq('purpose', PURPOSE)
         .in('event_type', ['password_reset_otp_requested', 'password_reset_otp_resend'])
         .gte('created_at', since)
@@ -123,17 +136,15 @@ export async function checkSendRateLimit(
     return { allowed: true }
 }
 
-/** Check resend rate limit */
 export async function checkResendRateLimit(
     admin: SupabaseClient,
-    phone: string
+    email: string,
 ): Promise<{ allowed: boolean; retryAfterSec?: number }> {
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
-
     const { count } = await admin
         .from('notification_events')
         .select('id', { count: 'exact', head: true })
-        .eq('recipient_phone', phone)
+        .eq('recipient_email', email)
         .eq('purpose', PURPOSE)
         .eq('event_type', 'password_reset_otp_resend')
         .gte('created_at', since)
@@ -144,31 +155,28 @@ export async function checkResendRateLimit(
     return { allowed: true }
 }
 
-// ── OTP Lifecycle ───────────────────────────────────────────────────────
-
-/** Invalidate all existing active codes for a phone + purpose */
 export async function invalidateExistingCodes(
     admin: SupabaseClient,
-    phone: string
+    email: string,
 ) {
     await admin
         .from('auth_verification_codes')
         .update({ invalidated_at: new Date().toISOString() })
-        .eq('phone_normalized', phone)
+        .eq('email_normalized', email)
         .eq('purpose', PURPOSE)
         .eq('channel', CHANNEL)
         .is('invalidated_at', null)
         .is('used_at', null)
 }
 
-/** Create a new verification code row */
 export async function createVerificationCode(
     admin: SupabaseClient,
-    phone: string,
+    email: string,
     codeHash: string,
     userId: string | null,
     ip: string | null,
-    userAgent: string | null
+    userAgent: string | null,
+    phone?: string | null,
 ): Promise<string> {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString()
 
@@ -177,7 +185,8 @@ export async function createVerificationCode(
         .insert({
             purpose: PURPOSE,
             channel: CHANNEL,
-            phone_normalized: phone,
+            email_normalized: email,
+            phone_normalized: phone || null,
             user_id: userId,
             code_hash: codeHash,
             expires_at: expiresAt,
@@ -192,15 +201,14 @@ export async function createVerificationCode(
     return data.id
 }
 
-/** Find the latest active (non-invalidated, non-used, non-expired) code */
 export async function findActiveCode(
     admin: SupabaseClient,
-    phone: string
+    email: string,
 ) {
     const { data, error } = await admin
         .from('auth_verification_codes')
         .select('*')
-        .eq('phone_normalized', phone)
+        .eq('email_normalized', email)
         .eq('purpose', PURPOSE)
         .eq('channel', CHANNEL)
         .is('invalidated_at', null)
@@ -214,11 +222,10 @@ export async function findActiveCode(
     return data
 }
 
-/** Increment attempt_count on a code */
 export async function incrementAttemptCount(
     admin: SupabaseClient,
     codeId: string,
-    currentCount: number
+    currentCount: number,
 ) {
     await admin
         .from('auth_verification_codes')
@@ -226,14 +233,13 @@ export async function incrementAttemptCount(
         .eq('id', codeId)
 }
 
-/** Mark code as verified and issue reset token */
 export async function markCodeVerified(
     admin: SupabaseClient,
-    codeId: string
+    codeId: string,
 ): Promise<string> {
     const resetToken = generateResetToken()
     const resetTokenExpires = new Date(
-        Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000
+        Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000,
     ).toISOString()
 
     await admin
@@ -248,10 +254,9 @@ export async function markCodeVerified(
     return resetToken
 }
 
-/** Mark code as used (password changed) */
 export async function markCodeUsed(
     admin: SupabaseClient,
-    codeId: string
+    codeId: string,
 ) {
     await admin
         .from('auth_verification_codes')
@@ -259,10 +264,9 @@ export async function markCodeUsed(
         .eq('id', codeId)
 }
 
-/** Find a verified code by reset token */
 export async function findCodeByResetToken(
     admin: SupabaseClient,
-    resetToken: string
+    resetToken: string,
 ) {
     const { data } = await admin
         .from('auth_verification_codes')
@@ -278,36 +282,34 @@ export async function findCodeByResetToken(
     return data
 }
 
-// ── Notification Event Logging ──────────────────────────────────────────
-
 export async function logNotificationEvent(
     admin: SupabaseClient,
     params: {
         eventType: string
-        phone: string
+        email: string
+        phone?: string | null
         userId?: string | null
         status: string
+        provider?: string | null
         providerMessageId?: string | null
         errorCode?: string | null
         errorMessage?: string | null
         meta?: Record<string, any>
         ip?: string | null
-    }
+    },
 ) {
     const now = new Date().toISOString()
-    const sentTypes = [
-        'password_reset_otp_sent',
-        'password_reset_otp_resend_sent',
-    ]
+    const sentTypes = ['password_reset_otp_sent', 'password_reset_otp_resend_sent']
     const verifiedTypes = ['password_reset_otp_verified']
     const completedTypes = ['password_reset_password_updated']
 
     await admin.from('notification_events').insert({
         channel: CHANNEL,
-        provider: PROVIDER,
+        provider: params.provider || EMAIL_PROVIDER_FALLBACK,
         event_type: params.eventType,
         purpose: PURPOSE,
-        recipient_phone: params.phone,
+        recipient_email: params.email,
+        recipient_phone: params.phone ?? null,
         user_id: params.userId ?? null,
         status: params.status,
         provider_message_id: params.providerMessageId ?? null,
@@ -323,28 +325,72 @@ export async function logNotificationEvent(
     })
 }
 
-// ── WhatsApp Send ───────────────────────────────────────────────────────
+export async function sendOtpViaEmail(
+    admin: SupabaseClient,
+    email: string,
+    code: string,
+    orgId: string,
+    fullName?: string | null,
+): Promise<{ success: boolean; providerName?: string; error?: string; notConfigured?: boolean }> {
+    try {
+        const built = buildPasswordResetOtpEmail({ code, fullName })
+        const result = await sendTransactionalHtmlEmail(admin, orgId, {
+            to: email,
+            subject: built.subject,
+            text: built.text,
+            html: built.html,
+            fromName: 'Serapod2U',
+        })
+        if (!result.success) {
+            return {
+                success: false,
+                notConfigured: result.notConfigured,
+                error: result.error || 'Email send failed',
+                providerName: result.providerName,
+            }
+        }
+        return { success: true, providerName: result.providerName || EMAIL_PROVIDER_FALLBACK }
+    } catch (err: any) {
+        return { success: false, error: err.message || 'Email send failed' }
+    }
+}
 
-/**
- * Send OTP via WhatsApp using the Baileys gateway.
- * Re-uses the existing gateway calling pattern from _utils.ts
- */
+/** Resolve org that owns an active email provider (Dynamic Config → Providers). */
+export async function resolveOrgForEmail(
+    admin: SupabaseClient,
+): Promise<string | null> {
+    const { data: preferred } = await admin
+        .from('notification_provider_configs')
+        .select('org_id')
+        .eq('channel', 'email')
+        .eq('is_default', true)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+    if (preferred?.org_id) return preferred.org_id
+
+    const { data: anyActive } = await admin
+        .from('notification_provider_configs')
+        .select('org_id')
+        .eq('channel', 'email')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    return anyActive?.org_id ?? null
+}
+
+/** Legacy WhatsApp send — kept for compatibility; consumer reset uses email. */
 export async function sendOtpViaWhatsApp(
     admin: SupabaseClient,
     phone: string,
     code: string,
-    orgId: string
+    orgId: string,
 ): Promise<{ success: boolean; providerMessageId?: string; error?: string }> {
-    // Dynamic import to avoid circular deps
-    const { sendWhatsAppMessage } = await import(
-        '@/app/api/settings/whatsapp/_utils'
-    )
-
-    // Phone to send to: strip + for Baileys (expects 60xxxx format or full digits)
+    const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
     const recipientDigits = toProviderPhone(phone)
-    if (!recipientDigits) {
-        return { success: false, error: 'Invalid phone number' }
-    }
+    if (!recipientDigits) return { success: false, error: 'Invalid phone number' }
 
     const message =
         `Your Serapod2U reset code is *${code}*. This code expires in ${OTP_EXPIRY_MINUTES} minutes. ` +
@@ -353,7 +399,6 @@ export async function sendOtpViaWhatsApp(
     try {
         const sent = await sendWhatsAppMessage(admin, orgId, { to: recipientDigits, text: message })
         const result = sent.response
-
         return {
             success: true,
             providerMessageId: result?.key?.id || result?.messageId || null,
@@ -363,15 +408,8 @@ export async function sendOtpViaWhatsApp(
     }
 }
 
-// ── Resolve Organization for public consumer OTP ────────────────────────
-
-/**
- * Find the org that owns the WhatsApp provider config.
- * For public (unauthenticated) flows, we need to determine which org to
- * query for the persisted default WhatsApp provider.
- */
 export async function resolveOrgForWhatsApp(
-    admin: SupabaseClient
+    admin: SupabaseClient,
 ): Promise<string | null> {
     const { data } = await admin
         .from('notification_provider_configs')
@@ -384,3 +422,6 @@ export async function resolveOrgForWhatsApp(
 
     return data?.org_id ?? null
 }
+
+export const GENERIC_EMAIL_OTP_MESSAGE =
+    'If this email exists, we will send a verification code via email.'
