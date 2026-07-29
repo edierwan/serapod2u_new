@@ -4882,14 +4882,16 @@ export default function PremiumLoyaltyTemplate({
                     <div className="flex items-start justify-between gap-4 mb-6">
                         <div className="min-w-0 flex-1">
                             <div className="mb-5 flex items-center gap-4">
-                                <Image
-                                    src="/brand/serapod-wordmark-light.png"
-                                    alt="Serapod"
-                                    width={280}
-                                    height={64}
-                                    className="sera-collect__hero-logo sera-collect__hero-logo--on-orange !mx-0 h-auto max-h-12 w-auto max-w-[14rem] md:max-h-14 md:max-w-[18rem]"
-                                    priority
-                                />
+                                <div className="sera-collect__brand-plate">
+                                    <Image
+                                        src="/images/logo.png"
+                                        alt="Serapod"
+                                        width={280}
+                                        height={89}
+                                        className="sera-collect__hero-logo !mx-0"
+                                        priority
+                                    />
+                                </div>
                             </div>
                             {/* Show product info when scanned, otherwise show welcome */}
                             {roadtourContext ? (
@@ -6608,16 +6610,18 @@ export default function PremiumLoyaltyTemplate({
             <div className="sera-collect__profile-hero text-center">
                 {/* Buttons moved to fixed position outside scroll container */}
 
-                <Image
-                    src="/brand/serapod-wordmark-light.png"
-                    alt="Serapod"
-                    width={420}
-                    height={96}
-                    className="relative z-10 sera-collect__hero-logo sera-collect__hero-logo--on-orange mb-7"
-                    priority
-                />
+                <div className="sera-collect__profile-logo">
+                    <Image
+                        src="/images/logo.png"
+                        alt="Serapod"
+                        width={320}
+                        height={102}
+                        className="sera-collect__hero-logo"
+                        priority
+                    />
+                </div>
 
-                <div className="relative z-10 w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden group ring-2 ring-white/25">
+                <div className="sera-collect__profile-avatar relative z-10 w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center overflow-hidden group">
                     {isAuthenticated && (
                         <>
                             <input
@@ -6651,7 +6655,10 @@ export default function PremiumLoyaltyTemplate({
                         <User className="w-10 h-10" />
                     )}
                 </div>
-                <div className="relative z-10 mx-auto mb-2 h-1 w-12 rounded-full bg-white/70" />
+                <div className="sera-collect__profile-eyebrow relative z-10">
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                    {isAuthenticated ? 'Member profile' : 'Serapod2U rewards'}
+                </div>
                 <h1 className="relative z-10 font-display text-2xl font-bold tracking-tight md:text-3xl">
                     {isAuthenticated
                         ? (userName || 'User')
@@ -6670,7 +6677,7 @@ export default function PremiumLoyaltyTemplate({
             <div className="sera-collect__profile-main px-4 relative z-10 space-y-5 pt-4 md:px-0 md:pt-0">
                 {/* Login/Logout Section */}
                 {!isAuthenticated ? (
-                    <div className="sera-collect__panel p-5 md:p-6">
+                    <div className="sera-collect__panel sera-collect__panel--welcome p-5 md:p-6">
                         {showLoginForm ? (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between mb-2">
@@ -7101,13 +7108,9 @@ export default function PremiumLoyaltyTemplate({
                             </div>
                         ) : (
                             <div className="text-center space-y-5">
-                                <Image
-                                    src="/images/seralogo-optimized.png"
-                                    alt="Serapod"
-                                    width={200}
-                                    height={48}
-                                    className="mx-auto h-12 w-auto max-w-[12rem] object-contain md:h-14 md:max-w-[14rem]"
-                                />
+                                <div className="sera-collect__panel-intro-icon" aria-hidden="true">
+                                    <Gift className="h-6 w-6" />
+                                </div>
                                 <div>
                                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--sera-orange)]">Collect Points</p>
                                     <h2 className="font-display mt-1 text-xl font-bold text-[var(--sera-ink)]">Get started</h2>
@@ -7795,10 +7798,10 @@ export default function PremiumLoyaltyTemplate({
             <header className="sera-collect__topbar">
                 <div className="sera-collect__brand">
                     <Image
-                        src="/images/seralogo-optimized.png"
+                        src="/images/logo.png"
                         alt="Serapod"
-                        width={220}
-                        height={52}
+                        width={248}
+                        height={79}
                         className="sera-collect__brand-logo"
                         priority
                     />
