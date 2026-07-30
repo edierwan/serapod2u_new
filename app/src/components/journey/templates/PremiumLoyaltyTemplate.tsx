@@ -1925,12 +1925,15 @@ export default function PremiumLoyaltyTemplate({
     }
 
     useEffect(() => {
+        // Guests must never inherit QR-level "already collected" as their own UI state.
+        // Otherwise Collect shows "Collected" and is disabled before they can open the login modal.
+        if (!isAuthenticated) {
+            setQrPointsCollected(false)
+            return
+        }
+
         if (qrClaimMode === 'dual') {
-            if (!isAuthenticated) {
-                setQrPointsCollected(qrShopLaneCollected && qrConsumerLaneCollected)
-            } else {
-                setQrPointsCollected(isShopUser ? qrShopLaneCollected : qrConsumerLaneCollected)
-            }
+            setQrPointsCollected(isShopUser ? qrShopLaneCollected : qrConsumerLaneCollected)
             return
         }
 
@@ -3047,6 +3050,10 @@ export default function PremiumLoyaltyTemplate({
             setUserPhone('')
             setConsumerClaimConfirmed(false)
             setUserId(null)
+            // Guest must not keep session collect flags (would show "Collected" while logged out)
+            setPointsCollected(false)
+            setQrPointsCollected(false)
+            setLastEarnedPoints(0)
 
             // IMPORTANT: Clear login form fields to prevent auto-login on next visit
             setLoginEmail('')
