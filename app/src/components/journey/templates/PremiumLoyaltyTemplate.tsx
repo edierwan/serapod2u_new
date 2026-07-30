@@ -677,6 +677,7 @@ export default function PremiumLoyaltyTemplate({
     const [pointsErrorTitle, setPointsErrorTitle] = useState('Complete Your Profile')
     const [showPointsSuccessModal, setShowPointsSuccessModal] = useState(false)
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
+    const [forgotPasswordReturnTarget, setForgotPasswordReturnTarget] = useState<'profile' | 'collect'>('collect')
     const [collectPointsStep, setCollectPointsStep] = useState<'login' | 'complete-profile' | 'consumer-confirm' | 'roadtour-survey'>('login')
     const [pendingProfileCollectLane, setPendingProfileCollectLane] = useState<'shop' | null>(null)
     const [pendingProfileCollectEmail, setPendingProfileCollectEmail] = useState('')
@@ -7069,6 +7070,22 @@ export default function PremiumLoyaltyTemplate({
                                     )}
                                 </Button>
 
+                                {!isSignUp && (
+                                    <div className="text-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setForgotPasswordReturnTarget('profile')
+                                                setShowForgotPasswordModal(true)
+                                            }}
+                                            className="text-sm font-medium hover:underline"
+                                            style={{ color: config.primary_color }}
+                                        >
+                                            Forgot Password?
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="text-center">
                                     <button
                                         onClick={() => {
@@ -8357,6 +8374,7 @@ export default function PremiumLoyaltyTemplate({
                                     <button
                                         onClick={() => {
                                             setShowPointsLoginModal(false)
+                                            setForgotPasswordReturnTarget('collect')
                                             setShowForgotPasswordModal(true)
                                         }}
                                         className="text-sm font-medium hover:underline"
@@ -8391,8 +8409,14 @@ export default function PremiumLoyaltyTemplate({
                 onClose={() => setShowForgotPasswordModal(false)}
                 onBackToLogin={() => {
                     setShowForgotPasswordModal(false)
-                    setCollectPointsStep('login')
-                    setShowPointsLoginModal(true)
+                    if (forgotPasswordReturnTarget === 'collect') {
+                        setCollectPointsStep('login')
+                        setShowPointsLoginModal(true)
+                    } else {
+                        setActiveTab('profile')
+                        setShowLoginForm(true)
+                        setIsSignUp(false)
+                    }
                 }}
                 primaryColor={config.primary_color}
                 buttonColor={config.button_color}
