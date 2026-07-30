@@ -23,7 +23,7 @@ const helpSections = [
     description: 'Step-by-step product return and claim process for field teams and partners.',
     href: '/help/return-process',
     icon: RefreshCw,
-    state: 'Coming next',
+    state: 'Live guide',
   },
   {
     id: 'distributor-incentive',
@@ -31,7 +31,7 @@ const helpSections = [
     description: 'Guide for incentive setup, qualification, and reward redemption flow.',
     href: '/help/distributor-incentive',
     icon: Truck,
-    state: 'Coming next',
+    state: 'Live guide',
   },
   {
     id: 'improvement-feedback',
@@ -39,7 +39,7 @@ const helpSections = [
     description: 'Share feedback, report issues, and suggest improvements to the team.',
     href: '/help/improvement-feedback',
     icon: MessageSquareText,
-    state: 'Coming next',
+    state: 'Live guide',
   },
 ]
 
