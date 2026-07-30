@@ -6,7 +6,7 @@ on:
 
 jobs:
   trigger-coolify:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Trigger one staging deployment from the prebuilt image
         shell: bash
@@ -15,7 +15,7 @@ jobs:
           test -n "${COOLIFY_URL}"
           test -n "${COOLIFY_UUID}"
           test -n "${COOLIFY_TOKEN}"
-          curl --fail-with-body -sS -X GET \
+          curl --fail-with-body -sS -4 --connect-timeout 20 --max-time 45 -X GET \
             "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_UUID}&force=true" \
             -H "Authorization: Bearer ${COOLIFY_TOKEN}"
         env:
