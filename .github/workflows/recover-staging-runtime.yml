@@ -1,14 +1,14 @@
-name: Start Staging Runtime (one-time)
+name: Inspect Staging Queue (one-time)
 
 on:
   push:
     branches: [codex/recover-staging-runtime]
 
 jobs:
-  start-coolify:
+  inspect-coolify:
     runs-on: macos-latest
     steps:
-      - name: Start the staging application immediately
+      - name: List recent staging deployments
         shell: bash
         run: |
           set -euo pipefail
@@ -16,8 +16,9 @@ jobs:
           test -n "${COOLIFY_UUID}"
           test -n "${COOLIFY_TOKEN}"
           curl --fail-with-body -sS -4 --connect-timeout 20 --max-time 45 -X GET \
-            "${COOLIFY_URL%/}/api/v1/applications/${COOLIFY_UUID}/start?instant_deploy=true" \
-            -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+            "${COOLIFY_URL%/}/api/v1/deployments/applications/${COOLIFY_UUID}?take=10" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" |
+            python3 -c 'import json,sys; rows=json.load(sys.stdin); print(json.dumps([{k:r.get(k) for k in ("deployment_uuid","status","commit","created_at","updated_at")} for r in rows], separators=(",",":")))'
         env:
           COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
           COOLIFY_UUID: ${{ secrets.COOLIFY_STAGING_UUID }}
