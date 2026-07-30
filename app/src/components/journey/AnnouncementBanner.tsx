@@ -255,18 +255,25 @@ export function AnnouncementBanner({
                         ))}
                     </div>
                 ) : (
-                    <div className="relative">
+                    <div className="sera-banner-carousel-shell">
                         <div
                             ref={sliderRef}
-                            className="flex overflow-x-auto gap-3 pb-2 snap-x scrollbar-hide -mx-5 px-5"
+                            className="sera-banner-carousel"
+                            role="region"
+                            aria-label="Promotional banners"
+                            aria-roledescription="carousel"
                             onScroll={handleScroll}
                             onTouchStart={handleInteractionStart}
                             onTouchEnd={handleInteractionEnd}
                             onMouseEnter={handleInteractionStart}
                             onMouseLeave={handleInteractionEnd}
                         >
-                            {activeItems.map((item) => (
-                                <div key={item.id} className="min-w-[85%] snap-center flex-shrink-0">
+                            {activeItems.map((item, index) => (
+                                <div
+                                    key={item.id}
+                                    className={`sera-banner-slide ${currentSlide === index ? 'is-active' : ''}`}
+                                    aria-label={`${index + 1} of ${activeItems.length}`}
+                                >
                                     <BannerImage
                                         item={item}
                                         onClick={(e) => handleBannerClick(item, e)}
@@ -278,33 +285,39 @@ export function AnnouncementBanner({
 
                         {/* Progress Bar */}
                         {showProgress && activeItems.length > 1 && (
-                            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-                                <div className="bg-black/30 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-2 pointer-events-none">
-                                    <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
+                            <div className="sera-banner-carousel__progress">
+                                <div className="sera-banner-carousel__progress-pill">
+                                    <div className="sera-banner-carousel__progress-track">
                                         <div
-                                            className="h-full bg-white transition-all duration-100 ease-linear"
+                                            className="sera-banner-carousel__progress-fill"
                                             style={{ width: `${progress}%` }}
                                         />
                                     </div>
-                                    <span className="text-[10px] text-white font-medium w-3">
+                                    <span className="sera-banner-carousel__progress-time">
                                         {Math.ceil(slideInterval - (slideInterval * progress / 100))}
                                     </span>
                                 </div>
                             </div>
                         )}
 
+                        {activeItems.length > 1 && (
+                            <div className="sera-banner-carousel__count">
+                                <span>{String(currentSlide + 1).padStart(2, '0')}</span>
+                                <span className="sera-banner-carousel__count-divider" />
+                                <span>{String(activeItems.length).padStart(2, '0')}</span>
+                            </div>
+                        )}
+
                         {/* Dots */}
                         {showDots && activeItems.length > 1 && (
-                            <div className="flex justify-center gap-1.5 mt-1 pb-2">
+                            <div className="sera-banner-carousel__dots">
                                 {activeItems.map((_, index) => (
                                     <button
                                         key={index}
                                         onClick={() => scrollToSlide(index)}
-                                        className={`h-1.5 rounded-full transition-all duration-300 ${currentSlide === index
-                                                ? 'bg-orange-500 w-4'
-                                                : 'bg-gray-300 w-1.5 hover:bg-gray-400'
-                                            }`}
+                                        className={`sera-banner-carousel__dot ${currentSlide === index ? 'is-active' : ''}`}
                                         aria-label={`Go to slide ${index + 1}`}
+                                        aria-current={currentSlide === index ? 'true' : undefined}
                                     />
                                 ))}
                             </div>
@@ -371,8 +384,7 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
 
     return (
         <div
-            className={`relative w-full rounded-xl overflow-hidden shadow-sm cursor-pointer transition-transform ${isPressed ? 'scale-[0.98]' : 'hover:shadow-md'
-                } ${item.link_to ? '' : ''}`}
+            className={`sera-banner-image relative w-full cursor-pointer overflow-hidden ${isPressed ? 'is-pressed' : ''}`}
             onClick={onClick}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
@@ -387,9 +399,10 @@ function BannerImage({ item, onClick, onLongPress }: BannerImageProps) {
                 fallbackClassName="aspect-video bg-gradient-to-br from-orange-50 to-gray-100"
                 fallbackIconClassName="h-12 w-12 text-orange-300"
             />
+            <div className="sera-banner-image__scrim" aria-hidden="true" />
             {/* Subtle indicator that image is clickable */}
             {!item.link_to && (
-                <div className="absolute bottom-2 right-2 bg-black/40 text-white px-2 py-1 rounded-full text-xs flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity">
+                <div className="sera-banner-image__expand">
                     <ZoomIn className="w-3 h-3" />
                     <span>Tap to expand</span>
                 </div>

@@ -1925,12 +1925,15 @@ export default function PremiumLoyaltyTemplate({
     }
 
     useEffect(() => {
+        // Guests must never inherit QR-level "already collected" as their own UI state.
+        // Otherwise Collect shows "Collected" and is disabled before they can open the login modal.
+        if (!isAuthenticated) {
+            setQrPointsCollected(false)
+            return
+        }
+
         if (qrClaimMode === 'dual') {
-            if (!isAuthenticated) {
-                setQrPointsCollected(qrShopLaneCollected && qrConsumerLaneCollected)
-            } else {
-                setQrPointsCollected(isShopUser ? qrShopLaneCollected : qrConsumerLaneCollected)
-            }
+            setQrPointsCollected(isShopUser ? qrShopLaneCollected : qrConsumerLaneCollected)
             return
         }
 
@@ -3047,6 +3050,10 @@ export default function PremiumLoyaltyTemplate({
             setUserPhone('')
             setConsumerClaimConfirmed(false)
             setUserId(null)
+            // Guest must not keep session collect flags (would show "Collected" while logged out)
+            setPointsCollected(false)
+            setQrPointsCollected(false)
+            setLastEarnedPoints(0)
 
             // IMPORTANT: Clear login form fields to prevent auto-login on next visit
             setLoginEmail('')
@@ -4817,7 +4824,7 @@ export default function PremiumLoyaltyTemplate({
         }
 
         return (
-            <div className={`px-4 ${currentPlacement === 'top' ? 'mt-6 mb-4' : 'mt-4 mb-6'}`}>
+            <div className={`sera-collect__banner ${currentPlacement === 'top' ? 'is-top' : 'is-bottom'}`}>
                 <AnnouncementBanner
                     items={placementItems as any[]}
                     template={template}
@@ -4900,21 +4907,25 @@ export default function PremiumLoyaltyTemplate({
         )
     }
     const renderHomeTab = () => isPetFoodTheme ? renderEllbowHomeTab() : (
-        <div className="flex-1 overflow-y-auto pb-20">
+        <div className="flex-1 overflow-y-auto pb-6">
+            <div className="sera-collect__home-shell">
             {/* Hero Section */}
-            <div
-                className="relative px-5 pt-8 pb-12 text-white"
-                style={{
-                    background: `linear-gradient(135deg, ${config.primary_color} 0%, ${adjustColor(config.primary_color, -30)} 100%)`
-                }}
-            >
-                {/* Decorative circles */}
-                <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10 bg-white transform translate-x-10 -translate-y-10" />
-                <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full opacity-10 bg-white transform -translate-x-8 translate-y-8" />
-
+            <div className="sera-collect__home-hero">
                 <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-6">
-                        <div>
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-5 flex items-center gap-4">
+                                <div className="sera-collect__brand-plate">
+                                    <Image
+                                        src="/images/logo.png"
+                                        alt="Serapod"
+                                        width={280}
+                                        height={89}
+                                        className="sera-collect__hero-logo !mx-0"
+                                        priority
+                                    />
+                                </div>
+                            </div>
                             {/* Show product info when scanned, otherwise show welcome */}
                             {roadtourContext ? (
                                 <>
@@ -4922,7 +4933,7 @@ export default function PremiumLoyaltyTemplate({
                                         <Gift className="w-4 h-4 text-orange-200" />
                                         <p className="text-orange-200 text-sm font-medium">RoadTour Campaign</p>
                                     </div>
-                                    <h1 className="text-xl font-bold leading-tight">
+                                    <h1 className="text-xl font-bold leading-tight md:text-2xl">
                                         {roadtourContext.campaign_name}
                                     </h1>
                                     <p className="text-white/80 text-sm mt-0.5">Account Manager: {roadtourContext.account_manager_name}</p>
@@ -4933,7 +4944,7 @@ export default function PremiumLoyaltyTemplate({
                                         <Shield className="w-4 h-4 text-green-300" />
                                         <p className="text-green-300 text-sm font-medium">✓ Genuine Product Verified</p>
                                     </div>
-                                    <h1 className="text-xl font-bold leading-tight">
+                                    <h1 className="text-xl font-bold leading-tight md:text-2xl">
                                         {productInfo.product_name}
                                     </h1>
                                     {productInfo.variant_name && (
@@ -4946,8 +4957,8 @@ export default function PremiumLoyaltyTemplate({
                             ) : (
                                 <>
                                     <p className="text-white/80 text-sm">Welcome back</p>
-                                    <h1 className="text-2xl font-bold">
-                                        {userName || 'Valued Member'} ✨
+                                    <h1 className="font-display text-2xl font-bold md:text-3xl">
+                                        {userName || 'Valued Member'}
                                     </h1>
                                     {isAuthenticated && (
                                         <p className="text-white/70 text-xs mt-1">
@@ -4958,7 +4969,7 @@ export default function PremiumLoyaltyTemplate({
                             )}
                         </div>
                         <div
-                            className={`w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative ${isAuthenticated ? 'cursor-pointer hover:opacity-80' : ''}`}
+                            className={`w-12 h-12 shrink-0 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative md:h-14 md:w-14 ${isAuthenticated ? 'cursor-pointer hover:opacity-80' : ''}`}
                             onClick={handleAvatarClick}
                         >
                             {isUploadingAvatar ? (
@@ -5046,8 +5057,8 @@ export default function PremiumLoyaltyTemplate({
             </div>
 
             {/* Quick Actions */}
-            <div className="px-5 -mt-6 relative z-20">
-                <div className="bg-white rounded-2xl shadow-lg p-3 flex justify-between gap-2">
+            <div className="relative z-20 mt-5 px-0">
+                <div className="sera-collect__panel p-4 flex justify-between gap-3 md:p-5">
                     {config.points_enabled && (
                         <button
                             onClick={() => (isRoadtourMode || hasLegacyProductQrContext) ? handleProtectedAction('collect-points') : setShowScanner(true)}
@@ -5147,10 +5158,11 @@ export default function PremiumLoyaltyTemplate({
                 </div>
             </div>
 
+            <div className="sera-collect__home-grid">
             {/* Featured Rewards Section */}
-            <div className="px-5 mt-6">
+            <section className="sera-collect__section">
                 <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Featured Rewards</h2>
+                    <h2 className="font-display text-lg font-bold text-[var(--sera-ink)]">Featured Rewards</h2>
                     <button
                         onClick={() => setActiveTab('rewards')}
                         className="text-sm font-medium flex items-center gap-1"
@@ -5160,7 +5172,7 @@ export default function PremiumLoyaltyTemplate({
                     </button>
                 </div>
 
-                <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
                     {/* Show real rewards if available, otherwise show loading/placeholder */}
                     {loadingRewards ? (
                         // Loading state
@@ -5223,14 +5235,11 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                     )}
                 </div>
-            </div>
-
-            {/* Promotions Banner */}
-            {renderBanner('home', 'top')}
+            </section>
 
             {/* Recent Activity */}
-            <div className="px-5 mt-6 mb-4">
-                <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
+            <section className="sera-collect__section">
+                <h2 className="font-display text-lg font-bold text-[var(--sera-ink)] mb-4">Recent Activity</h2>
                 <div className="space-y-3">
                     {pointsCollected && (
                         <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
@@ -5279,10 +5288,15 @@ export default function PremiumLoyaltyTemplate({
                         </div>
                     )}
                 </div>
+            </section>
             </div>
+
+            {/* Promotions Banner */}
+            {renderBanner('home', 'top')}
 
             {/* Bottom Banner */}
             {renderBanner('home', 'bottom')}
+            </div>
         </div>
     )
 
@@ -6624,14 +6638,23 @@ export default function PremiumLoyaltyTemplate({
 
     // Call to action button handlers
     const renderProfileTab = () => (
-        <div className="flex-1 overflow-y-auto pb-20 bg-gray-50">
-            <div
-                className="px-5 pt-6 pb-16 text-white text-center relative"
-                style={{ backgroundColor: config.primary_color }}
-            >
+        <div className="flex-1 overflow-y-auto pb-6 bg-[var(--sera-mist)]">
+            <div className="sera-collect__content sera-collect__profile-layout">
+            <div className="sera-collect__profile-hero text-center">
                 {/* Buttons moved to fixed position outside scroll container */}
 
-                <div className="w-20 h-20 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center overflow-hidden relative group">
+                <div className="sera-collect__profile-logo">
+                    <Image
+                        src="/images/logo.png"
+                        alt="Serapod"
+                        width={320}
+                        height={102}
+                        className="sera-collect__hero-logo"
+                        priority
+                    />
+                </div>
+
+                <div className="sera-collect__profile-avatar relative z-10 w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center overflow-hidden group">
                     {isAuthenticated && (
                         <>
                             <input
@@ -6665,30 +6688,33 @@ export default function PremiumLoyaltyTemplate({
                         <User className="w-10 h-10" />
                     )}
                 </div>
-                <h1 className="text-xl font-bold">
+                <div className="sera-collect__profile-eyebrow relative z-10">
+                    <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                    {isAuthenticated ? 'Member profile' : 'Serapod2U rewards'}
+                </div>
+                <h1 className="relative z-10 font-display text-2xl font-bold tracking-tight md:text-3xl">
                     {isAuthenticated
                         ? (userName || 'User')
-                        : 'Guest User'}
+                        : 'Welcome to Serapod2U'}
                 </h1>
                 {isAuthenticated && isShopUser && shopName && (
-                    <p className="text-white/70 text-xs">{shopName}</p>
+                    <p className="relative z-10 text-white/70 text-xs mt-1">{shopName}</p>
                 )}
-                <p className="text-white/80 text-sm">
+                <p className="relative z-10 text-white/85 text-sm mt-1 md:text-base">
                     {isAuthenticated
                         ? (userEmail || 'No email')
-                        : 'Sign in to track your rewards'}
+                        : 'Sign in or create an account to collect points & redeem rewards'}
                 </p>
             </div>
 
-            <div className="px-5 -mt-8 relative z-10 space-y-4">
-                {renderBanner('profile', 'top')}
+            <div className="sera-collect__profile-main px-4 relative z-10 space-y-5 pt-4 md:px-0 md:pt-0">
                 {/* Login/Logout Section */}
                 {!isAuthenticated ? (
-                    <div className="bg-white rounded-2xl shadow-lg p-5">
+                    <div className="sera-collect__panel sera-collect__panel--welcome p-5 md:p-6">
                         {showLoginForm ? (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between mb-2">
-                                    <h2 className="text-lg font-bold text-gray-900">
+                                    <h2 className="font-display text-lg font-bold text-[var(--sera-ink)]">
                                         {isSignUp ? 'Create Account' : 'Sign In'}
                                     </h2>
                                     <button
@@ -7130,20 +7156,41 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
                             </div>
                         ) : (
-                            <div className="text-center">
-                                <LogIn className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                                <h2 className="text-lg font-bold text-gray-900">Welcome!</h2>
-                                <p className="text-sm text-gray-500 mt-1 mb-4">
-                                    Sign in to track your points and rewards
-                                </p>
-                                <Button
-                                    onClick={() => setShowLoginForm(true)}
-                                    className="w-full h-11 font-semibold"
-                                    style={{ backgroundColor: config.button_color }}
-                                >
-                                    <LogIn className="w-4 h-4 mr-2" />
-                                    Sign In / Sign Up
-                                </Button>
+                            <div className="text-center space-y-5">
+                                <div className="sera-collect__panel-intro-icon" aria-hidden="true">
+                                    <Gift className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--sera-orange)]">Collect Points</p>
+                                    <h2 className="font-display mt-1 text-xl font-bold text-[var(--sera-ink)]">Get started</h2>
+                                    <p className="mt-1.5 text-sm text-[var(--sera-muted)]">
+                                        Sign in if you already have an account, or create a new one to start earning rewards.
+                                    </p>
+                                </div>
+                                <div className="space-y-2.5">
+                                    <Button
+                                        onClick={() => {
+                                            setIsSignUp(false)
+                                            setShowLoginForm(true)
+                                            setLoginError('')
+                                        }}
+                                        className="sera-collect__cta-primary h-11 font-semibold"
+                                    >
+                                        <LogIn className="w-4 h-4 mr-2" />
+                                        Sign In
+                                    </Button>
+                                    <Button
+                                        onClick={() => {
+                                            setIsSignUp(true)
+                                            setShowLoginForm(true)
+                                            setLoginError('')
+                                        }}
+                                        variant="outline"
+                                        className="sera-collect__cta-secondary h-11 font-semibold"
+                                    >
+                                        Create Account
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -7151,19 +7198,24 @@ export default function PremiumLoyaltyTemplate({
 
                 {/* Stats Section - Only show when authenticated */}
                 {isAuthenticated && (
-                    <div className="bg-white rounded-2xl shadow-lg divide-y divide-gray-100">
+                    <div className="sera-collect__panel divide-y divide-[var(--sera-line)]">
                         <div className="p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Star className="w-5 h-5 text-amber-500" />
-                                <span className="font-medium">Total Points</span>
+                                <span className="font-medium text-[var(--sera-ink)]">Total Points</span>
                             </div>
-                            <span className="font-bold" style={{ color: config.primary_color }}>{userPoints}</span>
+                            <span className="font-bold text-[var(--sera-orange)]">{userPoints}</span>
                         </div>
                     </div>
                 )}
 
             </div>
-            {renderBanner('profile', 'bottom')}
+            </div>
+
+            <div className="sera-collect__content sera-collect__profile-banners">
+                {renderBanner('profile', 'top')}
+                {renderBanner('profile', 'bottom')}
+            </div>
         </div>
     )
 
@@ -7790,70 +7842,82 @@ export default function PremiumLoyaltyTemplate({
     }
 
     return (
-        <div className="h-screen overflow-hidden bg-gray-50 flex flex-col">
-            {/* Profile Header Buttons - Fixed position outside scroll container */}
-            {activeTab === 'profile' && isAuthenticated && (
-                <div
-                    className="fixed top-3 right-3 flex items-center gap-1 z-[9998]"
-                    style={{ pointerEvents: 'auto' }}
-                >
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            console.log('Settings button clicked (fixed)')
-                            setActiveTab('account-settings')
-                        }}
-                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-                        title="Account Settings"
-                        aria-label="Account Settings"
-                    >
-                        <Settings className="w-4 h-4 text-white pointer-events-none" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            console.log('Feedback button clicked (fixed)')
-                            setShowFeedbackModal(true)
-                            setFeedbackError('')
-                            setFeedbackSuccess(false)
-                        }}
-                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none relative"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-                        title="Messages"
-                        aria-label="Messages"
-                    >
-                        <MessageSquare className="w-4 h-4 text-white pointer-events-none" />
-                        {unreadMessageCount > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
-                                {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            console.log('Logout button clicked (fixed)')
-                            handleLogout()
-                        }}
-                        className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors active:bg-white/40 cursor-pointer touch-manipulation select-none"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}
-                        title="Sign Out"
-                        aria-label="Sign Out"
-                    >
-                        <LogOut className="w-4 h-4 text-white pointer-events-none" />
-                    </button>
+        <div className="sera-collect">
+            <div className="sera-collect__frame">
+            <header className="sera-collect__topbar">
+                <div className="sera-collect__brand">
+                    <Image
+                        src="/images/logo.png"
+                        alt="Serapod"
+                        width={248}
+                        height={79}
+                        className="sera-collect__brand-logo"
+                        priority
+                    />
+                    <div className="sera-collect__brand-copy">
+                        <div className="sera-collect__brand-tag">Collect Points</div>
+                    </div>
                 </div>
-            )}
+
+                {activeTab === 'profile' && isAuthenticated && (
+                    <div className="flex items-center gap-1" style={{ pointerEvents: 'auto' }}>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                console.log('Settings button clicked (fixed)')
+                                setActiveTab('account-settings')
+                            }}
+                            className="p-2.5 rounded-full bg-[var(--sera-mist)] hover:bg-[var(--sera-line)] transition-colors active:bg-[var(--sera-line)] cursor-pointer touch-manipulation select-none"
+                            title="Account Settings"
+                            aria-label="Account Settings"
+                        >
+                            <Settings className="w-4 h-4 text-[var(--sera-ink)] pointer-events-none" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                console.log('Feedback button clicked (fixed)')
+                                setShowFeedbackModal(true)
+                                setFeedbackError('')
+                                setFeedbackSuccess(false)
+                            }}
+                            className="p-2.5 rounded-full bg-[var(--sera-mist)] hover:bg-[var(--sera-line)] transition-colors active:bg-[var(--sera-line)] cursor-pointer touch-manipulation select-none relative"
+                            title="Messages"
+                            aria-label="Messages"
+                        >
+                            <MessageSquare className="w-4 h-4 text-[var(--sera-ink)] pointer-events-none" />
+                            {unreadMessageCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[16px] h-4 rounded-full flex items-center justify-center px-1">
+                                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                console.log('Logout button clicked (fixed)')
+                                handleLogout()
+                            }}
+                            className="p-2.5 rounded-full bg-[var(--sera-mist)] hover:bg-[var(--sera-line)] transition-colors active:bg-[var(--sera-line)] cursor-pointer touch-manipulation select-none"
+                            title="Sign Out"
+                            aria-label="Sign Out"
+                        >
+                            <LogOut className="w-4 h-4 text-[var(--sera-ink)] pointer-events-none" />
+                        </button>
+                    </div>
+                )}
+            </header>
 
             {/* Main Content */}
-            {renderContent()}
+            <div className="sera-collect__body">
+                {renderContent()}
+            </div>
 
             {/* QR Scanner Modal */}
             {showScanner && (
@@ -7879,8 +7943,8 @@ export default function PremiumLoyaltyTemplate({
                     onScan={() => setShowScanner(true)}
                 />
             ) : (
-            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-1 safe-area-bottom z-50">
-                <div className="flex items-center justify-around max-w-md mx-auto relative">
+            <nav className="sera-collect__nav">
+                <div className="sera-collect__nav-inner relative">
                     {/* Left tabs: Home, Rewards */}
                     {[
                         { id: 'home' as TabType, icon: Home, label: 'Home' },
@@ -7898,12 +7962,10 @@ export default function PremiumLoyaltyTemplate({
                                         setShowFreeGifts(false)
                                     }
                                 }}
-                                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${isActive ? 'text-white' : 'text-gray-500'
-                                    }`}
-                                style={isActive ? { backgroundColor: config.primary_color } : {}}
+                                className={`sera-collect__nav-btn ${isActive ? 'is-active' : ''}`}
                             >
                                 <Icon className="w-5 h-5" />
-                                <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
+                                <span className="text-[10px] font-medium">{tab.label}</span>
                             </button>
                         )
                     })}
@@ -7911,15 +7973,13 @@ export default function PremiumLoyaltyTemplate({
                     {/* Center Scan Button - Elevated */}
                     <button
                         onClick={() => setShowScanner(true)}
-                        className="relative flex flex-col items-center -mt-6"
+                        className="relative flex flex-col items-center -mt-5"
+                        aria-label="Scan QR"
                     >
-                        <div
-                            className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 border-white"
-                            style={{ backgroundColor: config.primary_color }}
-                        >
+                        <div className="sera-collect__scan">
                             <ScanLine className="w-7 h-7 text-white" />
                         </div>
-                        <span className="text-[10px] mt-1 font-medium text-gray-500">Scan</span>
+                        <span className="text-[10px] mt-1 font-medium text-[var(--sera-muted)]">Scan</span>
                     </button>
 
                     {/* Right tabs: Product, Profile */}
@@ -7936,12 +7996,10 @@ export default function PremiumLoyaltyTemplate({
                                 onClick={() => {
                                     setActiveTab(tab.id)
                                 }}
-                                className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${isActive ? 'text-white' : 'text-gray-500'
-                                    }`}
-                                style={isActive ? { backgroundColor: config.primary_color } : {}}
+                                className={`sera-collect__nav-btn ${isActive ? 'is-active' : ''}`}
                             >
                                 <Icon className="w-5 h-5" />
-                                <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
+                                <span className="text-[10px] font-medium">{tab.label}</span>
                             </button>
                         )
                     })}
@@ -9328,6 +9386,7 @@ export default function PremiumLoyaltyTemplate({
                     </div>
                 </DialogContent>
             </Dialog>
+            </div>
         </div>
     )
 }
