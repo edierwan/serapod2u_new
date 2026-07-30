@@ -165,6 +165,12 @@ export default async function CollectPointsHelpPage() {
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/help"
+              className="hidden rounded-xl border border-[#d8dade] bg-white px-3 py-2 text-sm font-medium text-[#5f6570] transition hover:border-[#e85d04]/35 hover:text-[#141210] sm:inline-flex"
+            >
+              Main menu
+            </Link>
             <a
               href="#video-guides"
               className="hidden px-3 py-2 text-sm font-medium text-[#5f6570] transition hover:text-[#141210] sm:inline-flex"
