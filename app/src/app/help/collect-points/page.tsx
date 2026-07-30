@@ -16,8 +16,9 @@ export const metadata: Metadata = {
 }
 
 const VIDEO_LINKS = {
-  register: process.env.NEXT_PUBLIC_GUIDE_VIDEO_REGISTER || '',
-  collectPoints: process.env.NEXT_PUBLIC_GUIDE_VIDEO_COLLECT_POINTS || '',
+  register: process.env.NEXT_PUBLIC_GUIDE_VIDEO_REGISTER || '/videos/Register.mp4',
+  login: process.env.NEXT_PUBLIC_GUIDE_VIDEO_LOGIN || '/videos/Login.mp4',
+  collectPoints: process.env.NEXT_PUBLIC_GUIDE_VIDEO_COLLECT_POINTS || '/videos/Collect-Point.mp4',
   resetPassword: process.env.NEXT_PUBLIC_GUIDE_VIDEO_RESET_PASSWORD || '',
 } as const
 
@@ -108,7 +109,7 @@ const guides: HelpGuide[] = [
     description: 'Recover your account with email verification and create a new password.',
     duration: '40-50 sec',
     icon: 'password',
-    source: resolveVideoSource(VIDEO_LINKS.resetPassword),
+    source: resolveVideoSource(VIDEO_LINKS.resetPassword || VIDEO_LINKS.login),
     steps: [
       'Open Profile, Sign In, then Forgot Password.',
       'Enter your registered email.',
