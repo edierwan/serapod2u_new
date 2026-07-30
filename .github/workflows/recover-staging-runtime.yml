@@ -1,24 +1,23 @@
-name: Recover Staging Runtime (one-time)
+name: Check Staging Recovery (one-time)
 
 on:
   push:
     branches: [codex/recover-staging-runtime]
 
 jobs:
-  trigger-coolify:
+  check-coolify:
     runs-on: macos-latest
     steps:
-      - name: Trigger one staging deployment from the prebuilt image
+      - name: Read the queued staging deployment status
         shell: bash
         run: |
           set -euo pipefail
           test -n "${COOLIFY_URL}"
-          test -n "${COOLIFY_UUID}"
           test -n "${COOLIFY_TOKEN}"
           curl --fail-with-body -sS -4 --connect-timeout 20 --max-time 45 -X GET \
-            "${COOLIFY_URL%/}/api/v1/deploy?uuid=${COOLIFY_UUID}&force=true" \
-            -H "Authorization: Bearer ${COOLIFY_TOKEN}"
+            "${COOLIFY_URL%/}/api/v1/deployments/vws4cuiu1ouf7kvum2ozo0vj" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" |
+            python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({k:d.get(k) for k in ("deployment_uuid","status","commit","application_name","created_at","updated_at","restart_only")}, separators=(",",":")))'
         env:
           COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-          COOLIFY_UUID: ${{ secrets.COOLIFY_STAGING_UUID }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
