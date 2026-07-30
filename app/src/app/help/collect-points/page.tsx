@@ -1,218 +1,333 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
-import { CollectPointsGuideClient } from '@/components/help/CollectPointsGuideClient'
+import QRCode from 'qrcode'
+import { ArrowRight, Check, PlayCircle, QrCode } from 'lucide-react'
+import {
+  CollectPointsGuideClient,
+  type HelpGuide,
+  type HelpVideoSource,
+} from '@/components/help/CollectPointsGuideClient'
 
 export const metadata: Metadata = {
-  title: 'How to use Collect Points | Serapod2U',
-  description: 'Short guide for registering, signing in, collecting points, and sharing Collect Points with shop staff and customers.',
+  title: 'Serapod2U Help | Register, Collect Points & Reset Password',
+  description:
+    'Short Serapod2U video guides for account registration, collecting product points, and resetting a forgotten password.',
 }
 
-/**
- * Optional video URLs — paste Drive / YouTube / Loom links when ready.
- * Leave empty to show “coming soon”.
- */
 const VIDEO_LINKS = {
   register: process.env.NEXT_PUBLIC_GUIDE_VIDEO_REGISTER || '',
-  login: process.env.NEXT_PUBLIC_GUIDE_VIDEO_LOGIN || '',
   collectPoints: process.env.NEXT_PUBLIC_GUIDE_VIDEO_COLLECT_POINTS || '',
   resetPassword: process.env.NEXT_PUBLIC_GUIDE_VIDEO_RESET_PASSWORD || '',
-  scanQr: process.env.NEXT_PUBLIC_GUIDE_VIDEO_SCAN_QR || '',
 } as const
 
-/** Demo product QR page users can open to try the flow. Override via env. */
+const GUIDE_PATH = '/help/collect-points'
 const DEMO_PRODUCT_PATH =
   process.env.NEXT_PUBLIC_COLLECT_POINTS_DEMO_QR_PATH
   || '/track/product/PROD-CELVA9052-ZER-492299-ORD-HM-0726-03-00003-9f64d8498a07'
 
-const GUIDE_PATH = '/help/collect-points'
+function resolveVideoSource(url: string): HelpVideoSource {
+  if (!url) return null
 
-function VideoRow({
-  title,
-  description,
-  href,
-}: {
-  title: string
-  description: string
-  href: string
-}) {
-  return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-[var(--sera-line,#e8eaed)] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="font-semibold text-[var(--sera-ink,#141210)]">{title}</p>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--sera-muted,#6b7280)]">{description}</p>
-      </div>
-      {href ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--sera-orange,#e85d04)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--sera-orange-deep,#c44a00)]"
-        >
-          Watch video
-        </a>
-      ) : (
-        <span className="inline-flex shrink-0 items-center justify-center rounded-xl border border-dashed border-[var(--sera-line,#e8eaed)] px-4 py-2.5 text-sm font-medium text-[var(--sera-muted,#6b7280)]">
-          Video coming soon
-        </span>
-      )}
-    </div>
-  )
+  if (url.startsWith('/') || /\.(mp4|webm|ogg)(?:\?.*)?$/i.test(url)) {
+    return { kind: 'video', src: url }
+  }
+
+  try {
+    const parsed = new URL(url)
+
+    if (parsed.hostname.includes('youtu.be')) {
+      const id = parsed.pathname.split('/').filter(Boolean)[0]
+      return id ? { kind: 'embed', src: `https://www.youtube-nocookie.com/embed/${id}` } : null
+    }
+
+    if (parsed.hostname.includes('youtube.com')) {
+      const id = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop()
+      return id ? { kind: 'embed', src: `https://www.youtube-nocookie.com/embed/${id}` } : null
+    }
+
+    if (parsed.hostname.includes('loom.com')) {
+      return { kind: 'embed', src: url.replace('/share/', '/embed/') }
+    }
+
+    if (parsed.hostname.includes('drive.google.com')) {
+      const match = parsed.pathname.match(/\/file\/d\/([^/]+)/)
+      return match?.[1]
+        ? { kind: 'embed', src: `https://drive.google.com/file/d/${match[1]}/preview` }
+        : { kind: 'link', src: url }
+    }
+  } catch {
+    return { kind: 'link', src: url }
+  }
+
+  return { kind: 'link', src: url }
 }
 
-export default function CollectPointsHelpPage() {
-  const siteUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://stg.serapod2u.com').replace(/\/$/, '')
+const guides: HelpGuide[] = [
+  {
+    id: 'register',
+    number: '01',
+    label: 'New user',
+    title: 'Register a new account',
+    description: 'Create a secure Serapod2U account after scanning your first product.',
+    duration: '45-60 sec',
+    icon: 'register',
+    source: resolveVideoSource(VIDEO_LINKS.register),
+    steps: [
+      'Scan a product QR and open Profile.',
+      'Select Create Account.',
+      'Enter your personal and shop details.',
+      'Verify the OTP sent to your email and set a password.',
+    ],
+    voiceOver:
+      'Scan the product QR code and open the Profile tab. Select Create Account, enter your details, verify the code sent to your email, and create your password. Your Serapod2U account is now ready.',
+  },
+  {
+    id: 'collect',
+    number: '02',
+    label: 'Rewards',
+    title: 'Collect product points',
+    description: 'Claim the points on a genuine product and see your balance update instantly.',
+    duration: '30-45 sec',
+    icon: 'collect',
+    source: resolveVideoSource(VIDEO_LINKS.collectPoints),
+    steps: [
+      'Scan the QR printed on your product.',
+      'Confirm the genuine product details.',
+      'Tap Collect Points on the Home tab.',
+      'Check your new points balance.',
+    ],
+    voiceOver:
+      'After scanning the product QR code, confirm the genuine product details and tap Collect Points. Once the collection is successful, your earned points and updated balance will appear immediately.',
+  },
+  {
+    id: 'password',
+    number: '03',
+    label: 'Account help',
+    title: 'Reset a forgotten password',
+    description: 'Recover your account with email verification and create a new password.',
+    duration: '40-50 sec',
+    icon: 'password',
+    source: resolveVideoSource(VIDEO_LINKS.resetPassword),
+    steps: [
+      'Open Profile, Sign In, then Forgot Password.',
+      'Enter your registered email.',
+      'Verify the OTP sent to your inbox.',
+      'Create a new password and sign in.',
+    ],
+    voiceOver:
+      'From the Sign In screen, select Forgot Password and enter your registered email. Verify the code sent to your inbox, create and confirm your new password, then sign in to continue using Serapod2U.',
+  },
+]
+
+export default async function CollectPointsHelpPage() {
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_APP_URL
+    || process.env.NEXT_PUBLIC_SITE_URL
+    || 'https://stg.serapod2u.com'
+  ).replace(/\/$/, '')
   const guideUrl = `${siteUrl}${GUIDE_PATH}`
   const demoProductUrl = DEMO_PRODUCT_PATH.startsWith('http')
     ? DEMO_PRODUCT_PATH
     : `${siteUrl}${DEMO_PRODUCT_PATH.startsWith('/') ? '' : '/'}${DEMO_PRODUCT_PATH}`
-
+  const guideQrCode = await QRCode.toDataURL(guideUrl, {
+    width: 420,
+    margin: 1,
+    color: { dark: '#141210', light: '#f3f3f4' },
+    errorCorrectionLevel: 'M',
+  })
   const whatsappText =
-    `Scan this product QR → Register / Sign in → Collect points → Redeem rewards.\n\n` +
-    `Try here: ${demoProductUrl}\n` +
-    `Full guide: ${guideUrl}`
+    `Serapod2U Rewards - Quick Guide\n\n`
+    + `Watch three short videos:\n`
+    + `1. Register a new account\n`
+    + `2. Collect product points\n`
+    + `3. Reset a forgotten password\n\n`
+    + `Guide: ${guideUrl}\n`
+    + `Try the demo: ${demoProductUrl}`
 
   return (
-    <div className="min-h-screen bg-[var(--sera-paper,#fafbfc)] text-[var(--sera-ink,#141210)]">
-      <header className="border-b border-[var(--sera-line,#e8eaed)] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-5 md:px-8 md:py-6">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
+    <div className="min-h-screen bg-[#e9eaed] font-[family-name:var(--font-sera-body),Manrope,sans-serif] text-[#141210]">
+      <header className="sticky top-0 z-40 border-b border-[#d8dade] bg-[#f3f3f4]/95 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-4 py-3.5 sm:px-6 lg:px-8">
+          <Link href="/" aria-label="Serapod2U home" className="flex items-center gap-3">
             <Image
-              src="/images/seralogo-optimized.png"
+              src="/images/logo.png"
               alt="Serapod"
-              width={240}
-              height={56}
-              className="h-11 w-auto max-w-[13rem] object-contain object-left mix-blend-multiply md:h-14 md:max-w-[16rem]"
+              width={248}
+              height={79}
+              className="h-8 w-auto object-contain"
               priority
             />
-            <span className="hidden border-l border-[var(--sera-line,#e8eaed)] pl-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--sera-orange,#e85d04)] sm:inline">
-              Collect Points
+            <span className="hidden border-l border-[#d8dade] pl-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#65615c] sm:block">
+              Rewards help
             </span>
           </Link>
-          <Link
-            href={demoProductUrl}
-            className="shrink-0 rounded-xl bg-[var(--sera-orange,#e85d04)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--sera-orange-deep,#c44a00)]"
-          >
-            Open demo QR
-          </Link>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <a
+              href="#video-guides"
+              className="hidden px-3 py-2 text-sm font-medium text-[#5f6570] transition hover:text-[#141210] sm:inline-flex"
+            >
+              Video guides
+            </a>
+            <Link
+              href={demoProductUrl}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#e85d04] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-12px_rgba(232,93,4,0.65)] transition hover:bg-[#c44a00]"
+            >
+              Try demo
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-8 md:px-8 md:py-12">
-        <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14 lg:items-start">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--sera-orange,#e85d04)]">
-              Collect Points
-            </p>
-            <h1 className="mt-3 font-[family-name:var(--font-sera-display),Syne,sans-serif] text-3xl font-bold tracking-tight text-[var(--sera-ink,#141210)] md:text-4xl lg:text-5xl">
-              How to use Collect Points
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-[var(--sera-muted,#6b7280)] md:text-lg">
-              Short guide for shop staff, Account Managers, and customers. Share this page or the WhatsApp message below.
-            </p>
+      <main>
+        <section className="relative overflow-hidden border-b border-[#d8dade]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(ellipse 60% 50% at 8% 20%, rgba(232,93,4,0.11), transparent 50%), radial-gradient(ellipse 50% 45% at 92% 0%, rgba(20,18,16,0.05), transparent 45%), linear-gradient(165deg, #f0f0f2 0%, #e9eaed 45%, #e4e5e8 100%)',
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.035]"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(20,18,16,0.55) 1px, transparent 1px), linear-gradient(90deg, rgba(20,18,16,0.55) 1px, transparent 1px)',
+              backgroundSize: '44px 44px',
+            }}
+          />
 
-            <section className="mt-8 rounded-2xl border border-[var(--sera-line,#e8eaed)] bg-white p-6 md:p-7">
-              <h2 className="text-lg font-bold text-[var(--sera-ink,#141210)]">Quick flow</h2>
-              <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-[var(--sera-ink-soft,#2a2622)] md:text-base">
-                <li>Scan the product QR (or open the product link).</li>
-                <li>Register as a new user, or Sign In if you already have an account.</li>
-                <li>
-                  Tap <strong>Collect Points</strong> on the home screen.
-                </li>
-                <li>Redeem rewards when you have enough points.</li>
-              </ol>
-            </section>
-
-            <section className="mt-8 space-y-4">
-              <h2 className="text-lg font-bold text-[var(--sera-ink,#141210)]">Videos</h2>
-              <VideoRow
-                title="1) Register (new user)"
-                description="Create account with email, name, phone, shop & password."
-                href={VIDEO_LINKS.register}
-              />
-              <VideoRow
-                title="2) Login"
-                description="Sign in with email and password."
-                href={VIDEO_LINKS.login}
-              />
-              <VideoRow
-                title="3) Collect Points"
-                description="After scan / open QR, collect points for the product."
-                href={VIDEO_LINKS.collectPoints}
-              />
-              <VideoRow
-                title="4) Reset Password"
-                description="Forgot Password → email OTP → new password."
-                href={VIDEO_LINKS.resetPassword}
-              />
-              <VideoRow
-                title="5) Scan QR / open product link"
-                description="Start from camera scan or a shared product URL."
-                href={VIDEO_LINKS.scanQr}
-              />
-            </section>
-          </div>
-
-          <aside className="space-y-6 lg:sticky lg:top-6">
-            <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-[var(--sera-orange,#e85d04)] to-[var(--sera-orange-deep,#c44a00)] p-6 text-white md:p-7">
-              <Image
-                src="/brand/serapod-wordmark-light.png"
-                alt="Serapod"
-                width={280}
-                height={64}
-                className="mb-5 h-10 w-auto max-w-[14rem] object-contain mix-blend-screen md:h-12"
-              />
-              <h2 className="text-xl font-bold">Try it now</h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/85">
-                Open this demo product page — same Collect Points experience as scanning a QR.
+          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,1fr)_420px] lg:px-8 lg:py-24">
+            <div className="max-w-2xl">
+              <div className="h-0.5 w-14 rounded-full bg-[#e85d04]" />
+              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.17em] text-[#e85d04]">
+                Serapod2U video guide
               </p>
-              <a
-                href={demoProductUrl}
-                className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[var(--sera-orange-deep,#c44a00)] hover:bg-white/95"
-              >
-                Open demo product
-              </a>
-              <p className="mt-3 break-all text-[11px] leading-relaxed text-white/70">{demoProductUrl}</p>
-            </section>
-
-            <section className="rounded-2xl border border-[var(--sera-line,#e8eaed)] bg-white p-6 md:p-7">
-              <h2 className="text-lg font-bold text-[var(--sera-ink,#141210)]">Share with WhatsApp</h2>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--sera-muted,#6b7280)]">
-                For shop staff or Account Managers — copy and send to customers:
+              <h1 className="mt-3 font-[family-name:var(--font-sera-display),Syne,sans-serif] text-4xl font-semibold leading-[1.07] tracking-tight sm:text-5xl lg:text-[3.25rem]">
+                Everything you need to start collecting rewards.
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-7 text-[#5f6570] sm:text-lg">
+                Register, collect points, and recover your account with three short, practical videos.
               </p>
-              <pre className="mt-4 whitespace-pre-wrap rounded-xl bg-[var(--sera-mist,#f2f3f5)] p-4 text-sm leading-relaxed text-[var(--sera-ink,#141210)]">
-                {whatsappText}
-              </pre>
-              <div className="mt-5">
-                <CollectPointsGuideClient
-                  guideUrl={guideUrl}
-                  demoProductUrl={demoProductUrl}
-                  whatsappText={whatsappText}
-                />
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a
+                  href="#video-guides"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#e85d04] px-6 py-3 text-sm font-semibold text-white shadow-[0_10px_28px_-12px_rgba(232,93,4,0.65)] transition hover:bg-[#c44a00]"
+                >
+                  Watch the guides
+                  <PlayCircle className="h-4 w-4" />
+                </a>
+                <Link
+                  href={demoProductUrl}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#d8dade] bg-[#f3f3f4] px-6 py-3 text-sm font-semibold text-[#141210] shadow-sm transition hover:border-[#e85d04]/30 hover:text-[#e85d04]"
+                >
+                  Open live demo
+                </Link>
               </div>
-            </section>
+            </div>
 
-            <section className="rounded-2xl border border-[var(--sera-line,#e8eaed)] bg-[var(--sera-mist,#f2f3f5)] p-6">
-              <h2 className="text-base font-bold text-[var(--sera-ink,#141210)]">Where each action is in the app</h2>
-              <ul className="mt-4 space-y-3 text-sm leading-relaxed text-[var(--sera-ink-soft,#2a2622)]">
-                <li>
-                  <strong>Register:</strong> Product QR page → Profile → Create Account (WhatsApp OTP).
-                </li>
-                <li>
-                  <strong>Login:</strong> Profile → Sign In with email + password (or Forgot Password).
-                </li>
-                <li>
-                  <strong>Collect Points:</strong> Home tab after opening a product QR → Collect button.
-                </li>
-              </ul>
-            </section>
-          </aside>
-        </div>
+            <div className="rounded-2xl border border-[#d8dade] bg-[#f3f3f4] p-5 shadow-[0_22px_55px_-32px_rgba(20,18,16,0.38)] sm:p-6">
+              <div className="flex items-center justify-between gap-4 border-b border-[#d8dade] pb-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#e85d04]">One link</p>
+                  <h2 className="mt-1 font-[family-name:var(--font-sera-display),Syne,sans-serif] text-lg font-semibold">
+                    Share the complete guide
+                  </h2>
+                </div>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e85d04]/10 text-[#e85d04]">
+                  <QrCode className="h-5 w-5" />
+                </span>
+              </div>
 
-        <p className="mt-12 text-center text-xs text-[var(--sera-muted,#6b7280)]">
-          Guide URL: <span className="font-medium text-[var(--sera-ink,#141210)]">{guideUrl}</span>
-        </p>
+              <div className="mt-5 flex items-center gap-5">
+                <div className="shrink-0 rounded-xl border border-[#d8dade] bg-white p-2 shadow-sm">
+                  <Image
+                    src={guideQrCode}
+                    alt="QR code for the Serapod2U video guide"
+                    width={160}
+                    height={160}
+                    unoptimized
+                    className="h-28 w-28 rounded-md sm:h-32 sm:w-32"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Scan on any phone</p>
+                  <p className="mt-1.5 text-xs leading-5 text-[#5f6570]">
+                    Registration, points collection, and password recovery in one place.
+                  </p>
+                  <p className="mt-3 break-all text-[10px] leading-4 text-[#85898f]">{guideUrl}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="video-guides" className="scroll-mt-20 border-b border-[#d8dade] bg-[#e9eaed] py-14 sm:py-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-10 max-w-2xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.17em] text-[#e85d04]">Video guides</p>
+              <h2 className="mt-2 font-[family-name:var(--font-sera-display),Syne,sans-serif] text-2xl font-semibold tracking-tight sm:text-3xl">
+                Start with what you need.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#5f6570]">
+                Every guide includes the exact steps and its ready-to-record English voice-over.
+              </p>
+            </div>
+
+            <CollectPointsGuideClient
+              guides={guides}
+              guideUrl={guideUrl}
+              whatsappText={whatsappText}
+              demoProductUrl={demoProductUrl}
+            />
+          </div>
+        </section>
+
+        <section className="bg-[#f3f3f4]">
+          <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 sm:grid-cols-3 lg:px-8">
+            {[
+              ['01', 'Watch', 'Choose the guide that matches what you need.'],
+              ['02', 'Follow', 'Complete each action directly on your phone.'],
+              ['03', 'Done', 'Continue using Serapod2U with confidence.'],
+            ].map(([number, title, description]) => (
+              <div key={number} className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e85d04]/10 text-xs font-bold text-[#e85d04]">
+                  {number}
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="mt-1 text-xs leading-5 text-[#5f6570]">{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-[#d8dade] bg-[#141210] text-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <div>
+            <Image
+              src="/images/logo.png"
+              alt="Serapod"
+              width={248}
+              height={79}
+              className="h-7 w-auto rounded-lg bg-white px-2 py-1 object-contain"
+            />
+            <p className="mt-3 text-xs text-white/50">Register. Collect points. Enjoy your rewards.</p>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/60">
+            {guides.map((guide) => (
+              <span key={guide.id} className="inline-flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5 text-[#e85d04]" />
+                {guide.title}
+              </span>
+            ))}
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
