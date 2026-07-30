@@ -250,7 +250,7 @@ export default function ForgotPasswordModal({
 
     const stepDescription = {
         email: 'Enter your email address to receive a reset code.',
-        verify: `We sent a 4-digit code to ${maskEmail(email)}`,
+        verify: `If an account exists for ${maskEmail(email)}, a 4-digit code will arrive shortly.`,
         'new-password': 'Create a new password for your account.',
         success: 'Password updated successfully. Please log in to continue.',
     }[step]

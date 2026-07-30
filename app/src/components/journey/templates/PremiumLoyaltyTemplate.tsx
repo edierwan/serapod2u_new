@@ -2419,6 +2419,26 @@ export default function PremiumLoyaltyTemplate({
         resetRegistrationVerificationState()
     }
 
+    const openRegistrationFromCollect = (identifier: string) => {
+        const trimmedIdentifier = identifier.trim()
+
+        resetSignUpForm()
+        if (trimmedIdentifier.includes('@')) {
+            setLoginEmail(trimmedIdentifier)
+        } else if (trimmedIdentifier) {
+            setSignUpPhone(trimmedIdentifier)
+        }
+
+        setShowPointsLoginModal(false)
+        setCollectPointsStep('login')
+        setPointsError('')
+        setShopPassword('')
+        setActiveTab('profile')
+        setIsSignUp(true)
+        setShowLoginForm(true)
+        setLoginError('No account was found. Create your account to collect these points.')
+    }
+
     const focusAndScrollToField = (ref: React.RefObject<HTMLInputElement | null>) => {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         ref.current?.focus()
@@ -3935,6 +3955,11 @@ export default function PremiumLoyaltyTemplate({
             }).finally(() => clearTimeout(timeoutId))
 
             const data = await response.json()
+
+            if (!response.ok && data.noAccount) {
+                openRegistrationFromCollect(credentialShopId)
+                return { success: false, error: data.error || 'No account found' }
+            }
 
             if (data.requiresProfileUpdate) {
                 // Establish client-side session so profile page doesn't require re-login

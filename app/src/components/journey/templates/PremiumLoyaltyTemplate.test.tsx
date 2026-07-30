@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import PremiumLoyaltyTemplate from "./PremiumLoyaltyTemplate"
 
@@ -136,6 +136,51 @@ describe('PremiumLoyaltyTemplate endpoint selection', () => {
     forgotPassword.click()
 
     expect(await screen.findByText('Forgot Password Modal Open')).toBeTruthy()
+  }, 10000)
+
+  it('opens registration and preserves the entered email when Collect finds no account', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (url: any) => {
+      const u = String(url)
+      if (u.includes('/api/consumer/collect-points')) {
+        return new Response(JSON.stringify({
+          success: false,
+          noAccount: true,
+          error: 'No account found for this email. Please register first.',
+        }), { status: 404, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (u.includes('/api/consumer/rewards') || u.includes('/api/consumer/products')) {
+        return new Response(JSON.stringify({ success: true, rewards: [], products: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (u.includes('/api/master-banner')) {
+        return new Response(JSON.stringify({ success: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+
+    render(
+      <PremiumLoyaltyTemplate
+        config={MINIMAL_CONFIG}
+        orgId={ORG_ID}
+        isLive={true}
+        experienceTheme="premium"
+        qrCode="TEST-QR-123"
+      />,
+    )
+
+    const collectButton = await screen.findByText('Collect')
+    collectButton.click()
+
+    const identifierInput = await screen.findByPlaceholderText('Enter your email or phone')
+    const passwordInput = await screen.findByPlaceholderText('Enter your password')
+    fireEvent.change(identifierInput, { target: { value: 'new.member@example.com' } })
+    fireEvent.change(passwordInput, { target: { value: 'temporary-password' } })
+
+    const submitButton = screen.getByRole('button', { name: 'Collect Points' })
+    submitButton.click()
+
+    expect(await screen.findByRole('heading', { name: 'Create Account' })).toBeTruthy()
+    expect(await screen.findByText('No account was found. Create your account to collect these points.')).toBeTruthy()
+    expect((await screen.findByPlaceholderText('Enter your email address')).getAttribute('value')).toBe('new.member@example.com')
   }, 10000)
 })
 
