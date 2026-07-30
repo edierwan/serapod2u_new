@@ -22,7 +22,10 @@ vi.mock('@/components/ScratchCard', () => ({ __esModule: true, default: () => <d
 vi.mock('@/components/SpinWheelGame', () => ({ __esModule: true, default: () => <div /> }))
 vi.mock('@/components/DailyQuizGame', () => ({ __esModule: true, default: () => <div /> }))
 vi.mock('@/components/scanner/QrScanner', () => ({ __esModule: true, default: () => <div /> }))
-vi.mock('@/components/journey/ForgotPasswordModal', () => ({ __esModule: true, default: () => <div /> }))
+vi.mock('@/components/journey/ForgotPasswordModal', () => ({
+  __esModule: true,
+  default: ({ isOpen }: any) => isOpen ? <div>Forgot Password Modal Open</div> : null,
+}))
 vi.mock('@/components/journey/SecurityCodeModal', () => ({ SecurityCodeModal: () => <div /> }))
 vi.mock('@/app/actions/consumer', () => ({ logoutConsumer: vi.fn() }))
 vi.mock('@/lib/actions', () => ({ registerConsumer: vi.fn() }))
@@ -120,6 +123,19 @@ describe('PremiumLoyaltyTemplate endpoint selection', () => {
       expect(spy.mock.calls.filter(([u]: any) => String(u).includes('/api/roadtour/products')).length).toBe(0)
       expect(spy.mock.calls.filter(([u]: any) => String(u).includes('/api/engagement/catalog/ellbow/public-rewards')).length).toBe(0)
     }, { timeout: 5000 })
+  }, 10000)
+
+  it('opens Forgot Password from the direct /app profile sign-in form', async () => {
+    render(<PremiumLoyaltyTemplate config={MINIMAL_CONFIG} orgId={ORG_ID} isLive={true} experienceTheme="premium" />)
+
+    const profileButtons = await screen.findAllByText('Profile')
+    expect(profileButtons.length).toBeGreaterThan(0)
+    profileButtons[0].click()
+
+    const forgotPassword = await screen.findByText('Forgot Password?')
+    forgotPassword.click()
+
+    expect(await screen.findByText('Forgot Password Modal Open')).toBeTruthy()
   }, 10000)
 })
 
