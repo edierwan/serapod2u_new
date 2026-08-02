@@ -5,16 +5,22 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 
 /**
- * Returns the minimum safe "posting has started" status for a set of Stock Count
- * drafts, so Manage Drafts can decide which rows are still discardable.
+ * Returns the minimum safe "final verification started" status for a set of
+ * Stock Count drafts, so Manage Drafts can decide which rows are still
+ * discardable.
+ *
+ * Protection boundary = explicit OTP request for final posting
+ * (`stock_count_verification_requests` in pending_delivery / active / posted).
+ *
+ * A warehouse freeze / counting Opening Balance cutoff alone is NOT posting
+ * started — operators may still discard unfinished pre-OTP drafts.
  *
  * `stock_count_verification_requests` is deliberately server-only (it stores OTP
  * code hashes and is REVOKEd from the authenticated role). The browser must
- * therefore never query it directly — doing so raises
- * "permission denied for table stock_count_verification_requests". This route
- * reads it with the service role behind an authenticated, warehouse-scoped
- * authorization check and returns only session IDs — never codes, hashes,
- * recipients or any other verification payload.
+ * therefore never query it directly. This route reads it with the service role
+ * behind an authenticated, warehouse-scoped authorization check and returns
+ * only session IDs — never codes, hashes, recipients or any other verification
+ * payload.
  */
 export async function POST(request: NextRequest) {
     const supabase = await createClient()
@@ -55,26 +61,19 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient() as any
-    const [verificationResult, cutoffResult] = await Promise.all([
-        admin
-            .from('stock_count_verification_requests')
-            .select('session_id')
-            .in('session_id', accessibleIds)
-            .in('status', ['pending_delivery', 'active', 'posted']),
-        admin
-            .from('inventory_opening_cutoffs')
-            .select('stock_count_session_id')
-            .in('stock_count_session_id', accessibleIds)
-            .in('status', ['counting', 'posted']),
-    ])
-    if (verificationResult.error || cutoffResult.error) {
+    const verificationResult = await admin
+        .from('stock_count_verification_requests')
+        .select('session_id')
+        .in('session_id', accessibleIds)
+        .in('status', ['pending_delivery', 'active', 'posted'])
+
+    if (verificationResult.error) {
         return NextResponse.json({ error: 'posting_status_unavailable' }, { status: 500 })
     }
 
-    const postingStartedSessionIds = [...new Set<string>([
-        ...(verificationResult.data || []).map((row: any) => row.session_id as string),
-        ...(cutoffResult.data || []).map((row: any) => row.stock_count_session_id as string),
-    ])]
+    const postingStartedSessionIds = [...new Set<string>(
+        (verificationResult.data || []).map((row: any) => row.session_id as string),
+    )]
 
     return NextResponse.json({ postingStartedSessionIds })
 }

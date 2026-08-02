@@ -119,6 +119,65 @@ describe('Stock Count configuration-first catalog', () => {
     expect(isStockCountCatalogRowVisible(inactive, false)).toBe(false)
   })
 
+  it('excludes an archived variant from new counts but reveals it (as history) with Show Inactive', () => {
+    // A soft-deleted (archived) variant whose stock configuration is still
+    // active in the catalog must never surface in a fresh Stock Adjustment.
+    const archived = config({
+      product_variants: { ...config().product_variants, is_active: false },
+    })
+    const [row] = buildStockCountCatalogRows([archived], [])
+    expect(row.variantIsActive).toBe(false)
+    // Hidden from a new operational list...
+    expect(isStockCountCatalogRowVisible(row, false)).toBe(false)
+    // ...but recoverable as read-only history when the operator opts in
+    // (this is how an existing draft keeps the item instead of dropping it).
+    expect(isStockCountCatalogRowVisible(row, true)).toBe(true)
+  })
+
+  it('marks an active variant row as variantIsActive by default', () => {
+    const [row] = buildStockCountCatalogRows([config()], [])
+    expect(row.variantIsActive).toBe(true)
+    expect(isStockCountCatalogRowVisible(row, false)).toBe(true)
+  })
+
+  it('keeps active variants countable while excluding archived variants in the same catalog', () => {
+    // The rule is general: archived master data is keyed on is_active, never a
+    // reported variant name.
+    const archivedVariant = (name: string) => ({
+      id: `archived-${name}`, variant_id: `archived-${name}`, config_code: 'STD', config_label: 'Standard',
+      stock_sku: `ARCH-${name}`, volume_ml: null, packaging: null, status: 'active',
+      product_variants: {
+        id: `archived-${name}`, variant_name: `Archived variant ${name}`, alternative_name: null,
+        variant_code: `ARCH-${name}`, product_code: 'ARCH', manufacturer_sku: null, manual_sku: null,
+        image_url: null, base_cost: 17, is_active: false,
+        products: { id: 'archived-product', product_name: 'Archived product', is_active: true, product_groups: { id: 'device', group_name: 'Device', group_description: null }, brands: null },
+      },
+    })
+    const rows = buildStockCountCatalogRows(
+      [archivedVariant('one'), archivedVariant('two'), config()],
+      [],
+    )
+    const visible = rows.filter(row => isStockCountCatalogRowVisible(row, false))
+    const visibleNames = visible.map(row => row.variantName)
+    expect(visibleNames).not.toContain('Archived variant one')
+    expect(visibleNames).not.toContain('Archived variant two')
+    // The active Durian variant remains available for counting.
+    expect(visibleNames).toContain('Deluxe Cellera Cartridge [ Durian ]')
+  })
+
+  it('excludes inactive products from new scopes but retains them for historical display', () => {
+    const inactiveProduct = config({
+      product_variants: {
+        ...config().product_variants,
+        products: { ...config().product_variants.products, is_active: false },
+      },
+    })
+    const [row] = buildStockCountCatalogRows([inactiveProduct], [])
+    expect(row.productIsActive).toBe(false)
+    expect(isStockCountCatalogRowVisible(row, false)).toBe(false)
+    expect(isStockCountCatalogRowVisible(row, true)).toBe(true)
+  })
+
   it('fails closed if duplicate inventory rows exist', () => {
     expect(() => buildStockCountCatalogRows([config()], [
       { id: 'one', stock_config_id: 'durian-20nb' },

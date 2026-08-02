@@ -16,6 +16,16 @@ export interface StockCountCatalogRow {
   volumeMl: number | null
   packagingVersion: string | null
   configStatus: string
+  /**
+   * Whether the owning variant is still active master data. Archived variants
+   * (is_active = false) are excluded from new counts entirely; when they survive
+   * inside a historical draft scope they are flagged so the UI can label them as
+   * "Archived variant — historical draft item" instead of showing them as a
+   * normal countable row.
+   */
+  variantIsActive: boolean
+  /** Whether the owning product is still active master data. */
+  productIsActive: boolean
   variantId: string
   productName: string
   productCode: string
@@ -145,6 +155,8 @@ export function buildStockCountCatalogRows(
       volumeMl: config.volume_ml,
       packagingVersion: config.packaging,
       configStatus: config.status,
+      variantIsActive: variant.is_active !== false,
+      productIsActive: product.is_active !== false,
       variantId: variant.id,
       productName: product.product_name || 'Unnamed product',
       productCode: variant.product_code || '',
@@ -190,6 +202,12 @@ export function isStockCountCatalogRowVisible(row: StockCountCatalogRow, showIna
   // cleanup migration, not hidden from the operator.
   if (!row.eligible && !hasActivity) return false
   if (row.configCode === 'UNCLASSIFIED' && !hasActivity) return false
+  // Archived master data is never part of a NEW operational selection. When such
+  // a row only survives because it is inside a historical draft scope, it is
+  // treated exactly like an inactive configuration: hidden from fresh lists and
+  // only revealed (as read-only history) when the operator opts into Show
+  // Inactive. This is defence in depth on top of the is_active query filter.
+  if (row.variantIsActive === false || row.productIsActive === false) return showInactive
   if (row.configStatus === 'inactive') return showInactive
   if (row.configStatus === 'phase_out' && !hasActivity) return showInactive
   return true

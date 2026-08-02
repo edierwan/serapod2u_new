@@ -70,11 +70,28 @@ describe('Phase 17 Stock Count draft discard SQL + UI contract', () => {
     expect(stockCountView).toContain(
       'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.',
     )
-    expect(stockCountView).toContain('Draft discarded successfully. Inventory was not changed.')
+    expect(stockCountView).toContain('OPENING_BALANCE_DISCARD_CONFIRMATION')
+    expect(stockCountView).toContain('Draft discarded successfully. Inventory, orders, stock movements and QR records were not changed.')
     expect(stockCountView).toContain(
-      'This Stock Count can no longer be discarded because it is no longer a draft.',
+      'This Stock Count can no longer be discarded because final verification has started or it is no longer a draft.',
     )
     expect(stockCountView).not.toContain('Delete Stock Count')
     expect(stockCountView).not.toMatch(/>\s*Archive\s*</)
   })
+
+  it('legacy history query excludes archived (discarded) sessions so they do not resurface', () => {
+    // Root-cause guard for the reported bug: the "Saved counts and legacy
+    // history" query must not re-surface archived (discarded) sessions.
+    expect(stockCountView).toContain("LEGACY_HISTORY_STATUSES")
+    expect(stockCountView).not.toContain("['posted', 'archived']")
+    expect(stockCountView).toContain('stock-count-draft-eligibility')
+  })
+
+  it('Manage Drafts labels protected/official records and disables their selection', () => {
+    expect(stockCountView).toContain('protection_reason')
+    expect(stockCountView).toContain('disabled={discardingDrafts || !draft.deletable}')
+    expect(stockCountView).toContain('protected')
+    expect(stockCountView).toContain('history_badge')
+  })
 })
+

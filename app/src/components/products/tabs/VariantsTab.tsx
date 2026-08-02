@@ -26,6 +26,11 @@ import {
   matchesVariantSearch,
 } from '@/lib/products/variant-master-data'
 import { uploadKkmCertificate } from '@/lib/products/kkm-certificate'
+import {
+  VariantArchiveRefreshError,
+  archiveProductVariantAndRefresh,
+  variantArchiveSuccessDescription,
+} from '@/lib/products/variant-deletion'
 
 interface Product {
   id: string
@@ -77,6 +82,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   const [editingVariant, setEditingVariant] = useState<Variant | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [archivingVariantId, setArchivingVariantId] = useState<string | null>(null)
   const [sortColumn, setSortColumn] = useState<string>('variant_name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [currentPage, setCurrentPage] = useState(1)
@@ -157,6 +163,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         }
       })
       setVariants(variantsData as Variant[])
+      return true
     } catch (error) {
       console.error('Error loading variants:', error)
       toast({
@@ -164,6 +171,7 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
         description: 'Failed to load variants',
         variant: 'destructive'
       })
+      return false
     } finally {
       setLoading(false)
     }
@@ -375,18 +383,20 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this variant?')) return
+    if (!confirm('Archive this variant? It will be hidden from new operations while inventory and transaction history remain unchanged.')) return
+    setArchivingVariantId(id)
     try {
-      const { error } = await (supabase as any)
-        .from('product_variants')
-        .update({ is_active: false })
-        .eq('id', id)
-      if (error) throw error
-      toast({ title: 'Success', description: 'Variant deleted successfully' })
-      loadVariants()
-    } catch (error) {
-      console.error('Error deleting variant:', error)
-      toast({ title: 'Error', description: 'Failed to delete variant', variant: 'destructive' })
+      const result = await archiveProductVariantAndRefresh(supabase as any, id, loadVariants)
+      toast({ title: 'Variant Archived', description: variantArchiveSuccessDescription(result) })
+    } catch (error: any) {
+      console.error('Error archiving variant:', error)
+      toast({
+        title: error instanceof VariantArchiveRefreshError ? 'Variant archived; refresh failed' : 'Variant archive failed',
+        description: error?.message || 'The variant was not archived. No success was recorded.',
+        variant: 'destructive',
+      })
+    } finally {
+      setArchivingVariantId(null)
     }
   }
 
@@ -598,8 +608,17 @@ export default function VariantsTab({ userProfile, onRefresh, refreshTrigger }: 
                         <Button variant="ghost" size="sm" onClick={() => { setEditingVariant(variant); setDialogOpen(true) }}>
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(variant.id)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                          <Trash2 className="w-4 h-4" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(variant.id)}
+                          disabled={archivingVariantId === variant.id}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Archive variant"
+                        >
+                          {archivingVariantId === variant.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Trash2 className="w-4 h-4" />}
                         </Button>
                       </div>
                     </TableCell>

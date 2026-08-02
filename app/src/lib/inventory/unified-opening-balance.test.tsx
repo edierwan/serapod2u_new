@@ -56,11 +56,15 @@ describe('Unified Inventory Opening Balance flow', () => {
     expect(settingsView).not.toContain('Inventory Go-Live &amp; Cut-off')
     expect(stockCountView).toContain('<InventoryOpeningCutoffSection')
     expect(cutoffSection).toContain('Opening Balance Review, Freeze &amp; Posting')
-    expect(cutoffSection).toContain('Distributor order decisions')
-    expect(cutoffSection).toContain('Manufacturer incoming decisions')
-    expect(cutoffSection).toContain('Cancel Freeze &amp; Reopen Warehouse')
+    // The guided wizard embeds the same distributor and manufacturer decisions
+    // under their five-step headings (renamed from the old flat sections).
+    expect(cutoffSection).toContain('Resolve Distributor (D2H) Orders')
+    expect(cutoffSection).toContain('Resolve Manufacturer (H2M) Incoming')
+    expect(cutoffSection).toContain('Danger Zone / More Actions')
+    expect(cutoffSection).toContain('Cancel Entire Opening Balance Exercise')
+    expect(cutoffSection).toContain('Posting Note')
     expect(cutoffSection).toContain('Request OTP')
-    expect(cutoffSection).toContain('Post Official Opening Balance')
+    expect(cutoffSection).toContain('Verify OTP &amp; Post Opening Balance')
   })
 
   it('blocks legacy posting in both preflight and verify routing', () => {
@@ -99,16 +103,27 @@ describe('Unified Inventory Opening Balance flow', () => {
     expect(stockCountView).toContain('mustContinueExistingOpeningDraft')
     expect(stockCountView).toContain('existingOpeningDraft')
     expect(stockCountView).toContain('Continue Existing Draft')
-    // Save path: concurrent create loses the unique race and continues instead.
+    expect(stockCountView).toContain('resolveActiveOpeningBalanceDraft')
+    expect(stockCountView).toContain('cutoff_status')
+    expect(cutoffSection).toContain('Cancelled — Read Only')
+    expect(cutoffSection).toContain('cancelledOpeningBalanceNextAction')
+    expect(cutoffSection).toContain('onReturnToActiveDraft')
+    // Save path: a concurrent create loses the unique race, refreshes detection,
+    // and still requires the operator to choose Continue Existing Draft.
     expect(stockCountView).toContain("(error as any).code === '23505'")
-    expect(stockCountView).toContain('Continuing existing Opening Balance draft')
+    expect(stockCountView).toContain('Use Continue Existing Draft. No second draft was created.')
   })
 
   it('lists only deletable drafts and rejects discard after posting starts', () => {
-    expect(stockCountView).toContain('drafts.filter(draft => draft.deletable)')
+    // Manage Drafts is scoped to the selected Count Type but still shows the
+    // removable (deletable) count only; discard acts on deletable drafts only.
+    expect(stockCountView).toContain('countTypeDrafts.filter(draft => draft.deletable)')
+    expect(stockCountView).toContain('draft => uniqueIds.has(draft.id) && draft.deletable')
     // The posting-started status (which reads the server-only OTP table) now
     // lives behind an authorized server route, never in the browser bundle.
+    // Counting freezes alone are intentionally excluded from posting-started.
     expect(postingStatusRoute).toContain("['pending_delivery', 'active', 'posted']")
+    expect(postingStatusRoute).not.toContain("from('inventory_opening_cutoffs')")
     expect(stockCountView).not.toContain("from('stock_count_verification_requests')")
     expect(migration04).toContain('stock_count_discard_posting_started_guard')
     expect(migration04).toContain('stock_count_not_discardable_posting_started')

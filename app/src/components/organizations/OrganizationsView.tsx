@@ -59,6 +59,7 @@ import {
   SeraModalBody,
 } from '@/components/ui/sera-modal'
 import { buildSetDefaultFulfillmentConfirmMessage } from '@/lib/organizations/distributor-fulfillment-default'
+import { ALL_STATES_VALUE, deriveStateOptions, matchesStateFilter } from '@/lib/organizations/state-filter'
 
 interface UserProfile {
   id: string
@@ -249,6 +250,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [filterType, setFilterType] = useState<string>('all')
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [filterProgram, setFilterProgram] = useState<string>('all')
+  const [filterState, setFilterState] = useState<string>(ALL_STATES_VALUE)
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list')
   const [sortField, setSortField] = useState<SortField>('org_name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -527,6 +529,10 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     }
   }
 
+  // State filter options are derived from the loaded records so the dropdown
+  // reflects the states actually present (no hardcoded list).
+  const stateFilterOptions = deriveStateOptions(organizations)
+
   const filteredOrganizations = organizations.filter(org => {
     const matchesSearch = matchesOrganizationSearch(org, searchTerm)
 
@@ -537,8 +543,9 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       (filterStatus === 'inactive' && !org.is_active)
     const matchesProgram =
       filterProgram === 'all' || getProgramLabel(org) === filterProgram
+    const matchesState = matchesStateFilter(org, filterState)
 
-    return matchesSearch && matchesType && matchesStatus && matchesProgram
+    return matchesSearch && matchesType && matchesStatus && matchesProgram && matchesState
   }).sort((a, b) => {
     let aVal: any = a[sortField]
     let bVal: any = b[sortField]
@@ -581,7 +588,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, filterType, filterStatus, filterProgram])
+  }, [searchTerm, filterType, filterStatus, filterProgram, filterState])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1034,8 +1041,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
       {/* Filters */}
       <Card className="sera-sc-panel shadow-none">
         <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4">
+            <div className="flex-1 sm:min-w-[220px]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sera-muted)] w-4 h-4" />
                 <Input
@@ -1077,6 +1084,19 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
               </SelectTrigger>
               <SelectContent>
                 {PROGRAM_FILTER_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterState} onValueChange={setFilterState}>
+              <SelectTrigger className="w-full sm:w-48 border-[var(--sera-line)]">
+                <MapPin className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="State" />
+              </SelectTrigger>
+              <SelectContent>
+                {stateFilterOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -1683,7 +1703,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-[var(--sera-ink)] mb-2">No organizations found</h3>
             <p className="text-[var(--sera-muted)] mb-4">
-              {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterProgram !== 'all'
+              {searchTerm || filterType !== 'all' || filterStatus !== 'all' || filterProgram !== 'all' || filterState !== ALL_STATES_VALUE
                 ? 'Try adjusting your search criteria'
                 : 'Get started by adding your first organization'
               }

@@ -58,15 +58,34 @@ export async function POST(request: NextRequest) {
                     message: 'The Inventory Opening Balance & Initial Classification freeze is not active.',
                 }))
             }
+            // Authoritative readiness comes from the same inventory_cutoff_preview
+            // the Final Verification UI uses. Advisory-only 'Review Required'
+            // (stock-in-transit / historical-excluded) is postable — same contract
+            // as canExecuteInventoryCutoff and
+            // 20260801240000_opening_balance_post_allows_review_required.sql.
+            // Reject ONLY genuine blockers ('Blocked'). Never map an empty
+            // blockers[] join ('') onto the default "no valid counted quantities"
+            // message — that falsely contradicted the 112-config / physical total.
             const { data: cutoffPreview, error: previewError } = await (supabase as any)
                 .rpc('inventory_cutoff_preview', { p_cutoff_id: cutoff.id })
             if (previewError) throw previewError
-            if (cutoffPreview?.readiness !== 'Ready') {
-                const blockers = Array.isArray(cutoffPreview?.blockers)
-                    ? cutoffPreview.blockers.join(' ')
-                    : 'Resolve all cut-off blockers before requesting verification.'
+            const readiness = cutoffPreview?.readiness
+            if (readiness === 'Blocked') {
+                const blockerList = Array.isArray(cutoffPreview?.blockers)
+                    ? cutoffPreview.blockers.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+                    : []
                 return jsonError(stockCountVerificationError('invalid_count_data', {
-                    stage: 'request', message: blockers,
+                    stage: 'request',
+                    message: blockerList.length > 0
+                        ? blockerList.join(' ')
+                        : 'Resolve all Opening Balance blockers before requesting verification.',
+                }))
+            }
+            const postableReadiness = readiness === 'Ready' || readiness === 'Review Required'
+            if (!postableReadiness) {
+                return jsonError(stockCountVerificationError('invalid_count_data', {
+                    stage: 'request',
+                    message: 'Opening Balance readiness could not be confirmed. Refresh the preview and try again.',
                 }))
             }
         }
@@ -159,9 +178,7 @@ export async function POST(request: NextRequest) {
             message: error?.message,
             code: error?.code,
         })
-        const mapped = mapStockCountDatabaseError(error?.message || '', 'request', error?.code)
-        return jsonError(mapped.code === 'unexpected_error'
-            ? stockCountVerificationError('unexpected_error', { stage: 'request', reference })
-            : { ...mapped, stage: 'request' })
+        const mapped = mapStockCountDatabaseError(error?.message || '', 'request', error?.code, reference)
+        return jsonError({ ...mapped, stage: 'request', reference })
     }
 }

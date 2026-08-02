@@ -3,6 +3,7 @@
 import { Fragment, useState, useEffect, useMemo } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
+import { subscribeToInventoryDataRefresh } from '@/lib/inventory/inventory-data-refresh'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -144,6 +145,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       fetchProducts()
       fetchVariants()
     }
+  }, [isReady, showInactive])
+
+  // Authoritative invalidation: refetch once when another view confirms a
+  // committed inventory write (e.g. an Opening Balance post). Not polling.
+  useEffect(() => {
+    if (!isReady) return
+    return subscribeToInventoryDataRefresh(() => {
+      fetchInventory()
+      fetchIncoming()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, showInactive])
 
   useEffect(() => {

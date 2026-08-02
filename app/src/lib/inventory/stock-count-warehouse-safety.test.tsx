@@ -42,7 +42,10 @@ describe('Stock Count active warehouse safety', () => {
   })
 
   it('keeps valid warehouse history and blocks unsafe legacy history from mutation/posting', () => {
-    expect(stockCountView).toContain(".in('status', ['posted', 'archived'])")
+    // Legacy Initial-Classification history is restricted to POSTED sessions via
+    // LEGACY_HISTORY_STATUSES (= ['posted']); 'archived'/discarded drafts must not
+    // reappear as "Legacy — Read Only" cards (approved discard-drafts fix).
+    expect(stockCountView).toContain(".in('status', LEGACY_HISTORY_STATUSES)")
     expect(stockCountView).toContain('Stock Count drafts blocked by invalid warehouse master data')
     expect(stockCountView).toContain('invalidWarehouseDrafts')
     expect(stockCountView).toContain('This historical record remains unchanged')
