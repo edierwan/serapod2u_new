@@ -191,10 +191,6 @@ z_*
 !/docs/reporting-data-coverage-audit/
 !/docs/reporting-data-coverage-audit/**
 
-# Monorepo + docs index (intentionally tracked)
-!README.md
-!/docs/README.md
-
 # RoadTour module specifications are implementation artifacts
 !/docs/roadtourmodules/
 !/docs/roadtourmodules/33-roadtour-event-product-category-experience.md

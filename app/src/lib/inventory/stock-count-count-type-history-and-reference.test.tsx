@@ -7,7 +7,6 @@ const repoFile = (path: string) => fs.readFileSync(
 )
 
 const stockCountView = repoFile('app/src/components/inventory/StockAdjustmentView.tsx')
-const draftsPanel = repoFile('app/src/components/inventory/StockCountDraftsPanel.tsx')
 const referenceMigration = repoFile('supabase/migrations/20260730_stock_count_reference_required.sql')
 
 describe('Count Type History wiring', () => {
@@ -20,9 +19,7 @@ describe('Count Type History wiring', () => {
   it('filters the history and Manage Drafts by the selected count type (display-only memo)', () => {
     expect(stockCountView).toContain('filterSessionsByCountType(drafts, countType)')
     // Chips, Manage Drafts table and Select All all read the filtered list.
-    // The count-type-scoped list is passed into StockCountDraftsPanel as `drafts`.
-    expect(stockCountView).toContain('drafts={countTypeDrafts}')
-    expect(draftsPanel).toContain('drafts.map(draft =>')
+    expect(stockCountView).toContain('countTypeDrafts.map(draft =>')
     expect(stockCountView).toContain('stockCountHistoryEmptyMessage(countType)')
   })
 

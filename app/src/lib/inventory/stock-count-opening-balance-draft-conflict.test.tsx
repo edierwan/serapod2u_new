@@ -11,7 +11,6 @@ const repoFile = (path: string) => fs.readFileSync(
 )
 
 const stockCountView = repoFile('app/src/components/inventory/StockAdjustmentView.tsx')
-const issuesPanel = repoFile('app/src/components/inventory/StockCountIssuesPanel.tsx')
 const conflictMigration = repoFile('supabase/migrations/20260730_stock_count_session_items_full_conflict_index.sql')
 const configMigration = repoFile('supabase/migrations/20260717_stock_config_04_stock_count.sql')
 const currentSchema = repoFile('supabase/schemas/current_schema.sql')
@@ -148,17 +147,14 @@ describe('Opening Balance Save Draft — existing-draft state gating', () => {
 
   it('keeps Save disabled when a known existing Opening Balance draft is found', () => {
     expect(stockCountView).toContain('&& !mustContinueExistingOpeningDraft')
-    // The blocking card renders from StockCountIssuesPanel since the wizard refactor.
-    expect(issuesPanel).toContain('An Opening Balance draft already exists for this warehouse')
-    expect(issuesPanel).toContain('Continue Existing Draft')
+    expect(stockCountView).toContain('An Opening Balance draft already exists for this warehouse')
+    expect(stockCountView).toContain('Continue Existing Draft')
   })
 
   it('keeps Continue Existing Draft wired to the immutable saved session', () => {
-    // The panel receives the immutable saved session id and hands it straight
-    // back to loadDraft, so the wiring is asserted across both files.
-    expect(stockCountView).toContain('existingOpeningDraftId={existingOpeningDraft?.id ?? null}')
-    expect(stockCountView).toContain('onContinueExistingDraft={draftId => void loadDraft(draftId)}')
-    expect(issuesPanel).toContain('onClick={() => void onContinueExistingDraft(existingOpeningDraftId)}')
+    expect(stockCountView).toContain(
+      '<Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>',
+    )
   })
 
   it('shows a friendly message (never a raw DB error) if Save is clicked before continuing', () => {

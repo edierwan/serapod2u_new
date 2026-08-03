@@ -12,7 +12,6 @@ const repoFile = (path: string) => fs.readFileSync(
   'utf8',
 )
 const stockCountView = repoFile('app/src/components/inventory/StockAdjustmentView.tsx')
-const draftsPanel = repoFile('app/src/components/inventory/StockCountDraftsPanel.tsx')
 const settingsView = repoFile('app/src/components/inventory/InventorySettingsView.tsx')
 const cutoffSection = repoFile('app/src/components/inventory/InventoryOpeningCutoffSection.tsx')
 const verifyRoute = repoFile('app/src/app/api/inventory/stock-count/verification/verify/route.ts')
@@ -118,8 +117,7 @@ describe('Unified Inventory Opening Balance flow', () => {
   it('lists only deletable drafts and rejects discard after posting starts', () => {
     // Manage Drafts is scoped to the selected Count Type but still shows the
     // removable (deletable) count only; discard acts on deletable drafts only.
-    expect(stockCountView).toContain('drafts={countTypeDrafts}')
-    expect(draftsPanel).toContain('drafts.filter(draft => draft.deletable)')
+    expect(stockCountView).toContain('countTypeDrafts.filter(draft => draft.deletable)')
     expect(stockCountView).toContain('draft => uniqueIds.has(draft.id) && draft.deletable')
     // The posting-started status (which reads the server-only OTP table) now
     // lives behind an authorized server route, never in the browser bundle.

@@ -9,7 +9,6 @@ const repoFile = (path: string) => fs.readFileSync(
 const migration = repoFile('supabase/migrations/20260801120000_inventory_cutoff_pre_otp_draft_discard.sql')
 const postingStatusRoute = repoFile('app/src/app/api/inventory/stock-count/drafts/posting-status/route.ts')
 const stockCountView = repoFile('app/src/components/inventory/StockAdjustmentView.tsx')
-const draftsPanel = repoFile('app/src/components/inventory/StockCountDraftsPanel.tsx')
 const cutoffSection = repoFile('app/src/components/inventory/InventoryOpeningCutoffSection.tsx')
 const eligibility = repoFile('app/src/lib/inventory/stock-count-draft-eligibility.ts')
 const d2hPolicy = repoFile('supabase/migrations/20260731230000_inventory_cutoff_d2h_policy.sql')
@@ -68,8 +67,7 @@ describe('Opening Balance pre-OTP discard boundary', () => {
   it('UI history labels come from lifecycle helpers, not 112/112 progress', () => {
     expect(stockCountView).toContain('stockCountHistoryLifecyclePresentation')
     expect(stockCountView).toContain('history_badge')
-    // Drafts & history markup lives in StockCountDraftsPanel since the wizard refactor.
-    expect(draftsPanel).toContain('Draft — Removable')
+    expect(stockCountView).toContain('Draft — Removable')
     expect(stockCountView).toContain('OPENING_BALANCE_DISCARD_CONFIRMATION')
     expect(eligibility).toContain('Final verification has not started.')
     expect(eligibility).toContain('OTP has been requested. Cancel and archive this exercise to restart.')

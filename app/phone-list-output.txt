@@ -1,0 +1,32 @@
+[dotenv@17.2.3] injecting env (7) from .env.local -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+📋 Listing all users with phones in auth.users:
+
+Found 6 users with phone numbers:
+
+1. test@dev.com
+   Phone: 60192222222
+   Confirmed: Yes
+
+2. vapeboss@dev.com
+   Phone: 60187766788
+   Confirmed: Yes
+
+3. edi@serapod.com
+   Phone: 60192277233
+   Confirmed: Yes
+
+4. syed@serapod.com
+   Phone: 60149092718
+   Confirmed: Yes
+
+5. power@dev.com
+   Phone: 987676765
+   Confirmed: Yes
+
+6. super@dev.com
+   Phone: 60132277231
+   Confirmed: Yes
+
+📋 Checking public.users for phone 0132277237:
+
+No users found with this phone in public.users

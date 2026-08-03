@@ -640,8 +640,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <AddStockView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-adjustment':
         return <StockAdjustmentView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'stock-opening-balance':
-        return <StockAdjustmentView userProfile={userProfile} onViewChange={handleViewChange} mode="opening-balance" />
       case 'stock-transfer':
         return <StockTransferView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'stock-movements':
