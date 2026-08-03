@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import QRCode from 'qrcode'
-import { ArrowRight, Check, PlayCircle, QrCode } from 'lucide-react'
+import { Check, PlayCircle, QrCode } from 'lucide-react'
 import {
   CollectPointsGuideClient,
   type HelpGuide,
@@ -16,8 +16,9 @@ export const metadata: Metadata = {
 }
 
 const VIDEO_LINKS = {
-  register: process.env.NEXT_PUBLIC_GUIDE_VIDEO_REGISTER || '',
-  collectPoints: process.env.NEXT_PUBLIC_GUIDE_VIDEO_COLLECT_POINTS || '',
+  register: process.env.NEXT_PUBLIC_GUIDE_VIDEO_REGISTER || '/videos/Register.mp4',
+  login: process.env.NEXT_PUBLIC_GUIDE_VIDEO_LOGIN || '/videos/Login.mp4',
+  collectPoints: process.env.NEXT_PUBLIC_GUIDE_VIDEO_COLLECT_POINTS || '/videos/Collect-Point.mp4',
   resetPassword: process.env.NEXT_PUBLIC_GUIDE_VIDEO_RESET_PASSWORD || '',
 } as const
 
@@ -108,7 +109,7 @@ const guides: HelpGuide[] = [
     description: 'Recover your account with email verification and create a new password.',
     duration: '40-50 sec',
     icon: 'password',
-    source: resolveVideoSource(VIDEO_LINKS.resetPassword),
+    source: resolveVideoSource(VIDEO_LINKS.resetPassword || VIDEO_LINKS.login),
     steps: [
       'Open Profile, Sign In, then Forgot Password.',
       'Enter your registered email.',
@@ -164,19 +165,18 @@ export default async function CollectPointsHelpPage() {
           </Link>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/help"
+              className="hidden rounded-xl border border-[#d8dade] bg-white px-3 py-2 text-sm font-medium text-[#5f6570] transition hover:border-[#e85d04]/35 hover:text-[#141210] sm:inline-flex"
+            >
+              Main menu
+            </Link>
             <a
               href="#video-guides"
               className="hidden px-3 py-2 text-sm font-medium text-[#5f6570] transition hover:text-[#141210] sm:inline-flex"
             >
               Video guides
             </a>
-            <Link
-              href={demoProductUrl}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#e85d04] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_10px_28px_-12px_rgba(232,93,4,0.65)] transition hover:bg-[#c44a00]"
-            >
-              Try demo
-              <ArrowRight className="h-4 w-4" />
-            </Link>
           </div>
         </div>
       </header>
@@ -219,12 +219,6 @@ export default async function CollectPointsHelpPage() {
                   Watch the guides
                   <PlayCircle className="h-4 w-4" />
                 </a>
-                <Link
-                  href={demoProductUrl}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[#d8dade] bg-[#f3f3f4] px-6 py-3 text-sm font-semibold text-[#141210] shadow-sm transition hover:border-[#e85d04]/30 hover:text-[#e85d04]"
-                >
-                  Open live demo
-                </Link>
               </div>
             </div>
 

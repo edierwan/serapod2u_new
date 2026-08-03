@@ -9,6 +9,11 @@ const stockCountView = readFileSync(
   new URL('../../components/inventory/StockAdjustmentView.tsx', import.meta.url),
   'utf8',
 )
+// Drafts & history markup was extracted here by the Stock Count wizard refactor.
+const draftsPanel = readFileSync(
+  new URL('../../components/inventory/StockCountDraftsPanel.tsx', import.meta.url),
+  'utf8',
+)
 
 describe('Phase 17 Stock Count draft discard SQL + UI contract', () => {
   it('is a forward-only soft-archive migration that never mutates inventory', () => {
@@ -59,13 +64,14 @@ describe('Phase 17 Stock Count draft discard SQL + UI contract', () => {
   })
 
   it('Stock Count UI exposes Manage Drafts with Discard Draft wording and confirmation', () => {
-    expect(stockCountView).toContain('Manage Drafts')
-    expect(stockCountView).toContain('Select All')
-    expect(stockCountView).toContain('Deselect All')
-    expect(stockCountView).toContain('Discard Selected Drafts')
-    expect(stockCountView).toContain('Discard Draft')
+    // Manage Drafts chrome now renders from StockCountDraftsPanel.
+    expect(draftsPanel).toContain('Manage Drafts')
+    expect(draftsPanel).toContain('Select All')
+    expect(draftsPanel).toContain('Deselect All')
+    expect(draftsPanel).toContain('Discard Selected Drafts')
+    expect(draftsPanel).toContain('Discard Draft')
     expect(stockCountView).toContain('Discard Drafts')
-    expect(stockCountView).toContain('Open Draft')
+    expect(draftsPanel).toContain('Open Draft')
     expect(stockCountView).toContain('discard_stock_count_drafts')
     expect(stockCountView).toContain(
       'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.',
@@ -88,10 +94,10 @@ describe('Phase 17 Stock Count draft discard SQL + UI contract', () => {
   })
 
   it('Manage Drafts labels protected/official records and disables their selection', () => {
-    expect(stockCountView).toContain('protection_reason')
-    expect(stockCountView).toContain('disabled={discardingDrafts || !draft.deletable}')
-    expect(stockCountView).toContain('protected')
-    expect(stockCountView).toContain('history_badge')
+    expect(draftsPanel).toContain('protection_reason')
+    expect(draftsPanel).toContain('disabled={discardingDrafts || !draft.deletable}')
+    expect(draftsPanel).toContain('protected')
+    expect(draftsPanel).toContain('history_badge')
   })
 })
 

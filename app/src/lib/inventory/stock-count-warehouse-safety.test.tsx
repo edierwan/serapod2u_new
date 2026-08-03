@@ -9,6 +9,7 @@ const repoFile = (path: string) => fs.readFileSync(
 )
 
 const stockCountView = repoFile('app/src/components/inventory/StockAdjustmentView.tsx')
+const stockCountIssuesPanel = repoFile('app/src/components/inventory/StockCountIssuesPanel.tsx')
 const preflight = repoFile('app/src/lib/inventory/stock-count-verification-preflight.ts')
 const verifyRoute = repoFile('app/src/app/api/inventory/stock-count/verification/verify/route.ts')
 const migration04 = repoFile('supabase/migrations/20260726_inventory_opening_balance_cutoff/04_unified_opening_balance_flow.sql')
@@ -46,9 +47,10 @@ describe('Stock Count active warehouse safety', () => {
     // LEGACY_HISTORY_STATUSES (= ['posted']); 'archived'/discarded drafts must not
     // reappear as "Legacy — Read Only" cards (approved discard-drafts fix).
     expect(stockCountView).toContain(".in('status', LEGACY_HISTORY_STATUSES)")
-    expect(stockCountView).toContain('Stock Count drafts blocked by invalid warehouse master data')
+    // The invalid-warehouse card now lives in StockCountIssuesPanel (asserted below).
     expect(stockCountView).toContain('invalidWarehouseDrafts')
     expect(stockCountView).toContain('This historical record remains unchanged')
+    expect(stockCountIssuesPanel).toContain('Stock Count drafts blocked by invalid warehouse master data')
     expect(migration04).toContain('stock_count_legacy_initial_read_only')
   })
 

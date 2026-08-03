@@ -38,6 +38,9 @@ import {
 } from '@/lib/inventory/stock-count-classification'
 import { stockCountDraftSignature } from '@/lib/inventory/stock-count-snapshot'
 import InventoryOpeningCutoffSection from '@/components/inventory/InventoryOpeningCutoffSection'
+import { StockCountWizardSteps } from '@/components/inventory/StockCountWizardSteps'
+import { StockCountIssuesPanel } from '@/components/inventory/StockCountIssuesPanel'
+import { StockCountDraftsPanel } from '@/components/inventory/StockCountDraftsPanel'
 import {
   buildOpeningBalanceScopeRows,
   buildStockCountCatalogRows,
@@ -107,7 +110,6 @@ import {
   FileSpreadsheet,
   Loader2,
   MessageSquare,
-  MoreHorizontal,
   Package,
   RotateCcw,
   Save,
@@ -206,6 +208,8 @@ interface PreflightState {
 interface StockAdjustmentViewProps {
   userProfile: any
   onViewChange?: (view: string) => void
+  /** UI focus only — same logic as picking Opening Balance count type on the main page. */
+  mode?: 'default' | 'opening-balance'
 }
 
 interface ProductCategoryOption {
@@ -296,7 +300,7 @@ const formatVerificationApiError = (
   return `${base} Reference: ${result.reference}.`
 }
 
-export default function StockAdjustmentView({ userProfile, onViewChange }: StockAdjustmentViewProps) {
+export default function StockAdjustmentView({ userProfile, onViewChange, mode = 'default' }: StockAdjustmentViewProps) {
   const { isReady, supabase } = useSupabaseAuth()
   const { hasPermission, loading: permissionLoading } = usePermissions(
     userProfile?.roles?.role_level,
@@ -309,6 +313,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const postingNoteRecheckPendingRef = useRef(false)
   const draftLoadGenerationRef = useRef(0)
   const draftCriteriaRef = useRef('')
+  const openingBalanceModeSeededRef = useRef(false)
+
+  const [wizardStep, setWizardStep] = useState<'setup' | 'count' | 'review'>('setup')
+  const [draftsOpen, setDraftsOpen] = useState(false)
+  // `draftsReady` gates decisions on "has a draft fetch completed at all";
+  // `draftsLoading` / `loadedDraftCriteria` (below) additionally track WHICH
+  // warehouse+category the loaded list belongs to, so a stale list is never
+  // read after the criteria change. Both are required.
+  const [draftsReady, setDraftsReady] = useState(false)
 
   const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [configuredDefaultWarehouseId, setConfiguredDefaultWarehouseId] = useState<string | null>(null)
@@ -367,7 +380,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [openingBalancePosted, setOpeningBalancePosted] = useState(false)
   const [postedOpeningCategoryIds, setPostedOpeningCategoryIds] = useState<Set<string>>(new Set())
   const [verificationNow, setVerificationNow] = useState(Date.now())
-  const [visibleColumns, setVisibleColumns] = useState({ unitCost: true, adjustmentValue: true, note: true })
+  const [visibleColumns, setVisibleColumns] = useState({ unitCost: false, adjustmentValue: false, note: true })
   const hasPostStockCountPermission = !permissionLoading && hasPermission(STOCK_COUNT_POST_PERMISSION)
   const permissionGate = stockCountPermissionGate(permissionLoading, hasPostStockCountPermission)
   const isLegacyInitialReadOnly = countType === 'initial_configuration_classification'
@@ -377,6 +390,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const isOpeningBalanceMode = countType === 'opening_balance_cutoff'
   const draftCriteriaKey = `${selectedWarehouse}:${isOpeningBalanceMode ? selectedCategory : '*'}`
   draftCriteriaRef.current = draftCriteriaKey
+  const isOpeningBalancePage = mode === 'opening-balance'
+
+  // Seed Opening Balance count type once when landing on the dedicated page.
+  // Does not lock the type — user can still change it (same as the main page).
+  useEffect(() => {
+    if (!isOpeningBalancePage || openingBalanceModeSeededRef.current || currentSessionId) return
+    openingBalanceModeSeededRef.current = true
+    setCountType('opening_balance_cutoff')
+  }, [isOpeningBalancePage, currentSessionId])
   const selectedCategoryName = productCategories.find(category => category.id === selectedCategory)?.category_name || '—'
   const locationOptions = useMemo(
     () => getStockCountLocationOptions(warehouseLocations),
@@ -471,6 +493,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setDrafts([])
       setDraftsLoading(false)
       setLoadedDraftCriteria('')
+      setDraftsReady(false)
       setOpeningBalancePosted(false)
       setPostedOpeningCategoryIds(new Set())
       setSelectedCategory('')
@@ -480,6 +503,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       setDiscardConfirmIds(null)
       return
     }
+    setDraftsReady(false)
     loadCountRows(selectedWarehouse)
     loadPostedOpeningCategories(selectedWarehouse)
     setSelectedGroupId(ALL_GROUP_ID)
@@ -677,8 +701,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
     if (error || legacyHistoryResult.error || cancelledHistoryResult.error) {
       const loadError = error || legacyHistoryResult.error || cancelledHistoryResult.error
-      if (generation === draftLoadGenerationRef.current && loadError?.code !== '42P01') {
-        toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
+      if (generation === draftLoadGenerationRef.current) {
+        if (loadError?.code !== '42P01') {
+          toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
+        }
+        // Unblock the Opening Balance gates even on failure, so a load error
+        // surfaces as an error rather than an indefinitely disabled wizard.
+        setDraftsReady(true)
       }
       return false
     }
@@ -779,6 +808,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     // may publish results; older responses are ignored in full.
     if (generation !== draftLoadGenerationRef.current) return false
     setDrafts(nextDrafts)
+    setDraftsReady(true)
     const eligibleIds = new Set(nextDrafts.filter(draft => draft.deletable).map(draft => draft.id))
     setSelectedDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
     setStaleDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
@@ -1084,17 +1114,81 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     && countDate && currentStatus !== 'posted' && !isOpeningBalanceReadOnly
     && (!isOpeningBalanceMode || selectedCategory)
     && !(isOpeningBalanceMode && openingBalancePosted)
+    && !(isOpeningBalanceMode && !currentSessionId && !draftsReady)
     && !mustContinueExistingOpeningDraft
     && !openingDraftDetectionPending
     && (isClassificationMode
       ? classificationGroups.length > 0
       : isOpeningBalanceMode ? visibleRows.length > 0 : countableRows.length > 0))
+  const saveBlockedReason = (() => {
+    if (isLegacyInitialReadOnly) {
+      return 'Legacy Initial Classification drafts are read-only. Start a new Opening Balance draft instead.'
+    }
+    if (!selectedWarehouse || !selectedWarehouseIsValid) {
+      return ACTIVE_WAREHOUSE_REQUIRED_MESSAGE
+    }
+    if (!countDate) return 'Select a count date before saving.'
+    if (currentStatus === 'posted') return 'This count is already posted and cannot be saved again.'
+    if (isOpeningBalanceMode && !selectedCategory) return 'Select a product category before saving.'
+    if (isOpeningBalanceMode && openingBalancePosted) {
+      return 'This warehouse already has its official Opening Balance posted.'
+    }
+    if (mustContinueExistingOpeningDraft) {
+      return 'An Opening Balance draft already exists for this warehouse and category. Click Continue Existing Draft before saving or downloading Excel.'
+    }
+    if (isOpeningBalanceMode && !draftsReady) {
+      return 'Loading saved drafts for this warehouse. Wait a moment, then try again.'
+    }
+    if (isClassificationMode ? classificationGroups.length === 0 : isOpeningBalanceMode ? visibleRows.length === 0 : countableRows.length === 0) {
+      return 'No countable items are in scope yet.'
+    }
+    return null
+  })()
+  const canContinueToCount = Boolean(
+    selectedWarehouse
+    && selectedWarehouseIsValid
+    && countDate
+    && (!isOpeningBalanceMode || selectedCategory)
+    && (!isOpeningBalanceMode || draftsReady)
+    && !mustContinueExistingOpeningDraft
+    && !isLegacyInitialReadOnly
+    && !(isOpeningBalanceMode && openingBalancePosted),
+  )
+  // isOpeningBalanceReadOnly ⊃ isLegacyInitialReadOnly: it also covers a
+  // cancelled Opening Balance cut-off, which must not export or re-import.
+  const canDownloadExcel = !isOpeningBalanceReadOnly
+    && (isClassificationMode
+      ? classificationGroups.length > 0
+      : visibleRows.length > 0 && Boolean(currentSessionId || canSave))
   // In classification mode the round is postable once at least one flavour is
   // selected; a partial (incomplete) selection still opens Review so the block
   // can be shown, and the preflight/DB reject it.
   const canPost = !isOpeningBalanceMode && canSave
     && !hasConfigEligibilityViolation
     && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
+
+  const goToWizardStep = (step: 'setup' | 'count' | 'review') => {
+    if (step === 'count' && !canContinueToCount) {
+      toast({
+        title: 'Cannot continue to Count',
+        description: saveBlockedReason
+          || (isOpeningBalanceMode && !selectedCategory
+            ? 'Select a product category first.'
+            : 'Complete Setup before counting.'),
+        variant: 'destructive',
+      })
+      return
+    }
+    if (step === 'review' && isOpeningBalanceMode && !currentSessionId) {
+      toast({
+        title: 'Save the draft first',
+        description: 'Create or continue an Opening Balance draft before Freeze & Post.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setWizardStep(step)
+  }
 
   const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
     if (isOpeningBalanceReadOnly || !selectedWarehouseIsValid || currentStatus === 'posted') return
@@ -1185,7 +1279,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       })
       return null
     }
-    if (!canSave) return null
+    if (!canSave) {
+      if (!options.silent) {
+        toast({
+          title: 'Cannot save draft',
+          description: saveBlockedReason || 'Complete Setup and resolve blocking issues before saving.',
+          variant: 'destructive',
+        })
+      }
+      return null
+    }
     if (countDate > todayIso()) {
       toast({ title: 'Invalid count date', description: 'Count date cannot be in the future.', variant: 'destructive' })
       return null
@@ -1646,6 +1749,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         ? 'Historical counts remain viewable, but this retired workflow cannot be edited or posted.'
         : 'Saved counts are loaded for review.',
     })
+    if (!legacyInitial) setWizardStep('count')
   }
 
   const exitManageDrafts = () => {
@@ -1835,11 +1939,29 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
 
-    if (visibleRows.length === 0) return
+    if (visibleRows.length === 0) {
+      toast({ title: 'Excel download blocked', description: 'No countable items are in scope yet.', variant: 'destructive' })
+      return
+    }
     let templateSessionId = currentSessionId
     if (!templateSessionId) {
+      if (!canSave) {
+        toast({
+          title: 'Excel download blocked',
+          description: saveBlockedReason || 'Save or continue the Opening Balance draft before downloading the template.',
+          variant: 'destructive',
+        })
+        return
+      }
       templateSessionId = await saveDraft({ silent: true })
-      if (!templateSessionId) return
+      if (!templateSessionId) {
+        toast({
+          title: 'Excel download blocked',
+          description: saveBlockedReason || 'Could not create a draft session for the Excel template. Fix Save Draft first, then retry.',
+          variant: 'destructive',
+        })
+        return
+      }
     }
     const ExcelJS = (await import('exceljs')).default
     const workbook = new ExcelJS.Workbook()
@@ -2342,26 +2464,52 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     return Array.from(byVariant.values())
   }, [isClassificationMode, classificationSummary, draftRows])
 
+  const wizardSteps = [
+    { id: 'setup' as const, n: '1', label: 'Setup', hint: 'Warehouse & session' },
+    { id: 'count' as const, n: '2', label: 'Count', hint: 'Enter physical counts' },
+    { id: 'review' as const, n: '3', label: isOpeningBalanceMode ? 'Freeze & Post' : 'Review', hint: isOpeningBalanceMode ? 'Verify and post opening balance' : 'Verify and post' },
+  ]
+  const issueCount = [
+    invalidWarehouseDrafts.length > 0,
+    isOpeningBalanceMode,
+    mustContinueExistingOpeningDraft,
+    isLegacyInitialReadOnly,
+    hasClassificationMisuse,
+    hasConfigEligibilityViolation,
+  ].filter(Boolean).length
+  const pageTitle = isOpeningBalancePage || isOpeningBalanceMode
+    ? 'Opening Balance Count'
+    : 'Stock Count'
+  const pageSubtitle = isOpeningBalanceMode
+    ? 'Official pre-go-live count: setup, count, then freeze & post.'
+    : 'Setup the session, count items, then review and post.'
+
   return (
-    <div className="space-y-5">
+    <div className="sera-stock-count space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
-            <span>Supply Chain</span><ChevronRight className="h-4 w-4" /><span>Inventory</span><ChevronRight className="h-4 w-4" /><span className="font-medium text-slate-900">Stock Count</span>
+            <span>Supply Chain</span><ChevronRight className="h-4 w-4" /><span>Inventory</span><ChevronRight className="h-4 w-4" /><span className="font-medium text-slate-900">{pageTitle}</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-normal text-slate-950">Stock Count</h1>
-          <p className="mt-1 text-sm text-slate-600">Count inventory faster with grouped variants and Excel bulk update.</p>
+          <h1 className="text-3xl font-bold tracking-normal text-slate-950">{pageTitle}</h1>
+          <p className="mt-1 text-sm text-slate-600">{pageSubtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {onViewChange && <Button variant="outline" onClick={() => onViewChange('inventory')}><ArrowLeft className="mr-2 h-4 w-4" /> Inventory</Button>}
           <Button
             variant="outline"
-            onClick={downloadExcel}
-            disabled={isOpeningBalanceReadOnly || (isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0)}
+            onClick={() => void downloadExcel()}
+            disabled={!canDownloadExcel}
           >
             <Download className="mr-2 h-4 w-4" /> Download Excel Template
           </Button>
-          <Button variant="outline" disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'} onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
+          <Button
+            variant="outline"
+            disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="mr-2 h-4 w-4" /> Import Updated Excel
+          </Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={event => {
             const file = event.target.files?.[0]
             if (file) importExcel(file)
@@ -2372,72 +2520,45 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           )}
           <Button variant={hasUnsavedChanges ? 'default' : 'outline'} onClick={() => void saveDraft()} disabled={!canSave || saving || openingDraftDetectionPending} className={hasUnsavedChanges && currentStatus !== 'posted' ? 'bg-amber-600 hover:bg-amber-700' : ''}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : openingDraftDetectionPending ? 'Checking for existing draft…' : isOpeningBalanceMode && currentSessionId ? 'Update Draft' : 'Save Draft'}</Button>
           {!isOpeningBalanceMode && !isOpeningBalanceReadOnly && (
-            <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
+            <Button onClick={() => { setWizardStep('review'); openPostReview() }} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
           )}
         </div>
       </div>
 
-      {invalidWarehouseDrafts.length > 0 && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-900">
-            <p className="font-semibold">Stock Count drafts blocked by invalid warehouse master data</p>
-            <p className="mt-1">{ACTIVE_WAREHOUSE_REQUIRED_MESSAGE} These drafts remain unchanged and cannot be edited, exported, verified, or posted. Select an active warehouse and create a new draft.</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {invalidWarehouseDrafts.slice(0, 10).map(draft => (
-                <li key={draft.id}>
-                  {draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Stock Count'} · {draft.count_date}
-                  <span className="ml-1 text-xs">({warehouseLocations.find(location => location.id === draft.warehouse_organization_id)?.org_name || draft.warehouse_name || 'Warehouse unavailable'})</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+      <StockCountWizardSteps
+        steps={wizardSteps}
+        currentStep={wizardStep}
+        onStepChange={goToWizardStep}
+      />
 
-      {isOpeningBalanceMode && (
-        <Card className="border-orange-200 bg-orange-50">
-          <CardContent className="p-4 text-sm text-orange-950">
-            <p className="font-semibold">One official pre-go-live workflow</p>
-            <p className="mt-1">Count every eligible configuration, including 20NB, 50NB, 50OB and any visible Legacy / Unclassified balance. Save the draft, then continue below to review orders, freeze the warehouse, preview, request OTP and post atomically.</p>
-            {selectedCategory && pageSummary.notCounted > 0 && (
-              <p className="mt-2 font-semibold">Opening Balance is incomplete: {pageSummary.notCounted} of {pageSummary.totalItems} items have not been counted. You may save and continue later.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <StockCountIssuesPanel
+        issueCount={issueCount}
+        activeWarehouseRequiredMessage={ACTIVE_WAREHOUSE_REQUIRED_MESSAGE}
+        invalidWarehouseDrafts={invalidWarehouseDrafts}
+        countTypeLabelFor={countType => countTypeOptions.find(option => option.value === countType)?.label || 'Stock Count'}
+        warehouseNameFor={(warehouseOrganizationId, fallbackName) =>
+          warehouseLocations.find(location => location.id === warehouseOrganizationId)?.org_name || fallbackName || 'Warehouse unavailable'
+        }
+        isOpeningBalanceMode={isOpeningBalanceMode}
+        selectedCategory={selectedCategory}
+        notCounted={pageSummary.notCounted}
+        totalItems={pageSummary.totalItems}
+        mustContinueExistingOpeningDraft={mustContinueExistingOpeningDraft}
+        existingOpeningDraftId={existingOpeningDraft?.id ?? null}
+        existingOpeningDraftLabel={existingOpeningDraft ? (existingOpeningDraft.reference_name || 'Opening Balance Draft') : undefined}
+        existingOpeningDraftCreatedAtLabel={existingOpeningDraft ? formatOpeningBalanceDraftCreatedAt(existingOpeningDraft.created_at) : undefined}
+        existingOpeningDraftProgressLabel={existingOpeningDraft ? formatOpeningBalanceDraftProgress(existingOpeningDraft) : undefined}
+        onContinueExistingDraft={draftId => void loadDraft(draftId)}
+        isLegacyInitialReadOnly={isLegacyInitialReadOnly}
+        hasClassificationMisuse={hasClassificationMisuse}
+        countTypeLabel={countTypeOptions.find(option => option.value === countType)?.label || ''}
+        classificationMisuseCount={classificationMisuseRows.length}
+        hasConfigEligibilityViolation={hasConfigEligibilityViolation}
+        configEligibilityViolationCount={configEligibilityViolations.length}
+        firstConfigEligibilityMessage={configEligibilityViolations[0]?.message}
+      />
 
-      {mustContinueExistingOpeningDraft && existingOpeningDraft && (
-        <Card className="border-blue-300 bg-blue-50">
-          <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4 text-sm text-blue-950">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-              <div>
-                <p className="font-semibold">An Opening Balance draft already exists for this warehouse &amp; category</p>
-                <p className="mt-1">Only one active Opening Balance draft is allowed per warehouse and category. Continue the existing draft instead of starting a second one — your earlier counts are preserved.</p>
-                <p className="mt-2 font-medium">
-                  {existingOpeningDraft.reference_name || 'Opening Balance Draft'}
-                </p>
-                <p className="mt-1 text-xs">
-                  Created {formatOpeningBalanceDraftCreatedAt(existingOpeningDraft.created_at)}
-                  {' · '}
-                  Progress {formatOpeningBalanceDraftProgress(existingOpeningDraft)}
-                </p>
-              </div>
-            </div>
-            <Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {isLegacyInitialReadOnly && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-amber-950">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div><p className="font-semibold">Legacy Initial Classification — read only</p><p className="mt-1">This historical draft remains viewable but cannot be edited, imported, converted or posted. Start a new Inventory Opening Balance &amp; Initial Classification draft instead.</p></div>
-          </CardContent>
-        </Card>
-      )}
-
+      <div className={wizardStep === 'setup' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'setup'}>
       <Card>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-6">
           <div>
@@ -2528,129 +2649,50 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       </Card>
 
       {selectedWarehouse && (
-        <Card className="border-blue-100 bg-[var(--sera-orange)]/[0.06]/50">
-          <CardContent className="space-y-3 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-blue-950">Count Type History</span>
-              <Badge variant="outline" className="border-orange-300 text-orange-700">{countTypeHistoryLabel}</Badge>
-              {!managingDrafts ? (
-                <Button variant="outline" size="sm" disabled={countTypeDrafts.length === 0} onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
-                  Manage Drafts
-                </Button>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || !countTypeDrafts.some(draft => draft.deletable)}>
-                    Select All
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={deselectAllDrafts} disabled={discardingDrafts || selectedDraftIds.size === 0}>
-                    Deselect All
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => requestDiscardDrafts([...selectedDraftIds])}
-                    disabled={discardingDrafts || selectedDraftIds.size === 0}
-                  >
-                    {discardingDrafts ? 'Discarding...' : 'Discard Selected Drafts'}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={exitManageDrafts} disabled={discardingDrafts}>
-                    Cancel
-                  </Button>
-                  <span className="text-xs text-slate-500">
-                    {countTypeDrafts.filter(draft => draft.deletable).length} removable ·{' '}
-                    {countTypeDrafts.filter(draft => !draft.deletable).length} protected
-                  </span>
-                </div>
-              )}
-            </div>
-            {!managingDrafts ? <div className="flex flex-wrap items-center gap-2">
-              {countTypeDrafts.length === 0 && (
-                <span className="text-sm text-slate-500">{stockCountHistoryEmptyMessage(countType)}</span>
-              )}
-              {countTypeDrafts.map(draft => (
-                <div key={draft.id} className="flex items-center gap-1">
-                  <Button
-                    variant={currentSessionId === draft.id ? 'default' : staleDraftIds.has(draft.id) ? 'destructive' : 'outline'}
-                    size="sm"
-                    disabled={discardingDrafts}
-                    onClick={() => {
-                      void loadDraft(draft.id)
-                    }}
-                  >
-                    {draftLabel(draft)}
-                  </Button>
-                  {!managingDrafts && draft.deletable && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 px-0" aria-label={`Draft actions for ${draftLabel(draft)}`}>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem onClick={() => void loadDraft(draft.id)}>Open Draft</DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-red-700 focus:text-red-700"
-                          onClick={() => requestDiscardDrafts([draft.id])}
-                        >
-                          Discard Draft
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
-              ))}
-              <Button variant="ghost" size="sm" onClick={resetSession} disabled={discardingDrafts}>New count</Button>
-            </div> : (
-              <div className="overflow-x-auto rounded-lg border bg-white">
-                <Table>
-                  <TableHeader><TableRow>
-                    <TableHead className="w-10">Select</TableHead><TableHead>Batch / draft</TableHead>
-                    <TableHead>Warehouse</TableHead><TableHead>Category</TableHead><TableHead>Count type</TableHead>
-                    <TableHead>Progress</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead>
-                    <TableHead>Last updated</TableHead><TableHead>Created by</TableHead><TableHead>Open</TableHead>
-                  </TableRow></TableHeader>
-                  <TableBody>
-                    {countTypeDrafts.length === 0 && (
-                      <TableRow><TableCell colSpan={11} className="text-center text-sm text-slate-500">{stockCountHistoryEmptyMessage(countType)}</TableCell></TableRow>
-                    )}
-                    {countTypeDrafts.map(draft => {
-                      const total = draft.scope_count || 0
-                      const counted = draft.counted_count || 0
-                      const legacyReset = isLegacyResetRequiredDraft(draft)
-                      const statusBadge = legacyReset
-                        ? LEGACY_RESET_REQUIRED_LABEL
-                        : (draft.history_badge || (draft.deletable ? 'Draft — Removable' : 'Protected'))
-                      const statusDetail = legacyReset
-                        ? 'Legacy draft must be discarded before a new category-scoped count can continue.'
-                        : (draft.history_detail || draft.protection_reason)
-                      return <TableRow key={draft.id} className={draft.deletable ? undefined : 'bg-slate-50'}>
-                        <TableCell><Checkbox checked={selectedDraftIds.has(draft.id)} disabled={discardingDrafts || !draft.deletable} onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)} aria-label={draft.deletable ? `Select ${draftLabel(draft)}` : `${draftLabel(draft)} is protected and cannot be discarded`} /></TableCell>
-                        <TableCell className="font-medium">{draft.reference_name || 'Unnamed draft'}</TableCell>
-                        <TableCell>{draft.warehouse_name}</TableCell><TableCell>{draft.category_name}</TableCell>
-                        <TableCell>{countTypeOptions.find(option => option.value === draft.count_type)?.label}</TableCell>
-                        <TableCell>{counted}/{total}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={!draft.deletable ? 'border-slate-300 text-slate-600' : legacyReset ? 'border-red-300 text-red-700' : 'border-emerald-300 text-emerald-700'}>{statusBadge}</Badge>
-                          {statusDetail && (
-                            <span className="mt-1 block text-xs text-slate-500">{statusDetail}</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{new Date(draft.created_at).toLocaleString()}</TableCell>
-                        <TableCell>{draft.updated_at ? new Date(draft.updated_at).toLocaleString() : '—'}</TableCell>
-                        <TableCell>{draft.created_by_name}</TableCell>
-                        <TableCell><Button variant="outline" size="sm" onClick={() => void loadDraft(draft.id)}>Open</Button></TableCell>
-                      </TableRow>
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <StockCountDraftsPanel
+        drafts={countTypeDrafts}
+        draftsOpen={draftsOpen}
+        onToggleDraftsOpen={() => setDraftsOpen(open => !open)}
+        currentSessionId={currentSessionId}
+        formatDraftLabel={draftLabel}
+        onResetSession={resetSession}
+        discardingDrafts={discardingDrafts}
+        managingDrafts={managingDrafts}
+        onEnterManageDrafts={() => { setDraftsOpen(true); setManagingDrafts(true); setSelectedDraftIds(new Set()) }}
+        onSelectAllDrafts={selectAllDrafts}
+        onDeselectAllDrafts={deselectAllDrafts}
+        onRequestDiscardDrafts={requestDiscardDrafts}
+        selectedDraftIds={selectedDraftIds}
+        onExitManageDrafts={exitManageDrafts}
+        staleDraftIds={staleDraftIds}
+        onLoadDraft={draftId => void loadDraft(draftId)}
+        isLegacyResetRequiredDraft={isLegacyResetRequiredDraft}
+        legacyResetRequiredLabel={LEGACY_RESET_REQUIRED_LABEL}
+        countTypeLabelFor={countType => countTypeOptions.find(option => option.value === countType)?.label}
+        onToggleDraftSelection={toggleDraftSelection}
+        historyLabel={countTypeHistoryLabel}
+        emptyMessage={stockCountHistoryEmptyMessage(countType)}
+      />
       )}
 
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          onClick={() => goToWizardStep('count')}
+          disabled={!canContinueToCount}
+          className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+        >
+          {isOpeningBalanceMode && !draftsReady
+            ? 'Loading drafts...'
+            : mustContinueExistingOpeningDraft
+              ? 'Continue Existing Draft first'
+              : <>Continue to Count <ArrowRight className="ml-2 h-4 w-4" /></>}
+        </Button>
+      </div>
+      </div>
+
       {!isClassificationMode && (
-        <>
+        <div className={wizardStep === 'count' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'count'}>
         {isOpeningBalanceMode && selectedCategory && (
           <Card className="border-orange-200">
             <CardContent className="grid gap-3 p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -2668,44 +2710,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {summaryCards.map(card => <Card key={card.label}><CardContent className="flex items-center gap-4 p-4"><div className={`flex h-12 w-12 items-center justify-center rounded-lg ${card.color}`}><card.icon className="h-6 w-6" /></div><div className="min-w-0"><p className="text-sm font-semibold text-slate-600">{card.label}</p><p className="truncate text-xl font-bold text-slate-950">{card.value}</p><p className="text-xs text-slate-500">{card.sub}</p></div></CardContent></Card>)}
         </div>
-        </>
-      )}
 
-      {hasClassificationMisuse && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">This looks like a classification, not a {countTypeOptions.find(option => option.value === countType)?.label}.</p>
-              <p className="mt-1">{classificationMisuseRows.length} configuration count{classificationMisuseRows.length === 1 ? '' : 's'} target a 20ml/50ml box for a variant that still holds a Legacy/Unclassified balance. Use <strong>Inventory Opening Balance &amp; Initial Classification</strong> for the official go-live baseline. Posting this as a normal count is blocked.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* classification/eligibility alerts live in Issues accordion above — keep table functional blocks */}
 
-      {hasConfigEligibilityViolation && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="flex items-start gap-3 p-4 text-sm text-red-900">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-            <div>
-              <p className="font-semibold">Invalid configuration for this product group</p>
-              <p className="mt-1">{configEligibilityViolations.length} counted configuration{configEligibilityViolations.length === 1 ? '' : 's'} are not valid for their product group (for example a 20mg/50mg concentration configuration on a Device group). Remove these counts before saving or posting. {configEligibilityViolations[0]?.message}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isClassificationMode && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Flavours with Legacy balance</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.totalFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Selected this round</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.selectedFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-emerald-700">Fully classified (selected)</p><p className="text-xl font-bold text-emerald-700">{formatNumber(classificationSummary.completeFlavours)}</p></CardContent></Card>
-          <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-500">Deferred (blank)</p><p className="text-xl font-bold text-slate-500">{formatNumber(classificationSummary.deferredFlavours)}</p></CardContent></Card>
-        </div>
-      )}
-
-      {!isClassificationMode && (
-        <Card>
+      <Card>
           <CardContent className="space-y-4 p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex flex-wrap gap-2">
@@ -2770,10 +2778,24 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             </div>
           </CardContent>
         </Card>
+
+        <div className="flex justify-between gap-2">
+          <Button type="button" variant="outline" onClick={() => setWizardStep('setup')}>Back to Setup</Button>
+          <Button type="button" onClick={() => setWizardStep('review')} className="bg-orange-600 hover:bg-orange-700">
+            Continue to {isOpeningBalanceMode ? 'Freeze & Post' : 'Review'} <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+        </div>
       )}
 
       {isClassificationMode && (
-        <div className="space-y-4">
+        <div className={wizardStep === 'count' ? 'space-y-4' : 'hidden'} aria-hidden={wizardStep !== 'count'}>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Flavours with Legacy balance</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.totalFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-600">Selected this round</p><p className="text-xl font-bold text-slate-950">{formatNumber(classificationSummary.selectedFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-emerald-700">Fully classified (selected)</p><p className="text-xl font-bold text-emerald-700">{formatNumber(classificationSummary.completeFlavours)}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><p className="text-sm font-semibold text-slate-500">Deferred (blank)</p><p className="text-xl font-bold text-slate-500">{formatNumber(classificationSummary.deferredFlavours)}</p></CardContent></Card>
+          </div>
           {classificationSummary.perGroup.length === 0 && (
             <Card><CardContent className="p-8 text-center text-sm text-slate-500">No flavour at this warehouse has a Legacy/Unclassified balance to classify.</CardContent></Card>
           )}
@@ -2891,8 +2913,32 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               </CardContent>
             </Card>
           ))}
+          <div className="flex justify-between gap-2">
+            <Button type="button" variant="outline" onClick={() => setWizardStep('setup')}>Back to Setup</Button>
+            <Button type="button" onClick={() => setWizardStep('review')} className="bg-orange-600 hover:bg-orange-700">
+              Continue to Review <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
+
+      <div className={wizardStep === 'review' ? 'space-y-5' : 'hidden'} aria-hidden={wizardStep !== 'review'}>
+        <Card>
+          <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div><p className="text-xs font-semibold text-slate-500">Counted</p><p className="text-xl font-bold">{formatNumber(pageSummary.counted)} / {formatNumber(pageSummary.totalItems)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Variance items</p><p className="text-xl font-bold">{formatNumber(pageSummary.varianceItems)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Net adjustment</p><p className="text-xl font-bold">{pageSummary.netAdjustment > 0 ? '+' : ''}{formatNumber(pageSummary.netAdjustment)}</p></div>
+            <div><p className="text-xs font-semibold text-slate-500">Est. value</p><p className="text-xl font-bold">{formatMoney(pageSummary.estimatedValue)}</p></div>
+          </CardContent>
+        </Card>
+        <div className="flex flex-wrap justify-between gap-2">
+          <Button type="button" variant="outline" onClick={() => setWizardStep('count')}>Back to Count</Button>
+          {!isOpeningBalanceMode && !isLegacyInitialReadOnly && (
+            <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">
+              Review & Post Count <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
       {isOpeningBalanceMode && (
         <InventoryOpeningCutoffSection
@@ -2966,6 +3012,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       )}
 
       {importSummary && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
+      </div>
+
+      {importSummary && wizardStep !== 'review' && <Card className="border-slate-200"><CardHeader><CardTitle>Import Summary</CardTitle></CardHeader><CardContent><div className="mb-3 flex flex-wrap gap-2"><Badge className="bg-green-600">Updated {importSummary.updated}</Badge><Badge variant="secondary">Unchanged {importSummary.unchanged}</Badge><Badge variant="destructive">Failed {importSummary.failed}</Badge></div>{importSummary.rows.filter(row => row.status === 'Failed').slice(0, 6).map(row => <p key={`${row.row}-${row.sku}`} className="text-sm text-red-600">Row {row.row}: {row.sku} - {row.message}</p>)}</CardContent></Card>}
 
       <AlertDialog
         open={discardConfirmIds !== null}
