@@ -12,7 +12,8 @@ Audit date: 2026-08-04. Databases inspected **read-only** (`BEGIN READ ONLY`; a
 |---|---|---|
 | PostgreSQL | 17.6 | 17.6 |
 | `public` tables | 400 | 391 |
-| Contract functions | 67 | 41 |
+| Total `public` functions | 681 | 657 |
+| **Contract functions (37 defined by this pack)** | **37 correct / 0 missing / 0 outdated** | **1 correct / 28 missing / 8 outdated** |
 | Migration ledger (`supabase_migrations.schema_migrations`) | **absent** | **absent** |
 | Opening Balance contract | **complete** (through `20260801250000`) | **materially behind** |
 
@@ -110,25 +111,59 @@ filename order fails. This is one reason the fresh pack exists.
 
 ---
 
-## D. 🔒 Security observation (not changed by this pack)
+## D. 🔒 Anonymous EXECUTE — investigated and now CLOSED by the pack
 
-`anon` **can execute `inventory_cutoff_preview`** on staging today.
+**Scope of the gap (wider than first reported).** Not just the preview: **23**
+contract functions were executable by `anon` on staging, including
+`verify_and_post_inventory_opening_cutoff_scoped_legacy` — the function that
+actually posts an Opening Balance.
 
-PostgreSQL grants `EXECUTE` to `PUBLIC` by default on every new function. Each
-migration that replaced the preview granted `EXECUTE` to `authenticated` but revoked
-`PUBLIC` only from the **renamed legacy copy**, never from the new function. So `anon`
-inherits it — verified live: `has_function_privilege('anon', ..., 'EXECUTE') = true`.
+**Why it existed.** Supabase's platform bootstrap grants `EXECUTE` on public
+functions to `anon`/`authenticated`/`service_role`. The historical migrations
+revoked `PUBLIC` only from the *renamed legacy copies*, never from the newly created
+function. The grant is **explicit** in `pg_proc.proacl` (`anon=X/supabase_admin`), so
+`REVOKE ... FROM PUBLIC` alone would not have removed it — `anon` must be named.
 
-This pack **does not change it**, because tightening it is a security decision beyond
-the `9a62556a` contract and could break a caller you know about and I do not.
-`08_post_deployment_verification.sql` reports it as `REVIEW_REQUIRED`, not `FAIL`.
+**Is it exploitable today? No.** Every one of these is `SECURITY DEFINER` and gates
+on `public.can_access_org()`, which resolves the caller through
+`users.id = auth.uid()`. For an anonymous caller `auth.uid()` is NULL, no row
+matches, and the function raises `inventory_cutoff_not_found`. Confirmed by reading
+both the guard and `can_access_org`'s body. **Defence-in-depth gap, not a live
+leak** — but that internal check was the only thing between an unauthenticated
+caller and the posting function.
 
-**Recommended follow-up** (your decision, deliberately not included):
+**Application usage — verified in source, not assumed.**
 
-```sql
-REVOKE ALL ON FUNCTION public.inventory_cutoff_preview(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.inventory_cutoff_preview(uuid) TO authenticated;
-```
+| Call site | Client | Role |
+|---|---|---|
+| `app/src/components/inventory/InventoryOpeningCutoffSection.tsx:472` | browser client via `useSupabaseAuth()` | authenticated |
+| `app/src/app/api/inventory/stock-count/verification/request/route.ts:70` | SSR client from `@/lib/supabase/server` | authenticated (user session) |
+
+Those are the **only** two call sites. No contract RPC is invoked anonymously
+anywhere in the codebase, and none is invoked with the service-role admin client.
+
+**Least-privilege decision — now implemented in `07_final_contract_fixes.sql`:**
+
+| Function class | anon / PUBLIC | authenticated | service_role |
+|---|---|---|---|
+| Entry-point RPCs (25) | **revoked** | granted | granted |
+| Internal `*_pre_*` delegation layers | **revoked** | none | none |
+| Trigger functions | **revoked** | none | none |
+
+Safe because `service_role` holds its own explicit grant (so the revoke cannot
+disturb it, and it is re-granted anyway), triggers execute as the table owner, and
+the delegation layers are only reached from their `SECURITY DEFINER` wrapper.
+
+Implemented as a catalog-driven `DO` block so it is order-independent and
+idempotent. Verified on the PostgreSQL 17 rehearsal: anon-executable contract
+functions went **17 → 0**, while `authenticated` and `service_role` retained
+EXECUTE. `08` now enforces this as a hard **FAIL**, and reports
+**0 REVIEW_REQUIRED**.
+
+> Placement note: the revokes live at the end of `07`, not in `05`. Several
+> contract functions are *created* in `07`, so a `REVOKE` in `05` fails with
+> "function does not exist" on any database that does not already have them —
+> exactly the production case. This was caught by the PG17 rehearsal.
 
 ---
 
@@ -301,7 +336,24 @@ missing contract objects).
 | `_pre_*` chain present after deployment | 8 / 8 |
 | Ambiguous overloads after deployment | 0 |
 
-**Rehearsal limitation, stated honestly:** the disposable cluster is PostgreSQL
-**14.19**, while staging and production run **17.6**. This validates syntax,
-dependency order, idempotency and object creation, but cannot prove behaviour that is
-version-specific. No rehearsal was performed against live staging or production.
+### PostgreSQL 17 rehearsal (supersedes the PG14 run)
+
+| | PG 14.19 (first pass) | **PG 17.10 (authoritative)** |
+|---|---|---|
+| Baseline restore errors | 77 | **4** |
+| Tables restored (of 391) | 380 | **390** |
+| `01`–`09` run 1 | all PASS | **all PASS** |
+| `01`–`09` run 2 (rerunnable) | all PASS | **all PASS** |
+| `08` result | 80 PASS / 0 FAIL / 1 REVIEW | **83 PASS / 0 FAIL / 0 REVIEW** |
+| anon-executable contract fns | n/a | **17 → 0** |
+
+Live environments run **17.6**; the rehearsal ran **17.10** — same major version, so
+planner, parser and PL/pgSQL behaviour are equivalent. The remaining 4 restore
+errors are unrelated to this contract (`u.email` in an unrelated view, a `gist`
+opclass on `uuid`, and a duplicate `CREATE SCHEMA public`).
+
+**Remaining limitation, stated honestly:** the rehearsal database contains
+**schema only, no production rows**, so `09` reports 2 BLOCKERs there (0 warehouses,
+0 product categories). That is the check working correctly against an empty
+database, not a pack defect. No rehearsal was performed against live staging or
+production, and no production data was copied to this machine.

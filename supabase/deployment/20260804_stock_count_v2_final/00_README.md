@@ -26,10 +26,17 @@ those same migrations. **No PL/pgSQL logic was rewritten, redesigned or reinterp
 Self-hosted Supabase / PostgreSQL 17.x. One state-aware pack serves both
 environments; it detects what is already present and installs only what is missing.
 
-| Environment | State at audit time | What the pack does |
+| Environment | State at audit time | Recommended path |
 |---|---|---|
-| **Staging** | Already at the full contract | Re-asserts everything; effectively a no-op |
-| **Production** | Missing 8 tables, 26 functions, 2 CHECK values, 1 trigger | Full install |
+| **Staging** | **37/37 contract functions present and correct** | **Path A — verification only (`01`, `08`, `09`)** |
+| **Production** | 1 correct, 28 missing, 8 outdated | **Path B — full deployment (`01`–`09`)** |
+
+### ⚠ Staging does NOT need files 02–07
+
+Staging already matches the contract exactly. Running `02`–`07` there would be a
+no-op *except* for the grant hardening in `07`, which is a genuine change. Do not
+run them "for rehearsal" — use **Path A** and only fall back to Path B if `08`
+reports a FAIL.
 
 ## 4. Execution order
 
@@ -89,9 +96,9 @@ Do not rely on a backup you have not verified.
 | 03 | `ALTER TABLE`, `CREATE INDEX`. Aborts loudly if duplicate rows would break the index. |
 | 04 | a long run of `CREATE FUNCTION` / `CREATE TRIGGER` |
 | 05 | `ALTER TABLE`, `CREATE POLICY`, `GRANT`, `REVOKE` |
-| 06 | preview counts, then two `UPDATE n` lines; both counts are 0 afterwards |
+| 06 | preview + ambiguity counts. **Applies nothing** unless `-v reconcile_approved=yes`. Both staging and production currently report **0 qualifying rows**, so it is expected to be a no-op. |
 | 07 | 6 × `CREATE FUNCTION` |
-| 08 | `OVERALL_STATUS` = `PASS` (or `REVIEW_REQUIRED` for the documented anon grant), `FAIL_COUNT` = 0 |
+| 08 | `OVERALL_STATUS` = **`PASS`**, `FAIL_COUNT` = 0, `REVIEW_REQUIRED_COUNT` = 0 (83 checks) |
 | 09 | `READY_FOR_UI_TESTING` = `YES`, `BLOCKER_COUNT` = 0 |
 
 ## 10. Stop conditions
@@ -115,6 +122,26 @@ changes data, which is why the backup is mandatory.
 
 ## 12. Staging execution procedure
 
+### Path A — verification only (RECOMMENDED, based on current evidence)
+
+```bash
+psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 01_preflight_read_only.sql
+psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 08_post_deployment_verification.sql
+psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 09_operational_smoke_checks_read_only.sql
+```
+
+All three are read-only. If `08` reports `FAIL_COUNT = 0`, staging is already
+correct and **nothing further is needed** — except the one deliberate change
+below.
+
+> **The single exception.** `08` will report a FAIL for
+> `no contract function is executable by anon`, because staging still carries the
+> inherited anonymous grant. Closing it requires `07`, which is safe to run on its
+> own (it is `CREATE OR REPLACE` + `REVOKE`/`GRANT` only, no data). Either run `07`
+> alone, or accept the finding and defer it.
+
+### Path B — full deployment (only if Path A shows staging is incomplete)
+
 ```bash
 # 0. take and verify a backup first
 # 1. preflight
@@ -129,6 +156,8 @@ psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 05_rls_policies_and_grants.sql
 
 # 3. data reconciliation -- read the preview block at the top of the file first
 psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 06_data_reconciliation.sql
+# 06 is OPT-IN. It reports and does nothing unless you add:
+#     -v reconcile_approved=yes
 
 # 4. terminal contract
 psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 07_final_contract_fixes.sql
@@ -138,8 +167,7 @@ psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 08_post_deployment_verification.sql
 psql "$STAGING_URL" -v ON_ERROR_STOP=1 -f 09_operational_smoke_checks_read_only.sql
 ```
 
-Staging is already at the contract, so `02`–`07` should be near no-ops there. That is
-expected and is itself a useful rehearsal of the production run.
+Use Path B on staging only if Path A proved it incomplete.
 
 ## 13. Staging verification and UI testing
 
@@ -162,8 +190,9 @@ expected and is itself a useful rehearsal of the production run.
 
 When approved, the sequence is identical to §12 against the production URL, plus:
 
-- Schedule a **maintenance window**. Step `03` takes an `ACCESS EXCLUSIVE` lock on
-  `stock_movements` and re-validates every row (see §16 below).
+- **No maintenance window is required.** Measured read-only on production:
+  `stock_movements` holds **2,945 rows / 864 kB**, so step `03`'s `ACCESS EXCLUSIVE`
+  lock lasts milliseconds. (An earlier draft over-warned about this.)
 - Take a fresh, verified backup immediately before starting.
 - Run `01` on production first and read every `REVIEW_REQUIRED` row — production
   has years of real data that staging does not.
@@ -176,7 +205,7 @@ When approved, the sequence is identical to §12 against the production URL, plu
 [ ] Read this README end to end
 [ ] Full database backup taken
 [ ] Backup restore VERIFIED (not just taken)
-[ ] Maintenance window agreed (production only)
+[ ] Staging path chosen:  A (verification only)  /  B (full deploy)
 [ ] 01 preflight run -- OVERALL_STATUS recorded: ______________
 [ ] Every FAIL from 01 resolved
 [ ] Every REVIEW_REQUIRED from 01 read and accepted
@@ -185,7 +214,8 @@ When approved, the sequence is identical to §12 against the production URL, plu
 [ ] 04 functions & triggers   -- completed / errors: ______________
 [ ] 05 RLS, policies, grants  -- completed / errors: ______________
 [ ] 06 PREVIEW counts reviewed -- configs: ______  sessions: ______
-[ ] 06 data reconciliation applied
+[ ] 06 ambiguity counts all zero?                    ______________
+[ ] 06 applied with -v reconcile_approved=yes (only if needed)
 [ ] 07 final contract fixes   -- completed / errors: ______________
 [ ] 08 verification -- FAIL_COUNT = 0 ?               ______________
 [ ] 09 smoke checks -- READY_FOR_UI_TESTING = YES ?   ______________

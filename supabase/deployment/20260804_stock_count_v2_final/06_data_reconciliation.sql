@@ -39,8 +39,56 @@ WHERE s.status = 'draft'
               WHERE c.stock_count_session_id = s.id AND c.status = 'cancelled');
 
 -- ---------------------------------------------------------------------------
--- APPLY -- only after the preview above has been reviewed.
+-- AMBIGUITY CHECK -- any non-zero row here means STOP and get manual approval.
 -- ---------------------------------------------------------------------------
+SELECT 'REVIEW_REQUIRED: config has stock movement history' AS ambiguity, count(*) AS rows
+FROM public.inventory_stock_configurations isc
+JOIN public.product_variants pv ON pv.id = isc.variant_id
+WHERE pv.is_active = false AND isc.status IN ('active','phase_out')
+  AND EXISTS (SELECT 1 FROM public.stock_movements m WHERE m.stock_config_id = isc.id)
+UNION ALL
+SELECT 'REVIEW_REQUIRED: config still holds non-zero inventory', count(*)
+FROM public.inventory_stock_configurations isc
+JOIN public.product_variants pv ON pv.id = isc.variant_id
+JOIN public.product_inventory pi ON pi.stock_config_id = isc.id
+WHERE pv.is_active = false AND isc.status IN ('active','phase_out')
+  AND (pi.quantity_on_hand <> 0 OR pi.quantity_allocated <> 0)
+UNION ALL
+SELECT 'REVIEW_REQUIRED: session also has a NON-cancelled cut-off', count(*)
+FROM (SELECT s.id FROM public.stock_count_sessions s
+      JOIN public.inventory_opening_cutoffs c ON c.stock_count_session_id = s.id
+      WHERE s.status = 'draft' AND s.count_type = 'opening_balance_cutoff'
+      GROUP BY s.id
+      HAVING count(*) FILTER (WHERE c.status = 'cancelled') > 0
+         AND count(*) FILTER (WHERE c.status <> 'cancelled') > 0) z;
+
+-- ---------------------------------------------------------------------------
+-- APPROVAL GATE
+-- ---------------------------------------------------------------------------
+-- This file does NOTHING unless you explicitly opt in:
+--
+--     psql "$URL" -v ON_ERROR_STOP=1 -v reconcile_approved=yes -f 06_data_reconciliation.sql
+--
+-- Why an opt-in and not an automatic apply:
+--   * It stops a BLIND RE-RUN from mutating rows. Both UPDATEs are idempotent
+--     against the state they were written for, but they are NOT time-scoped --
+--     if someone later and legitimately re-activates a configuration on an
+--     archived variant, or a new draft ends up behind a cancelled cut-off, a
+--     careless re-run would silently revert that legitimate change. Requiring a
+--     conscious flag each time means the operator must read the preview first.
+--   * It makes any REVIEW_REQUIRED row above a genuine stop condition.
+--
+-- At the time this pack was built BOTH staging and production reported ZERO
+-- qualifying rows for both changes and ZERO ambiguities, so this file is
+-- expected to be a no-op. Re-check with the preview above before trusting that.
+-- ---------------------------------------------------------------------------
+\if :{?reconcile_approved}
+\else
+  \set reconcile_approved no
+\endif
+
+\if :reconcile_approved
+\echo '>>> reconcile_approved is set -- APPLYING the two reconciliation updates.'
 BEGIN;
 
 -- ---- source (verbatim): supabase/migrations/20260730_archive_variant_stock_config_reconciliation.sql
@@ -73,5 +121,13 @@ where s.status = 'draft'
       and c.status in ('counting', 'posted')
   );
 
--- Post-condition: both preview counts above must now be 0.
+-- Post-condition: re-run the preview at the top; both counts must now be 0.
 COMMIT;
+\else
+\echo ''
+\echo '>>> NOT APPLIED. 06 is opt-in.'
+\echo '>>> Review the preview and ambiguity counts above.'
+\echo '>>> If (and only if) they are expected, re-run with:'
+\echo '>>>   -v reconcile_approved=yes'
+\echo ''
+\endif

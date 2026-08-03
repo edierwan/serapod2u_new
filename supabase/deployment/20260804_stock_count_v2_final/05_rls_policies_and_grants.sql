@@ -149,4 +149,20 @@ alter table public.inventory_cutoff_h2m_bulk_requests enable row level security;
 
 revoke all on public.inventory_cutoff_h2m_bulk_requests from public, anon, authenticated;
 
+
+-- ===========================================================================
+-- LEAST-PRIVILEGE HARDENING -- see 07_final_contract_fixes.sql
+-- ---------------------------------------------------------------------------
+-- Revoking anonymous EXECUTE on the contract functions is DELIBERATELY NOT done
+-- here. Several of those functions (verify_and_post_..._scoped_legacy,
+-- inventory_cutoff_preview, release_allocation_for_order, ...) are created in
+-- 07, i.e. AFTER this file. A REVOKE here would fail with
+-- "function ... does not exist" on any database that does not already have them
+-- -- which is exactly the production case this pack exists to handle.
+--
+-- The hardening therefore runs at the END of 07, once every contract function
+-- exists. See "LEAST-PRIVILEGE HARDENING" there for the finding, the evidence
+-- that it is safe, and the reversal statement.
+-- ===========================================================================
+
 COMMIT;

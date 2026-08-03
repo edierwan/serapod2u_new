@@ -178,6 +178,25 @@ partial AS (
          CASE WHEN count(*) FILTER (WHERE status='counting') = 0 THEN 'PASS' ELSE 'REVIEW_REQUIRED' END
   FROM public.inventory_opening_cutoffs
 ),
+-- ----------------------------------------------------------------- grants
+grants AS (
+  SELECT 'H2. GRANTS' AS section, 'contract functions executable by anon' AS check_name,
+         'count: '||count(*)::text AS detail,
+         'INFO' AS status
+  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
+  WHERE ns.nspname='public'
+    AND p.proname ~ '(inventory_cutoff|opening_cutoff|archive_stock_count_draft|archive_product_variant|release_allocation_for_order|enforce_stock_count_reference|stock_count_discard_posting)'
+    AND has_function_privilege('anon', p.oid, 'EXECUTE')
+  UNION ALL
+  -- 05 revokes anon EXECUTE. Confirm service_role holds its OWN grant first, so
+  -- the revoke cannot collaterally break server-side access.
+  SELECT 'H2. GRANTS', 'service_role holds an explicit (not inherited) grant',
+         CASE WHEN bool_and(p.proacl::text LIKE '%service_role=X%') THEN 'yes - safe to revoke anon'
+              ELSE 'REVIEW: service_role may be relying on the PUBLIC default' END,
+         CASE WHEN bool_and(p.proacl::text LIKE '%service_role=X%') THEN 'PASS' ELSE 'REVIEW_REQUIRED' END
+  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
+  WHERE ns.nspname='public' AND p.proname='inventory_cutoff_preview'
+),
 -- ------------------------------------------------------------- migration ledger
 ledger AS (
   SELECT 'I. LEDGER' AS section, 'supabase_migrations.schema_migrations' AS check_name,
@@ -189,7 +208,7 @@ ledger AS (
 all_checks AS (
   SELECT * FROM identity UNION ALL SELECT * FROM ext UNION ALL SELECT * FROM base
   UNION ALL SELECT * FROM newtab UNION ALL SELECT * FROM shape UNION ALL SELECT * FROM chk
-  UNION ALL SELECT * FROM blockers UNION ALL SELECT * FROM partial UNION ALL SELECT * FROM ledger
+  UNION ALL SELECT * FROM blockers UNION ALL SELECT * FROM partial UNION ALL SELECT * FROM grants UNION ALL SELECT * FROM ledger
 )
 SELECT section, check_name, status, detail FROM all_checks
 UNION ALL SELECT 'Z. OVERALL', 'PASS_COUNT', '', count(*)::text FROM all_checks WHERE status='PASS'

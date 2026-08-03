@@ -108,6 +108,24 @@ decisions — **dropping them destroys audit history.** Restore from backup inst
 now uses a new value — which is exactly what you want. Never use `NOT VALID` to force
 a narrower constraint over non-conforming rows.
 
+### Grant hardening (`07`) — fully reversible
+
+`07` revokes anonymous EXECUTE on the contract functions. To restore the previous
+(Supabase-default) state exactly:
+
+```sql
+-- Restores anon EXECUTE on every public function, i.e. the platform default.
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon;
+```
+
+Narrower, if you only want one function back:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_cutoff_preview(uuid) TO anon;
+```
+
+No data is involved and nothing is lost, so this needs no backup.
+
 ### What cannot be reversed by hand
 
 **Function definitions (`04`, `07`).** `CREATE OR REPLACE` overwrites the previous
@@ -183,16 +201,28 @@ cost of the restore path and the reason §8 of the README makes the backup manda
 
 ## 6. Lock-sensitive steps
 
+**Measured read-only on production, 2026-08-04:** `stock_movements` holds
+**2,945 rows / 864 kB** (2,256 kB with indexes) and **0 rows violate** the new
+CHECK. `stock_count_session_items` holds **416 rows** with **0 duplicate** groups.
+At this size every lock below is held for **milliseconds**. An earlier draft of this
+document over-warned about a maintenance window; these measurements supersede it.
+
 | Step | Lock | Impact |
 |---|---|---|
-| `03` — `ALTER TABLE stock_movements ADD CONSTRAINT` | `ACCESS EXCLUSIVE` on `stock_movements` | Blocks **all** reads and writes to that table while every existing row is re-validated. On a large movements table this is the longest step in the pack. Run it in a maintenance window. |
+| `03` — `ALTER TABLE stock_movements ADD CONSTRAINT` | `ACCESS EXCLUSIVE` on `stock_movements` | Blocks reads and writes while all rows are re-validated. At 2,945 rows: **milliseconds**. No maintenance window required. |
 | `03` — `CREATE UNIQUE INDEX` on `stock_count_session_items` | `SHARE` | Blocks writes to that one table. Usually brief. Not `CONCURRENTLY`, because it must be inside the transaction. |
 | `04`, `07` — `CREATE OR REPLACE FUNCTION` | `ACCESS EXCLUSIVE` on the function | Brief. Waits for any in-flight call to finish. |
 | `02`, `05` | short-lived | Negligible. |
 
-If you need to avoid the `stock_movements` lock entirely, that requires a
-`NOT VALID` + `VALIDATE CONSTRAINT` split, which changes the deployment semantics and
-is **not** what this pack does. Raise it as a separate decision.
+**Why not `NOT VALID` + `VALIDATE CONSTRAINT`?** That pattern reduces the blocking
+window on large tables (`NOT VALID` takes a brief `ACCESS EXCLUSIVE` with no scan;
+`VALIDATE` then scans under `SHARE UPDATE EXCLUSIVE`, allowing reads and writes). It
+is deliberately **not** used here: it buys nothing on a 864 kB table, and it
+introduces a real hazard — if `VALIDATE` is skipped or fails, the constraint stays
+`NOT VALID` and silently tolerates pre-existing bad rows, which is a **weaker final
+contract** than `9a62556a` requires. Revisit only if `stock_movements` grows beyond
+roughly 10M rows, and then only as an explicit two-step with a
+`convalidated = true` check afterwards.
 
 ---
 

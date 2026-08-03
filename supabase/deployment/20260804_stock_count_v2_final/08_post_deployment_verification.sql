@@ -193,19 +193,38 @@ t_grants AS (
   JOIN pg_proc p ON p.proname = v.n
   JOIN pg_namespace ns ON ns.oid = p.pronamespace AND ns.nspname='public'
   UNION ALL
-  -- KNOWN GAP, carried over from the historical migrations. Each migration that
-  -- replaced inventory_cutoff_preview granted EXECUTE to authenticated but never
-  -- revoked PostgreSQL's default EXECUTE grant to PUBLIC, so anon inherits it.
-  -- Staging is in exactly this state today. This pack does NOT change it, because
-  -- tightening it is a security decision beyond the 9a62556a contract.
-  -- See MIGRATION_AUDIT.md -> "Security observation".
-  SELECT 'G. GRANTS', 'anon cannot execute inventory_cutoff_preview',
-         CASE WHEN has_function_privilege('anon', p.oid, 'EXECUTE')
-              THEN 'REVIEW_REQUIRED' ELSE 'PASS' END,
-         'anon currently INHERITS EXECUTE from the PUBLIC default. Same on staging. '
-         'Decide separately whether to REVOKE ... FROM PUBLIC; not changed by this pack.'
+  -- 05_rls_policies_and_grants.sql revokes anon/PUBLIC EXECUTE on every contract
+  -- function. This is now a hard requirement, not an observation.
+  SELECT 'G. GRANTS', 'no contract function is executable by anon',
+         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN count(*) = 0 THEN 'anon has EXECUTE on 0 contract functions'
+              ELSE 'anon can still execute: '||string_agg(z.proname, ', ')||
+                   ' -- re-run 05_rls_policies_and_grants.sql' END
+  FROM (SELECT p.proname FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
+        WHERE ns.nspname='public'
+          AND p.proname ~ '(inventory_cutoff|opening_cutoff|archive_stock_count_draft|archive_product_variant|release_allocation_for_order|enforce_stock_count_reference|stock_count_discard_posting)'
+          AND has_function_privilege('anon', p.oid, 'EXECUTE')) z
+  UNION ALL
+  -- Revoking anon must NOT have collaterally removed the roles the app needs.
+  SELECT 'G. GRANTS', 'authenticated retains EXECUTE on entry-point RPCs',
+         CASE WHEN bool_and(has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+              THEN 'PASS' ELSE 'FAIL' END,
+         'Revoking anon must not break the authenticated UI path.'
   FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
-  WHERE ns.nspname='public' AND p.proname='inventory_cutoff_preview'
+  WHERE ns.nspname='public' AND p.proname IN
+    ('inventory_cutoff_preview','verify_and_post_inventory_opening_cutoff',
+     'verify_and_post_inventory_opening_cutoff_scoped_legacy',
+     'bind_inventory_cutoff_verification_snapshot','resolve_inventory_cutoff_allocation',
+     'archive_stock_count_draft','cancel_inventory_opening_cutoff')
+  UNION ALL
+  SELECT 'G. GRANTS', 'service_role retains EXECUTE on entry-point RPCs',
+         CASE WHEN bool_and(has_function_privilege('service_role', p.oid, 'EXECUTE'))
+              THEN 'PASS' ELSE 'FAIL' END,
+         'service_role holds its own explicit grant; revoking anon must not disturb it.'
+  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
+  WHERE ns.nspname='public' AND p.proname IN
+    ('inventory_cutoff_preview','apply_inventory_cutoff_d2h_policy',
+     'apply_inventory_cutoff_h2m_policy','apply_inventory_cutoff_transactions_policy')
 ),
 -- CH. preview delegation chain ----------------------------------------------
 -- inventory_cutoff_preview is an eight-layer stack. Every layer must exist or

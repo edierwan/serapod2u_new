@@ -1145,4 +1145,106 @@ COMMENT ON FUNCTION public.release_allocation_for_order(uuid) IS
 
 NOTIFY pgrst, 'reload schema';
 
+
+-- ===========================================================================
+-- LEAST-PRIVILEGE HARDENING -- remove anonymous EXECUTE on contract functions
+-- ---------------------------------------------------------------------------
+-- FINDING
+--   23 contract functions were executable by the `anon` role. This was never an
+--   intentional decision: Supabase's platform bootstrap grants EXECUTE on public
+--   functions to anon/authenticated/service_role, and the historical migrations
+--   revoked PUBLIC only from the *renamed legacy copies*, never from the newly
+--   created function. The grant is explicit in pg_proc.proacl (anon=X), so
+--   "REVOKE ... FROM PUBLIC" alone would NOT remove it -- anon must be named.
+--
+-- IS IT CURRENTLY EXPLOITABLE?  No.
+--   Every one of these functions is SECURITY DEFINER and gates on
+--   public.can_access_org(), which resolves the caller via
+--   `users.id = auth.uid()`. For an anonymous caller auth.uid() is NULL, no row
+--   matches, and the function raises `inventory_cutoff_not_found`. So this is a
+--   defence-in-depth gap, not a live data leak. It is still worth closing: that
+--   internal check is the ONLY thing between an unauthenticated caller and the
+--   Opening Balance posting function.
+--
+-- WHY THIS IS SAFE
+--   * Verified in application source: inventory_cutoff_preview has exactly two
+--     call sites and BOTH use an authenticated client --
+--       app/src/components/inventory/InventoryOpeningCutoffSection.tsx
+--         (browser client via useSupabaseAuth)
+--       app/src/app/api/inventory/stock-count/verification/request/route.ts
+--         (SSR client from @/lib/supabase/server, carrying the user's session)
+--     No contract RPC is invoked anonymously anywhere in the codebase.
+--   * service_role holds its own explicit grant (service_role=X in proacl), so
+--     revoking anon cannot affect it. It is re-granted below anyway.
+--   * Trigger functions need no grant: triggers run as the table owner.
+--   * The *_pre_* delegation layers are only ever called from their SECURITY
+--     DEFINER wrapper, which runs as its owner. No client role needs EXECUTE.
+--
+-- WHY A DO BLOCK RATHER THAN LITERAL STATEMENTS
+--   It is driven off pg_proc, so it acts only on functions that actually exist
+--   and always uses their real signature. That makes it order-independent and
+--   idempotent, and it cannot fail on a database where an object is absent.
+--
+-- REVERSIBLE?  Yes -- see ROLLBACK_AND_RECOVERY.md section 3.
+-- ===========================================================================
+
+DO $harden$
+DECLARE
+  r record;
+  v_entry_points text[] := ARRAY[
+    'inventory_cutoff_preview',
+    'verify_and_post_inventory_opening_cutoff',
+    'verify_and_post_inventory_opening_cutoff_scoped_legacy',
+    'bind_inventory_cutoff_verification_snapshot',
+    'cancel_inventory_opening_cutoff',
+    'set_inventory_cutoff_decision',
+    'archive_stock_count_draft',
+    'archive_product_variant',
+    'release_allocation_for_order',
+    'resolve_inventory_cutoff_allocation',
+    'resolve_inventory_cutoff_d2h_carry_forward',
+    'resolve_inventory_cutoff_h2m_incoming',
+    'inventory_cutoff_d2h_policy_preflight',
+    'inventory_cutoff_h2m_policy_preflight',
+    'inventory_cutoff_transactions_policy_preflight',
+    'inventory_cutoff_h2m_bulk_preflight',
+    'apply_inventory_cutoff_d2h_policy',
+    'apply_inventory_cutoff_h2m_policy',
+    'apply_inventory_cutoff_transactions_policy',
+    'apply_inventory_cutoff_h2m_bulk',
+    'inventory_cutoff_d2h_scoped_orders',
+    'inventory_cutoff_h2m_scoped_orders',
+    'inventory_cutoff_transactions_scoped',
+    'inventory_cutoff_h2m_excluded_blocks_receipt',
+    'assert_h2m_receipt_allowed_after_cutoff'
+  ];
+BEGIN
+  FOR r IN
+    SELECT p.oid,
+           p.proname,
+           p.oid::regprocedure::text AS sig,
+           p.prorettype = 'pg_catalog.trigger'::regtype AS is_trigger
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname ~ ('(inventory_cutoff|opening_cutoff|archive_stock_count_draft'
+                      '|archive_product_variant|release_allocation_for_order'
+                      '|enforce_stock_count_reference|stock_count_discard_posting'
+                      '|assert_h2m_receipt_allowed_after_cutoff'
+                      '|trg_warehouse_receipt_h2m_excluded_guard)')
+  LOOP
+    -- Always strip anonymous and PUBLIC access.
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon', r.sig);
+
+    -- Re-assert the roles the application genuinely uses, but only for the
+    -- entry points. Trigger functions and internal delegation layers get none.
+    IF NOT r.is_trigger AND r.proname = ANY (v_entry_points) THEN
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated, service_role', r.sig);
+    END IF;
+  END LOOP;
+END
+$harden$;
+
+NOTIFY pgrst, 'reload schema';
+
 COMMIT;
