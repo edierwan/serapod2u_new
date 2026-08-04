@@ -113,13 +113,47 @@ reach AS (
                 AND has_function_privilege('authenticated', p.oid, 'EXECUTE'))
               THEN 'OK' ELSE 'BLOCKER' END,
          'The UI calls this RPC as the authenticated role.'
+  -- The full application entry-point set, matching v_entry_points in
+  -- 07_final_contract_fixes.sql. archive_stock_count_draft is deliberately
+  -- ABSENT: it is internal, reached only via discard_stock_count_drafts.
   FROM (VALUES ('inventory_cutoff_preview'),('start_inventory_opening_cutoff'),
                ('cancel_inventory_opening_cutoff'),('set_inventory_cutoff_decision'),
                ('bind_inventory_cutoff_verification_snapshot'),
+               ('verify_and_post_inventory_opening_cutoff'),
+               ('release_allocation_for_order'),
                ('resolve_inventory_cutoff_allocation'),
+               ('resolve_inventory_cutoff_d2h_carry_forward'),
+               ('resolve_inventory_cutoff_h2m_incoming'),
+               ('inventory_cutoff_d2h_policy_preflight'),
+               ('inventory_cutoff_h2m_policy_preflight'),
+               ('inventory_cutoff_transactions_policy_preflight'),
+               ('inventory_cutoff_h2m_bulk_preflight'),
                ('apply_inventory_cutoff_d2h_policy'),('apply_inventory_cutoff_h2m_policy'),
                ('apply_inventory_cutoff_transactions_policy'),
-               ('archive_stock_count_draft'),('archive_product_variant')) v(n)
+               ('apply_inventory_cutoff_h2m_bulk'),
+               ('prepare_stock_count_verification'),('discard_stock_count_drafts'),
+               ('finalize_stock_count_verification_delivery'),
+               ('archive_product_variant')) v(n)
+),
+-- 4b. anonymous surface -------------------------------------------------------
+anonsurface AS (
+  SELECT '4b. ANONYMOUS SURFACE' AS section,
+         'Stock Count V2 functions callable without authentication' AS check_name,
+         count(*)::text AS value,
+         CASE WHEN count(*) = 0 THEN 'OK' ELSE 'BLOCKER' END AS verdict,
+         'Must be 0 after 07. Any non-zero value means an unauthenticated caller '
+         'can reach the Opening Balance surface.' AS note
+  FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+  WHERE ns.nspname = 'public'
+    AND ( p.proname ~ ('(inventory_cutoff|opening_cutoff|archive_stock_count_draft'
+                      '|archive_product_variant|release_allocation_for_order'
+                      '|enforce_stock_count_reference|stock_count_discard_posting'
+                      '|assert_h2m_receipt_allowed_after_cutoff'
+                      '|trg_warehouse_receipt_h2m_excluded_guard)')
+       OR p.proname IN ('prepare_stock_count_verification','discard_stock_count_drafts',
+                        'finalize_stock_count_verification_delivery') )
+    AND ( has_function_privilege('anon', p.oid, 'EXECUTE')
+       OR has_function_privilege('public', p.oid, 'EXECUTE') )
 ),
 -- 5. PostgREST schema cache --------------------------------------------------
 cache AS (
@@ -130,7 +164,7 @@ cache AS (
 ),
 all_checks AS (
   SELECT * FROM prereq UNION ALL SELECT * FROM inflight UNION ALL SELECT * FROM consistency
-  UNION ALL SELECT * FROM reach UNION ALL SELECT * FROM cache
+  UNION ALL SELECT * FROM reach UNION ALL SELECT * FROM anonsurface UNION ALL SELECT * FROM cache
 )
 SELECT section, check_name, value, verdict, note FROM all_checks
 UNION ALL SELECT 'Z. OVERALL','BLOCKER_COUNT',count(*)::text,'',''

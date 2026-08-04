@@ -110,21 +110,28 @@ a narrower constraint over non-conforming rows.
 
 ### Grant hardening (`07`) — fully reversible
 
-`07` revokes anonymous EXECUTE on the contract functions. To restore the previous
-(Supabase-default) state exactly:
+`07` removes client EXECUTE across the Stock Count V2 / Opening Balance surface and
+hands it back to `authenticated` + `service_role` for application entry points only.
+
+To restore the previous (Supabase platform default) state exactly — run as
+`supabase_admin`:
 
 ```sql
--- Restores anon EXECUTE on every public function, i.e. the platform default.
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 ```
 
-Narrower, if you only want one function back:
+Narrower, to restore a single function:
 
 ```sql
 GRANT EXECUTE ON FUNCTION public.inventory_cutoff_preview(uuid) TO anon;
 ```
 
 No data is involved and nothing is lost, so this needs no backup.
+
+**Symptom if an entry point was wrongly revoked:** the UI gets
+`permission denied for function ...` (PostgREST surfaces it as a 4xx). Re-grant that
+one function to `authenticated, service_role` and add it to `v_entry_points` in `07`
+so the fix survives a re-run.
 
 ### What cannot be reversed by hand
 

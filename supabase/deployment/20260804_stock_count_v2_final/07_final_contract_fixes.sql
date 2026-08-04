@@ -1147,63 +1147,90 @@ NOTIFY pgrst, 'reload schema';
 
 
 -- ===========================================================================
--- LEAST-PRIVILEGE HARDENING -- remove anonymous EXECUTE on contract functions
+-- LEAST-PRIVILEGE HARDENING -- final client-role grants for the Stock Count V2
+-- / Inventory Opening Balance surface
 -- ---------------------------------------------------------------------------
--- FINDING
---   23 contract functions were executable by the `anon` role. This was never an
---   intentional decision: Supabase's platform bootstrap grants EXECUTE on public
---   functions to anon/authenticated/service_role, and the historical migrations
---   revoked PUBLIC only from the *renamed legacy copies*, never from the newly
---   created function. The grant is explicit in pg_proc.proacl (anon=X), so
---   "REVOKE ... FROM PUBLIC" alone would NOT remove it -- anon must be named.
+-- TARGET STATE (enforced by 08_post_deployment_verification.sql):
+--   PUBLIC          no EXECUTE on anything in this surface
+--   anon            no EXECUTE on anything in this surface
+--   authenticated   EXECUTE on APPLICATION ENTRY POINTS only
+--   service_role    EXECUTE on APPLICATION ENTRY POINTS only
+--   *_pre_* layers  no direct client execution
+--   trigger fns     no direct client execution
+--   helpers/guards  no direct client execution
 --
--- IS IT CURRENTLY EXPLOITABLE?  No.
---   Every one of these functions is SECURITY DEFINER and gates on
---   public.can_access_org(), which resolves the caller via
---   `users.id = auth.uid()`. For an anonymous caller auth.uid() is NULL, no row
---   matches, and the function raises `inventory_cutoff_not_found`. So this is a
---   defence-in-depth gap, not a live data leak. It is still worth closing: that
---   internal check is the ONLY thing between an unauthenticated caller and the
---   Opening Balance posting function.
+-- WHY THIS IS NEEDED
+--   Supabase's platform bootstrap grants EXECUTE on public functions to
+--   anon/authenticated/service_role. The historical migrations revoked PUBLIC
+--   only from the *renamed legacy copies*, never from the newly created
+--   function, so anon inherited EXECUTE on the whole surface -- including the
+--   Opening Balance posting entry point. The grant is explicit in
+--   pg_proc.proacl (anon=X), so "REVOKE ... FROM PUBLIC" alone does NOT remove
+--   it: anon must be named.
 --
--- WHY THIS IS SAFE
---   * Verified in application source: inventory_cutoff_preview has exactly two
---     call sites and BOTH use an authenticated client --
---       app/src/components/inventory/InventoryOpeningCutoffSection.tsx
---         (browser client via useSupabaseAuth)
---       app/src/app/api/inventory/stock-count/verification/request/route.ts
---         (SSR client from @/lib/supabase/server, carrying the user's session)
---     No contract RPC is invoked anonymously anywhere in the codebase.
---   * service_role holds its own explicit grant (service_role=X in proacl), so
---     revoking anon cannot affect it. It is re-granted below anyway.
---   * Trigger functions need no grant: triggers run as the table owner.
---   * The *_pre_* delegation layers are only ever called from their SECURITY
---     DEFINER wrapper, which runs as its owner. No client role needs EXECUTE.
+-- NOT CURRENTLY EXPLOITABLE, STILL WORTH CLOSING
+--   Every function here is SECURITY DEFINER and gates on auth.uid() (directly,
+--   or via can_access_org / inventory_cutoff_is_hq_admin /
+--   stock_count_user_can_post). For an anonymous caller auth.uid() is NULL, so
+--   each raises rather than returning data. This is defence in depth: that
+--   internal check is otherwise the ONLY barrier in front of posting.
 --
--- WHY A DO BLOCK RATHER THAN LITERAL STATEMENTS
---   It is driven off pg_proc, so it acts only on functions that actually exist
---   and always uses their real signature. That makes it order-independent and
---   idempotent, and it cannot fail on a database where an object is absent.
+-- ENTRY POINTS WERE DERIVED FROM THE APPLICATION SOURCE, NOT GUESSED
+--   Every name in v_entry_points below is reached by an actual client call:
+--   a literal .rpc('<name>') or a route variable resolved to a literal. Two
+--   were nearly misclassified and are called out because getting them wrong
+--   would break the workflow:
+--     * verify_and_post_inventory_opening_cutoff -- selected dynamically in
+--       app/src/app/api/inventory/stock-count/verification/verify/route.ts
+--       ("postingFunction"), so it never appears as a literal .rpc() argument.
+--     * archive_product_variant -- called through the ARCHIVE_PRODUCT_VARIANT_RPC
+--       constant in app/src/lib/products/variant-deletion.ts.
+--
+-- FUNCTIONS DELIBERATELY LEFT WITH NO CLIENT GRANT
+--   The posting chain is
+--     verify_and_post_inventory_opening_cutoff              <- entry point
+--       -> ..._pre_transactions_polic                       <- internal
+--            -> ..._scoped_legacy                           <- internal, terminal
+--   Only the first is called by a client; the lower two are invoked from inside
+--   a SECURITY DEFINER function and therefore run as its owner. The same is true
+--   of the seven inventory_cutoff_preview_* delegation layers and of
+--   archive_stock_count_draft (reached only via discard_stock_count_drafts).
+--
+-- VERIFIED SAFE BEFORE WRITING THIS
+--   * No RLS policy references any of these helpers. RLS predicates are
+--     evaluated with the CALLER's privileges, so a helper used in a policy would
+--     still need EXECUTE -- none is.
+--   * No column default references them.
+--   * service_role holds its own explicit grant, so revoking anon cannot
+--     disturb it; it is re-granted explicitly below regardless.
+--   * Trigger functions need no grant at all: triggers execute as the table
+--     owner, not as the connected role.
 --
 -- REVERSIBLE?  Yes -- see ROLLBACK_AND_RECOVERY.md section 3.
+-- IDENTITY  :  must be run as the function OWNER (supabase_admin). REVOKE/GRANT
+--              on someone else's function requires ownership; running as
+--              `postgres` fails with "must be owner of function ...".
 -- ===========================================================================
 
 DO $harden$
 DECLARE
   r record;
+  -- APPLICATION ENTRY POINTS: reached by a real client call. These keep
+  -- EXECUTE for authenticated and service_role. Everything else in the surface
+  -- loses all client execution.
   v_entry_points text[] := ARRAY[
+    -- Opening Balance workflow
     'inventory_cutoff_preview',
-    'verify_and_post_inventory_opening_cutoff',
-    'verify_and_post_inventory_opening_cutoff_scoped_legacy',
-    'bind_inventory_cutoff_verification_snapshot',
+    'start_inventory_opening_cutoff',
     'cancel_inventory_opening_cutoff',
     'set_inventory_cutoff_decision',
-    'archive_stock_count_draft',
-    'archive_product_variant',
+    'bind_inventory_cutoff_verification_snapshot',
+    'verify_and_post_inventory_opening_cutoff',
     'release_allocation_for_order',
     'resolve_inventory_cutoff_allocation',
     'resolve_inventory_cutoff_d2h_carry_forward',
     'resolve_inventory_cutoff_h2m_incoming',
+    -- policy preflight / apply pairs (called via a route variable)
     'inventory_cutoff_d2h_policy_preflight',
     'inventory_cutoff_h2m_policy_preflight',
     'inventory_cutoff_transactions_policy_preflight',
@@ -1212,11 +1239,12 @@ DECLARE
     'apply_inventory_cutoff_h2m_policy',
     'apply_inventory_cutoff_transactions_policy',
     'apply_inventory_cutoff_h2m_bulk',
-    'inventory_cutoff_d2h_scoped_orders',
-    'inventory_cutoff_h2m_scoped_orders',
-    'inventory_cutoff_transactions_scoped',
-    'inventory_cutoff_h2m_excluded_blocks_receipt',
-    'assert_h2m_receipt_allowed_after_cutoff'
+    -- Stock Count V2 verification / discard boundary
+    'prepare_stock_count_verification',
+    'discard_stock_count_drafts',
+    'finalize_stock_count_verification_delivery',
+    -- Master Data
+    'archive_product_variant'
   ];
 BEGIN
   FOR r IN
@@ -1227,17 +1255,26 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
-      AND p.proname ~ ('(inventory_cutoff|opening_cutoff|archive_stock_count_draft'
-                      '|archive_product_variant|release_allocation_for_order'
-                      '|enforce_stock_count_reference|stock_count_discard_posting'
-                      '|assert_h2m_receipt_allowed_after_cutoff'
-                      '|trg_warehouse_receipt_h2m_excluded_guard)')
+      AND (
+            p.proname ~ ('(inventory_cutoff|opening_cutoff|archive_stock_count_draft'
+                        '|archive_product_variant|release_allocation_for_order'
+                        '|enforce_stock_count_reference|stock_count_discard_posting'
+                        '|assert_h2m_receipt_allowed_after_cutoff'
+                        '|trg_warehouse_receipt_h2m_excluded_guard)')
+            -- Stock Count V2 verification / discard boundary: same security
+            -- boundary as the cut-off itself, so it must not be left behind.
+            OR p.proname IN ('prepare_stock_count_verification',
+                             'discard_stock_count_drafts',
+                             'finalize_stock_count_verification_delivery')
+          )
   LOOP
-    -- Always strip anonymous and PUBLIC access.
-    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon', r.sig);
+    -- Step 1: strip ALL client execution, unconditionally.
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated, service_role',
+      r.sig);
 
-    -- Re-assert the roles the application genuinely uses, but only for the
-    -- entry points. Trigger functions and internal delegation layers get none.
+    -- Step 2: hand back EXECUTE to the two roles the application actually uses,
+    -- and only for genuine entry points. Trigger functions never qualify.
     IF NOT r.is_trigger AND r.proname = ANY (v_entry_points) THEN
       EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated, service_role', r.sig);
     END IF;

@@ -97,8 +97,8 @@ Do not rely on a backup you have not verified.
 | 04 | a long run of `CREATE FUNCTION` / `CREATE TRIGGER` |
 | 05 | `ALTER TABLE`, `CREATE POLICY`, `GRANT`, `REVOKE` |
 | 06 | preview + ambiguity counts. **Applies nothing** unless `-v reconcile_approved=yes`. Both staging and production currently report **0 qualifying rows**, so it is expected to be a no-op. |
-| 07 | 6 × `CREATE FUNCTION` |
-| 08 | `OVERALL_STATUS` = **`PASS`**, `FAIL_COUNT` = 0, `REVIEW_REQUIRED_COUNT` = 0 (83 checks) |
+| 07 | 6 × `CREATE FUNCTION`, then one `DO` (the grant hardening). **Run as `supabase_admin`.** |
+| 08 | `OVERALL_STATUS` = **`PASS`**, `FAIL_COUNT` = 0, `REVIEW_REQUIRED_COUNT` = 0 |
 | 09 | `READY_FOR_UI_TESTING` = `YES`, `BLOCKER_COUNT` = 0 |
 
 ## 10. Stop conditions
@@ -134,11 +134,18 @@ All three are read-only. If `08` reports `FAIL_COUNT = 0`, staging is already
 correct and **nothing further is needed** — except the one deliberate change
 below.
 
-> **The single exception.** `08` will report a FAIL for
-> `no contract function is executable by anon`, because staging still carries the
-> inherited anonymous grant. Closing it requires `07`, which is safe to run on its
-> own (it is `CREATE OR REPLACE` + `REVOKE`/`GRANT` only, no data). Either run `07`
-> alone, or accept the finding and defer it.
+> **The single exception — and it needs `supabase_admin`.** `08` will FAIL on the
+> anon/PUBLIC grant checks, because staging still carries the inherited grants.
+> Closing them means running `07`, which is safe standalone (`CREATE OR REPLACE`
+> plus `REVOKE`/`GRANT`; it touches no data).
+>
+> ⚠️ **`07` must be run as `supabase_admin`.** Every function it replaces or
+> re-grants is owned by `supabase_admin`, and both `CREATE OR REPLACE FUNCTION`
+> and `REVOKE`/`GRANT` require ownership. Running as `postgres` fails on the very
+> first statement with `must be owner of function inventory_cutoff_preview` — the
+> whole file is one transaction, so nothing is applied. No ownership change, role
+> membership change, password change or HBA change is required: just connect as
+> the owner.
 
 ### Path B — full deployment (only if Path A shows staging is incomplete)
 
@@ -237,6 +244,33 @@ If a file fails partway:
    before doing anything else.
 4. Never edit a pack file to "skip past" a failing statement. That produces exactly
    the kind of half-applied state this pack exists to eliminate.
+
+## 16b. Final client-role grants (enforced by `07`, verified by `08`)
+
+| Role | EXECUTE on the Stock Count V2 / Opening Balance surface |
+|---|---|
+| `PUBLIC` | **none** |
+| `anon` | **none** |
+| `authenticated` | **application entry points only** (22) |
+| `service_role` | **application entry points only** (22) |
+| `*_pre_*` delegation layers | **no direct client execution** |
+| trigger functions | **no direct client execution** |
+| helpers / guards | **no direct client execution** |
+
+The surface covers the Opening Balance cut-off functions **and** the Stock Count V2
+verification/discard boundary — `prepare_stock_count_verification`,
+`discard_stock_count_drafts` and `finalize_stock_count_verification_delivery` — so
+the security result is consistent across the whole feature rather than stopping at
+the cut-off functions.
+
+Two entry points are easy to misclassify and are called out in `07`'s comments:
+`verify_and_post_inventory_opening_cutoff` (selected via a route variable, so it is
+never a literal `.rpc()` argument) and `archive_product_variant` (called through the
+`ARCHIVE_PRODUCT_VARIANT_RPC` constant). Both retain `authenticated`.
+
+Conversely `verify_and_post_inventory_opening_cutoff_scoped_legacy` and
+`archive_stock_count_draft` are **internal** — reached only from inside another
+SECURITY DEFINER function — and correctly end up with no client grant.
 
 ## 17. Is the pack rerunnable?
 

@@ -142,13 +142,35 @@ caller and the posting function.
 Those are the **only** two call sites. No contract RPC is invoked anonymously
 anywhere in the codebase, and none is invoked with the service-role admin client.
 
-**Least-privilege decision — now implemented in `07_final_contract_fixes.sql`:**
+**Scope widened after review.** The first cut stopped at the cut-off functions and
+left the Stock Count V2 verification/discard boundary anon-executable, which was
+internally inconsistent. `07` now also covers `prepare_stock_count_verification`,
+`discard_stock_count_drafts` and `finalize_stock_count_verification_delivery` — all
+three SECURITY DEFINER, VOLATILE (mutating), called by the app, and gated only by
+`auth.uid()`.
 
-| Function class | anon / PUBLIC | authenticated | service_role |
-|---|---|---|---|
-| Entry-point RPCs (25) | **revoked** | granted | granted |
-| Internal `*_pre_*` delegation layers | **revoked** | none | none |
-| Trigger functions | **revoked** | none | none |
+**Least-privilege decision — implemented in `07_final_contract_fixes.sql`:**
+
+| Function class | PUBLIC | anon | authenticated | service_role |
+|---|---|---|---|---|
+| Application entry points (22) | **revoked** | **revoked** | granted | granted |
+| Internal `*_pre_*` delegation layers | **revoked** | **revoked** | **revoked** | **revoked** |
+| Trigger functions | **revoked** | **revoked** | **revoked** | **revoked** |
+| Helpers / guards | **revoked** | **revoked** | **revoked** | **revoked** |
+
+Entry points were derived from the application source, not guessed. Two were nearly
+misclassified: `verify_and_post_inventory_opening_cutoff` (chosen via a route
+variable, never a literal `.rpc()` argument) and `archive_product_variant` (called
+through the `ARCHIVE_PRODUCT_VARIANT_RPC` constant). Both are entry points.
+`verify_and_post_inventory_opening_cutoff_scoped_legacy` and
+`archive_stock_count_draft` are **internal** — the posting chain is
+`verify_and_post_inventory_opening_cutoff` → `..._pre_transactions_polic` →
+`..._scoped_legacy`, and only the first is client-called.
+
+Before revoking `authenticated` from helpers, two dependencies were checked
+read-only: **no RLS policy** references any of them (RLS predicates evaluate with
+the caller's privileges, so a helper used in a policy would still need EXECUTE), and
+**no column default** does either.
 
 Safe because `service_role` holds its own explicit grant (so the revoke cannot
 disturb it, and it is re-granted anyway), triggers execute as the table owner, and
@@ -160,10 +182,17 @@ functions went **17 → 0**, while `authenticated` and `service_role` retained
 EXECUTE. `08` now enforces this as a hard **FAIL**, and reports
 **0 REVIEW_REQUIRED**.
 
-> Placement note: the revokes live at the end of `07`, not in `05`. Several
+> **Placement note:** the revokes live at the end of `07`, not in `05`. Several
 > contract functions are *created* in `07`, so a `REVOKE` in `05` fails with
 > "function does not exist" on any database that does not already have them —
-> exactly the production case. This was caught by the PG17 rehearsal.
+> exactly the production case. Caught by the PG17 rehearsal.
+>
+> **Execution identity:** all 45 functions in scope are owned by `supabase_admin`.
+> `07` must be run as that role — `CREATE OR REPLACE FUNCTION` and `REVOKE`/`GRANT`
+> both require ownership. A `postgres` run fails on the first statement with
+> `must be owner of function inventory_cutoff_preview`, and since the file is one
+> transaction, nothing is applied. **No ownership, role-membership, password or HBA
+> change is required.**
 
 ---
 

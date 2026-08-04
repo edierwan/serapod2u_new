@@ -16,6 +16,37 @@ SET default_transaction_read_only = on;
 BEGIN READ ONLY;
 
 WITH
+-- Shared definitions used by the grant checks below. Kept in sync with the
+-- surface regex and v_entry_points array in 07_final_contract_fixes.sql.
+surface AS (
+  SELECT p.oid, p.proname,
+         p.prorettype = 'pg_catalog.trigger'::regtype AS is_trigger
+  FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+  WHERE ns.nspname = 'public'
+    AND ( p.proname ~ ('(inventory_cutoff|opening_cutoff|archive_stock_count_draft'
+                      '|archive_product_variant|release_allocation_for_order'
+                      '|enforce_stock_count_reference|stock_count_discard_posting'
+                      '|assert_h2m_receipt_allowed_after_cutoff'
+                      '|trg_warehouse_receipt_h2m_excluded_guard)')
+       OR p.proname IN ('prepare_stock_count_verification',
+                        'discard_stock_count_drafts',
+                        'finalize_stock_count_verification_delivery') )
+),
+entry_points AS (
+  SELECT unnest(ARRAY[
+    'inventory_cutoff_preview','start_inventory_opening_cutoff',
+    'cancel_inventory_opening_cutoff','set_inventory_cutoff_decision',
+    'bind_inventory_cutoff_verification_snapshot',
+    'verify_and_post_inventory_opening_cutoff','release_allocation_for_order',
+    'resolve_inventory_cutoff_allocation','resolve_inventory_cutoff_d2h_carry_forward',
+    'resolve_inventory_cutoff_h2m_incoming',
+    'inventory_cutoff_d2h_policy_preflight','inventory_cutoff_h2m_policy_preflight',
+    'inventory_cutoff_transactions_policy_preflight','inventory_cutoff_h2m_bulk_preflight',
+    'apply_inventory_cutoff_d2h_policy','apply_inventory_cutoff_h2m_policy',
+    'apply_inventory_cutoff_transactions_policy','apply_inventory_cutoff_h2m_bulk',
+    'prepare_stock_count_verification','discard_stock_count_drafts',
+    'finalize_stock_count_verification_delivery','archive_product_variant']) AS n
+),
 -- T. required tables ---------------------------------------------------------
 t_tables AS (
   SELECT 'T. TABLES' AS section, n AS check_name,
@@ -183,48 +214,69 @@ t_rls AS (
 ),
 -- G. grants ------------------------------------------------------------------
 t_grants AS (
+  -- Spot-check a few high-traffic entry points by name. The exhaustive
+  -- entry-point/internal checks are the set-based ones below; this block just
+  -- makes the most important ones obvious in the output.
+  -- NOTE: verify_and_post_..._scoped_legacy and archive_stock_count_draft are
+  -- deliberately NOT listed. They are INTERNAL (reached only from inside another
+  -- SECURITY DEFINER function), so after 07 they correctly have no client grant.
   SELECT 'G. GRANTS', 'authenticated can EXECUTE '||v.n,
          CASE WHEN has_function_privilege('authenticated', p.oid, 'EXECUTE') THEN 'PASS' ELSE 'FAIL' END,
          'PostgREST calls this RPC as the authenticated role.'
   FROM (VALUES ('inventory_cutoff_preview'),('verify_and_post_inventory_opening_cutoff'),
-               ('verify_and_post_inventory_opening_cutoff_scoped_legacy'),
+               ('start_inventory_opening_cutoff'),
                ('bind_inventory_cutoff_verification_snapshot'),
-               ('resolve_inventory_cutoff_allocation'),('archive_stock_count_draft')) v(n)
+               ('resolve_inventory_cutoff_allocation'),
+               ('prepare_stock_count_verification'),
+               ('discard_stock_count_drafts')) v(n)
   JOIN pg_proc p ON p.proname = v.n
   JOIN pg_namespace ns ON ns.oid = p.pronamespace AND ns.nspname='public'
   UNION ALL
-  -- 05_rls_policies_and_grants.sql revokes anon/PUBLIC EXECUTE on every contract
-  -- function. This is now a hard requirement, not an observation.
-  SELECT 'G. GRANTS', 'no contract function is executable by anon',
+  -- 07_final_contract_fixes.sql enforces the final client-role grants.
+  -- Scope = the whole Stock Count V2 / Opening Balance surface, including the
+  -- verification / discard boundary.
+  SELECT 'G. GRANTS', 'no surface function is executable by PUBLIC',
          CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
-         CASE WHEN count(*) = 0 THEN 'anon has EXECUTE on 0 contract functions'
+         CASE WHEN count(*) = 0 THEN 'PUBLIC has EXECUTE on 0 surface functions'
+              ELSE 'PUBLIC can still execute: '||string_agg(z.proname, ', ')||
+                   ' -- re-run 07_final_contract_fixes.sql as supabase_admin' END
+  FROM (SELECT s2.proname FROM surface s2
+        WHERE has_function_privilege('public', s2.oid, 'EXECUTE')) z
+  UNION ALL
+  SELECT 'G. GRANTS', 'no surface function is executable by anon',
+         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN count(*) = 0 THEN 'anon has EXECUTE on 0 surface functions'
               ELSE 'anon can still execute: '||string_agg(z.proname, ', ')||
-                   ' -- re-run 05_rls_policies_and_grants.sql' END
-  FROM (SELECT p.proname FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
-        WHERE ns.nspname='public'
-          AND p.proname ~ '(inventory_cutoff|opening_cutoff|archive_stock_count_draft|archive_product_variant|release_allocation_for_order|enforce_stock_count_reference|stock_count_discard_posting)'
-          AND has_function_privilege('anon', p.oid, 'EXECUTE')) z
+                   ' -- re-run 07_final_contract_fixes.sql as supabase_admin' END
+  FROM (SELECT s2.proname FROM surface s2
+        WHERE has_function_privilege('anon', s2.oid, 'EXECUTE')) z
   UNION ALL
-  -- Revoking anon must NOT have collaterally removed the roles the app needs.
-  SELECT 'G. GRANTS', 'authenticated retains EXECUTE on entry-point RPCs',
-         CASE WHEN bool_and(has_function_privilege('authenticated', p.oid, 'EXECUTE'))
-              THEN 'PASS' ELSE 'FAIL' END,
-         'Revoking anon must not break the authenticated UI path.'
-  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
-  WHERE ns.nspname='public' AND p.proname IN
-    ('inventory_cutoff_preview','verify_and_post_inventory_opening_cutoff',
-     'verify_and_post_inventory_opening_cutoff_scoped_legacy',
-     'bind_inventory_cutoff_verification_snapshot','resolve_inventory_cutoff_allocation',
-     'archive_stock_count_draft','cancel_inventory_opening_cutoff')
+  -- Internal delegation layers, helpers and guards must NOT be directly callable.
+  SELECT 'G. GRANTS', 'internal/*_pre_*/trigger functions have no client EXECUTE',
+         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN count(*) = 0 THEN 'no non-entry-point is client-executable'
+              ELSE 'still client-executable: '||string_agg(z.proname, ', ') END
+  FROM (SELECT s2.proname FROM surface s2
+        WHERE s2.proname NOT IN (SELECT n FROM entry_points)
+          AND (has_function_privilege('authenticated', s2.oid, 'EXECUTE')
+            OR has_function_privilege('service_role', s2.oid, 'EXECUTE'))) z
   UNION ALL
-  SELECT 'G. GRANTS', 'service_role retains EXECUTE on entry-point RPCs',
-         CASE WHEN bool_and(has_function_privilege('service_role', p.oid, 'EXECUTE'))
-              THEN 'PASS' ELSE 'FAIL' END,
-         'service_role holds its own explicit grant; revoking anon must not disturb it.'
-  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
-  WHERE ns.nspname='public' AND p.proname IN
-    ('inventory_cutoff_preview','apply_inventory_cutoff_d2h_policy',
-     'apply_inventory_cutoff_h2m_policy','apply_inventory_cutoff_transactions_policy')
+  -- The application must not lose access to anything it genuinely calls.
+  SELECT 'G. GRANTS', 'every application entry point is executable by authenticated',
+         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN count(*) = 0 THEN 'all entry points reachable by authenticated'
+              ELSE 'BROKEN - authenticated cannot execute: '||string_agg(z.proname, ', ') END
+  FROM (SELECT s2.proname FROM surface s2
+        WHERE s2.proname IN (SELECT n FROM entry_points)
+          AND NOT has_function_privilege('authenticated', s2.oid, 'EXECUTE')) z
+  UNION ALL
+  SELECT 'G. GRANTS', 'every application entry point is executable by service_role',
+         CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+         CASE WHEN count(*) = 0 THEN 'all entry points reachable by service_role'
+              ELSE 'BROKEN - service_role cannot execute: '||string_agg(z.proname, ', ') END
+  FROM (SELECT s2.proname FROM surface s2
+        WHERE s2.proname IN (SELECT n FROM entry_points)
+          AND NOT has_function_privilege('service_role', s2.oid, 'EXECUTE')) z
 ),
 -- CH. preview delegation chain ----------------------------------------------
 -- inventory_cutoff_preview is an eight-layer stack. Every layer must exist or
