@@ -144,13 +144,19 @@ blockers AS (
     'opening_balance_cutoff'])
   UNION ALL
   -- Decisions that the widened decision CHECK would reject.
+  -- This array MUST stay identical to the allowlist installed by
+  -- 03_constraints_and_indexes.sql, or this check produces false alarms.
+  -- (It previously listed two invented values, 'expected_incoming' and
+  -- 'not_incoming', and omitted the two real ones below -- which reported 387
+  -- perfectly valid staging rows as REVIEW_REQUIRED.)
   SELECT 'G. DATA BLOCKERS',
          'inventory_cutoff_decisions.decision values outside the new allowlist',
          'offending rows: '||count(*)::text,
          CASE WHEN count(*) = 0 THEN 'PASS' ELSE 'REVIEW_REQUIRED' END
   FROM public.inventory_cutoff_decisions
   WHERE decision IS NOT NULL AND decision <> ALL (ARRAY[
-    'carry_forward','cancel_release','do_not_carry_forward','expected_incoming','not_incoming'])
+    'carry_forward','cancel_release','carry_forward_incoming','history_only',
+    'do_not_carry_forward'])
 ),
 -- -------------------------------------- partial historical application
 partial AS (
