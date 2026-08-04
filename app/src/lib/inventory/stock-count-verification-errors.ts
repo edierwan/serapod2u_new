@@ -39,6 +39,20 @@ export type StockCountVerificationErrorCode =
     | 'posting_function_unavailable'
     | 'posting_timeout'
     | 'posting_conflict'
+    /* Opening Balance (inventory_cutoff_*) posting contract. Every one of these
+       used to fall through to `unexpected_error`, which is why a hard, specific
+       server rejection reached the user as "an unexpected error". */
+    | 'opening_balance_freeze_inactive'
+    | 'opening_balance_not_ready'
+    | 'opening_balance_distributor_decision_stale'
+    | 'opening_balance_manufacturer_decision_stale'
+    | 'opening_balance_mixed_decisions'
+    | 'opening_balance_policy_required'
+    | 'opening_balance_policy_scope_changed'
+    | 'opening_balance_allocation_owner_unresolved'
+    | 'opening_balance_allocation_shortage'
+    | 'opening_balance_category_scope_mismatch'
+    | 'opening_balance_config_missing'
     | 'unexpected_error'
 
 export type StockCountVerificationErrorStage = 'preflight' | 'request' | 'verify' | 'post'
@@ -89,6 +103,17 @@ const ERRORS: Record<StockCountVerificationErrorCode, Omit<StockCountVerificatio
     posting_function_unavailable: { message: 'Stock Count posting is temporarily unavailable because the classification posting function is not executable. Please contact your administrator (migration 14 grant may be missing).', status: 503, recoverable: true },
     posting_timeout: { message: 'Posting took too long and was safely cancelled — no inventory was changed and your verification code is still valid. Please try posting again. If this keeps happening on a very large count, contact your administrator.', status: 503, recoverable: true },
     posting_conflict: { message: 'This Stock Count could not be posted because its inventory rows are being updated by another operation. No inventory was changed and your verification code is still valid. Please try again in a moment.', status: 409, recoverable: true },
+    opening_balance_freeze_inactive: { message: 'The Opening Balance freeze is no longer active for this warehouse, so it cannot be posted. No inventory was changed. Reopen the Opening Balance and check its status.', status: 409, recoverable: true },
+    opening_balance_not_ready: { message: 'The Opening Balance still has unresolved blockers, so it was not posted. No inventory was changed. Refresh the preview, resolve the blockers listed on Step 4, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_distributor_decision_stale: { message: 'A distributor (D2H/S2D) order changed after the Distributor Orders policy was saved, so the Opening Balance was not posted. No inventory was changed. Reopen Step 2 (Distributor Orders), re-save the policy, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_manufacturer_decision_stale: { message: 'A manufacturer (H2M) order changed after the Manufacturer Orders policy was saved, so the Opening Balance was not posted. No inventory was changed. Reopen Step 3 (Manufacturer Orders), re-save the policy, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_mixed_decisions: { message: 'One order carries conflicting carry-forward decisions, so the Opening Balance was not posted. No inventory was changed. Reopen the Distributor/Manufacturer steps and apply a single decision per order.', status: 409, recoverable: true },
+    opening_balance_policy_required: { message: 'A required Opening Balance policy has not been saved yet. No inventory was changed. Complete the Distributor, Manufacturer and Transactions steps, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_policy_scope_changed: { message: 'The transactions covered by this Opening Balance changed after its policy was confirmed, so it was not posted. No inventory was changed. Reopen Step 4 (Transactions), re-confirm the policy, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_allocation_owner_unresolved: { message: 'Some stock at this warehouse is still reserved by an order that this Opening Balance does not account for. No inventory was changed. Resolve the allocation blocker on Step 4, then request a new verification code.', status: 409, recoverable: true },
+    opening_balance_allocation_shortage: { message: 'A carried-forward distributor order needs more free stock than the counted opening quantity provides, so the Opening Balance was not posted. No inventory was changed. Re-check the counted quantities or the carry-forward selection.', status: 409, recoverable: true },
+    opening_balance_category_scope_mismatch: { message: 'This Opening Balance includes an order outside its Product Category, so it was not posted. No inventory was changed. Reopen the Distributor/Manufacturer steps and re-save the policies for this category.', status: 409, recoverable: true },
+    opening_balance_config_missing: { message: 'A required stock configuration for a carried-forward distributor order is missing or inactive, so the Opening Balance was not posted. No inventory was changed. Activate the configuration, then request a new verification code.', status: 409, recoverable: true },
     unexpected_error: { message: 'We couldn’t complete this Stock Count verification step due to an unexpected error. Please try again or contact your administrator.', status: 500, recoverable: true },
 }
 
@@ -114,8 +139,16 @@ export function stockCountVerificationError(
         return {
             ...base,
             stage: options.stage,
+            // Correlation reference is retained for EVERY code, not just
+            // unexpected_error — a specific, actionable message must still be
+            // traceable back to the server log line for the same attempt.
             reference: options.reference,
-            message: options.message || base.message,
+            // Empty string must not override the default — callers that join an
+            // empty blockers[] used to surface the generic "no counted quantities"
+            // text for unrelated readiness failures.
+            message: (typeof options.message === 'string' && options.message.trim()
+              ? options.message
+              : base.message),
         }
     }
     const stage = options.stage || 'request'
@@ -156,6 +189,7 @@ export function mapStockCountDatabaseError(
     message: string,
     stage: StockCountVerificationErrorStage = 'post',
     sqlState?: string | null,
+    reference?: string,
 ): StockCountVerificationFriendlyError {
     const normalized = String(message || '')
     const state = String(sqlState || '').trim()
@@ -165,9 +199,21 @@ export function mapStockCountDatabaseError(
     //   57014 = query_canceled (statement_timeout)
     //   55P03 = lock_not_available (lock_timeout)
     //   40001 = serialization_failure, 40P01 = deadlock_detected
-    if (state === '57014') return stockCountVerificationError('posting_timeout', { stage })
+    if (state === '57014') return stockCountVerificationError('posting_timeout', { stage, reference })
     if (state === '55P03' || state === '40001' || state === '40P01') {
-        return stockCountVerificationError('posting_conflict', { stage })
+        return stockCountVerificationError('posting_conflict', { stage, reference })
+    }
+
+    // Opening Balance carry-forward shortage names the offending order/config in
+    // its RAISE detail — append it so the operator knows which order to fix.
+    if (normalized.includes('inventory_cutoff_carried_allocation_shortage')) {
+        const detail = extractStockCountDatabaseDetail(normalized, 'inventory_cutoff_carried_allocation_shortage')
+        const base = ERRORS.opening_balance_allocation_shortage.message
+        return stockCountVerificationError('opening_balance_allocation_shortage', {
+            stage,
+            reference,
+            message: detail ? `${base} (${detail})` : base,
+        })
     }
 
     const detailed: Array<[string, StockCountVerificationErrorCode]> = [
@@ -183,7 +229,7 @@ export function mapStockCountDatabaseError(
     for (const [prefix, code] of detailed) {
         if (normalized.includes(prefix)) {
             const detail = extractStockCountDatabaseDetail(normalized, prefix)
-            return stockCountVerificationError(code, { stage, message: detail || undefined })
+            return stockCountVerificationError(code, { stage, reference, message: detail || undefined })
         }
     }
 
@@ -216,12 +262,60 @@ export function mapStockCountDatabaseError(
         [/stock_movements_reference_type_check/i, 'wrong_posting_function'],
         // Fallback for the pre-migration-16 failure mode (SC-MRR56NMA-1TDQ).
         [/valid_quantities/i, 'classification_allocated_blocks_post'],
+
+        // ---- Opening Balance (inventory_cutoff_*) ---------------------------
+        // These are hard, specific server rejections. Before this table existed
+        // they all rendered as the generic "unexpected error" (SC-MSB3UFDM-1FSK
+        // was inventory_cutoff_distributor_decision_stale), which gave the
+        // operator nothing to act on. Longest/most specific needles first.
+        ['inventory_cutoff_distributor_decision_stale', 'opening_balance_distributor_decision_stale'],
+        ['inventory_cutoff_distributor_not_eligible', 'opening_balance_distributor_decision_stale'],
+        ['inventory_cutoff_manufacturer_decision_stale', 'opening_balance_manufacturer_decision_stale'],
+        ['inventory_cutoff_manufacturer_not_eligible', 'opening_balance_manufacturer_decision_stale'],
+        ['inventory_cutoff_mixed_manufacturer_order_decisions', 'opening_balance_mixed_decisions'],
+        ['inventory_cutoff_mixed_order_decisions', 'opening_balance_mixed_decisions'],
+        ['inventory_cutoff_transactions_policy_scope_changed', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_transactions_policy_scope_mismatch', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_transactions_policy_required', 'opening_balance_policy_required'],
+        ['inventory_cutoff_d2h_policy_scope_mismatch', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_h2m_policy_scope_mismatch', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_h2m_policy_stale_incoming', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_d2h_policy_required', 'opening_balance_policy_required'],
+        ['inventory_cutoff_h2m_policy_required', 'opening_balance_policy_required'],
+        ['inventory_cutoff_allocation_owner_unresolved', 'opening_balance_allocation_owner_unresolved'],
+        ['inventory_cutoff_product_category_scope_mismatch', 'opening_balance_category_scope_mismatch'],
+        ['stock_count_active_product_category_required', 'opening_balance_category_scope_mismatch'],
+        ['inventory_cutoff_20ml_new_box_missing', 'opening_balance_config_missing'],
+        ['inventory_cutoff_stale_preflight_data', 'opening_balance_policy_scope_changed'],
+        ['inventory_cutoff_not_ready', 'opening_balance_not_ready'],
+        ['inventory_cutoff_not_active', 'opening_balance_freeze_inactive'],
+        ['inventory_cutoff_not_found', 'opening_balance_freeze_inactive'],
+        ['inventory_cutoff_verification_request_invalidated', 'snapshot_changed'],
     ]
     const match = mappings.find(([needle]) => (
         typeof needle === 'string' ? normalized.includes(needle) : needle.test(normalized)
     ))
-    if (!match) return stockCountVerificationError('unexpected_error', { stage })
-    return stockCountVerificationError(match[1], { stage })
+    if (!match) return stockCountVerificationError('unexpected_error', { stage, reference })
+    return stockCountVerificationError(match[1], { stage, reference })
+}
+
+/**
+ * Codes whose verification request can no longer be used. After one of these the
+ * UI must stop inviting the operator to re-enter the same OTP and must require a
+ * fresh code. Every other posting failure rolls the whole transaction back and
+ * leaves the request usable until it expires.
+ */
+const OTP_UNUSABLE_CODES: ReadonlySet<StockCountVerificationErrorCode> = new Set([
+    'code_already_used',
+    'expired_code',
+    'snapshot_changed',
+    'already_posted',
+])
+
+export function requiresFreshStockCountVerification(
+    code: StockCountVerificationErrorCode | string | null | undefined,
+): boolean {
+    return OTP_UNUSABLE_CODES.has(String(code || '') as StockCountVerificationErrorCode)
 }
 
 export function formatStockCountClientError(

@@ -13,8 +13,11 @@ describe('Stock Count UI identifier hygiene', () => {
     // The generated stock SKU line (e.g. SAG-102430-UNC-<uuid-tail>) is removed
     // from the row. skuForRow remains for internal save/Excel/matching only.
     expect(stockCountView).not.toContain('<span className="font-mono text-xs text-slate-500">{skuForRow(row)}</span>')
-    // Still used internally when persisting session items.
-    expect(stockCountView).toContain('sku: skuForRow(row)')
+    // Still used internally when persisting session items. The persisted payload
+    // prefers an already-saved SKU and falls back to skuForRow(row), so assert
+    // the internal usage (not a brittle exact-string form of the expression).
+    expect(stockCountView).toContain('skuForRow(row)')
+    expect(stockCountView).toMatch(/sku:\s*persisted\s*\?\s*persisted\.sku\s*:\s*skuForRow\(row\)/)
   })
 
   it('shows the warehouse name instead of the warehouse UUID for invalid-warehouse drafts', () => {

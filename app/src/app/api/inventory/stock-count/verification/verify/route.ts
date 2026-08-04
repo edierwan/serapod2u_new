@@ -79,10 +79,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(data)
     } catch (error: any) {
         const reference = createStockCountErrorReference()
-        const mapped = mapStockCountDatabaseError(error?.message || '', 'post', error?.code)
-        const friendly = mapped.code === 'unexpected_error'
-            ? stockCountVerificationError('unexpected_error', { stage: 'post', reference })
-            : { ...mapped, stage: mapped.stage || 'post' }
+        // Every failure — specific or unexpected — carries the same correlation
+        // reference that is written to the server log and to posting_result, so
+        // an actionable message is still traceable to this exact attempt.
+        const mapped = mapStockCountDatabaseError(error?.message || '', 'post', error?.code, reference)
+        const friendly = { ...mapped, stage: mapped.stage || 'post', reference }
         console.error('[stock-count-verification/verify] failed', {
             reference: friendly.reference || reference,
             requestId: requestIdForAudit,
@@ -102,6 +103,11 @@ export async function POST(request: NextRequest) {
                         status: 'failed',
                         error_code: friendly.code,
                         sql_state: error?.code ?? null,
+                        // Raw server error string, admin-only. Without it a P0001
+                        // rejection is only correlatable while the server log is
+                        // still around (the SC-MSB3UFDM-1FSK investigation).
+                        // Never contains the plaintext code or any secret.
+                        db_message: String(error?.message ?? '').slice(0, 500) || null,
                         reference: friendly.reference || reference,
                         recorded_at: new Date().toISOString(),
                     },

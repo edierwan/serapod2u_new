@@ -21,6 +21,11 @@ import {
   isAlternativeNameDuplicateError,
 } from '@/lib/products/alternative-name'
 import { uploadKkmCertificate } from '@/lib/products/kkm-certificate'
+import {
+  VariantArchiveRefreshError,
+  archiveProductVariantAndRefresh,
+  variantArchiveSuccessDescription,
+} from '@/lib/products/variant-deletion'
 import { 
   ArrowLeft,
   Package,
@@ -74,7 +79,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
     if (!productId || !isReady) {
       console.warn('⚠️ No product ID or Supabase not ready')
       setLoading(false)
-      return
+      return false
     }
 
     try {
@@ -115,7 +120,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         console.warn('⚠️ No product data returned')
         setProduct(null)
         setLoading(false)
-        return
+        return false
       }
       
       console.log('✅ Product loaded:', data)
@@ -129,6 +134,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
       }
       
       setProduct(transformedProduct)
+      return true
     } catch (error: any) {
       console.warn('Unable to fetch product details', {
         code: error?.code,
@@ -141,6 +147,7 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
         description: 'Failed to load product details',
         variant: 'destructive'
       })
+      return false
     } finally {
       setLoading(false)
     }
@@ -537,119 +544,23 @@ export default function ViewProductDetails({ userProfile, onViewChange }: ViewPr
   }
 
   const handleDeleteVariant = async (variantId: string, variantName: string) => {
-    if (!window.confirm(`Are you sure you want to delete variant "${variantName}"?`)) {
+    if (!window.confirm(`Archive variant "${variantName}"? It will be hidden from new operations while inventory and transaction history remain unchanged.`)) {
       return
     }
 
     setDeletingVariant(variantId)
     try {
-      console.log('🗑️ Checking dependencies for variant:', variantId, variantName)
-      
-      // Check for dependencies in orders
-      const { data: orderItems, error: orderCheckError } = await supabase
-        .from('order_items')
-        .select('id')
-        .eq('variant_id', variantId)
-        .limit(1)
-
-      if (orderCheckError) {
-        console.error('❌ Order check error:', orderCheckError)
-        throw new Error(`Failed to check orders: ${orderCheckError.message || 'Unknown error'}`)
-      }
-
-      if (orderItems && orderItems.length > 0) {
-        console.warn('⚠️ Variant is used in orders')
-        toast({
-          title: 'Cannot Delete',
-          description: 'This variant is used in existing orders and cannot be deleted.',
-          variant: 'destructive'
-        })
-        setDeletingVariant(null)
-        return
-      }
-
-      // Check for dependencies in QR codes
-      const { data: qrCodes, error: qrCheckError } = await supabase
-        .from('qr_codes')
-        .select('id')
-        .eq('variant_id', variantId)
-        .limit(1)
-
-      if (qrCheckError) {
-        console.error('❌ QR code check error:', qrCheckError)
-        throw new Error(`Failed to check QR codes: ${qrCheckError.message || 'Unknown error'}`)
-      }
-
-      if (qrCodes && qrCodes.length > 0) {
-        console.warn('⚠️ Variant has QR codes')
-        toast({
-          title: 'Cannot Delete',
-          description: 'This variant has QR codes generated and cannot be deleted.',
-          variant: 'destructive'
-        })
-        setDeletingVariant(null)
-        return
-      }
-
-      // Check inventory (optional - table may not exist)
-      console.log('📦 Checking inventory...')
-      const { data: inventory, error: inventoryCheckError } = await (supabase as any)
-        .from('inventory')
-        .select('id')
-        .eq('variant_id', variantId)
-        .limit(1)
-
-      if (inventoryCheckError) {
-        // Log the error but don't fail if inventory table doesn't exist or has permission issues
-        console.warn('⚠️ Inventory check skipped:', inventoryCheckError)
-        console.log('ℹ️ Continuing with deletion (inventory table may not exist)')
-      } else if (inventory && inventory.length > 0) {
-        console.warn('⚠️ Variant has inventory records')
-        toast({
-          title: 'Cannot Delete',
-          description: 'This variant has inventory records and cannot be deleted.',
-          variant: 'destructive'
-        })
-        setDeletingVariant(null)
-        return
-      } else {
-        console.log('✅ No inventory records found')
-      }
-
-      console.log('✅ No dependencies found, proceeding with deletion')
-      
-      // Delete variant
-      const { error: deleteError } = await supabase
-        .from('product_variants')
-        .delete()
-        .eq('id', variantId)
-
-      if (deleteError) {
-        console.error('❌ Delete error:', deleteError)
-        throw new Error(`Failed to delete variant: ${deleteError.message || 'Unknown error'}`)
-      }
-
-      console.log('✅ Variant deleted successfully')
+      const result = await archiveProductVariantAndRefresh(supabase as any, variantId, fetchProductDetails)
       toast({
-        title: 'Success',
-        description: `Variant "${variantName}" has been deleted`,
+        title: 'Variant Archived',
+        description: variantArchiveSuccessDescription(result),
       })
-
-      fetchProductDetails()
     } catch (error: any) {
-      console.error('❌ Error deleting variant:', error)
-      console.error('❌ Error details:', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details,
-        hint: error?.hint,
-        error_description: error?.error_description
-      })
-      const errorMessage = error?.message || error?.error_description || error?.hint || 'Failed to delete variant. Please try again.'
+      console.error('Error archiving variant:', error)
       toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive'
+        title: error instanceof VariantArchiveRefreshError ? 'Variant archived; refresh failed' : 'Variant archive failed',
+        description: error?.message || error?.error_description || error?.hint || 'The variant was not archived. No success was recorded.',
+        variant: 'destructive',
       })
     } finally {
       setDeletingVariant(null)

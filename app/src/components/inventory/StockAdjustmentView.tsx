@@ -51,6 +51,36 @@ import {
 } from '@/lib/inventory/stock-count-catalog'
 import { findIneligibleStockConfigs } from '@/lib/inventory/stock-count-config-eligibility'
 import {
+  LEGACY_HISTORY_STATUSES,
+  isDraftDeletable,
+  draftProtectionReason,
+  stockCountHistoryLifecyclePresentation,
+} from '@/lib/inventory/stock-count-draft-eligibility'
+import {
+  formatOpeningBalanceDraftCreatedAt,
+  formatOpeningBalanceDraftProgress,
+  isCancelledOpeningBalanceHistory,
+  resolveActiveOpeningBalanceDraft,
+  type OpeningBalanceCutoffStatus,
+} from '@/lib/inventory/opening-balance-active-draft'
+import {
+  filterSessionsByCountType,
+  stockCountHistoryEmptyMessage,
+  stockCountTypeBucketLabel,
+} from '@/lib/inventory/stock-count-history-filter'
+import {
+  STOCK_COUNT_REFERENCE_LEGACY_PLACEHOLDER,
+  STOCK_COUNT_REFERENCE_MAX_LENGTH,
+  isStockCountReferenceMissing,
+  validateStockCountReference,
+} from '@/lib/inventory/stock-count-reference'
+import {
+  assertImmutableOpeningScopeComplete,
+  assertOpeningDraftRowsComplete,
+  changedOpeningDraftItems,
+  openingDraftSaveDescription,
+} from '@/lib/inventory/stock-count-opening-draft-update'
+import {
   buildStockCountWorksheet,
   parseStockCountWorksheet,
   buildClassificationWorksheet,
@@ -109,7 +139,14 @@ interface DraftSession {
   created_by_name?: string
   scope_count?: number
   counted_count?: number
+  /** Authoritative inventory_opening_cutoffs.status for this session, when any. */
+  cutoff_status?: OpeningBalanceCutoffStatus
   deletable?: boolean
+  // Reason this session cannot be discarded (protected/official history), or
+  // undefined when it is a live deletable draft.
+  protection_reason?: string
+  history_badge?: string
+  history_detail?: string
 }
 
 interface InvalidWarehouseDraft extends DraftSession {
@@ -201,12 +238,22 @@ const UNSAVED_CHANGES_MESSAGE = 'Imported or edited counts have not been saved y
 const ACTIVE_WAREHOUSE_REQUIRED_MESSAGE = 'Selected organization is not an active warehouse.'
 const DISCARD_DRAFT_CONFIRMATION =
   'Discard the selected draft(s)? Unsaved Stock Count entries and imported data in these drafts will be removed. Inventory will not be affected.'
-const DISCARD_SUCCESS_TOAST = 'Draft discarded successfully. Inventory was not changed.'
+const DISCARD_SUCCESS_TOAST = 'Draft discarded successfully. Inventory, orders, stock movements and QR records were not changed.'
 const DISCARD_INELIGIBLE_MESSAGE =
-  'This Stock Count can no longer be discarded because it is no longer a draft.'
+  'This Stock Count can no longer be discarded because final verification has started or it is no longer a draft.'
+// Shown when the server aborts discard mid-cleanup (e.g. a foreign-key restrict on
+// a cutoff dependent). The whole discard rolls back, so nothing was changed. Never
+// surface the raw Postgres FK/constraint text to the user.
+const DISCARD_CLEANUP_INCOMPLETE_MESSAGE =
+  'Draft could not be discarded because its Opening Balance cleanup was incomplete. No data was changed.'
+const OPENING_BALANCE_DISCARD_CONFIRMATION =
+  'This will remove the unfinished Opening Balance draft and its saved draft decisions. It will not change inventory, orders, stock movements or QR records.'
 const formatNumber = (value: number) => value.toLocaleString('en-MY')
-const draftLabel = (draft: DraftSession) =>
-  `${draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · ${draft.count_date}`
+const draftLabel = (draft: DraftSession) => {
+  const base = `${draft.reference_name || countTypeOptions.find(option => option.value === draft.count_type)?.label || 'Draft'} · ${draft.count_date}`
+  if (isCancelledOpeningBalanceHistory(draft)) return `${base} · Cancelled — Read Only`
+  return base
+}
 const LEGACY_RESET_REQUIRED_LABEL = 'Legacy Draft – Reset Required'
 // Old drafts created under the previous global (category-less) logic, or any old
 // unposted Initial Classification draft. They cannot Review / request OTP / Post
@@ -217,7 +264,17 @@ const isLegacyResetRequiredDraft = (draft: DraftSession) =>
   && (draft.count_type === 'initial_configuration_classification'
     || (draft.count_type === 'opening_balance_cutoff' && !draft.product_category_id))
 const isDiscardNotEligibleError = (message: string) =>
-  /stock_count_not_discardable|stock_count_already_posted|not a draft/i.test(message)
+  /stock_count_not_discardable|stock_count_not_discardable_posting_started|stock_count_already_posted|not a draft/i.test(message)
+// A leaked DB cleanup failure (FK restrict / constraint on a cutoff dependent).
+// Map it to a safe, actionable message instead of the raw Postgres error.
+const isDiscardCleanupError = (message: string) =>
+  /foreign key constraint|violates .*constraint|inventory_cutoff_|inventory_opening_cutoffs/i.test(message)
+// Resolve a server discard error to a user-facing message, never the raw FK text.
+const discardErrorMessage = (message: string) => {
+  if (isDiscardNotEligibleError(message)) return DISCARD_INELIGIBLE_MESSAGE
+  if (isDiscardCleanupError(message)) return DISCARD_CLEANUP_INCOMPLETE_MESSAGE
+  return message || DISCARD_INELIGIBLE_MESSAGE
+}
 const formatMoney = (value: number) => `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const parseCount = (value: string) => (value.trim() === '' ? null : Number(value))
 const skuForRow = (row: CountRow) => row.stockSku
@@ -250,6 +307,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const postingNoteRecheckTimerRef = useRef<number | null>(null)
   const postingNoteRecheckPendingRef = useRef(false)
+  const draftLoadGenerationRef = useRef(0)
+  const draftCriteriaRef = useRef('')
 
   const [warehouseLocations, setWarehouseLocations] = useState<StockCountLocation[]>([])
   const [configuredDefaultWarehouseId, setConfiguredDefaultWarehouseId] = useState<string | null>(null)
@@ -260,11 +319,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const [countDate, setCountDate] = useState(todayIso())
   const [countType, setCountType] = useState<CountType>('full_count')
   const [referenceName, setReferenceName] = useState('')
+  const [referenceError, setReferenceError] = useState<string | null>(null)
+  const referenceInputRef = useRef<HTMLInputElement | null>(null)
   const [notes, setNotes] = useState('')
   const [rows, setRows] = useState<CountRow[]>([])
   const [catalogRows, setCatalogRows] = useState<CountRow[]>([])
   const [openingDraftScopeIds, setOpeningDraftScopeIds] = useState<Set<string>>(new Set())
   const [drafts, setDrafts] = useState<DraftSession[]>([])
+  // True while loadDrafts is in flight for the selected warehouse. Existing
+  // Opening Balance draft detection reads `drafts`, so Save must stay disabled
+  // until this settles — otherwise a first Save races ahead of detection.
+  const [draftsLoading, setDraftsLoading] = useState(false)
+  const [loadedDraftCriteria, setLoadedDraftCriteria] = useState('')
   const [staleDraftIds, setStaleDraftIds] = useState<Set<string>>(new Set())
   const [managingDrafts, setManagingDrafts] = useState(false)
   const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
@@ -309,6 +375,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   // read-only mode. Its former specialised editor remains unavailable.
   const isClassificationMode = false
   const isOpeningBalanceMode = countType === 'opening_balance_cutoff'
+  const draftCriteriaKey = `${selectedWarehouse}:${isOpeningBalanceMode ? selectedCategory : '*'}`
+  draftCriteriaRef.current = draftCriteriaKey
   const selectedCategoryName = productCategories.find(category => category.id === selectedCategory)?.category_name || '—'
   const locationOptions = useMemo(
     () => getStockCountLocationOptions(warehouseLocations),
@@ -319,20 +387,46 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     || (isOpeningBalanceMode && Boolean(selectedCategory)
       && rows.some(row => row.categoryId === selectedCategory
         && (row.physicalCount.trim() !== '' || row.note.trim() !== '')))
+  // Never expose results that belong to a previous warehouse/category key,
+  // even during the render-to-effect window before the newer request starts.
+  const criteriaDrafts = loadedDraftCriteria === draftCriteriaKey ? drafts : []
+  const currentDraftCutoffStatus = useMemo(
+    () => (currentSessionId
+      ? (criteriaDrafts.find(draft => draft.id === currentSessionId)?.cutoff_status || null)
+      : null),
+    [criteriaDrafts, currentSessionId],
+  )
+  const isCancelledOpeningBalanceReadOnly = Boolean(
+    isOpeningBalanceMode
+    && currentSessionId
+    && currentDraftCutoffStatus === 'cancelled',
+  )
+  const isOpeningBalanceReadOnly = isLegacyInitialReadOnly || isCancelledOpeningBalanceReadOnly
   // At most one active Opening Balance draft may exist per warehouse/category.
   // When the operator picks a warehouse+category that already has one and is not
   // already editing it, they must continue that draft rather than start a second.
+  // Cancelled freeze sessions are never selected as the resumable active draft.
   const existingOpeningDraft = useMemo(
     () => (isOpeningBalanceMode && selectedCategory
-      ? drafts.find(draft =>
-        draft.count_type === 'opening_balance_cutoff'
-        && draft.status === 'draft'
-        && draft.product_category_id === selectedCategory
-        && draft.id !== currentSessionId)
+      ? resolveActiveOpeningBalanceDraft(
+        criteriaDrafts,
+        selectedWarehouse,
+        selectedCategory,
+        currentSessionId,
+      )
       : undefined),
-    [drafts, isOpeningBalanceMode, selectedCategory, currentSessionId],
+    [criteriaDrafts, isOpeningBalanceMode, selectedWarehouse, selectedCategory, currentSessionId],
   )
   const mustContinueExistingOpeningDraft = Boolean(!currentSessionId && existingOpeningDraft)
+  // A new Opening Balance draft is not yet safe to save while the draft list is
+  // still loading: detection has not run, so we cannot yet know whether one
+  // already exists. Save stays disabled and shows "Checking for existing draft…"
+  const openingDraftDetectionPending = Boolean(
+    isOpeningBalanceMode
+    && selectedCategory
+    && !currentSessionId
+    && (draftsLoading || loadedDraftCriteria !== draftCriteriaKey),
+  )
 
   useEffect(() => {
     if (!verification) return
@@ -372,8 +466,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
   useEffect(() => {
     if (!selectedWarehouse) {
+      draftLoadGenerationRef.current += 1
       setRows([])
       setDrafts([])
+      setDraftsLoading(false)
+      setLoadedDraftCriteria('')
       setOpeningBalancePosted(false)
       setPostedOpeningCategoryIds(new Set())
       setSelectedCategory('')
@@ -384,7 +481,6 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       return
     }
     loadCountRows(selectedWarehouse)
-    loadDrafts(selectedWarehouse)
     loadPostedOpeningCategories(selectedWarehouse)
     setSelectedGroupId(ALL_GROUP_ID)
     setSearchTerm('')
@@ -511,9 +607,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     return Boolean(data)
   }
 
-  // Minimal, authorized read of "posting has started" (active OTP request or a
-  // counting/posted cut-off) for the given drafts. The protected verification
-  // table is never touched from the browser. Failure degrades safely: drafts are
+  // Minimal, authorized read of "final verification started" (OTP requested /
+  // active / posted). A counting freeze alone is NOT included — pre-OTP Opening
+  // Balance drafts remain discardable. Failure degrades safely: drafts are
   // treated as posting-started (not deletable) so nothing unsafe is offered.
   const loadPostingStartedIds = async (sessionIds: string[]): Promise<Set<string>> => {
     if (sessionIds.length === 0) return new Set<string>()
@@ -531,8 +627,22 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
   }
 
-  const loadDrafts = async (warehouseId: string) => {
-    const [draftResult, legacyHistoryResult] = await Promise.all([
+  const loadDrafts = async (warehouseId: string, criteriaKey = draftCriteriaKey) => {
+    const generation = ++draftLoadGenerationRef.current
+    setDraftsLoading(true)
+    setLoadedDraftCriteria('')
+    try {
+      const applied = await loadDraftsInner(warehouseId, generation)
+      if (applied && generation === draftLoadGenerationRef.current) {
+        setLoadedDraftCriteria(criteriaKey)
+      }
+    } finally {
+      if (generation === draftLoadGenerationRef.current) setDraftsLoading(false)
+    }
+  }
+
+  const loadDraftsInner = async (warehouseId: string, generation: number): Promise<boolean> => {
+    const [draftResult, legacyHistoryResult, cancelledHistoryResult] = await Promise.all([
       supabase
         .from('stock_count_sessions' as any)
         .select('id, reference_name, count_date, count_type, status, warehouse_organization_id, product_category_id, created_at, updated_at, created_by')
@@ -545,26 +655,46 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         .select('id, reference_name, count_date, count_type, status, warehouse_organization_id, product_category_id, created_at, updated_at, created_by')
         .eq('warehouse_organization_id', warehouseId)
         .eq('count_type', 'initial_configuration_classification')
-        .in('status', ['posted', 'archived'])
+        // Only POSTED initial-classification sessions are official history.
+        // `archived` sessions are already-discarded drafts — including them here
+        // resurrected discarded records as "Legacy — Read Only" cards after a
+        // reload (the reported bug). LEGACY_HISTORY_STATUSES excludes 'archived'.
+        .in('status', LEGACY_HISTORY_STATUSES)
+        .order('updated_at', { ascending: false })
+        .limit(50),
+      // Cancelled Opening Balance freezes soft-archive their draft session. Keep
+      // those rows available under History/Audit as read-only only.
+      supabase
+        .from('stock_count_sessions' as any)
+        .select('id, reference_name, count_date, count_type, status, warehouse_organization_id, product_category_id, created_at, updated_at, created_by')
+        .eq('warehouse_organization_id', warehouseId)
+        .eq('count_type', 'opening_balance_cutoff')
+        .eq('status', 'archived')
         .order('updated_at', { ascending: false })
         .limit(50),
     ])
     const { data, error } = draftResult
 
-    if (error || legacyHistoryResult.error) {
-      const loadError = error || legacyHistoryResult.error
-      if (loadError?.code !== '42P01') toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
-      return
+    if (error || legacyHistoryResult.error || cancelledHistoryResult.error) {
+      const loadError = error || legacyHistoryResult.error || cancelledHistoryResult.error
+      if (generation === draftLoadGenerationRef.current && loadError?.code !== '42P01') {
+        toast({ title: 'Saved Stock Count load failed', description: loadError?.message, variant: 'destructive' })
+      }
+      return false
     }
     const sessionsById = new Map<string, DraftSession>()
-    for (const session of [...(data || []), ...(legacyHistoryResult.data || [])] as unknown as DraftSession[]) {
+    for (const session of [
+      ...(data || []),
+      ...(legacyHistoryResult.data || []),
+      ...(cancelledHistoryResult.data || []),
+    ] as unknown as DraftSession[]) {
       sessionsById.set(session.id, session)
     }
     const rawDrafts = [...sessionsById.values()]
     const sessionIds = rawDrafts.map(draft => draft.id)
     const creatorIds = [...new Set(rawDrafts.map(draft => draft.created_by).filter(Boolean))] as string[]
     const categoryIds = [...new Set(rawDrafts.map(draft => draft.product_category_id).filter(Boolean))] as string[]
-    const [scopeResult, itemResult, creatorResult, categoryResult, postingStatusResult] = await Promise.all([
+    const [scopeResult, itemResult, creatorResult, categoryResult, postingStatusResult, cutoffResult] = await Promise.all([
       sessionIds.length
         ? supabase.from('stock_count_session_scope' as any).select('session_id').in('session_id', sessionIds)
         : Promise.resolve({ data: [], error: null }),
@@ -583,9 +713,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       // Manage Drafts no longer triggers "permission denied for table
       // stock_count_verification_requests".
       loadPostingStartedIds(sessionIds),
+      sessionIds.length
+        ? (supabase as any)
+          .from('inventory_opening_cutoffs')
+          .select('stock_count_session_id, status')
+          .in('stock_count_session_id', sessionIds)
+        : Promise.resolve({ data: [], error: null }),
     ])
-    const detailError = scopeResult.error || itemResult.error || creatorResult.error || categoryResult.error
-    if (detailError) {
+    const detailError = scopeResult.error || itemResult.error || creatorResult.error || categoryResult.error || cutoffResult.error
+    if (generation === draftLoadGenerationRef.current && detailError) {
       toast({ title: 'Draft details unavailable', description: detailError.message, variant: 'destructive' })
     }
     const scopeCounts = new Map<string, number>()
@@ -598,27 +734,67 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         countedCounts.set(item.session_id, (countedCounts.get(item.session_id) || 0) + 1)
       }
     }
+    const cutoffBySession = new Map<string, OpeningBalanceCutoffStatus>()
+    for (const row of (cutoffResult.data || []) as any[]) {
+      cutoffBySession.set(row.stock_count_session_id, row.status as OpeningBalanceCutoffStatus)
+    }
     const creators = new Map((creatorResult.data || []).map((user: any) => [user.id, user.full_name || user.email]))
     const categories = new Map((categoryResult.data || []).map((category: any) => [category.id, category.category_name]))
     const postingStartedIds = postingStatusResult
     const warehouseName = warehouseLocations.find(location => location.id === warehouseId)?.org_name || warehouseId
-    const nextDrafts = rawDrafts.map(draft => ({
-      ...draft,
-      warehouse_name: warehouseName,
-      category_name: draft.product_category_id ? categories.get(draft.product_category_id) || 'Unknown category' : 'Legacy / not recorded',
-      created_by_name: draft.created_by ? creators.get(draft.created_by) || 'Unknown user' : 'System',
-      scope_count: scopeCounts.get(draft.id) || 0,
-      counted_count: countedCounts.get(draft.id) || 0,
-      deletable: draft.status === 'draft' && !postingStartedIds.has(draft.id),
-    })).sort((a, b) =>
-      String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+    const nextDrafts = rawDrafts
+      .map(draft => {
+        const cutoffStatus = cutoffBySession.get(draft.id) || null
+        const eligibility = {
+          status: draft.status,
+          count_type: draft.count_type,
+          postingStarted: postingStartedIds.has(draft.id),
+          cutoff_status: cutoffStatus,
+        }
+        const lifecycle = stockCountHistoryLifecyclePresentation(eligibility)
+        return {
+          ...draft,
+          warehouse_name: warehouseName,
+          category_name: draft.product_category_id ? categories.get(draft.product_category_id) || 'Unknown category' : 'Legacy / not recorded',
+          created_by_name: draft.created_by ? creators.get(draft.created_by) || 'Unknown user' : 'System',
+          scope_count: scopeCounts.get(draft.id) || 0,
+          counted_count: countedCounts.get(draft.id) || 0,
+          cutoff_status: cutoffStatus,
+          deletable: isDraftDeletable(eligibility),
+          protection_reason: draftProtectionReason(eligibility) || undefined,
+          history_badge: lifecycle.badge,
+          history_detail: lifecycle.detail,
+        }
+      })
+      // Archived OB sessions without a cancelled cutoff are discarded drafts and
+      // must not resurface in history.
+      .filter(draft =>
+        draft.status !== 'archived'
+        || isCancelledOpeningBalanceHistory(draft),
+      )
+      .sort((a, b) =>
+        String(b.updated_at || '').localeCompare(String(a.updated_at || '')))
+    // A warehouse/category change can start a newer request while this request
+    // is awaiting any of the detail queries above. Only the newest generation
+    // may publish results; older responses are ignored in full.
+    if (generation !== draftLoadGenerationRef.current) return false
     setDrafts(nextDrafts)
     const eligibleIds = new Set(nextDrafts.filter(draft => draft.deletable).map(draft => draft.id))
     setSelectedDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
     setStaleDraftIds(prev => new Set([...prev].filter(id => eligibleIds.has(id))))
+    return true
   }
 
-  const loadCountRows = async (warehouseId: string) => {
+  // Existing-draft detection is criteria-bound. The key changes immediately
+  // when warehouse/category/count type changes, so Save becomes disabled in
+  // that same render and remains disabled until the matching request publishes.
+  useEffect(() => {
+    if (!selectedWarehouse) return
+    void loadDrafts(selectedWarehouse, draftCriteriaKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftCriteriaKey])
+
+  const loadCountRows = async (warehouseId: string, options: { publish?: boolean } = {}) => {
     try {
       setLoadingRows(true)
       // The configuration catalog is authoritative. Warehouse balances are an
@@ -639,6 +815,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               )
             )
           `)
+          // Inactive configurations are archived master data and cannot enter a
+          // new scope. phase_out remains eligible only under the existing
+          // activity-aware visibility rule so real residual stock is not hidden.
+          .neq('status', 'inactive')
           .eq('product_variants.is_active', true)
           .eq('product_variants.products.is_active', true)
           .order('sort_order'),
@@ -652,8 +832,10 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       if (balanceResult.error) throw balanceResult.error
 
       const nextRows = buildStockCountCatalogRows(configurationResult.data || [], balanceResult.data || [])
-      setCatalogRows(nextRows)
-      setRows(nextRows)
+      if (options.publish !== false) {
+        setCatalogRows(nextRows)
+        setRows(nextRows)
+      }
       return nextRows
     } catch (error: any) {
       toast({ title: 'Inventory load failed', description: error.message, variant: 'destructive' })
@@ -744,6 +926,17 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       varianceTotal: scoped.reduce((sum, row) => sum + (varianceForRow(row) || 0), 0),
     }
   }, [visibleRows, selectedGroupId])
+
+  // "Count Type History" is the saved-session list narrowed to the currently
+  // selected Count Type (legacy initial_configuration_classification folds into
+  // the Opening Balance & Initial Classification bucket). Purely a display lens
+  // over the already-loaded `drafts` — it never refetches, mutates the list or
+  // touches the active count, so switching Count Type cannot lose entered work.
+  const countTypeDrafts = useMemo(
+    () => filterSessionsByCountType(criteriaDrafts, countType),
+    [criteriaDrafts, countType],
+  )
+  const countTypeHistoryLabel = stockCountTypeBucketLabel(countType)
 
   // Derived purely from already-loaded rows — no extra fetch. A variant is
   // in scope for classification only while it still has a real balance on
@@ -888,10 +1081,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   const verificationStale = Boolean(verification) && verifiedSignature !== null && verifiedSignature !== currentSignature
 
   const canSave = Boolean(selectedWarehouse && selectedWarehouseIsValid
-    && countDate && currentStatus !== 'posted' && !isLegacyInitialReadOnly
+    && countDate && currentStatus !== 'posted' && !isOpeningBalanceReadOnly
     && (!isOpeningBalanceMode || selectedCategory)
     && !(isOpeningBalanceMode && openingBalancePosted)
     && !mustContinueExistingOpeningDraft
+    && !openingDraftDetectionPending
     && (isClassificationMode
       ? classificationGroups.length > 0
       : isOpeningBalanceMode ? visibleRows.length > 0 : countableRows.length > 0))
@@ -903,7 +1097,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     && (isClassificationMode ? classificationSummary.selectedFlavours > 0 : pageSummary.counted > 0)
 
   const updateRow = (stockConfigId: string, patch: Partial<Pick<CountRow, 'physicalCount' | 'note'>>) => {
-    if (isLegacyInitialReadOnly || !selectedWarehouseIsValid || currentStatus === 'posted') return
+    if (isOpeningBalanceReadOnly || !selectedWarehouseIsValid || currentStatus === 'posted') return
     setRows(prev => prev.map(row => row.stockConfigId === stockConfigId ? { ...row, ...patch } : row))
   }
 
@@ -917,7 +1111,32 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     if (next) document.querySelector<HTMLInputElement>(`input[data-count-input="${next.stockConfigId}"]`)?.focus()
   }
 
+  // Reference / Batch Name is mandatory. Surfaces the inline error and moves the
+  // operator to the field. Returns false when the action must be blocked. Legacy
+  // read-only sessions are exempt (they cannot be saved anyway).
+  const ensureReferenceProvided = (): boolean => {
+    if (isOpeningBalanceReadOnly) return true
+    const validation = validateStockCountReference(referenceName)
+    if (!validation.valid) {
+      setReferenceError(validation.message || null)
+      toast({ title: 'Reference required', description: validation.message, variant: 'destructive' })
+      referenceInputRef.current?.focus()
+      referenceInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return false
+    }
+    setReferenceError(null)
+    return true
+  }
+
   const saveDraft = async (options: { noteOverride?: string; silent?: boolean } = {}): Promise<string | null> => {
+    if (isCancelledOpeningBalanceReadOnly) {
+      toast({
+        title: 'Cancelled Opening Balance is read-only',
+        description: 'Return to the active draft or create a new Opening Balance. Cancelled freezes cannot be edited.',
+        variant: 'destructive',
+      })
+      return null
+    }
     if (isLegacyInitialReadOnly) {
       toast({
         title: 'Legacy draft is read-only',
@@ -938,6 +1157,25 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       toast({ title: 'Invalid warehouse', description: ACTIVE_WAREHOUSE_REQUIRED_MESSAGE, variant: 'destructive' })
       return null
     }
+    // Never let a first Save outrun existing-draft detection or override a found
+    // draft — either would try to create a second Opening Balance draft (and,
+    // before the item upsert index existed, surface a raw ON CONFLICT error).
+    if (openingDraftDetectionPending) {
+      toast({ title: 'Checking for existing draft…', description: 'Please wait a moment while we check for an existing Opening Balance draft.' })
+      return null
+    }
+    if (mustContinueExistingOpeningDraft) {
+      toast({
+        title: 'An active Opening Balance draft already exists',
+        description: 'Continue the existing draft before saving. Your earlier quantities, imported data and scope are preserved.',
+        variant: 'destructive',
+      })
+      return null
+    }
+    // Mandatory Reference / Batch Name. Blocks Save Draft and — because every
+    // Excel-download, Import and Review & Post path funnels through saveDraft —
+    // those actions too, so the rule cannot be side-stepped from the client.
+    if (!ensureReferenceProvided()) return null
     if (hasConfigEligibilityViolation) {
       toast({
         title: 'Invalid configuration for this product group',
@@ -956,6 +1194,52 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setSaving(true)
     try {
       if (!await validateActiveWarehouse()) throw new Error(ACTIVE_WAREHOUSE_REQUIRED_MESSAGE)
+      const saveDraftCriteria = draftCriteriaKey
+      if (isOpeningBalanceMode && !currentSessionId) {
+        // UI gating is advisory only. Re-read the authoritative session table
+        // immediately before insert so programmatic calls, delayed clicks and
+        // another browser cannot create a second active draft.
+        const { data: existingDraft, error: existingDraftError } = await supabase
+          .from('stock_count_sessions' as any)
+          .select('id')
+          .eq('warehouse_organization_id', selectedWarehouse)
+          .eq('product_category_id', selectedCategory)
+          .eq('count_type', 'opening_balance_cutoff')
+          .eq('status', 'draft')
+          .limit(1)
+          .maybeSingle()
+        if (existingDraftError) throw existingDraftError
+        if (draftCriteriaRef.current !== saveDraftCriteria) {
+          toast({
+            title: 'Opening Balance selection changed',
+            description: 'The warehouse or category changed while the draft was being checked. Review the latest selection and save again.',
+            variant: 'destructive',
+          })
+          return null
+        }
+        if ((existingDraft as any)?.id) {
+          const { data: blockingCutoff } = await (supabase as any)
+            .from('inventory_opening_cutoffs')
+            .select('status')
+            .eq('stock_count_session_id', (existingDraft as any).id)
+            .maybeSingle()
+          await loadDrafts(selectedWarehouse, saveDraftCriteria)
+          if (blockingCutoff?.status === 'cancelled') {
+            toast({
+              title: 'A cancelled Opening Balance draft is still occupying this slot',
+              description: 'Open the cancelled history entry and choose Create New Opening Balance, or discard that cancelled draft first. A cancelled freeze is never reused.',
+              variant: 'destructive',
+            })
+          } else {
+            toast({
+              title: 'An active Opening Balance draft already exists',
+              description: 'Use Continue Existing Draft. The existing draft and its saved snapshot have not been changed.',
+              variant: 'destructive',
+            })
+          }
+          return null
+        }
+      }
       const payload = {
         warehouse_organization_id: selectedWarehouse,
         product_category_id: isOpeningBalanceMode ? selectedCategory : null,
@@ -970,36 +1254,30 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       }
 
       let sessionId = currentSessionId
+      const updatingExistingSession = Boolean(sessionId)
       if (sessionId) {
-        const { error } = await supabase.from('stock_count_sessions' as any).update(payload).eq('id', sessionId).eq('status', 'draft')
+        const { error } = await supabase
+          .from('stock_count_sessions' as any)
+          .update(payload)
+          .eq('id', sessionId)
+          .eq('status', 'draft')
+          .select('id')
+          .single()
         if (error) throw error
       } else {
         const { data, error } = await supabase.from('stock_count_sessions' as any).insert(payload).select('id').single()
         if (error) {
-          // Safe get-existing-or-create: the DB partial unique index only allows
-          // one active Opening Balance draft per warehouse/category. A concurrent
-          // request or double-click loses the race (unique_violation) and instead
-          // continues the winning draft rather than creating a duplicate.
+          // The server-side preflight above can still lose a concurrency race.
+          // The DB uniqueness rule is authoritative; refresh detection and make
+          // the operator explicitly choose Continue Existing Draft.
           if (isOpeningBalanceMode && (error as any).code === '23505') {
-            const { data: existing } = await supabase
-              .from('stock_count_sessions' as any)
-              .select('id')
-              .eq('warehouse_organization_id', selectedWarehouse)
-              .eq('product_category_id', selectedCategory)
-              .eq('count_type', 'opening_balance_cutoff')
-              .eq('status', 'draft')
-              .limit(1)
-              .maybeSingle()
-            const existingId = (existing as any)?.id
-            if (existingId) {
-              await loadDraft(existingId)
-              loadDrafts(selectedWarehouse)
-              toast({
-                title: 'Continuing existing Opening Balance draft',
-                description: 'This warehouse and category already have an active draft, which has been opened for you.',
-              })
-              return existingId
-            }
+            await loadDrafts(selectedWarehouse, saveDraftCriteria)
+            toast({
+              title: 'An active Opening Balance draft already exists',
+              description: 'Use Continue Existing Draft. No second draft was created.',
+              variant: 'destructive',
+            })
+            return null
           }
           throw error
         }
@@ -1011,20 +1289,25 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         .from('stock_count_session_scope' as any)
         .select('stock_config_id')
         .eq('session_id', sessionId)
-        .limit(1)
       if (scopeReadError) throw scopeReadError
-      if ((existingScope || []).length === 0 && draftScopeRows.length > 0) {
+      if (!updatingExistingSession && (existingScope || []).length === 0 && draftScopeRows.length > 0) {
         const { error: scopeInsertError } = await supabase
           .from('stock_count_session_scope' as any)
           .insert(draftScopeRows.map(row => ({ session_id: sessionId, stock_config_id: row.stockConfigId })))
         if (scopeInsertError) throw scopeInsertError
       }
       if (isOpeningBalanceMode) {
-        setOpeningDraftScopeIds(new Set(
-          (existingScope || []).length > 0
-            ? (existingScope || []).map((entry: any) => entry.stock_config_id)
-            : draftScopeRows.map(row => row.stockConfigId),
-        ))
+        const persistedScopeIds = (existingScope || []).length > 0
+          ? (existingScope || []).map((entry: any) => String(entry.stock_config_id))
+          : draftScopeRows.map(row => row.stockConfigId)
+        const expectedScopeIds = updatingExistingSession
+          ? (openingDraftScopeIds.size > 0 ? openingDraftScopeIds : new Set(draftRows.map(row => row.stockConfigId)))
+          : new Set(draftScopeRows.map(row => row.stockConfigId))
+        const verifiedScopeIds = assertImmutableOpeningScopeComplete(persistedScopeIds, expectedScopeIds)
+        assertOpeningDraftRowsComplete(verifiedScopeIds, draftRows.map(row => row.stockConfigId))
+        // Publish only the complete authoritative set. A partial database read
+        // can never replace a previously valid multi-row UI scope with one row.
+        setOpeningDraftScopeIds(verifiedScopeIds)
       }
 
       // Classification sessions always force the Legacy/Unclassified row to a
@@ -1034,6 +1317,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       // the shared `draftRows` memo so the persisted set and the client
       // signature can never disagree.
       const savedSignature = currentSignature
+      let savedItemCount = draftRows.length
       if (!isOpeningBalanceMode) {
         const { error: deleteError } = await supabase
           .from('stock_count_session_items' as any)
@@ -1042,53 +1326,107 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         if (deleteError) throw deleteError
       }
       if (draftRows.length > 0) {
-        const itemPayload = draftRows.map(row => {
-          const physical = parseCount(row.physicalCount)
-          return {
-            session_id: sessionId,
-            variant_id: row.variantId,
-            stock_config_id: row.stockConfigId,
-            sku: skuForRow(row),
-            system_quantity: row.systemQuantity,
-            physical_quantity: physical,
-            adjustment_quantity: physical === null ? null : physical - row.systemQuantity,
-            unit_cost: row.unitCost,
-            note: row.note.trim() || null,
-          }
-        })
+        const { data: persistedOpeningItems, error: persistedItemError } =
+          isOpeningBalanceMode && updatingExistingSession
+            ? await supabase
+              .from('stock_count_session_items' as any)
+              .select('stock_config_id, variant_id, sku, system_quantity, physical_quantity, unit_cost, note')
+              .eq('session_id', sessionId)
+            : { data: null, error: null }
+        if (persistedItemError) throw persistedItemError
+
+        const persistedByConfig = new Map((persistedOpeningItems || []).map((item: any) => [
+          String(item.stock_config_id),
+          item,
+        ]))
+        const changedConfigIds = isOpeningBalanceMode && updatingExistingSession
+          ? new Set(changedOpeningDraftItems(
+            draftRows.map(row => ({
+              stockConfigId: row.stockConfigId,
+              physicalQuantity: parseCount(row.physicalCount),
+              note: row.note,
+            })),
+            (persistedOpeningItems || []).map((item: any) => ({
+              stockConfigId: String(item.stock_config_id),
+              physicalQuantity: item.physical_quantity === null ? null : Number(item.physical_quantity),
+              note: item.note || '',
+            })),
+          ).map(item => item.stockConfigId))
+          : null
+
+        const itemPayload = draftRows
+          .filter(row => !changedConfigIds || changedConfigIds.has(row.stockConfigId))
+          .map(row => {
+            const physical = parseCount(row.physicalCount)
+            const persisted = persistedByConfig.get(row.stockConfigId)
+            const snapshotSystemQuantity = persisted
+              ? Number(persisted.system_quantity)
+              : row.systemQuantity
+            return {
+              session_id: sessionId,
+              variant_id: persisted ? persisted.variant_id : row.variantId,
+              stock_config_id: row.stockConfigId,
+              sku: persisted ? persisted.sku : skuForRow(row),
+              system_quantity: snapshotSystemQuantity,
+              physical_quantity: physical,
+              adjustment_quantity: physical === null ? null : physical - snapshotSystemQuantity,
+              unit_cost: persisted ? persisted.unit_cost : row.unitCost,
+              note: row.note.trim() || null,
+            }
+          })
+        savedItemCount = itemPayload.length
         // Opening Balance always persists the complete snapshot, including
-        // null physical quantities. One atomic upsert preserves earlier counts
-        // across partial imports and avoids a delete/insert gap.
+        // null physical quantities on first save. Existing drafts upsert only
+        // changed quantity/note rows and reuse the original snapshot columns,
+        // so Update Draft cannot rebuild or drift immutable snapshot data.
         const itemWrite = isOpeningBalanceMode
           ? supabase.from('stock_count_session_items' as any).upsert(itemPayload, {
             onConflict: 'session_id,stock_config_id',
           })
           : supabase.from('stock_count_session_items' as any).insert(itemPayload)
-        const { error: itemError } = await itemWrite
-        if (itemError) throw itemError
+        if (itemPayload.length > 0) {
+          const { error: itemError } = await itemWrite
+          if (itemError) throw itemError
+        }
       }
 
-      const { error: resolutionDeleteError } = await supabase
-        .from('stock_count_classification_allocation_resolutions' as any)
-        .delete()
-        .eq('session_id', sessionId)
-      if (resolutionDeleteError) throw resolutionDeleteError
-      if (isClassificationMode && allocationResolutionRows.length > 0) {
-        const { error: resolutionInsertError } = await supabase
+      if (isClassificationMode) {
+        const { error: resolutionDeleteError } = await supabase
           .from('stock_count_classification_allocation_resolutions' as any)
-          .insert(allocationResolutionRows.map((resolution) => ({
-            session_id: sessionId,
-            variant_id: resolution.variantId,
-            target_stock_config_id: resolution.targetStockConfigId,
-            created_by: userProfile?.id || null,
-          })))
-        if (resolutionInsertError) throw resolutionInsertError
+          .delete()
+          .eq('session_id', sessionId)
+        if (resolutionDeleteError) throw resolutionDeleteError
+        if (allocationResolutionRows.length > 0) {
+          const { error: resolutionInsertError } = await supabase
+            .from('stock_count_classification_allocation_resolutions' as any)
+            .insert(allocationResolutionRows.map((resolution) => ({
+              session_id: sessionId,
+              variant_id: resolution.variantId,
+              target_stock_config_id: resolution.targetStockConfigId,
+              created_by: userProfile?.id || null,
+            })))
+          if (resolutionInsertError) throw resolutionInsertError
+        }
       }
 
       // The screen and the saved draft are now identical — clear the dirty flag.
       setLastSavedSignature(savedSignature)
-      if (!options.silent) toast({ title: 'Draft saved', description: `${draftRows.length} counted or noted row(s) saved.` })
-      loadDrafts(selectedWarehouse)
+      if (!options.silent) {
+        const countedOrNotedCount = draftRows.filter(row =>
+          parseCount(row.physicalCount) !== null || row.note.trim() !== ''
+        ).length
+        toast({
+          title: updatingExistingSession ? 'Draft updated' : 'Draft saved',
+          description: isOpeningBalanceMode
+            ? openingDraftSaveDescription({
+              scopeCount: draftRows.length,
+              changedItemCount: savedItemCount,
+              countedOrNotedCount,
+            })
+            : `${savedItemCount} counted or noted row(s) saved.`,
+        })
+      }
+      await loadDrafts(selectedWarehouse)
       return sessionId
     } catch (error: any) {
       toast({ title: 'Save draft failed', description: error.message, variant: 'destructive' })
@@ -1147,7 +1485,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
     const baseCatalogRows = catalogRows.length > 0
       ? catalogRows
-      : await loadCountRows(draftWarehouseId)
+      : await loadCountRows(draftWarehouseId, { publish: false })
     const { data: items, error: itemError } = await supabase.from('stock_count_session_items' as any).select('stock_config_id, variant_id, physical_quantity, note').eq('session_id', sessionId)
     if (itemError) {
       toast({ title: 'Open draft failed', description: itemError.message, variant: 'destructive' })
@@ -1182,8 +1520,15 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     }
     const itemMap = new Map((items || []).map((item: any) => [item.stock_config_id, item]))
     const scopeIds = new Set((scope || []).map((entry: any) => entry.stock_config_id))
+    if ((session as any).count_type === 'opening_balance_cutoff' && scopeIds.size === 0) {
+      toast({
+        title: 'Opening Balance scope unavailable',
+        description: 'This draft has no immutable scope snapshot. The previous complete view was preserved and the draft was not changed.',
+        variant: 'destructive',
+      })
+      return
+    }
     const effectiveScopeIds = scopeIds.size > 0 ? scopeIds : new Set(itemMap.keys())
-    setOpeningDraftScopeIds((session as any).count_type === 'opening_balance_cutoff' ? effectiveScopeIds : new Set())
     let scopedCatalogRows = baseCatalogRows.filter(row => effectiveScopeIds.has(row.stockConfigId))
     const loadedScopeIds = new Set(scopedCatalogRows.map(row => row.stockConfigId))
     const missingScopeIds = [...effectiveScopeIds].filter(id => !loadedScopeIds.has(id))
@@ -1223,13 +1568,53 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         ...buildStockCountCatalogRows(historicalConfigResult.data || [], historicalBalanceResult.data || []),
       ]
     }
-    if (scopedCatalogRows.some(row => itemMap.has(row.stockConfigId) && row.configStatus !== 'active' && row.systemQuantity === 0)) setShowInactive(true)
+    try {
+      assertOpeningDraftRowsComplete(
+        effectiveScopeIds as Set<string>,
+        scopedCatalogRows.map(row => row.stockConfigId),
+      )
+    } catch (scopeCompletenessError: any) {
+      toast({
+        title: 'Incomplete draft reload blocked',
+        description: scopeCompletenessError.message,
+        variant: 'destructive',
+      })
+      return
+    }
+    setOpeningDraftScopeIds(
+      (session as any).count_type === 'opening_balance_cutoff'
+        ? effectiveScopeIds as Set<string>
+        : new Set(),
+    )
+    // Reveal read-only history rows (inactive configs OR archived variants) that
+    // a draft counted, so an archived variant is never silently dropped from an
+    // existing draft — it stays visible as a historical draft item.
+    if (scopedCatalogRows.some(row =>
+      itemMap.has(row.stockConfigId)
+      && (row.configStatus !== 'active' || !row.variantIsActive || !row.productIsActive)
+    )) setShowInactive(true)
     setCurrentSessionId((session as any).id)
     setCurrentStatus((session as any).status)
     setCountDate((session as any).count_date)
     setCountType((session as any).count_type)
     setSelectedCategory((session as any).product_category_id || '')
     setReferenceName((session as any).reference_name || '')
+    // An editable draft saved before Reference / Batch Name became mandatory must
+    // be updated before it can be saved / imported / posted again. Notify and
+    // highlight the field, but never silently generate a value. Posted / legacy
+    // read-only records are left readable (handled in the UI, not blocked here).
+    const referenceMissing = isStockCountReferenceMissing((session as any).reference_name)
+    const editableSession = (session as any).status === 'draft' && (session as any).count_type !== 'initial_configuration_classification'
+    if (referenceMissing && editableSession) {
+      setReferenceError('This count does not have a Reference / Batch Name. Please update it before continuing.')
+      toast({
+        title: 'Reference / Batch Name missing',
+        description: 'This count does not have a Reference / Batch Name. Please update it before continuing.',
+        variant: 'destructive',
+      })
+    } else {
+      setReferenceError(null)
+    }
     setNotes((session as any).notes || '')
     setRows(scopedCatalogRows.map(row => {
       const item = itemMap.get(row.stockConfigId) as any
@@ -1270,7 +1655,9 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const selectAllDrafts = () => {
-    setSelectedDraftIds(new Set(drafts.filter(draft => draft.deletable).map(draft => draft.id)))
+    // Manage Drafts follows the selected Count Type: Select All only ever picks
+    // the deletable drafts currently shown for this count type.
+    setSelectedDraftIds(new Set(filterSessionsByCountType(drafts, countType).filter(draft => draft.deletable).map(draft => draft.id)))
   }
 
   const deselectAllDrafts = () => {
@@ -1287,9 +1674,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const requestDiscardDrafts = (sessionIds: string[]) => {
-    const uniqueIds = [...new Set(sessionIds.filter(Boolean))]
-    if (uniqueIds.length === 0 || discardingDrafts) return
-    setDiscardConfirmIds(uniqueIds)
+    const uniqueIds = new Set(sessionIds.filter(Boolean))
+    // Never send protected/official history to the RPC — keep only genuinely
+    // deletable drafts so the confirmation and discard can only ever act on
+    // records the backend will actually remove (no fake success).
+    const removableIds = drafts.filter(draft => uniqueIds.has(draft.id) && draft.deletable).map(draft => draft.id)
+    if (removableIds.length === 0 || discardingDrafts) return
+    setDiscardConfirmIds(removableIds)
   }
 
   const discardDrafts = async (sessionIds: string[]) => {
@@ -1341,7 +1732,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         const firstError = String(failed[0]?.error || '')
         toast({
           title: removedIds.size > 0 ? 'Some drafts could not be discarded' : 'Discard draft failed',
-          description: isDiscardNotEligibleError(firstError) ? DISCARD_INELIGIBLE_MESSAGE : (firstError || DISCARD_INELIGIBLE_MESSAGE),
+          description: discardErrorMessage(firstError),
           variant: 'destructive',
         })
         if (selectedWarehouse) await loadDrafts(selectedWarehouse)
@@ -1360,7 +1751,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
       const message = String(error?.message || '')
       toast({
         title: 'Discard draft failed',
-        description: isDiscardNotEligibleError(message) ? DISCARD_INELIGIBLE_MESSAGE : (message || DISCARD_INELIGIBLE_MESSAGE),
+        description: discardErrorMessage(message),
         variant: 'destructive',
       })
       if (selectedWarehouse) await loadDrafts(selectedWarehouse)
@@ -1378,6 +1769,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
     setSelectedCategory('')
     setOpeningDraftScopeIds(new Set())
     setReferenceName('')
+    setReferenceError(null)
     setNotes('')
     setRows(catalogRows.map(row => ({ ...row, physicalCount: '', note: '' })))
     setLastSavedSignature(EMPTY_SIGNATURE)
@@ -1388,6 +1780,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
   }
 
   const downloadExcel = async () => {
+    if (isCancelledOpeningBalanceReadOnly) {
+      toast({
+        title: 'Cancelled Opening Balance is read-only',
+        description: 'Templates are not generated for cancelled freezes.',
+        variant: 'destructive',
+      })
+      return
+    }
     if (isLegacyInitialReadOnly) {
       toast({
         title: 'Legacy draft is read-only',
@@ -1498,12 +1898,19 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
 
   const importExcel = async (file: File) => {
     try {
+      if (isCancelledOpeningBalanceReadOnly) {
+        throw new Error('This cancelled Opening Balance freeze is read-only and cannot accept imports.')
+      }
       if (isLegacyInitialReadOnly) {
         throw new Error('This Legacy Initial Classification draft is read-only and cannot accept imports.')
       }
       if (!selectedWarehouseIsValid || !await validateActiveWarehouse()) {
         throw new Error(ACTIVE_WAREHOUSE_REQUIRED_MESSAGE)
       }
+      // A draft must first exist to import into it, and a draft cannot exist
+      // without a Reference / Batch Name — so block (and focus the field) when
+      // an older draft without a reference is opened and an import is attempted.
+      if (!ensureReferenceProvided()) return
       if (!currentSessionId) {
         throw new Error('Save this Stock Count draft or download its template before importing.')
       }
@@ -1950,11 +2357,11 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           <Button
             variant="outline"
             onClick={downloadExcel}
-            disabled={isLegacyInitialReadOnly || (isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0)}
+            disabled={isOpeningBalanceReadOnly || (isClassificationMode ? classificationGroups.length === 0 : visibleRows.length === 0)}
           >
             <Download className="mr-2 h-4 w-4" /> Download Excel Template
           </Button>
-          <Button variant="outline" disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
+          <Button variant="outline" disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'} onClick={() => fileInputRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import Updated Excel</Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={event => {
             const file = event.target.files?.[0]
             if (file) importExcel(file)
@@ -1963,8 +2370,8 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           {hasUnsavedChanges && currentStatus !== 'posted' && (
             <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">Unsaved changes</Badge>
           )}
-          <Button variant={hasUnsavedChanges ? 'default' : 'outline'} onClick={() => void saveDraft()} disabled={!canSave || saving} className={hasUnsavedChanges && currentStatus !== 'posted' ? 'bg-amber-600 hover:bg-amber-700' : ''}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save Draft'}</Button>
-          {!isOpeningBalanceMode && !isLegacyInitialReadOnly && (
+          <Button variant={hasUnsavedChanges ? 'default' : 'outline'} onClick={() => void saveDraft()} disabled={!canSave || saving || openingDraftDetectionPending} className={hasUnsavedChanges && currentStatus !== 'posted' ? 'bg-amber-600 hover:bg-amber-700' : ''}><Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : openingDraftDetectionPending ? 'Checking for existing draft…' : isOpeningBalanceMode && currentSessionId ? 'Update Draft' : 'Save Draft'}</Button>
+          {!isOpeningBalanceMode && !isOpeningBalanceReadOnly && (
             <Button onClick={openPostReview} disabled={!canPost || currentStatus === 'posted' || saving} className="bg-orange-600 hover:bg-orange-700">Review & Post Count <ArrowRight className="ml-2 h-4 w-4" /></Button>
           )}
         </div>
@@ -2007,6 +2414,14 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
               <div>
                 <p className="font-semibold">An Opening Balance draft already exists for this warehouse &amp; category</p>
                 <p className="mt-1">Only one active Opening Balance draft is allowed per warehouse and category. Continue the existing draft instead of starting a second one — your earlier counts are preserved.</p>
+                <p className="mt-2 font-medium">
+                  {existingOpeningDraft.reference_name || 'Opening Balance Draft'}
+                </p>
+                <p className="mt-1 text-xs">
+                  Created {formatOpeningBalanceDraftCreatedAt(existingOpeningDraft.created_at)}
+                  {' · '}
+                  Progress {formatOpeningBalanceDraftProgress(existingOpeningDraft)}
+                </p>
               </div>
             </div>
             <Button size="sm" onClick={() => void loadDraft(existingOpeningDraft.id)}>Continue Existing Draft</Button>
@@ -2036,13 +2451,16 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Date <span className="text-red-500">*</span></label>
-            <Input type="date" max={todayIso()} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} value={countDate} onChange={event => setCountDate(event.target.value)} />
+            <Input type="date" max={todayIso()} disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'} value={countDate} onChange={event => setCountDate(event.target.value)} />
           </div>
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700">Count Type <span className="text-red-500">*</span></label>
             <Select value={countType} disabled={Boolean(currentSessionId)} onValueChange={value => {
               setCountType(value as CountType)
               if (value !== 'opening_balance_cutoff') setSelectedCategory('')
+              // History filter follows the new type; drop any Manage Drafts
+              // selection so it can never act on a now-hidden count type.
+              setSelectedDraftIds(new Set())
             }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -2065,7 +2483,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             </label>
             <Select
               value={isOpeningBalanceMode ? selectedCategory : (selectedCategory || ALL_CATEGORIES_VALUE)}
-              disabled={isLegacyInitialReadOnly || currentStatus === 'posted' || (isOpeningBalanceMode && openingCategoryLocked)}
+              disabled={isOpeningBalanceReadOnly || currentStatus === 'posted' || (isOpeningBalanceMode && openingCategoryLocked)}
               onValueChange={value => setSelectedCategory(value === ALL_CATEGORIES_VALUE ? '' : value)}
             >
               <SelectTrigger><SelectValue placeholder={isOpeningBalanceMode ? 'Select active category' : 'All Categories'} /></SelectTrigger>
@@ -2081,28 +2499,47 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
             {!isOpeningBalanceMode && <p className="mt-1 text-xs text-slate-500">Scopes items, group tabs, totals and Excel to this category. Group tabs are secondary filters within it.</p>}
           </div>
           <div className="xl:col-span-1">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">Reference / Batch Name</label>
-            <Input value={referenceName} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onChange={event => setReferenceName(event.target.value)} placeholder="e.g. Monthly Count" />
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Reference / Batch Name <span className="text-red-500">*</span>
+            </label>
+            <Input
+              ref={referenceInputRef}
+              value={referenceName}
+              disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'}
+              maxLength={STOCK_COUNT_REFERENCE_MAX_LENGTH}
+              aria-invalid={Boolean(referenceError)}
+              className={referenceError ? 'border-red-400 focus-visible:ring-red-400' : undefined}
+              onChange={event => {
+                setReferenceName(event.target.value)
+                if (referenceError && validateStockCountReference(event.target.value).valid) setReferenceError(null)
+              }}
+              placeholder="e.g. Monthly Count"
+            />
+            {referenceError && <p className="mt-1 text-xs text-red-600">{referenceError}</p>}
+            {currentStatus === 'posted' && isStockCountReferenceMissing(referenceName) && (
+              <p className="mt-1 text-xs text-slate-500">{STOCK_COUNT_REFERENCE_LEGACY_PLACEHOLDER}</p>
+            )}
           </div>
           <div className="xl:col-span-1">
             <label className="mb-2 block text-sm font-semibold text-slate-700">Notes (Optional)</label>
-            <Input value={notes} disabled={isLegacyInitialReadOnly || currentStatus === 'posted'} onChange={event => setNotes(event.target.value)} placeholder="Add notes..." />
+            <Input value={notes} disabled={isOpeningBalanceReadOnly || currentStatus === 'posted'} onChange={event => setNotes(event.target.value)} placeholder="Add notes..." />
           </div>
         </CardContent>
       </Card>
 
-      {drafts.length > 0 && (
+      {selectedWarehouse && (
         <Card className="border-blue-100 bg-[var(--sera-orange)]/[0.06]/50">
           <CardContent className="space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-blue-950">Saved counts and legacy history:</span>
+              <span className="text-sm font-semibold text-blue-950">Count Type History</span>
+              <Badge variant="outline" className="border-orange-300 text-orange-700">{countTypeHistoryLabel}</Badge>
               {!managingDrafts ? (
-                <Button variant="outline" size="sm" onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
+                <Button variant="outline" size="sm" disabled={countTypeDrafts.length === 0} onClick={() => { setManagingDrafts(true); setSelectedDraftIds(new Set()) }}>
                   Manage Drafts
                 </Button>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || !drafts.some(draft => draft.deletable)}>
+                  <Button variant="outline" size="sm" onClick={selectAllDrafts} disabled={discardingDrafts || !countTypeDrafts.some(draft => draft.deletable)}>
                     Select All
                   </Button>
                   <Button variant="outline" size="sm" onClick={deselectAllDrafts} disabled={discardingDrafts || selectedDraftIds.size === 0}>
@@ -2119,11 +2556,18 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                   <Button variant="ghost" size="sm" onClick={exitManageDrafts} disabled={discardingDrafts}>
                     Cancel
                   </Button>
+                  <span className="text-xs text-slate-500">
+                    {countTypeDrafts.filter(draft => draft.deletable).length} removable ·{' '}
+                    {countTypeDrafts.filter(draft => !draft.deletable).length} protected
+                  </span>
                 </div>
               )}
             </div>
             {!managingDrafts ? <div className="flex flex-wrap items-center gap-2">
-              {drafts.map(draft => (
+              {countTypeDrafts.length === 0 && (
+                <span className="text-sm text-slate-500">{stockCountHistoryEmptyMessage(countType)}</span>
+              )}
+              {countTypeDrafts.map(draft => (
                 <div key={draft.id} className="flex items-center gap-1">
                   <Button
                     variant={currentSessionId === draft.id ? 'default' : staleDraftIds.has(draft.id) ? 'destructive' : 'outline'}
@@ -2166,20 +2610,31 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                     <TableHead>Last updated</TableHead><TableHead>Created by</TableHead><TableHead>Open</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
-                    {drafts.filter(draft => draft.deletable).map(draft => {
+                    {countTypeDrafts.length === 0 && (
+                      <TableRow><TableCell colSpan={11} className="text-center text-sm text-slate-500">{stockCountHistoryEmptyMessage(countType)}</TableCell></TableRow>
+                    )}
+                    {countTypeDrafts.map(draft => {
                       const total = draft.scope_count || 0
                       const counted = draft.counted_count || 0
                       const legacyReset = isLegacyResetRequiredDraft(draft)
-                      const status = legacyReset
+                      const statusBadge = legacyReset
                         ? LEGACY_RESET_REQUIRED_LABEL
-                        : total > 0 && counted === total ? 'Ready for Review' : counted > 0 ? 'Incomplete' : 'Draft'
-                      return <TableRow key={draft.id}>
-                        <TableCell><Checkbox checked={selectedDraftIds.has(draft.id)} disabled={discardingDrafts} onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)} aria-label={`Select ${draftLabel(draft)}`} /></TableCell>
+                        : (draft.history_badge || (draft.deletable ? 'Draft — Removable' : 'Protected'))
+                      const statusDetail = legacyReset
+                        ? 'Legacy draft must be discarded before a new category-scoped count can continue.'
+                        : (draft.history_detail || draft.protection_reason)
+                      return <TableRow key={draft.id} className={draft.deletable ? undefined : 'bg-slate-50'}>
+                        <TableCell><Checkbox checked={selectedDraftIds.has(draft.id)} disabled={discardingDrafts || !draft.deletable} onCheckedChange={checked => toggleDraftSelection(draft.id, checked === true)} aria-label={draft.deletable ? `Select ${draftLabel(draft)}` : `${draftLabel(draft)} is protected and cannot be discarded`} /></TableCell>
                         <TableCell className="font-medium">{draft.reference_name || 'Unnamed draft'}</TableCell>
                         <TableCell>{draft.warehouse_name}</TableCell><TableCell>{draft.category_name}</TableCell>
                         <TableCell>{countTypeOptions.find(option => option.value === draft.count_type)?.label}</TableCell>
                         <TableCell>{counted}/{total}</TableCell>
-                        <TableCell><Badge variant="outline" className={legacyReset ? 'border-red-300 text-red-700' : status === 'Ready for Review' ? 'border-emerald-300 text-emerald-700' : status === 'Incomplete' ? 'border-amber-300 text-amber-700' : ''}>{status}</Badge></TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={!draft.deletable ? 'border-slate-300 text-slate-600' : legacyReset ? 'border-red-300 text-red-700' : 'border-emerald-300 text-emerald-700'}>{statusBadge}</Badge>
+                          {statusDetail && (
+                            <span className="mt-1 block text-xs text-slate-500">{statusDetail}</span>
+                          )}
+                        </TableCell>
                         <TableCell>{new Date(draft.created_at).toLocaleString()}</TableCell>
                         <TableCell>{draft.updated_at ? new Date(draft.updated_at).toLocaleString() : '—'}</TableCell>
                         <TableCell>{draft.created_by_name}</TableCell>
@@ -2298,13 +2753,13 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                         const adjustmentValue = adjustmentValueForRow(row)
                         return (
                           <TableRow key={row.stockConfigId}>
-                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge>{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
+                            <TableCell><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-slate-100">{row.imageUrl ? <img src={getStorageUrl(row.imageUrl) || row.imageUrl} alt="" className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-400" />}</div><div><p className="font-semibold text-slate-950">{row.variantName}</p><div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant={row.configStatus === 'active' ? 'secondary' : 'outline'}>{row.configLabel}</Badge>{!row.variantIsActive && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Archived variant — historical snapshot item">Archived variant · historical</Badge>}{row.variantIsActive && (!row.productIsActive || row.configStatus !== 'active') && <Badge variant="outline" className="border-amber-300 text-amber-700" title="Inactive master data — historical snapshot item">Historical configuration</Badge>}{row.productCode && <span className="text-xs text-slate-500">{row.productCode}</span>}</div><p className="text-xs text-slate-500">{row.productName}</p></div></div></TableCell>
                             <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
-                            <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
+                            <TableCell><Input data-count-input={row.stockConfigId} inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); focusNextCountInput(row.stockConfigId) } }} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                             <TableCell className={`text-right font-bold tabular-nums ${variance === null || variance === 0 ? 'text-slate-600' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>{variance === null ? 'Not counted' : `${variance > 0 ? '+' : ''}${formatNumber(variance)}`}</TableCell>
                             {visibleColumns.unitCost && <TableCell className="text-right tabular-nums">{row.unitCost === null ? '—' : formatMoney(row.unitCost)}</TableCell>}
                             {visibleColumns.adjustmentValue && <TableCell className={`text-right font-semibold tabular-nums ${!adjustmentValue ? 'text-slate-600' : adjustmentValue > 0 ? 'text-green-600' : 'text-red-600'}`}>{adjustmentValue === null ? '-' : formatMoney(adjustmentValue)}</TableCell>}
-                            {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => updateRow(row.stockConfigId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
+                            {visibleColumns.note && <TableCell><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4 text-slate-400" /><Input value={row.note} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => updateRow(row.stockConfigId, { note: event.target.value })} placeholder={variance === null ? 'Not counted' : variance === 0 ? 'Matched' : 'Add note'} /></div></TableCell>}
                           </TableRow>
                         )
                       })}
@@ -2357,7 +2812,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                       <span className="font-semibold">Reservation target configuration</span>
                       <Select
                         value={allocationTargets[group.variantId] || ''}
-                        disabled={currentStatus === 'posted' || isLegacyInitialReadOnly}
+                        disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly}
                         onValueChange={(targetStockConfigId) => {
                           invalidatePendingVerification()
                           setAllocationTargets(prev => ({ ...prev, [group.variantId]: targetStockConfigId }))
@@ -2420,7 +2875,7 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
                           <TableCell><Badge variant="secondary">{row.configLabel}</Badge></TableCell>
                           <TableCell><Badge className="bg-[var(--sera-orange)]/[0.06] text-blue-700 hover:bg-[var(--sera-orange)]/[0.06]">Target Configuration</Badge></TableCell>
                           <TableCell className="text-right font-medium tabular-nums">{formatNumber(row.systemQuantity)}</TableCell>
-                          <TableCell><Input inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isLegacyInitialReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
+                          <TableCell><Input inputMode="numeric" min="0" value={row.physicalCount} disabled={currentStatus === 'posted' || isOpeningBalanceReadOnly} onChange={event => handlePhysicalCountChange(row.stockConfigId, event.target.value)} placeholder="Blank" className="w-36 font-semibold tabular-nums" /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -2451,6 +2906,55 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
           countsReady={openingCountsComplete && !hasUnsavedChanges}
           savedDraftSignature={lastSavedSignature}
           openingBalancePosted={openingBalancePosted}
+          activeDraft={(() => {
+            const draft = resolveActiveOpeningBalanceDraft(
+              criteriaDrafts,
+              selectedWarehouse,
+              selectedCategory,
+              currentSessionId,
+            )
+            if (!draft) return null
+            return {
+              sessionId: draft.id,
+              referenceName: draft.reference_name || 'Opening Balance Draft',
+              createdAt: draft.created_at,
+              progressLabel: formatOpeningBalanceDraftProgress(draft),
+            }
+          })()}
+          onReturnToActiveDraft={(sessionId) => {
+            void loadDraft(sessionId)
+          }}
+          onCreateNewOpeningBalance={async () => {
+            const stuckCancelledSessionId = (
+              currentSessionId
+              && currentStatus === 'draft'
+              && currentDraftCutoffStatus === 'cancelled'
+            ) ? currentSessionId : null
+            resetSession()
+            if (stuckCancelledSessionId) {
+              // Pre-migration / stuck draft+cancelled still occupies the one-active
+              // draft slot. Soft-discard it so Create New can insert a new session.
+              const { error } = await supabase.rpc('discard_stock_count_drafts' as any, {
+                p_session_ids: [stuckCancelledSessionId],
+              })
+              if (error) {
+                toast({
+                  title: 'Could not clear cancelled draft',
+                  description: discardErrorMessage(String(error.message || '')),
+                  variant: 'destructive',
+                })
+              }
+              await loadDrafts(selectedWarehouse)
+            }
+          }}
+          onCancelled={async () => {
+            // Keep the cancelled session mounted so the Opening Balance section can
+            // render its read-only "Opening Balance cancelled" confirmation and the
+            // View Cancelled Exercise / Create New choices — never a blank page.
+            // Refresh the draft list so the archived session leaves the resumable
+            // list; the user leaves this view explicitly via Create New.
+            await loadDrafts(selectedWarehouse)
+          }}
           onPosted={async () => {
             setCurrentStatus('posted')
             setLastSavedSignature(EMPTY_SIGNATURE)
@@ -2472,14 +2976,22 @@ export default function StockAdjustmentView({ userProfile, onViewChange }: Stock
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {(discardConfirmIds?.length || 0) > 1 ? 'Discard selected drafts?' : 'Discard Draft?'}
+              {(discardConfirmIds?.length || 0) === 1
+                ? `Discard '${drafts.find(item => item.id === discardConfirmIds?.[0])?.reference_name || 'Unnamed draft'}'?`
+                : 'Discard selected drafts?'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {DISCARD_DRAFT_CONFIRMATION}
-              <span className="mt-3 block font-medium text-slate-900">Exact targets:</span>
+              {(discardConfirmIds || []).some(id => drafts.find(item => item.id === id)?.count_type === 'opening_balance_cutoff')
+                ? OPENING_BALANCE_DISCARD_CONFIRMATION
+                : DISCARD_DRAFT_CONFIRMATION}
+              <span className="mt-3 block font-medium text-slate-900">
+                {discardConfirmIds?.length || 0} removable draft{(discardConfirmIds?.length || 0) === 1 ? '' : 's'} will be removed. Protected history is never included.
+              </span>
+              <span className="mt-2 block font-medium text-slate-900">Exact targets:</span>
               {(discardConfirmIds || []).map(id => {
                 const draft = drafts.find(item => item.id === id)
-                return <span key={id} className="block">• {draft ? `${draft.reference_name || 'Unnamed draft'} — ${draft.warehouse_name} — ${draft.category_name}` : id}</span>
+                const countTypeLabel = countTypeOptions.find(option => option.value === draft?.count_type)?.label || draft?.count_type || 'Stock Count'
+                return <span key={id} className="block">• {draft ? `${draft.reference_name || 'Unnamed draft'} — ${draft.warehouse_name} — ${draft.category_name} — ${countTypeLabel}` : id}</span>
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>

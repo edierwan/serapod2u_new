@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import MovementTypeBadge from './MovementTypeBadge'
 import ProductThumbnail from './ProductThumbnail'
+import { subscribeToInventoryDataRefresh } from '@/lib/inventory/inventory-data-refresh'
 import {
   formatSignedMovementImpact,
   resolveStockMovementConfiguration,
@@ -154,6 +155,16 @@ export default function StockMovementReportView({ userProfile, onViewChange, ini
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, searchQuery, movementTypeFilter, referenceTypeFilter, productFilter, variantFilter, locationFilter, quantityRangeFilter, stockConfigFilter, volumeFilter, packagingFilter, dateFrom, dateTo, currentPage])
+
+  // Authoritative invalidation: reload the movement list once when another view
+  // confirms a committed inventory write (e.g. an Opening Balance post).
+  useEffect(() => {
+    if (!isReady) return
+    return subscribeToInventoryDataRefresh(() => {
+      loadMovements()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady])
 
   useEffect(() => {
     if (isReady) {

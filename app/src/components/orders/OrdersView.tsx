@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -575,10 +575,40 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       await loadOrders()
       await loadSummary()
     } catch (error: any) {
-      console.error('Error cancelling order:', error)
+      // Supabase/PostgREST errors serialize to `{}` under console.error, which
+      // hid the real backend reason. Surface the safe diagnostic fields instead.
+      const code = error?.code
+      const details = error?.details
+      const hint = error?.hint
+      const status = error?.status ?? error?.statusCode
+      console.error('Error cancelling order:', {
+        message: error?.message,
+        code,
+        details,
+        hint,
+        status,
+      })
+
+      let description = error?.message || details || 'Failed to cancel order'
+
+      // Map known backend failures to actionable guidance.
+      if (typeof description === 'string') {
+        if (description.includes('has no stock configuration')) {
+          description = 'This order has a legacy allocation that could not be matched. Please retry, or contact support if it persists.'
+        } else if (description.includes('Ambiguous allocation')) {
+          description = 'This order has an ambiguous stock allocation and cannot be cancelled automatically. Please contact support.'
+        } else if (description.includes('Cannot safely release')) {
+          description = 'The allocated stock for this order could not be released safely. Please contact support.'
+        } else if (description.includes('Buyer no longer has exact configuration stock')) {
+          description = 'The receiving location no longer holds the exact stock required to cancel this order.'
+        }
+      } else if (!error || (typeof error === 'object' && Object.keys(error).length === 0)) {
+        description = 'Unable to reach the server. Please check your connection and try again.'
+      }
+
       toast({
         title: 'Cancellation Failed',
-        description: error.message || 'Failed to cancel order',
+        description,
         variant: 'destructive'
       })
     } finally {
@@ -821,6 +851,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     if (userProfile.organizations.org_type_code === 'DIST' ||
       userProfile.organizations.org_type_code === 'WH' ||
       userProfile.organizations.org_type_code === 'HQ') {
+      orderTypeNavigatingRef.current = false
       setShowOrderTypeDialog(true)
       return
     }
@@ -831,7 +862,14 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     }
   }
 
+  // A rapid double-click on an order-type card must navigate exactly once. This
+  // ref latches the first selection so the second click is ignored; it is reset
+  // whenever the dialog is opened again.
+  const orderTypeNavigatingRef = useRef(false)
+
   const handleOrderTypeSelection = (orderType: 'regular' | 'd2h' | 's2d') => {
+    if (orderTypeNavigatingRef.current) return
+    orderTypeNavigatingRef.current = true
     setShowOrderTypeDialog(false)
 
     if (orderType === 'd2h') {
@@ -1852,7 +1890,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       {/* Order Type Selection Dialog */}
       {showOrderTypeDialog && (
         <SeraModalOverlay onBackdropClick={() => setShowOrderTypeDialog(false)}>
-          <SeraModalPanel>
+          {/*
+            Fixed size (md) intentionally: the auto-size path measures content
+            and drives width/height through CSS custom properties that also carry
+            a `transition`. With static card content this created a
+            ResizeObserver ↔ transition feedback loop (the observed body kept
+            changing size mid-animation), which re-measured and re-animated the
+            panel repeatedly — the visible "flip"/flicker. A fixed size skips the
+            measurement/transition path entirely and renders once, stably.
+          */}
+          <SeraModalPanel size="md">
             <SeraModalHeader
               title="Select Order Type"
               onClose={() => setShowOrderTypeDialog(false)}
