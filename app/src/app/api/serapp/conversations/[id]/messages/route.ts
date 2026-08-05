@@ -56,6 +56,12 @@ export async function POST(
       clientMessageId,
     })
 
+    const deliveredAtIso = new Date().toISOString()
+    await admin
+      .from('serapp_messages')
+      .update({ delivered_at: deliveredAtIso })
+      .eq('id', userMessage.id)
+
     let botMessage = null as any
     let updatedSession = session
     // For pure attachment messages we skip AI interpretation and keep UX concise.
@@ -83,11 +89,12 @@ export async function POST(
       })
     }
 
-    // User message is considered delivered once bot has processed and replied.
-    await admin
-      .from('serapp_messages')
-      .update({ delivered_at: botMessage?.created_at || new Date().toISOString() })
-      .eq('id', userMessage.id)
+    if (botMessage?.created_at) {
+      await admin
+        .from('serapp_messages')
+        .update({ seen_at: botMessage.created_at })
+        .eq('id', userMessage.id)
+    }
 
     return NextResponse.json({
       userMessage,

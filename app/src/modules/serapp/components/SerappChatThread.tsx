@@ -15,6 +15,8 @@ import {
   Paperclip,
   Send,
   Warehouse,
+  Check,
+  CheckCheck,
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import type {
@@ -489,15 +491,19 @@ export default function SerappChatThread() {
                 )}
               >
                 {formatClock(msg.createdAt)}
-                {msg.role === 'user'
-                  ? (sending && msg.id.startsWith('temp-')
-                    ? ' ✓'
-                    : msg.seenByOwner
-                      ? ' ✓✓'
-                      : msg.deliveredAt
-                        ? ' ✓✓'
-                        : ' ✓')
-                  : ''}
+                {msg.role === 'user' && (
+                  <span className="ml-1 inline-flex align-middle">
+                    {sending && msg.id.startsWith('temp-') ? (
+                      <Check className="h-3 w-3 text-black/45" />
+                    ) : msg.seenAt ? (
+                      <CheckCheck className="h-3 w-3 text-sky-500" />
+                    ) : msg.deliveredAt ? (
+                      <CheckCheck className="h-3 w-3 text-black/45" />
+                    ) : (
+                      <Check className="h-3 w-3 text-black/45" />
+                    )}
+                  </span>
+                )}
               </p>
             </div>
           </div>
