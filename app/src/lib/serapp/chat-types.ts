@@ -3,7 +3,7 @@ import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 
 export type SerappChatRole = 'user' | 'bot' | 'system'
 
-export type SerappChatCardKind = 'check_summary' | 'order_confirmed' | 'error'
+export type SerappChatCardKind = 'check_summary' | 'order_confirmed' | 'do_stories' | 'error'
 
 export interface SerappChatQuickReply {
   id: string
@@ -33,6 +33,21 @@ export interface SerappChatConfirmPayload {
   note?: string
 }
 
+export interface SerappDoStoryItem {
+  orderId: string
+  orderLabel: string
+  orderStatus: string
+  holdStatus: string
+  story: string
+  do: {
+    docNo?: string | null
+    displayDocNo?: string | null
+    status?: string | null
+    downloadUrl?: string | null
+  } | null
+  updatedAt: string
+}
+
 export interface SerappChatMessage {
   id: string
   role: SerappChatRole
@@ -43,6 +58,7 @@ export interface SerappChatMessage {
     kind: SerappChatCardKind
     check?: SerappChatCheckPayload
     confirm?: SerappChatConfirmPayload
+    doStories?: SerappDoStoryItem[]
     error?: string
   }
 }

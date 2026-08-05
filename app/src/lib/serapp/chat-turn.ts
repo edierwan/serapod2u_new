@@ -10,6 +10,7 @@ import {
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
+  SerappDoStoryItem,
   SerappChatQuickReply,
   SerappChatSessionState,
 } from '@/lib/serapp/chat-types'
@@ -20,9 +21,10 @@ export interface ChatTurnBotReply {
   text: string
   quickReplies?: SerappChatQuickReply[]
   card?: {
-    kind: 'check_summary' | 'order_confirmed' | 'error'
+    kind: 'check_summary' | 'order_confirmed' | 'do_stories' | 'error'
     check?: SerappChatCheckPayload
     confirm?: SerappChatConfirmPayload
+    doStories?: SerappDoStoryItem[]
     error?: string
   }
   session: SerappChatSessionState
@@ -145,12 +147,7 @@ async function warehouseTurn(
 
   if (n.includes('do') || n.includes('delivery')) {
     const { ok, data } = await getJson<{
-      stories?: Array<{
-        orderLabel: string
-        holdStatus: string
-        do: { displayDocNo?: string | null; docNo?: string | null; status?: string | null } | null
-        story: string
-      }>
+      stories?: SerappDoStoryItem[]
       error?: string
     }>(request, '/api/serapp/do-status?limit=5')
 
@@ -188,6 +185,10 @@ async function warehouseTurn(
         '',
         'Tip: open History to accept pending holds faster.',
       ].join('\n'),
+      card: {
+        kind: 'do_stories',
+        doStories: stories,
+      },
       quickReplies: replies,
       session,
     }

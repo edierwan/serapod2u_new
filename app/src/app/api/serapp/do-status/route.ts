@@ -66,7 +66,7 @@ export async function GET(request: Request) {
 
     const { data: docs } = await admin
       .from('documents')
-      .select('order_id, doc_no, display_doc_no, status, created_at')
+      .select('id, order_id, doc_no, display_doc_no, status, created_at')
       .eq('doc_type', 'DO')
       .in('order_id', orderIds)
       .order('created_at', { ascending: false })
@@ -99,6 +99,7 @@ export async function GET(request: Request) {
                 displayDocNo: doc.display_doc_no,
                 status: doc.status,
                 createdAt: doc.created_at,
+                downloadUrl: `/api/documents/generate?orderId=${encodeURIComponent(order.id)}&type=delivery_order&documentId=${encodeURIComponent(doc.id)}`,
               }
             : null,
           story: doc
