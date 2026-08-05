@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useTransition } from 'react'
+import { usePathname } from 'next/navigation'
 import { LogOut } from 'lucide-react'
 import type { SerappUserProfile } from '@/lib/serapp/types'
 import { signOut } from '@/app/actions/auth'
 import { SerappProvider } from './SerappContext'
 import SerappBottomNav from './SerappBottomNav'
 import SerappInstallPrompt from './SerappInstallPrompt'
+import { cn } from '@/lib/utils'
 
 interface Props {
   userProfile: SerappUserProfile
@@ -25,6 +27,9 @@ export default function SerappShell({
   children,
 }: Props) {
   const [signingOut, startSignOut] = useTransition()
+  const pathname = usePathname()
+  const isChat =
+    pathname === '/serapp/conversation' || pathname?.startsWith('/serapp/conversation/')
 
   useEffect(() => {
     // Prefer Serapp manifest over the root dashboard manifest on this tree.
@@ -39,7 +44,6 @@ export default function SerappShell({
       navigator.serviceWorker
         .register('/serapp-sw.js', { scope: '/serapp' })
         .then((reg) => {
-          // Force activate updated SW (v4 fixes precache that blocked installability)
           void reg.update()
         })
         .catch((err) => console.warn('[Serapp SW] registration failed:', err))
@@ -94,10 +98,17 @@ export default function SerappShell({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-lg flex-1 overflow-y-auto overscroll-y-contain pb-20">
-          <div className="px-0 pt-3">
-            <SerappInstallPrompt />
-          </div>
+        <main
+          className={cn(
+            'mx-auto w-full max-w-lg flex-1 overscroll-y-contain pb-20',
+            isChat ? 'overflow-hidden pt-0' : 'overflow-y-auto',
+          )}
+        >
+          {!isChat && (
+            <div className="px-0 pt-3">
+              <SerappInstallPrompt />
+            </div>
+          )}
           {children}
         </main>
 

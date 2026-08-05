@@ -1,5 +1,5 @@
-import SerappConversationView from '@/modules/serapp/components/SerappConversationView'
+import SerappConversationList from '@/modules/serapp/components/SerappConversationList'
 
 export default function SerappConversationPage() {
-  return <SerappConversationView />
+  return <SerappConversationList />
 }
