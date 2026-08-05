@@ -426,6 +426,48 @@ export default function SerappChatThread() {
         </div>
       </div>
 
+      {conversation.kind === 'warehouse' && (
+        <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
+            Quick actions
+          </p>
+          <div className="mt-1.5 flex gap-2 overflow-x-auto">
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('my holds')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              My holds
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('pending accept')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Pending accept
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('do status')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Latest DO
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('help')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Help
+            </button>
+          </div>
+        </div>
+      )}
+
       {isHqSupport && conversation.kind === 'assistant' && (
         <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
