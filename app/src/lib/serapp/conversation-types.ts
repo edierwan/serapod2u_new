@@ -28,6 +28,9 @@ export interface SerappMessageRow {
   card_json: SerappChatMessageCard | null
   quick_replies_json: SerappChatQuickReply[] | null
   client_message_id: string | null
+  delivered_at: string | null
+  seen_at: string | null
+  seen_by_owner: boolean
   created_at: string
 }
 

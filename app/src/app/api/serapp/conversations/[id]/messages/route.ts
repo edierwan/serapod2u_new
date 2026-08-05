@@ -73,6 +73,12 @@ export async function POST(
       quickReplies: reply.quickReplies || null,
     })
 
+    // User message is considered delivered once bot has processed and replied.
+    await admin
+      .from('serapp_messages')
+      .update({ delivered_at: botMessage.created_at })
+      .eq('id', userMessage.id)
+
     return NextResponse.json({
       userMessage,
       botMessage,

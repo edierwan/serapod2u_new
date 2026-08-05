@@ -60,6 +60,9 @@ function mapRow(msg: SerappMessageRow) {
     role: msg.role,
     text: msg.body,
     createdAt: msg.created_at,
+    deliveredAt: msg.delivered_at,
+    seenAt: msg.seen_at,
+    seenByOwner: msg.seen_by_owner,
     quickReplies: (msg.quick_replies_json || undefined) as SerappChatQuickReply[] | undefined,
     card: msg.card_json as {
       kind: string
@@ -84,6 +87,10 @@ export default function SerappChatThread() {
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [presence, setPresence] = useState<{ is_online: boolean; last_seen_at: string | null }>({
+    is_online: true,
+    last_seen_at: null,
+  })
   const [distributors, setDistributors] = useState<DistributorOption[]>([])
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -101,6 +108,7 @@ export default function SerappChatThread() {
       setConversation(payload.conversation)
       setSession(payload.session)
       setMessages((payload.messages || []).map(mapRow))
+      if (payload.presence) setPresence(payload.presence)
       if (payload.session?.distributorId) {
         setSelectedDistributorId(payload.session.distributorId)
       } else if (payload.conversation?.distributor_org_id) {
@@ -178,6 +186,22 @@ export default function SerappChatThread() {
         {
           event: 'UPDATE',
           schema: 'public',
+          table: 'serapp_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as SerappMessageRow
+          const next = mapRow(row)
+          setMessages((prev) =>
+            prev.map((m) => (m.id === next.id ? { ...m, ...next } : m)),
+          )
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
           table: 'serapp_conversations',
           filter: `id=eq.${conversationId}`,
         },
@@ -190,6 +214,40 @@ export default function SerappChatThread() {
 
     return () => {
       void supabase.removeChannel(channel)
+    }
+  }, [conversationId])
+
+  useEffect(() => {
+    if (!conversationId) return
+    let stopped = false
+    const beat = async (isOnline = true) => {
+      try {
+        const res = await fetch('/api/serapp/presence', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isOnline, conversationId }),
+        })
+        const payload = await res.json().catch(() => null)
+        if (!stopped && payload?.presence) setPresence(payload.presence)
+      } catch {
+        // ignore heartbeat failures
+      }
+    }
+    void beat(true)
+    const timer = setInterval(() => {
+      void beat(true)
+    }, 20000)
+
+    const onVis = () => {
+      void beat(document.visibilityState === 'visible')
+    }
+    document.addEventListener('visibilitychange', onVis)
+
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVis)
+      void beat(false)
     }
   }, [conversationId])
 
@@ -265,6 +323,14 @@ export default function SerappChatThread() {
     []
 
   const HeaderIcon =
+  const presenceLabel = typing
+    ? 'typing…'
+    : presence.is_online
+      ? 'online'
+      : presence.last_seen_at
+        ? `last seen ${formatClock(presence.last_seen_at)}`
+        : (conversation.subtitle || 'offline')
+
     conversation?.avatar_key === 'warehouse'
       ? Warehouse
       : conversation?.avatar_key === 'news'
@@ -314,7 +380,7 @@ export default function SerappChatThread() {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{conversation.title}</p>
           <p className="truncate text-[11px] text-white/75">
-            {typing ? 'typing…' : conversation.subtitle || 'online'}
+            {presenceLabel}
           </p>
         </div>
       </div>
@@ -382,7 +448,15 @@ export default function SerappChatThread() {
                 )}
               >
                 {formatClock(msg.createdAt)}
-                {msg.role === 'user' ? (sending && msg.id.startsWith('temp-') ? ' ✓' : ' ✓✓') : ''}
+                {msg.role === 'user'
+                  ? (sending && msg.id.startsWith('temp-')
+                    ? ' ✓'
+                    : msg.seenByOwner
+                      ? ' ✓✓'
+                      : msg.deliveredAt
+                        ? ' ✓✓'
+                        : ' ✓')
+                  : ''}
               </p>
             </div>
           </div>

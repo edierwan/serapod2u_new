@@ -24,19 +24,40 @@ export async function GET(
     }
 
     const messages = await listMessages(admin, id)
+    const nowIso = new Date().toISOString()
+
+    // Mark incoming bot/system messages as seen when thread opens.
+    await admin
+      .from('serapp_messages')
+      .update({ seen_by_owner: true, seen_at: nowIso })
+      .eq('conversation_id', id)
+      .in('role', ['bot', 'system'])
+      .eq('seen_by_owner', false)
 
     // Clear unread when opening
     if (conversation.unread_count > 0) {
       await admin
         .from('serapp_conversations')
-        .update({ unread_count: 0, updated_at: new Date().toISOString() })
+        .update({ unread_count: 0, updated_at: nowIso })
         .eq('id', id)
     }
+
+    // Presence heartbeat (online while thread is active).
+    await admin
+      .from('serapp_user_presence')
+      .upsert({
+        user_id: actor.userId,
+        current_conversation_id: id,
+        is_online: true,
+        last_seen_at: nowIso,
+        updated_at: nowIso,
+      }, { onConflict: 'user_id' })
 
     return NextResponse.json({
       conversation: { ...conversation, unread_count: 0 },
       session: parseSession(conversation.session_json),
       messages,
+      presence: { is_online: true, last_seen_at: nowIso },
     })
   } catch (error) {
     if (isMissingChatTable(error)) {
