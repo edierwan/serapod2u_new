@@ -1,0 +1,61 @@
+/* Serapp PWA — aligned to Serapod store brand tokens */
+.sera-serapp {
+  --sera-ink: #141210;
+  --sera-ink-soft: #2a2622;
+  --sera-orange: #e85d04;
+  --sera-orange-deep: #c44a00;
+  --sera-mist: #e4e5e8;
+  --sera-stone: #ececed;
+  --sera-line: #d8dade;
+  --sera-muted: #5f6570;
+  --sera-paper: #e9eaed;
+  --sera-surface: #f3f3f4;
+  --sera-success: #1f6b45;
+  --sera-success-soft: #e4f3ea;
+  --sera-danger: #842029;
+  --sera-danger-soft: #f8d7da;
+  --sera-warn: #7a5b00;
+  --sera-warn-soft: #fff3cd;
+  --font-display: var(--font-sera-display), 'Syne', sans-serif;
+  --font-body: var(--font-sera-body), 'Manrope', sans-serif;
+  font-family: var(--font-body);
+  color: var(--sera-ink);
+  background:
+    radial-gradient(ellipse 80% 45% at 50% -8%, rgba(232, 93, 4, 0.07), transparent 55%),
+    var(--sera-paper);
+}
+
+.sera-serapp .font-display {
+  font-family: var(--font-display);
+}
+
+.sera-serapp .serapp-card {
+  background: var(--sera-surface);
+  border: 1px solid var(--sera-line);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 14px 32px -28px rgba(20, 18, 16, 0.28);
+}
+
+.sera-serapp .serapp-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sera-orange);
+}
+
+@keyframes serapp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sera-serapp .serapp-rise {
+  animation: serapp-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

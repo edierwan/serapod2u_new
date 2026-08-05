@@ -17,6 +17,8 @@ const CRON_JOBS = [
   { path: '/api/cron/qr-generation-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/manufacturer-packing-worker', schedule: '*/1 * * * *' },
   { path: '/api/cron/notification-outbox-worker', schedule: '*/1 * * * *' },
+  // Serapp 1-hour warehouse acceptance holds — expire unaccepted orders & release stock
+  { path: '/api/cron/serapp-hold-expiry', schedule: '*/5 * * * *' },
 ]
 
 function normalizeBaseUrl(rawUrl: string): string {

@@ -327,3 +327,163 @@ describe('Quick Order multi-entry paste parsing', () => {
     expect(results[2].selectedVariantId).toBeUndefined()
   })
 })
+
+describe('Quick Order section headers (HERO / ZERO)', () => {
+  const managerPaste = [
+    'HERO',
+    'BANANA VANILLA - 100',
+    'GUAVA - 200',
+    '',
+    'ZERO',
+    'ALMOND - 100',
+    'TEA - 200',
+  ].join('\n')
+
+  const sectionCatalog = [
+    ...variants,
+    {
+      id: 'guava-hero',
+      variant_name: 'Fruity Cellera Cartridge [ Guava ]',
+      product_name: 'Cellera Hero',
+      product_code: 'CEL-GUAVA',
+      manufacturer_sku: 'SKU-GUAVA',
+      available_qty: 500,
+      inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'almond-zero',
+      variant_name: 'Almond',
+      product_name: 'Cellera Zero',
+      product_code: 'CEL-ALM',
+      manufacturer_sku: 'SKU-ALM',
+      available_qty: 200,
+      inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'tea-zero',
+      variant_name: 'Tea',
+      product_name: 'Cellera Zero',
+      product_code: 'CEL-TEA',
+      manufacturer_sku: 'SKU-TEA',
+      available_qty: 200,
+      inventory_classification: 'classified' as const,
+    },
+  ]
+
+  it('treats standalone HERO and ZERO without quantity as section headers, not Invalid Quantity', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+
+    expect(results[0]).toMatchObject({
+      name: 'HERO',
+      quantity: null,
+      status: 'section_header',
+      sectionProductLine: 'Cellera Hero',
+      candidates: [],
+    })
+    expect(results[0].selectedVariantId).toBeUndefined()
+    expect(results.find(result => result.name === 'ZERO')).toMatchObject({
+      status: 'section_header',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(results.some(result => result.name === 'HERO' && result.status === 'invalid_quantity')).toBe(false)
+  })
+
+  it('scopes flavours under HERO to Cellera Hero until ZERO appears', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+    const banana = results.find(result => result.normalizedName === 'BANANA VANILLA')
+    const guava = results.find(result => result.normalizedName === 'GUAVA')
+
+    expect(banana).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'banana',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(guava).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'guava-hero',
+      sectionProductLine: 'Cellera Hero',
+      matchMethod: 'bracket_flavour',
+    })
+  })
+
+  it('scopes flavours under ZERO to Cellera Zero only', () => {
+    const results = matchPastedOrder(managerPaste, sectionCatalog)
+    const almond = results.find(result => result.normalizedName === 'ALMOND')
+    const tea = results.find(result => result.normalizedName === 'TEA')
+
+    expect(almond).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'almond-zero',
+      sectionProductLine: 'Cellera Zero',
+    })
+    expect(tea).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'tea-zero',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('disambiguates Mango under HERO to Hero variants only', () => {
+    const text = 'HERO\nMANGO - 10\nZERO\nMANGO - 5'
+    const results = matchPastedOrder(text, variants)
+
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[1]).toMatchObject({
+      name: 'MANGO',
+      status: 'matched',
+      selectedVariantId: 'mango-a',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results[2]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results[3]).toMatchObject({
+      name: 'MANGO',
+      status: 'matched',
+      selectedVariantId: 'mango-b',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('puts HERO or ZERO with a quantity into Requires Review without changing section scope', () => {
+    const results = matchPastedOrder('HERO - 100\nBANANA VANILLA - 50\nZERO 200', variants)
+
+    expect(results[0]).toMatchObject({
+      name: 'HERO',
+      quantity: 100,
+      status: 'requires_review',
+      sectionProductLine: 'Cellera Hero',
+    })
+    expect(results[0].selectedVariantId).toBeUndefined()
+    // No active section was set by the quantified header — Banana still matches globally.
+    expect(results[1]).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'banana',
+    })
+    expect(results[1].sectionProductLine).toBeUndefined()
+    expect(results[2]).toMatchObject({
+      name: 'ZERO',
+      quantity: 200,
+      status: 'requires_review',
+      sectionProductLine: 'Cellera Zero',
+    })
+  })
+
+  it('accepts CELLERA HERO / SERAPOD ZERO aliases as headers', () => {
+    const results = matchPastedOrder('CELLERA HERO\nTEH TARIK - 2\nSERAPOD ZERO\nCOFFEE HAZELNUT - 3', variants)
+    expect(results[0]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Hero' })
+    expect(results[1]).toMatchObject({ selectedVariantId: 'teh', sectionProductLine: 'Cellera Hero' })
+    expect(results[2]).toMatchObject({ status: 'section_header', sectionProductLine: 'Cellera Zero' })
+    expect(results[3]).toMatchObject({ selectedVariantId: 'hazelnut', sectionProductLine: 'Cellera Zero' })
+  })
+
+  it('keeps inline product-line paste (SERAPOD HERO MANGO) as a product entry, not a header', () => {
+    const hero = matchPastedOrder('SERAPOD HERO MANGO 4 PCS', productLineVariants)[0]
+    expect(hero.status).not.toBe('section_header')
+    expect(hero).toMatchObject({ name: 'SERAPOD HERO MANGO', quantity: 4, status: 'ambiguous' })
+  })
+
+  it('without headers, preserves the existing global matching behaviour', () => {
+    const results = matchPastedOrder('MANGO - 10\nBANANA VANILLA - 100', variants)
+    expect(results[0]).toMatchObject({ status: 'ambiguous', sectionProductLine: undefined })
+    expect(results[1]).toMatchObject({ status: 'alternative_match', selectedVariantId: 'banana', sectionProductLine: undefined })
+  })
+})
