@@ -323,14 +323,6 @@ export default function SerappChatThread() {
     []
 
   const HeaderIcon =
-  const presenceLabel = typing
-    ? 'typing…'
-    : presence.is_online
-      ? 'online'
-      : presence.last_seen_at
-        ? `last seen ${formatClock(presence.last_seen_at)}`
-        : (conversation.subtitle || 'offline')
-
     conversation?.avatar_key === 'warehouse'
       ? Warehouse
       : conversation?.avatar_key === 'news'
@@ -338,6 +330,14 @@ export default function SerappChatThread() {
         : conversation?.avatar_key === 'support'
           ? Headphones
           : Bot
+
+  const presenceLabel = typing
+    ? 'typing…'
+    : presence.is_online
+      ? 'online'
+      : presence.last_seen_at
+        ? `last seen ${formatClock(presence.last_seen_at)}`
+        : (conversation?.subtitle || 'offline')
 
   if (loading) {
     return (
