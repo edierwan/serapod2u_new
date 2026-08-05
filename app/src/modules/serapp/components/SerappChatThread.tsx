@@ -468,6 +468,56 @@ export default function SerappChatThread() {
         </div>
       )}
 
+      {conversation.kind === 'assistant' && (
+        <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
+            Quick actions
+          </p>
+          <div className="mt-1.5 flex gap-2 overflow-x-auto">
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('HERO\nBANANA VANILLA - 100\nGUAVA - 200\n\nZERO\nALMOND - 100\nTEA - 200')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Paste sample
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('check again')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Check again
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('confirm')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('new order')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              New order
+            </button>
+            <button
+              type="button"
+              disabled={sending || uploading}
+              onClick={() => void sendText('help')}
+              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
+            >
+              Help
+            </button>
+          </div>
+        </div>
+      )}
+
       {isHqSupport && conversation.kind === 'assistant' && (
         <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
           <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
