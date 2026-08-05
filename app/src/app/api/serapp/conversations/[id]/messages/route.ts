@@ -8,7 +8,7 @@ import {
   parseSession,
   updateConversationSession,
 } from '@/lib/serapp/conversation-service'
-import type { SerappConversationKind } from '@/lib/serapp/conversation-types'
+import type { SerappAttachment, SerappConversationKind } from '@/lib/serapp/conversation-types'
 
 /**
  * Send a user message, wait for bot processing (with typing delay), persist both.
@@ -24,8 +24,12 @@ export async function POST(
     const { id } = await context.params
     const body = await request.json().catch(() => null)
     const text = typeof body?.text === 'string' ? body.text.trim() : ''
-    if (!text) {
-      return NextResponse.json({ error: 'Message text is required.' }, { status: 400 })
+    const attachment = (body?.attachment && typeof body.attachment === 'object')
+      ? body.attachment as SerappAttachment
+      : null
+
+    if (!text && !attachment) {
+      return NextResponse.json({ error: 'Message text or attachment is required.' }, { status: 400 })
     }
 
     const clientMessageId =
@@ -47,42 +51,48 @@ export async function POST(
     const userMessage = await appendMessage(admin, {
       conversationId: id,
       role: 'user',
-      body: text,
+      body: text || (attachment ? `📎 ${attachment.name}` : ''),
+      attachment,
       clientMessageId,
     })
 
-    const distributorName = actor.orgName
-    const reply = await processSerappChatTurn({
-      request,
-      kind: conversation.kind as SerappConversationKind,
-      text,
-      session,
-      distributorName,
-      distributorId: distributorId || session.distributorId,
-    })
+    let botMessage = null as any
+    let updatedSession = session
+    // For pure attachment messages we skip AI interpretation and keep UX concise.
+    if (text) {
+      const distributorName = actor.orgName
+      const reply = await processSerappChatTurn({
+        request,
+        kind: conversation.kind as SerappConversationKind,
+        text,
+        session,
+        distributorName,
+        distributorId: distributorId || session.distributorId,
+      })
+      updatedSession = reply.session
+      await updateConversationSession(admin, id, reply.session, {
+        distributorOrgId: reply.session.distributorId,
+      })
 
-    await updateConversationSession(admin, id, reply.session, {
-      distributorOrgId: reply.session.distributorId,
-    })
-
-    const botMessage = await appendMessage(admin, {
-      conversationId: id,
-      role: 'bot',
-      body: reply.text,
-      card: reply.card || null,
-      quickReplies: reply.quickReplies || null,
-    })
+      botMessage = await appendMessage(admin, {
+        conversationId: id,
+        role: 'bot',
+        body: reply.text,
+        card: reply.card || null,
+        quickReplies: reply.quickReplies || null,
+      })
+    }
 
     // User message is considered delivered once bot has processed and replied.
     await admin
       .from('serapp_messages')
-      .update({ delivered_at: botMessage.created_at })
+      .update({ delivered_at: botMessage?.created_at || new Date().toISOString() })
       .eq('id', userMessage.id)
 
     return NextResponse.json({
       userMessage,
       botMessage,
-      session: reply.session,
+      session: updatedSession,
       typingMs: 700,
     })
   } catch (error) {
