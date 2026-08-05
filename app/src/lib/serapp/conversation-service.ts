@@ -7,6 +7,7 @@ import {
   type SerappConversationKind,
   type SerappConversationRow,
   type SerappMessageRow,
+  type SerappAttachment,
 } from '@/lib/serapp/conversation-types'
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
 import { quickRepliesForPhase } from '@/lib/serapp/chat-bot'
@@ -194,6 +195,7 @@ export async function appendMessage(
     body: string
     card?: unknown
     quickReplies?: SerappChatQuickReply[] | null
+    attachment?: SerappAttachment | null
     clientMessageId?: string | null
   },
 ): Promise<SerappMessageRow> {
@@ -205,6 +207,7 @@ export async function appendMessage(
       body: input.body,
       card_json: input.card || null,
       quick_replies_json: input.quickReplies || null,
+      attachment_json: input.attachment || null,
       client_message_id: input.clientMessageId || null,
     })
     .select('*')
@@ -215,7 +218,9 @@ export async function appendMessage(
   await admin
     .from('serapp_conversations')
     .update({
-      last_message_preview: previewFromBody(input.body),
+      last_message_preview: previewFromBody(
+        input.body || (input.attachment ? `Attachment: ${input.attachment.name}` : ''),
+      ),
       last_message_at: data.created_at,
       updated_at: new Date().toISOString(),
     })

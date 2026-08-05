@@ -28,10 +28,20 @@ export interface SerappMessageRow {
   card_json: SerappChatMessageCard | null
   quick_replies_json: SerappChatQuickReply[] | null
   client_message_id: string | null
+  attachment_json: SerappAttachment | null
   delivered_at: string | null
   seen_at: string | null
   seen_by_owner: boolean
   created_at: string
+}
+
+export interface SerappAttachment {
+  bucket: string
+  path: string
+  name: string
+  size: number
+  mimeType: string
+  url?: string | null
 }
 
 export interface SerappChatMessageCard {

@@ -24,6 +24,20 @@ export async function GET(
     }
 
     const messages = await listMessages(admin, id)
+    const hydratedMessages = await Promise.all((messages || []).map(async (msg) => {
+      const attachment = (msg as any).attachment_json
+      if (!attachment?.bucket || !attachment?.path) return msg
+      const { data: signed } = await admin.storage
+        .from(String(attachment.bucket))
+        .createSignedUrl(String(attachment.path), 60 * 60 * 12)
+      return {
+        ...msg,
+        attachment_json: {
+          ...attachment,
+          url: signed?.signedUrl || attachment.url || null,
+        },
+      }
+    }))
     const nowIso = new Date().toISOString()
 
     // Mark incoming bot/system messages as seen when thread opens.
@@ -56,7 +70,7 @@ export async function GET(
     return NextResponse.json({
       conversation: { ...conversation, unread_count: 0 },
       session: parseSession(conversation.session_json),
-      messages,
+      messages: hydratedMessages,
       presence: { is_online: true, last_seen_at: nowIso },
     })
   } catch (error) {

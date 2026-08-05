@@ -1,15 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   Bot,
   CheckCircle2,
+  FileText,
   Headphones,
+  ImageIcon,
   Loader2,
   Megaphone,
+  Paperclip,
   Send,
   Warehouse,
 } from 'lucide-react'
@@ -20,7 +23,7 @@ import type {
   SerappChatQuickReply,
   SerappChatSessionState,
 } from '@/lib/serapp/chat-types'
-import type { SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
+import type { SerappAttachment, SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
 import { createClient } from '@/lib/supabase/client'
 import { useSerapp } from './SerappContext'
 import { cn } from '@/lib/utils'
@@ -63,6 +66,7 @@ function mapRow(msg: SerappMessageRow) {
     deliveredAt: msg.delivered_at,
     seenAt: msg.seen_at,
     seenByOwner: msg.seen_by_owner,
+    attachment: msg.attachment_json,
     quickReplies: (msg.quick_replies_json || undefined) as SerappChatQuickReply[] | undefined,
     card: msg.card_json as {
       kind: string
@@ -87,6 +91,8 @@ export default function SerappChatThread() {
   const [sending, setSending] = useState(false)
   const [typing, setTyping] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [pendingAttachment, setPendingAttachment] = useState<SerappAttachment | null>(null)
   const [presence, setPresence] = useState<{ is_online: boolean; last_seen_at: string | null }>({
     is_online: true,
     last_seen_at: null,
@@ -95,6 +101,7 @@ export default function SerappChatThread() {
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const supabaseRef = useRef(createClient())
 
   const load = useCallback(async () => {
@@ -253,7 +260,7 @@ export default function SerappChatThread() {
 
   const sendText = async (raw: string) => {
     const text = raw.trim()
-    if (!text || sending || !conversationId) return
+    if ((!text && !pendingAttachment) || sending || !conversationId) return
 
     if (isHqSupport && conversation?.kind === 'assistant' && !selectedDistributorId) {
       setError('Select a distributor first (HQ Support).')
@@ -269,8 +276,12 @@ export default function SerappChatThread() {
     const optimistic = {
       id: `temp-${clientMessageId}`,
       role: 'user' as const,
-      text,
+      text: text || (pendingAttachment ? `📎 ${pendingAttachment.name}` : ''),
       createdAt: new Date().toISOString(),
+      deliveredAt: null,
+      seenAt: null,
+      seenByOwner: false,
+      attachment: pendingAttachment,
       quickReplies: undefined,
       card: null,
     }
@@ -288,6 +299,7 @@ export default function SerappChatThread() {
         body: JSON.stringify({
           text,
           clientMessageId,
+          attachment: pendingAttachment,
           distributorId: selectedDistributorId || undefined,
         }),
       })
@@ -296,18 +308,44 @@ export default function SerappChatThread() {
 
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== optimistic.id)
-        const incoming = [mapRow(payload.userMessage), mapRow(payload.botMessage)]
+        const incoming = [payload.userMessage, payload.botMessage].filter(Boolean).map(mapRow)
         const map = new Map(withoutTemp.map((m) => [m.id, m]))
         for (const msg of incoming) map.set(msg.id, msg)
         return [...map.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       })
       setSession(payload.session)
+      setPendingAttachment(null)
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
       setError(err instanceof Error ? err.message : 'Send failed.')
     } finally {
       setTyping(false)
       setSending(false)
+    }
+  }
+
+  const handlePickAttachment = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !conversationId) return
+    setError(null)
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`/api/serapp/conversations/${conversationId}/attachments`, {
+        method: 'POST',
+        body: form,
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok || !payload?.attachment) {
+        throw new Error(payload?.error || 'Attachment upload failed.')
+      }
+      setPendingAttachment(payload.attachment as SerappAttachment)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Attachment upload failed.')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -433,6 +471,9 @@ export default function SerappChatThread() {
               )}
             >
               <p className="whitespace-pre-wrap break-words">{msg.text.replace(/\*/g, '')}</p>
+              {msg.attachment && (
+                <AttachmentBubble attachment={msg.attachment} mine={msg.role === 'user'} />
+              )}
 
               {msg.card?.kind === 'check_summary' && msg.card.check && (
                 <CheckSummaryCard check={msg.card.check} />
@@ -490,6 +531,22 @@ export default function SerappChatThread() {
       )}
 
       <div className="serapp-wa-composer flex items-end gap-2 border-t border-[var(--sera-line)] px-2 py-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={handlePickAttachment}
+          className="hidden"
+        />
+        <button
+          type="button"
+          disabled={sending || uploading}
+          onClick={() => fileRef.current?.click()}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--sera-line)] bg-white text-[var(--sera-ink-soft)] disabled:opacity-40"
+          aria-label="Attach file"
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+        </button>
         <textarea
           ref={textareaRef}
           value={draft}
@@ -507,7 +564,7 @@ export default function SerappChatThread() {
         />
         <button
           type="button"
-          disabled={sending || !draft.trim()}
+          disabled={sending || uploading || (!draft.trim() && !pendingAttachment)}
           onClick={() => void sendText(draft)}
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--sera-orange)] text-white disabled:opacity-40"
           aria-label="Send"
@@ -515,6 +572,49 @@ export default function SerappChatThread() {
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
+      {pendingAttachment && (
+        <div className="border-t border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2 text-xs text-[var(--sera-ink-soft)]">
+          Pending attachment: <span className="font-semibold">{pendingAttachment.name}</span>
+          <button
+            type="button"
+            onClick={() => setPendingAttachment(null)}
+            className="ml-2 text-[var(--sera-orange)]"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AttachmentBubble({ attachment, mine }: { attachment: SerappAttachment; mine: boolean }) {
+  const isImage = attachment.mimeType.startsWith('image/')
+  return (
+    <div className="mt-2">
+      {isImage && attachment.url ? (
+        <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={attachment.url}
+            alt={attachment.name}
+            className="max-h-52 w-auto rounded-lg border border-black/10"
+          />
+        </a>
+      ) : (
+        <a
+          href={attachment.url || '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs underline',
+            mine ? 'text-blue-900' : 'text-[var(--sera-orange-deep)]',
+          )}
+        >
+          {isImage ? <ImageIcon className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+          {attachment.name}
+        </a>
+      )}
     </div>
   )
 }
