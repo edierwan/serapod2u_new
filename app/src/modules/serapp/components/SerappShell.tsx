@@ -27,9 +27,21 @@ export default function SerappShell({
   const [signingOut, startSignOut] = useTransition()
 
   useEffect(() => {
+    // Prefer Serapp manifest over the root dashboard manifest on this tree.
+    const existing = document.querySelectorAll('link[rel="manifest"]')
+    existing.forEach((node) => node.parentElement?.removeChild(node))
+    const link = document.createElement('link')
+    link.rel = 'manifest'
+    link.href = '/serapp-manifest.json'
+    document.head.appendChild(link)
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/serapp-sw.js', { scope: '/serapp' })
+        .then((reg) => {
+          // Force activate updated SW (v4 fixes precache that blocked installability)
+          void reg.update()
+        })
         .catch((err) => console.warn('[Serapp SW] registration failed:', err))
     }
   }, [])

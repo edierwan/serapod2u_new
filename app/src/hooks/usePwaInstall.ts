@@ -23,31 +23,29 @@ export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [isIos, setIsIos] = useState(false)
+  const [isAndroid, setIsAndroid] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
-    // Already running installed?
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true
     setIsStandalone(standalone)
     setIsInstalled(standalone)
 
-    // Detect iOS
     const ua = navigator.userAgent
-    setIsIos(
+    const ios =
       /iPad|iPhone|iPod/.test(ua) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    )
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    setIsIos(ios)
+    setIsAndroid(/Android/i.test(ua))
 
-    // Chrome / Edge "beforeinstallprompt"
     const handleBIP = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
     }
     window.addEventListener('beforeinstallprompt', handleBIP)
 
-    // Track successful installs
     const handleInstalled = () => {
       setIsInstalled(true)
       setDeferredPrompt(null)
@@ -68,11 +66,15 @@ export function usePwaInstall() {
     return outcome === 'accepted'
   }, [deferredPrompt])
 
+  const notInstalled = !isInstalled && !isStandalone
+
   return {
     /** True when Chrome/Edge has a deferred prompt we can trigger */
-    canInstall: !!deferredPrompt && !isInstalled,
-    /** True when on iOS Safari and NOT already installed */
-    isIos: isIos && !isInstalled && !isStandalone,
+    canInstall: !!deferredPrompt && notInstalled,
+    /** True when on iOS and NOT already installed */
+    isIos: isIos && notInstalled,
+    /** True when on Android and NOT already installed */
+    isAndroid: isAndroid && notInstalled,
     /** True when the PWA is already installed */
     isInstalled,
     /** True when running in standalone (home-screen) mode */
