@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones } from 'lucide-react'
 import type { SerappConversationRow } from '@/lib/serapp/conversation-types'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
 
 function formatListTime(iso: string | null) {
   if (!iso) return ''
@@ -38,6 +39,7 @@ export default function SerappConversationList() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const supabaseRef = useRef(createClient())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -58,6 +60,24 @@ export default function SerappConversationList() {
 
   useEffect(() => {
     void load()
+  }, [load])
+
+  useEffect(() => {
+    const supabase = supabaseRef.current
+    const channel = supabase
+      .channel('serapp_conversations_live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'serapp_conversations' },
+        () => {
+          void load()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
   }, [load])
 
   const createChat = async () => {

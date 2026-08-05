@@ -88,6 +88,7 @@ export default function SerappChatThread() {
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const supabaseRef = useRef(createClient())
 
   const load = useCallback(async () => {
     if (!conversationId) return
@@ -146,6 +147,52 @@ export default function SerappChatThread() {
     el.scrollTop = el.scrollHeight
   }, [messages, typing])
 
+  useEffect(() => {
+    if (!conversationId) return
+    const supabase = supabaseRef.current
+    const channel = supabase
+      .channel(`serapp_thread_${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'serapp_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as SerappMessageRow
+          const next = mapRow(row)
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === next.id)) return prev
+            return [...prev, next]
+          })
+          if (row.role === 'bot' || row.role === 'system') {
+            setTyping(false)
+            setSending(false)
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'serapp_conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          const row = payload.new as SerappConversationRow
+          setConversation((prev) => (prev ? { ...prev, ...row } : (row as SerappConversationRow)))
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [conversationId])
+
   const sendText = async (raw: string) => {
     const text = raw.trim()
     if (!text || sending || !conversationId) return
@@ -191,11 +238,10 @@ export default function SerappChatThread() {
 
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== optimistic.id)
-        return [
-          ...withoutTemp,
-          mapRow(payload.userMessage),
-          mapRow(payload.botMessage),
-        ]
+        const incoming = [mapRow(payload.userMessage), mapRow(payload.botMessage)]
+        const map = new Map(withoutTemp.map((m) => [m.id, m]))
+        for (const msg of incoming) map.set(msg.id, msg)
+        return [...map.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       })
       setSession(payload.session)
     } catch (err) {
