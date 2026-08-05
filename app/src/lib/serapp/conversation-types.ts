@@ -45,9 +45,10 @@ export interface SerappAttachment {
 }
 
 export interface SerappChatMessageCard {
-  kind: 'check_summary' | 'order_confirmed' | 'error'
+  kind: 'check_summary' | 'order_confirmed' | 'do_stories' | 'error'
   check?: unknown
   confirm?: unknown
+  doStories?: unknown
   error?: string
 }
 

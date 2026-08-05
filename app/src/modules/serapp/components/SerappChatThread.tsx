@@ -22,6 +22,7 @@ import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
+  SerappDoStoryItem,
   SerappChatQuickReply,
   SerappChatSessionState,
 } from '@/lib/serapp/chat-types'
@@ -483,6 +484,9 @@ export default function SerappChatThread() {
               {msg.card?.kind === 'order_confirmed' && msg.card.confirm && (
                 <ConfirmCard confirm={msg.card.confirm} />
               )}
+              {msg.card?.kind === 'do_stories' && Array.isArray(msg.card.doStories) && (
+                <DoStoriesCard stories={msg.card.doStories as SerappDoStoryItem[]} />
+              )}
 
               <p
                 className={cn(
@@ -689,4 +693,30 @@ function lineStatusShort(result: PasteMatchResult): string {
   if (result.inventoryOutcome === 'no_available_stock') return 'OOS'
   if (result.status === 'matched' || result.status === 'alternative_match') return 'OK'
   return result.status
+}
+
+function DoStoriesCard({ stories }: { stories: SerappDoStoryItem[] }) {
+  return (
+    <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
+      <p className="text-[11px] font-semibold text-[var(--sera-ink-soft)]">Delivery Order stories</p>
+      <ul className="mt-1 space-y-1.5 text-[11px]">
+        {stories.slice(0, 4).map((item) => (
+          <li key={item.orderId} className="rounded-md border border-[var(--sera-line)]/60 bg-white/60 px-2 py-1.5">
+            <p className="font-semibold text-[var(--sera-ink)]">{item.orderLabel}</p>
+            <p className="text-[var(--sera-muted)]">{item.story}</p>
+            {item.do?.downloadUrl && (
+              <a
+                href={item.do.downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex text-[11px] font-semibold text-[var(--sera-orange)] underline"
+              >
+                Open DO PDF
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
