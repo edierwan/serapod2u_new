@@ -12,11 +12,33 @@ export interface MatchableVariant {
   inventory_classification?: 'classified' | 'unclassified'
 }
 
-export type PasteMatchStatus = 'matched' | 'alternative_match' | 'smart_match' | 'suggestion' | 'ambiguous' | 'not_found' | 'invalid_quantity' | 'duplicate'
+export type PasteMatchStatus =
+  | 'matched'
+  | 'alternative_match'
+  | 'smart_match'
+  | 'suggestion'
+  | 'ambiguous'
+  | 'not_found'
+  | 'invalid_quantity'
+  | 'duplicate'
+  /** Standalone HERO / ZERO (etc.) section title — not an order line. */
+  | 'section_header'
+  /** HERO/ZERO appeared with a quantity — ambiguous intent; needs human review. */
+  | 'requires_review'
 
 export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'bracket_flavour' | 'alternative_name' | 'keyword' | 'fuzzy'
 
 export type PasteInventoryOutcome = 'matched' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
+
+/** Canonical Master Data product families used as paste section scopes. */
+export const SECTION_PRODUCT_LINES = {
+  hero: 'Cellera Hero',
+  zero: 'Cellera Zero',
+} as const
+
+export type SectionProductLine =
+  | typeof SECTION_PRODUCT_LINES.hero
+  | typeof SECTION_PRODUCT_LINES.zero
 
 export interface PasteMatchResult {
   /** Running 1-based index across every parsed entry (a physical line may hold several). */
@@ -33,6 +55,12 @@ export interface PasteMatchResult {
   duplicateOfLine?: number
   matchMethod?: PasteMatchMethod
   inventoryOutcome?: PasteInventoryOutcome
+  /**
+   * When status is section_header: the product family this header activates.
+   * When status is a product line under an active header: the section still in force
+   * (for audit / Serapp conversation trail).
+   */
+  sectionProductLine?: SectionProductLine
 }
 
 export const normalizeOrderText = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase()
@@ -173,6 +201,49 @@ const GENERIC_ORDER_WORDS = new Set([
   'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS',
 ])
 
+/**
+ * Exact normalized titles that act as section headers (no quantity).
+ * Intentionally narrow so flavour lines like "SERAPOD HERO MANGO 4 PCS"
+ * remain product entries, not headers.
+ */
+const SECTION_HEADER_ALIASES = new Map<string, SectionProductLine>([
+  ['HERO', SECTION_PRODUCT_LINES.hero],
+  ['ZERO', SECTION_PRODUCT_LINES.zero],
+  ['CELLERA HERO', SECTION_PRODUCT_LINES.hero],
+  ['CELLERA ZERO', SECTION_PRODUCT_LINES.zero],
+  ['SERAPOD HERO', SECTION_PRODUCT_LINES.hero],
+  ['SERAPOD ZERO', SECTION_PRODUCT_LINES.zero],
+  ['SERAPOD CELLERA HERO', SECTION_PRODUCT_LINES.hero],
+  ['SERAPOD CELLERA ZERO', SECTION_PRODUCT_LINES.zero],
+])
+
+export type SectionHeaderKind = 'section_header' | 'requires_review'
+
+export interface SectionHeaderResolution {
+  kind: SectionHeaderKind
+  productLine: SectionProductLine
+}
+
+/**
+ * Detect HERO / ZERO family section headers.
+ * - No quantity → section_header (scopes following lines).
+ * - With quantity → requires_review (do not auto-ignore; user may mean a product).
+ */
+export function resolveSectionHeader(
+  name: string,
+  quantity: number | null,
+): SectionHeaderResolution | null {
+  const normalized = normalizeOrderText(name)
+  const productLine = SECTION_HEADER_ALIASES.get(normalized)
+  if (!productLine) return null
+
+  if (quantity !== null && quantity > 0) {
+    return { kind: 'requires_review', productLine }
+  }
+
+  return { kind: 'section_header', productLine }
+}
+
 const flavourNames = (variant: MatchableVariant) => {
   const extracted = bracketFlavours(variant)
   return extracted.length > 0 ? extracted : [exactOfficialName(variant)]
@@ -240,14 +311,28 @@ const fuzzyScore = (query: string, variant: MatchableVariant) => {
   }))
 }
 
-export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) {
+export function resolveCatalogMatch(
+  name: string,
+  variants: MatchableVariant[],
+  /**
+   * When set (active paste section), matching is restricted to that Master Data
+   * product family until another section header appears.
+   */
+  forcedProductLine?: SectionProductLine,
+) {
+  const pool = forcedProductLine
+    ? variants.filter(variant => variant.product_name === forcedProductLine)
+    : variants
+
   const normalizedName = normalizeOrderText(name)
-  const identifierMatches = variants.filter(variant => exactIdentifiers(variant).includes(normalizedName))
+  const identifierMatches = pool.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 8), method: 'code_or_sku' as const, totalMatches: identifierMatches.length }
 
   const normalizedMatchName = normalizeMatchName(name)
-  const productLine = detectProductLine(name, variants)
-  const scopedVariants = productLine ? variants.filter(variant => variant.product_name === productLine) : variants
+  // Under an active section, do not re-detect a different product line from the
+  // flavour text — the section header already owns the scope.
+  const productLine = forcedProductLine || detectProductLine(name, pool)
+  const scopedVariants = productLine ? pool.filter(variant => variant.product_name === productLine) : pool
   const flavourQuery = extractFlavourQuery(name, productLine) || normalizedMatchName
 
   const nameMatches = scopedVariants.filter(variant => exactOfficialName(variant) === normalizedMatchName)
@@ -308,6 +393,8 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
   const firstLineByVariant = new Map<string, number>()
   const results: PasteMatchResult[] = []
   let entryNumber = 0
+  /** Active section scope; null means use the existing global matching rules. */
+  let activeSection: SectionProductLine | null = null
 
   text.split(/\r?\n/).forEach((physicalLine, index) => {
     if (!physicalLine.trim()) return
@@ -318,7 +405,45 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
       const name = segment.name.trim() || segment.raw.trim()
       const normalizedName = normalizeOrderText(name)
       const quantity = segment.quantity
-      const resolved = resolveCatalogMatch(name, variants)
+
+      const section = resolveSectionHeader(name, quantity)
+      if (section?.kind === 'section_header') {
+        activeSection = section.productLine
+        results.push({
+          line,
+          sourceLine: segment.sourceLine,
+          raw: segment.raw,
+          name,
+          normalizedName,
+          quantity: null,
+          status: 'section_header',
+          candidates: [],
+          sectionProductLine: section.productLine,
+        })
+        continue
+      }
+
+      if (section?.kind === 'requires_review') {
+        // Do not change activeSection — a quantified HERO/ZERO is not a header.
+        results.push({
+          line,
+          sourceLine: segment.sourceLine,
+          raw: segment.raw,
+          name,
+          normalizedName,
+          quantity,
+          status: 'requires_review',
+          candidates: [],
+          sectionProductLine: section.productLine,
+        })
+        continue
+      }
+
+      const resolved = resolveCatalogMatch(
+        name,
+        variants,
+        activeSection || undefined,
+      )
       const candidates = resolved.candidates
       const confidentMethod = resolved.method === 'code_or_sku'
         || resolved.method === 'exact_name'
@@ -328,8 +453,13 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         && candidates.length === 1
         && (resolved.totalMatches ?? candidates.length) === 1
       const exactVariantId = autoSelectable ? candidates[0].id : undefined
-      const duplicateOfLine = firstLineByName.get(normalizedName)
-        ?? (exactVariantId ? firstLineByVariant.get(exactVariantId) : undefined)
+      // Duplicate keys are section-aware so the same flavour can appear once under
+      // HERO and once under ZERO without being treated as a paste duplicate.
+      const sectionKey = activeSection || 'global'
+      const nameDuplicateKey = `${sectionKey}::${normalizedName}`
+      const variantDuplicateKey = exactVariantId ? `${sectionKey}::${exactVariantId}` : undefined
+      const duplicateOfLine = firstLineByName.get(nameDuplicateKey)
+        ?? (variantDuplicateKey ? firstLineByVariant.get(variantDuplicateKey) : undefined)
 
       let status: PasteMatchStatus
       if (quantity === null || quantity <= 0) status = 'invalid_quantity'
@@ -341,8 +471,8 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
       else status = 'not_found'
 
       if (quantity !== null && quantity > 0 && duplicateOfLine === undefined) {
-        firstLineByName.set(normalizedName, line)
-        if (exactVariantId) firstLineByVariant.set(exactVariantId, line)
+        firstLineByName.set(nameDuplicateKey, line)
+        if (variantDuplicateKey) firstLineByVariant.set(variantDuplicateKey, line)
       }
 
       results.push({
@@ -360,6 +490,7 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         inventoryOutcome: duplicateOfLine === undefined
           ? resolvePasteInventoryOutcome(quantity, exactVariantId ? candidates[0] : undefined)
           : undefined,
+        sectionProductLine: activeSection || undefined,
       })
     }
   })

@@ -291,8 +291,8 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // ── Business routes: /dashboard, /hr, /finance, /settings ──
-    const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings']
+    // ── Business routes: /dashboard, /hr, /finance, /settings, /serapp, /supply-chain ──
+    const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings', '/serapp', '/supply-chain']
     const isBusinessRoute = BUSINESS_PREFIXES.some(p =>
       request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/')
     )

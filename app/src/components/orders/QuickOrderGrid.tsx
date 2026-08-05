@@ -43,9 +43,23 @@ const statusStyle = (status: PasteMatchResult['status']) => ({
   not_found: 'bg-red-100 text-red-700',
   invalid_quantity: 'bg-red-100 text-red-700',
   duplicate: 'bg-blue-100 text-blue-700',
+  section_header: 'bg-slate-100 text-slate-700',
+  requires_review: 'bg-amber-100 text-amber-900',
 }[status])
 
 const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]) => {
+  if (result.status === 'section_header') {
+    return {
+      label: `Section: ${result.sectionProductLine || result.name}`,
+      style: statusStyle(result.status),
+    }
+  }
+  if (result.status === 'requires_review') {
+    return {
+      label: 'Requires Review — Section Title With Quantity',
+      style: statusStyle(result.status),
+    }
+  }
   if (result.status === 'invalid_quantity') return { label: 'Invalid Quantity', style: statusStyle(result.status) }
   if (result.status === 'duplicate') return { label: 'Duplicate', style: statusStyle(result.status) }
   if (!result.selectedVariantId && result.candidates.length > 1) return { label: 'Multiple Matches — Selection Required', style: statusStyle('ambiguous') }
@@ -64,6 +78,9 @@ const isPasteResultBlocked = (
   variants: QuickVariant[],
   combineDuplicates: boolean,
 ) => {
+  // Section headers are informational only — they never block Apply.
+  if (result.status === 'section_header') return false
+  if (result.status === 'requires_review') return true
   if (result.status === 'invalid_quantity') return true
   if (result.status === 'duplicate' && !combineDuplicates) return true
   const selected = variants.find(variant => variant.id === result.selectedVariantId)
