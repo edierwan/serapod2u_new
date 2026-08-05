@@ -297,9 +297,12 @@ export async function middleware(request: NextRequest) {
       request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/')
     )
 
-    // No session on any business route → /login
+    // No session on any business route → /login (preserve intended target).
     if (!user && isBusinessRoute) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      const loginUrl = new URL('/login', request.url)
+      const intended = `${request.nextUrl.pathname}${request.nextUrl.search || ''}`
+      loginUrl.searchParams.set('next', intended)
+      return NextResponse.redirect(loginUrl)
     }
 
     // Authenticated user on business route → check account_scope
@@ -336,6 +339,11 @@ export async function middleware(request: NextRequest) {
 
     // Handle login redirect for authenticated users
     if (user && request.nextUrl.pathname === '/login') {
+      const requestedNext = request.nextUrl.searchParams.get('next') || ''
+      const isSafeNext = requestedNext.startsWith('/')
+        && !requestedNext.startsWith('//')
+        && !requestedNext.startsWith('/api/')
+
       // Use account_scope to decide redirect
       const { data: profile } = await supabase
         .from('users')
@@ -344,6 +352,9 @@ export async function middleware(request: NextRequest) {
         .maybeSingle()
 
       if (profile?.account_scope === 'portal' && profile?.organization_id) {
+        if (isSafeNext) {
+          return NextResponse.redirect(new URL(requestedNext, request.url))
+        }
         return NextResponse.redirect(new URL('/dashboard', request.url))
       }
       // Non-portal users (storefront/consumer): let them through to /login
