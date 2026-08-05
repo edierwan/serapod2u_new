@@ -50,6 +50,21 @@ async function postJson<T>(
   return { ok: res.ok, status: res.status, data }
 }
 
+async function getJson<T>(
+  request: Request,
+  path: string,
+): Promise<{ ok: boolean; status: number; data: T & { error?: string } }> {
+  const url = new URL(path, request.url)
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      cookie: request.headers.get('cookie') || '',
+    },
+  })
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
+  return { ok: res.ok, status: res.status, data }
+}
+
 export async function processSerappChatTurn(input: {
   request: Request
   kind: SerappConversationKind
@@ -64,7 +79,7 @@ export async function processSerappChatTurn(input: {
   const { kind, text, session, distributorName, distributorId, request } = input
 
   if (kind === 'warehouse') {
-    return warehouseTurn(text, session)
+    return warehouseTurn(request, text, session)
   }
   if (kind === 'news') {
     return newsTurn(text, session)
@@ -86,7 +101,11 @@ export async function processSerappChatTurn(input: {
   })
 }
 
-function warehouseTurn(text: string, session: SerappChatSessionState): ChatTurnBotReply {
+async function warehouseTurn(
+  request: Request,
+  text: string,
+  session: SerappChatSessionState,
+): Promise<ChatTurnBotReply> {
   const n = text.trim().toLowerCase()
   const replies: SerappChatQuickReply[] = [
     { id: 'holds', label: 'My holds', sendText: 'my holds' },
@@ -125,10 +144,49 @@ function warehouseTurn(text: string, session: SerappChatSessionState): ChatTurnB
   }
 
   if (n.includes('do') || n.includes('delivery')) {
+    const { ok, data } = await getJson<{
+      stories?: Array<{
+        orderLabel: string
+        holdStatus: string
+        do: { displayDocNo?: string | null; docNo?: string | null; status?: string | null } | null
+        story: string
+      }>
+      error?: string
+    }>(request, '/api/serapp/do-status?limit=5')
+
+    if (!ok) {
+      return {
+        text: data.error || 'Unable to load DO status right now.',
+        quickReplies: replies,
+        session,
+      }
+    }
+
+    const stories = data.stories || []
+    if (stories.length === 0) {
+      return {
+        text: [
+          'No recent Serapp DO updates yet.',
+          'Once warehouse accepts orders, this thread will narrate DO progress automatically.',
+        ].join('\n'),
+        quickReplies: replies,
+        session,
+      }
+    }
+
+    const lines = stories.map((s, idx) => {
+      const doRef = s.do ? (s.do.displayDocNo || s.do.docNo) : null
+      const doPart = doRef ? ` DO: ${doRef} (${String(s.do?.status || '').toLowerCase() || 'ready'})` : ''
+      return `${idx + 1}) ${s.orderLabel} · hold ${s.holdStatus}${doPart}`
+    })
+
     return {
       text: [
-        'Delivery Order (DO) is generated for *this warehouse* after warehouse acceptance.',
-        'That step is being connected next — for now accept the hold in History, then use Dashboard documents for DO.',
+        '*DO Stories (latest)*',
+        '',
+        ...lines,
+        '',
+        'Tip: open History to accept pending holds faster.',
       ].join('\n'),
       quickReplies: replies,
       session,
