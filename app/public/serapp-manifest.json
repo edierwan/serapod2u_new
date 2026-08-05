@@ -2,7 +2,7 @@
   "name": "Serapp · Serapod",
   "short_name": "Serapp",
   "description": "Distributor ordering companion for Serapod2U",
-  "start_url": "/serapp/order?source=pwa",
+  "start_url": "/serapp/conversation?source=pwa",
   "scope": "/serapp/",
   "id": "/serapp",
   "display": "standalone",
@@ -38,6 +38,12 @@
   ],
   "categories": ["business", "productivity"],
   "shortcuts": [
+    {
+      "name": "Chat assistant",
+      "short_name": "Chat",
+      "url": "/serapp/conversation",
+      "icons": [{ "src": "/icons/serapp-homescreen-192.png", "sizes": "192x192" }]
+    },
     {
       "name": "New order",
       "short_name": "Order",

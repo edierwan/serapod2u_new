@@ -228,7 +228,8 @@ export default function SerappOrderView() {
             Paste & Check → Confirm
           </p>
           <p className="mt-1 text-[var(--sera-muted)]">
-            Check first (no stock hold). Confirm creates a real D2H order and allocates stock, then starts a 1-hour warehouse acceptance window.
+            Power-user fallback. Prefer <Link href="/serapp/conversation" className="font-semibold text-[var(--sera-orange)]">Chat</Link> for the WhatsApp-style Assistant.
+            Check is read-only; Confirm allocates stock and starts the 1-hour warehouse hold.
           </p>
         </div>
 
