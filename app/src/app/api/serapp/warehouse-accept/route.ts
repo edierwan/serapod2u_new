@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient()
     const { data: hold, error: holdLookupError } = await admin
       .from('serapp_order_holds')
-      .select('id, order_id, status, expires_at, seller_hq_id, fulfillment_warehouse_id, buyer_org_id')
+      .select('id, order_id, status, expires_at, seller_hq_id, fulfillment_warehouse_id, buyer_org_id, created_by')
       .eq('order_id', orderId)
       .maybeSingle()
 
@@ -89,9 +89,75 @@ export async function POST(request: Request) {
       acceptedBy: user.id,
     })
 
+    const { data: order } = await admin
+      .from('orders')
+      .select('id, order_no, display_doc_no')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    const orderLabel = order?.display_doc_no || order?.order_no || orderId
+
+    const { data: doDoc } = await admin
+      .from('documents')
+      .select('id, doc_no, display_doc_no, status')
+      .eq('order_id', orderId)
+      .eq('doc_type', 'DO')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    // Push acceptance/DO progress into persisted chats so distributors get a WhatsApp-like
+    // thread update even when acceptance happens from History/HQ side.
+    if (hold.created_by) {
+      const { data: targetConversations } = await admin
+        .from('serapp_conversations')
+        .select('id, kind')
+        .eq('owner_user_id', hold.created_by)
+        .in('kind', ['assistant', 'warehouse'])
+        .eq('is_archived', false)
+
+      const warehouseText = doDoc
+        ? `✅ Warehouse accepted hold for *${orderLabel}*. Delivery Order *${doDoc.display_doc_no || doDoc.doc_no}* is ${String(doDoc.status || '').toLowerCase() || 'available'}.`
+        : `✅ Warehouse accepted hold for *${orderLabel}*. DO will be issued in the current order workflow; you can track documents from Dashboard/History.`
+
+      const assistantText = doDoc
+        ? `Update: warehouse accepted *${orderLabel}*. DO *${doDoc.display_doc_no || doDoc.doc_no}* is now ${String(doDoc.status || '').toLowerCase() || 'available'}.`
+        : `Update: warehouse accepted *${orderLabel}*. DO will follow in the current order workflow.`
+
+      for (const conv of targetConversations || []) {
+        const body = conv.kind === 'warehouse' ? warehouseText : assistantText
+        const { data: msg } = await admin
+          .from('serapp_messages')
+          .insert({
+            conversation_id: conv.id,
+            role: 'system',
+            body,
+          })
+          .select('created_at')
+          .single()
+
+        await admin
+          .from('serapp_conversations')
+          .update({
+            last_message_preview: body.slice(0, 72),
+            last_message_at: msg?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', conv.id)
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       hold: accepted,
+      do: doDoc
+        ? {
+            id: doDoc.id,
+            doc_no: doDoc.doc_no,
+            display_doc_no: doDoc.display_doc_no,
+            status: doDoc.status,
+          }
+        : null,
       note: 'Serapp hold accepted. Order remains in Current Order Module and will no longer auto-expire.',
     })
   } catch (error) {
