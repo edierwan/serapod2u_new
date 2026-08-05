@@ -26,8 +26,19 @@ export interface PostLoginRedirectResult {
   warnings: string[]
 }
 
-export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
+function sanitizeNextPath(nextPath: string | null | undefined): string | null {
+  if (!nextPath) return null
+  const trimmed = nextPath.trim()
+  if (!trimmed) return null
+  if (!trimmed.startsWith('/')) return null
+  if (trimmed.startsWith('//')) return null
+  if (trimmed.startsWith('/api/')) return null
+  return trimmed
+}
+
+export async function getPostLoginRedirect(nextPath?: string | null): Promise<PostLoginRedirectResult> {
   const warnings: string[] = []
+  const safeNext = sanitizeNextPath(nextPath)
 
   try {
     // 1. Get session from SSR server client
@@ -64,7 +75,7 @@ export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
     }
 
     // 3. Route based on account_scope + organization_id
-    return resolveRedirect(user, warnings)
+    return resolveRedirect(user, warnings, safeNext)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[getPostLoginRedirect] Unexpected error:', message)
@@ -82,7 +93,8 @@ export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
  */
 function resolveRedirect(
   user: EnsuredUser,
-  warnings: string[]
+  warnings: string[],
+  safeNext: string | null
 ): PostLoginRedirectResult {
   const base = {
     userId: user.id,
@@ -93,7 +105,7 @@ function resolveRedirect(
   if (user.account_scope === 'portal' && user.organization_id) {
     return {
       ...base,
-      redirectTo: '/dashboard',
+      redirectTo: safeNext || '/dashboard',
       accountScope: 'portal',
     }
   }
