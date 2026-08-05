@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { acceptSerappOrderHold } from '@/lib/serapp/hold-service'
 
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
       }, { status: 403 })
     }
 
-    const { data: hold, error: holdLookupError } = await supabase
+    const admin = createAdminClient()
+    const { data: hold, error: holdLookupError } = await admin
       .from('serapp_order_holds')
       .select('id, order_id, status, expires_at, seller_hq_id, fulfillment_warehouse_id, buyer_org_id')
       .eq('order_id', orderId)
@@ -63,6 +65,10 @@ export async function POST(request: Request) {
 
     if (orgType === 'WH' && hold.fulfillment_warehouse_id !== requester.organization_id) {
       return NextResponse.json({ error: 'This hold belongs to another warehouse.' }, { status: 403 })
+    }
+
+    if ((orgType === 'HQ' || access.isHqSupport) && hold.seller_hq_id !== requester.organization_id) {
+      return NextResponse.json({ error: 'This hold belongs to another HQ.' }, { status: 403 })
     }
 
     if (hold.status !== 'active') {
@@ -78,7 +84,7 @@ export async function POST(request: Request) {
       }, { status: 409 })
     }
 
-    const accepted = await acceptSerappOrderHold(supabase, {
+    const accepted = await acceptSerappOrderHold(admin, {
       orderId,
       acceptedBy: user.id,
     })

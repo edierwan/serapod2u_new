@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
 import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { summarizeSerappPasteCheck } from '@/lib/serapp/paste-check-summary'
 import { registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
@@ -85,6 +86,8 @@ export async function POST(request: Request) {
       warehouseName: catalog.fulfillmentWarehouseName,
     })
 
+    const estimatedOrderValue = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
+
     const { data: order, error: submitError } = await (ctx.supabase as any).rpc(
       'submit_and_allocate_d2h_order',
       {
@@ -111,9 +114,10 @@ export async function POST(request: Request) {
       }, { status: 409 })
     }
 
+    const admin = createAdminClient()
     let hold = null
     try {
-      hold = await registerSerappOrderHold(ctx.supabase, {
+      hold = await registerSerappOrderHold(admin, {
         orderId: order.id,
         buyerOrgId: ctx.distributorId,
         sellerHqId: ctx.hqId,
@@ -123,18 +127,44 @@ export async function POST(request: Request) {
         warehouseName: catalog.fulfillmentWarehouseName,
       })
     } catch (holdError) {
-      console.error('[serapp/confirm-order] hold registration failed', holdError)
+      console.error('[serapp/confirm-order] hold registration failed — rolling back allocation', holdError)
+
+      const { error: cancelError } = await admin
+        .from('orders')
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+          notes: `${notes}\n\nCancelled: Serapp hold registration failed after allocate.`,
+        })
+        .eq('id', order.id)
+        .eq('status', 'submitted')
+
+      if (cancelError) {
+        console.error('[serapp/confirm-order] rollback cancel failed', cancelError)
+      }
+
+      const { error: releaseError } = await admin.rpc('release_allocation_for_order', {
+        p_order_id: order.id,
+      })
+      if (releaseError) {
+        console.warn('[serapp/confirm-order] rollback release:', releaseError.message)
+      }
+
       return NextResponse.json({
-        ok: true,
-        warning: 'Order was created and allocated, but the 1-hour Serapp hold record failed to save. Contact HQ support.',
+        ok: false,
+        error: 'Order allocation was rolled back because the 1-hour Serapp hold could not be saved. Please try Confirm again.',
         order: {
           id: order.id,
           order_no: order.order_no,
           display_doc_no: order.display_doc_no,
-          status: order.status,
+          status: 'cancelled',
         },
         hold: null,
-      })
+        confirmedLines: 0,
+        skippedLines: items.length + skipped,
+        estimatedOrderValue: 0,
+        summary,
+      }, { status: 500 })
     }
 
     await fetch(new URL('/api/notifications/order-event', request.url), {
@@ -172,7 +202,7 @@ export async function POST(request: Request) {
         id: catalog.inventoryOrganizationId,
         name: catalog.fulfillmentWarehouseName,
       },
-      estimatedOrderValue: items.reduce((sum, item) => sum + item.qty * item.unit_price, 0),
+      estimatedOrderValue,
     })
   } catch (error) {
     const status = typeof (error as { status?: number })?.status === 'number'

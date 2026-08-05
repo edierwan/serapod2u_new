@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { cancelSerappOrderHoldByDistributor } from '@/lib/serapp/hold-service'
 
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not allowed to cancel Serapp holds.' }, { status: 403 })
     }
 
-    const { data: hold, error: holdError } = await supabase
+    const admin = createAdminClient()
+    const { data: hold, error: holdError } = await admin
       .from('serapp_order_holds')
       .select('id, order_id, buyer_org_id, status')
       .eq('order_id', orderId)
@@ -60,7 +62,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'You can only cancel your own Serapp orders.' }, { status: 403 })
     }
 
-    const cancelled = await cancelSerappOrderHoldByDistributor(supabase, {
+    const cancelled = await cancelSerappOrderHoldByDistributor(admin, {
       orderId,
       cancelledBy: user.id,
     })
