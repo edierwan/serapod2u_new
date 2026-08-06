@@ -26,6 +26,7 @@ import {
   type LoyaltyProgramCode,
 } from '@/lib/server/loyalty-memberships'
 import {
+  REGISTRATION_OTP_CHANNEL,
   findCodeByVerificationToken,
   logNotificationEvent as logRegistrationNotificationEvent,
   markCodeUsed as markRegistrationCodeUsed,
@@ -783,15 +784,17 @@ export async function registerConsumer(userData: {
     if (!userData.verification_token) {
       return {
         success: false,
-        error: 'Mobile verification is required before registration can be completed.'
+        error: 'Email verification is required before registration can be completed.'
       }
     }
 
-    const verificationCode = await findCodeByVerificationToken(adminClient, userData.verification_token)
+    const verificationCode = await findCodeByVerificationToken(adminClient, userData.verification_token, {
+      channel: REGISTRATION_OTP_CHANNEL,
+    })
     if (!verificationCode) {
       return {
         success: false,
-        error: 'Your mobile verification session has expired. Please request a new WhatsApp code.'
+        error: 'Your email verification session has expired. Please request a new verification code.'
       }
     }
 
@@ -800,7 +803,7 @@ export async function registerConsumer(userData: {
     if (verificationCode.phone_normalized !== phoneE164 || verifiedEmail !== normalizedEmail) {
       return {
         success: false,
-        error: 'The verified mobile number does not match the current registration details. Please verify again.'
+        error: 'The verified details do not match the current registration form. Please verify again.'
       }
     }
 
@@ -815,14 +818,14 @@ export async function registerConsumer(userData: {
     if (verifiedReferenceUserId && userData.reference_user_id?.trim() && userData.reference_user_id.trim() !== verifiedReferenceUserId) {
       return {
         success: false,
-        error: 'Your selected reference changed after verification. Please request a new WhatsApp code and try again.'
+        error: 'Your selected reference changed after verification. Please request a new verification code and try again.'
       }
     }
 
     if (verifiedOrganizationId && userData.organization_id?.trim() && userData.organization_id.trim() !== verifiedOrganizationId) {
       return {
         success: false,
-        error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+        error: 'Your selected shop changed after verification. Please request a new verification code and try again.'
       }
     }
 
@@ -830,14 +833,14 @@ export async function registerConsumer(userData: {
       if (userData.organization_id?.trim()) {
         return {
           success: false,
-          error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+          error: 'Your selected shop changed after verification. Please request a new verification code and try again.'
         }
       }
 
       if (userData.shop_name?.trim() && !matchesRegistrationPendingShopSelection(userData.shop_name, verifiedPendingShopRequest)) {
         return {
           success: false,
-          error: 'Your selected shop changed after verification. Please request a new WhatsApp code and try again.'
+          error: 'Your selected shop changed after verification. Please request a new verification code and try again.'
         }
       }
     }
@@ -845,7 +848,7 @@ export async function registerConsumer(userData: {
     if (verifiedReferralPhone && userData.referral_phone?.trim() && !samePhone(userData.referral_phone, verifiedReferralPhone)) {
       return {
         success: false,
-        error: 'Your selected reference changed after verification. Please request a new WhatsApp code and try again.'
+        error: 'Your selected reference changed after verification. Please request a new verification code and try again.'
       }
     }
 
@@ -860,7 +863,7 @@ export async function registerConsumer(userData: {
     if (!linkSelection.ok) {
       return {
         success: false,
-        error: 'Your selected reference and shop must be verified again. Please request a new WhatsApp code and try again.'
+        error: 'Your selected reference and shop must be verified again. Please request a new verification code and try again.'
       }
     }
 

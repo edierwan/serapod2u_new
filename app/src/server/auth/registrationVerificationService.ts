@@ -254,8 +254,9 @@ export async function findCodeByVerificationToken(
     options?: VerificationPurposeOptions,
 ) {
     const purpose = resolvePurpose(options)
+    const channel = options?.channel
 
-    const { data } = await admin
+    let query = admin
         .from('auth_verification_codes')
         .select('*')
         .eq('reset_token', verificationToken)
@@ -263,8 +264,12 @@ export async function findCodeByVerificationToken(
         .is('used_at', null)
         .is('invalidated_at', null)
         .gt('reset_token_expires', new Date().toISOString())
-        .limit(1)
-        .maybeSingle()
+
+    if (channel) {
+        query = query.eq('channel', channel)
+    }
+
+    const { data } = await query.limit(1).maybeSingle()
 
     return data
 }
@@ -307,26 +312,34 @@ export async function logNotificationEvent(
     const channel = params.channel || CHANNEL_WHATSAPP
     const provider = channel === 'email' ? PROVIDER_EMAIL : PROVIDER_WHATSAPP
 
-    await admin.from('notification_events').insert({
-        channel,
-        provider,
-        event_type: params.eventType,
-        purpose: PURPOSE,
-        recipient_phone: params.phone,
-        recipient_email: params.email ? String(params.email).trim().toLowerCase() : null,
-        user_id: params.userId ?? null,
-        status: params.status,
-        provider_message_id: params.providerMessageId ?? null,
-        error_code: params.errorCode ?? null,
-        error_message: params.errorMessage ?? null,
-        meta: params.meta ?? {},
-        request_ip: params.ip ?? null,
-        requested_at: now,
-        sent_at: sentTypes.includes(params.eventType) ? now : null,
-        verified_at: verifiedTypes.includes(params.eventType) ? now : null,
-        completed_at: completedTypes.includes(params.eventType) ? now : null,
-        created_at: now,
-    })
+    // Audit must never break OTP send/verify — password-reset path already succeeds without hard-failing on logs.
+    try {
+        const { error } = await admin.from('notification_events').insert({
+            channel,
+            provider,
+            event_type: params.eventType,
+            purpose: PURPOSE,
+            recipient_phone: params.phone,
+            recipient_email: params.email ? String(params.email).trim().toLowerCase() : null,
+            user_id: params.userId ?? null,
+            status: params.status,
+            provider_message_id: params.providerMessageId ?? null,
+            error_code: params.errorCode ?? null,
+            error_message: params.errorMessage ?? null,
+            meta: params.meta ?? {},
+            request_ip: params.ip ?? null,
+            requested_at: now,
+            sent_at: sentTypes.includes(params.eventType) ? now : null,
+            verified_at: verifiedTypes.includes(params.eventType) ? now : null,
+            completed_at: completedTypes.includes(params.eventType) ? now : null,
+            created_at: now,
+        })
+        if (error) {
+            console.warn('[registrationVerification] notification_events insert failed:', error.message)
+        }
+    } catch (err) {
+        console.warn('[registrationVerification] notification_events insert threw:', err)
+    }
 }
 
 export async function sendOtpViaWhatsApp(
@@ -364,7 +377,8 @@ export async function sendOtpViaWhatsApp(
 
 /**
  * Create Account OTP via Dynamic Config email provider.
- * Tries the journey org first, then falls back to any org with an active email provider.
+ * Same resolution order as password-reset (proven on production):
+ * prefer the org that owns the active email provider, then fall back to journey orgId.
  */
 export async function sendOtpViaEmail(
     admin: SupabaseClient,
@@ -375,7 +389,8 @@ export async function sendOtpViaEmail(
 ): Promise<{ success: boolean; providerName?: string; error?: string; notConfigured?: boolean; usedOrgId?: string }> {
     try {
         const built = buildRegistrationOtpEmail({ code, fullName })
-        const tryOrgs = [orgId, await resolveOrgForEmail(admin)].filter(
+        const preferredOrgId = await resolveOrgForEmail(admin)
+        const tryOrgs = [preferredOrgId, orgId].filter(
             (id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index,
         )
 
