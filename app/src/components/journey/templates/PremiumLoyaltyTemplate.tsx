@@ -2726,7 +2726,7 @@ export default function PremiumLoyaltyTemplate({
             setRegistrationOtpError('')
             toast({
                 title: isResend ? 'Verification Code Sent' : 'Verification Started',
-                description: result.message || 'A 4-digit WhatsApp verification code has been sent to your mobile number.',
+                description: result.message || 'A 4-digit verification code has been sent to your email.',
             })
         } finally {
             setRegistrationOtpSending(false)
@@ -6862,7 +6862,7 @@ export default function PremiumLoyaltyTemplate({
                                                 <p className="text-xs text-red-500 mt-1">{phoneError}</p>
                                             )}
                                             {!phoneError && (
-                                                <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers. A 4-digit WhatsApp verification code will be sent before account creation.</p>
+                                                <p className="text-xs text-gray-500 mt-1">Supported: Malaysia (+60) and China (+86) mobile numbers. A 4-digit verification code will be sent to your email before account creation.</p>
                                             )}
                                         </div>
 
@@ -7114,7 +7114,7 @@ export default function PremiumLoyaltyTemplate({
                                     ) : registrationOtpSending ? (
                                         <>
                                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Sending WhatsApp Code...
+                                            Sending Email Code...
                                         </>
                                     ) : (
                                         isSignUp ? 'Create Account' : 'Sign In'
@@ -9090,7 +9090,7 @@ export default function PremiumLoyaltyTemplate({
                         <DialogDescription>
                             {registrationCreatingAccount
                                 ? 'Your code has been verified. Please wait while we set up your account...'
-                                : `Enter the 4-digit WhatsApp code sent to ${signUpPhone || 'your mobile number'} to complete registration.`}
+                                : `Enter the 4-digit code sent to ${signUpEmailValue || loginEmail || 'your email'} to complete registration.`}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -9127,7 +9127,7 @@ export default function PremiumLoyaltyTemplate({
                                 </div>
 
                                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                                    The verification code will be sent to your WhatsApp number.
+                                    The verification code will be sent to your email address.
                                 </div>
                             </div>
 
@@ -9168,7 +9168,7 @@ export default function PremiumLoyaltyTemplate({
                                     ) : registrationResendCooldown > 0 ? (
                                         `Resend available in ${Math.floor(registrationResendCooldown / 60)}:${String(registrationResendCooldown % 60).padStart(2, '0')}`
                                     ) : (
-                                        'Resend WhatsApp Code'
+                                        'Resend Email Code'
                                     )}
                                 </Button>
                             </DialogFooter>
