@@ -8,13 +8,14 @@ const generateOtpMock = vi.fn()
 const hashOtpMock = vi.fn()
 const invalidateExistingCodesMock = vi.fn()
 const logNotificationEventMock = vi.fn()
-const sendOtpViaWhatsAppMock = vi.fn()
+const sendOtpViaEmailMock = vi.fn()
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: createAdminClientMock,
 }))
 
 vi.mock('@/server/auth/registrationVerificationService', () => ({
+  REGISTRATION_OTP_CHANNEL: 'email',
   RESEND_COOLDOWN_SECONDS: 60,
   checkRegistrationAvailability: checkRegistrationAvailabilityMock,
   checkSendRateLimit: checkSendRateLimitMock,
@@ -23,7 +24,7 @@ vi.mock('@/server/auth/registrationVerificationService', () => ({
   hashOtp: hashOtpMock,
   invalidateExistingCodes: invalidateExistingCodesMock,
   logNotificationEvent: logNotificationEventMock,
-  sendOtpViaWhatsApp: sendOtpViaWhatsAppMock,
+  sendOtpViaEmail: sendOtpViaEmailMock,
 }))
 
 describe('POST /api/auth/register/request-code', () => {
@@ -83,7 +84,7 @@ describe('POST /api/auth/register/request-code', () => {
     })
     expect(checkRegistrationAvailabilityMock).not.toHaveBeenCalled()
     expect(createVerificationCodeMock).not.toHaveBeenCalled()
-    expect(sendOtpViaWhatsAppMock).not.toHaveBeenCalled()
+    expect(sendOtpViaEmailMock).not.toHaveBeenCalled()
   })
 
   it('rejects OTP start when no authoritative reference selection is submitted', async () => {
@@ -112,7 +113,7 @@ describe('POST /api/auth/register/request-code', () => {
     })
     expect(checkRegistrationAvailabilityMock).not.toHaveBeenCalled()
     expect(createVerificationCodeMock).not.toHaveBeenCalled()
-    expect(sendOtpViaWhatsAppMock).not.toHaveBeenCalled()
+    expect(sendOtpViaEmailMock).not.toHaveBeenCalled()
   })
 
   it('rejects OTP start when the password is too short', async () => {
