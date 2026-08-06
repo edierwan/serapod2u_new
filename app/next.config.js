@@ -142,6 +142,16 @@ const nextConfig = {
     cpus: 2,
   },
 
+  async redirects() {
+    return [
+      {
+        source: '/serapp-sw.js',
+        destination: '/serapp/sw.js',
+        permanent: false,
+      },
+    ]
+  },
+
   async headers() {
     return [
       {
@@ -171,15 +181,15 @@ const nextConfig = {
         ],
       },
       {
-        source: '/serapp-sw.js',
+        source: '/serapp/sw.js',
         headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
           {
             key: 'Cache-Control',
             value: 'public, max-age=0, must-revalidate',
-          },
-          {
-            key: 'Service-Worker-Allowed',
-            value: '/serapp/',
           },
         ],
       },

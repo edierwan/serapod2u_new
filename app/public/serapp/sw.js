@@ -1,10 +1,6 @@
 /**
- * Serapp — Service Worker
+ * Serapp — Service Worker (scoped to /serapp/)
  * Minimal shell caching only. Never cache API / private order data.
- *
- * Important: do NOT precache authenticated routes (e.g. /serapp/order).
- * A failed cache.addAll() aborts SW install → Chrome never fires
- * beforeinstallprompt → no "Install app" affordance.
  */
 
 const CACHE_NAME = 'serapp-v7'

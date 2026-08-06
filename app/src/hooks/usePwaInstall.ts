@@ -1,26 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-
-/**
- * Augmented Event type for the Chrome "beforeinstallprompt" event.
- */
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
+import {
+  getSerappInstallPrompt,
+  subscribeSerappInstallPrompt,
+  type SerappInstallPromptEvent,
+} from '@/lib/serapp/pwa-install'
 
 /**
  * Hook to manage the PWA install prompt experience.
- *
- * - On Android/Chromium: captures the `beforeinstallprompt` event so
- *   you can call `promptInstall()` from a custom button.
- * - On iOS Safari: detects the platform so you can show a
- *   "Share → Add to Home Screen" tip.
- * - Tracks whether the app is already running as installed standalone.
+ * Relies on early capture in serapp/layout inline script + module fallback.
  */
 export function usePwaInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<SerappInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [isIos, setIsIos] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
@@ -29,7 +21,7 @@ export function usePwaInstall() {
   useEffect(() => {
     const standalone =
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true
     setIsStandalone(standalone)
     setIsInstalled(standalone)
 
@@ -40,28 +32,16 @@ export function usePwaInstall() {
     setIsIos(ios)
     setIsAndroid(/Android/i.test(ua))
 
-    const handleBIP = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
-    }
-    window.addEventListener('beforeinstallprompt', handleBIP)
-
-    const handleInstalled = () => {
-      setIsInstalled(true)
-      setDeferredPrompt(null)
-    }
-    window.addEventListener('appinstalled', handleInstalled)
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBIP)
-      window.removeEventListener('appinstalled', handleInstalled)
-    }
+    setDeferredPrompt(getSerappInstallPrompt())
+    return subscribeSerappInstallPrompt(setDeferredPrompt)
   }, [])
 
   const promptInstall = useCallback(async () => {
-    if (!deferredPrompt) return false
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
+    const prompt = deferredPrompt ?? getSerappInstallPrompt()
+    if (!prompt) return false
+    await prompt.prompt()
+    const { outcome } = await prompt.userChoice
+    if (window.__serappInstall) window.__serappInstall.prompt = null
     setDeferredPrompt(null)
     return outcome === 'accepted'
   }, [deferredPrompt])
@@ -69,17 +49,11 @@ export function usePwaInstall() {
   const notInstalled = !isInstalled && !isStandalone
 
   return {
-    /** True when Chrome/Edge has a deferred prompt we can trigger */
     canInstall: !!deferredPrompt && notInstalled,
-    /** True when on iOS and NOT already installed */
     isIos: isIos && notInstalled,
-    /** True when on Android and NOT already installed */
     isAndroid: isAndroid && notInstalled,
-    /** True when the PWA is already installed */
     isInstalled,
-    /** True when running in standalone (home-screen) mode */
     isStandalone,
-    /** Trigger the native install prompt (Android/Chromium only) */
     promptInstall,
   }
 }
