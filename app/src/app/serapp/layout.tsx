@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
-import Script from 'next/script'
 import type { Metadata, Viewport } from 'next'
 import SerappShell from '@/modules/serapp/components/SerappShell'
+import SerappPwaBootstrap from '@/modules/serapp/components/SerappPwaBootstrap'
 import { getSerappPageContext } from './_lib'
 import './serapp.css'
 
@@ -50,11 +50,7 @@ export default async function SerappLayout({
 
   return (
     <>
-      <Script id="serapp-sw-register" strategy="beforeInteractive">{`
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/serapp-sw.js', { scope: '/serapp/' }).catch(function () {})
-        }
-      `}</Script>
+      <SerappPwaBootstrap />
       <SerappShell
         userProfile={userProfile}
         isDistributor={access.isDistributor}
