@@ -111,7 +111,7 @@ export function helpBotText(): string {
     '',
     '• I reply with Available / Partial / Out of Stock / Needs Review',
     '• *Confirm* allocates stock and starts the 1-hour warehouse window',
-    '• Delivery Order (DO) is issued to this warehouse after warehouse acceptance (next phase)',
+    '• Delivery Order (DO) is issued automatically after warehouse acceptance — open Warehouse chat for the PDF',
     '',
     'Commands: *confirm* · *new order* · *help*',
   ].join('\n')
@@ -177,7 +177,7 @@ export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): 
     `✅ Order *${orderNo}* submitted & stock allocated.`,
     hold,
     '',
-    'Warehouse can accept from History. After acceptance, Delivery Order (DO) will be issued to this warehouse.',
+    'Warehouse can accept from History. After acceptance, Delivery Order (DO) is issued automatically — ask for *do status* or open the PDF from Warehouse chat.',
     '',
     'Say *new order* to start another list, or *cancel hold* before the warehouse accepts.',
   ].join('\n')

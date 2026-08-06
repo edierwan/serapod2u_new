@@ -164,7 +164,7 @@ async function warehouseTurn(
       return {
         text: [
           'No recent Serapp DO updates yet.',
-          'Once warehouse accepts orders, this thread will narrate DO progress automatically.',
+          'Once warehouse accepts a hold, DO is issued automatically and appears here with an Open DO PDF link.',
         ].join('\n'),
         quickReplies: replies,
         session,

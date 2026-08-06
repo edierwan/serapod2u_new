@@ -105,7 +105,7 @@ export async function GET(request: Request) {
           story: doc
             ? `Order ${orderLabel}: DO ${doLabel} is ${String(doc.status || '').toLowerCase() || 'ready'}.`
             : holdStatus === 'accepted'
-              ? `Order ${orderLabel}: accepted by warehouse. DO is being prepared in workflow.`
+              ? `Order ${orderLabel}: accepted by warehouse. DO not found yet — ask HQ to re-check documents.`
               : `Order ${orderLabel}: waiting for warehouse acceptance before DO.`,
           updatedAt: doc?.created_at || hold.accepted_at || hold.created_at || order.created_at,
         }

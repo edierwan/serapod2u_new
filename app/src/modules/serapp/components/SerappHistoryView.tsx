@@ -43,6 +43,7 @@ export default function SerappHistoryView() {
   const [orders, setOrders] = useState<HistoryOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [actionBusy, setActionBusy] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -86,6 +87,7 @@ export default function SerappHistoryView() {
   const runAccept = async (orderId: string) => {
     setActionBusy(orderId)
     setError(null)
+    setNotice(null)
     try {
       const res = await fetch('/api/serapp/warehouse-accept', {
         method: 'POST',
@@ -94,6 +96,12 @@ export default function SerappHistoryView() {
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Accept failed.')
+      const doLabel = payload?.do?.display_doc_no || payload?.do?.doc_no
+      setNotice(
+        doLabel
+          ? `Hold accepted. Delivery Order ${doLabel} issued — distributor sees Open DO PDF in Warehouse chat.`
+          : 'Hold accepted. Order will no longer auto-expire.',
+      )
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Accept failed.')
@@ -125,6 +133,12 @@ export default function SerappHistoryView() {
       {error && (
         <div className="rounded-2xl border border-[var(--sera-danger)]/20 bg-[var(--sera-danger-soft)] px-4 py-3 text-sm text-[var(--sera-danger)]">
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div className="rounded-2xl border border-[var(--sera-success)]/25 bg-[var(--sera-success-soft)] px-4 py-3 text-sm text-[var(--sera-success)]">
+          {notice}
         </div>
       )}
 

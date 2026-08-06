@@ -3,11 +3,12 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { acceptSerappOrderHold } from '@/lib/serapp/hold-service'
+import { ensureSerappDeliveryOrder, serappDoDownloadUrl } from '@/lib/serapp/do-service'
 
 /**
  * Warehouse / HQ accepts a Serapp hold within the 1-hour window.
- * Converts temporary acceptance risk into a stable allocated order
- * (allocation already exists from confirm; this stops auto-expiry).
+ * Stops auto-expiry and issues a Delivery Order document (idempotent).
+ * Does NOT call orders_approve / inventory fulfillment — Current Order Module keeps that.
  */
 export async function POST(request: Request) {
   try {
@@ -91,20 +92,24 @@ export async function POST(request: Request) {
 
     const { data: order } = await admin
       .from('orders')
-      .select('id, order_no, display_doc_no')
+      .select('id, order_no, display_doc_no, status')
       .eq('id', orderId)
       .maybeSingle()
 
     const orderLabel = order?.display_doc_no || order?.order_no || orderId
 
-    const { data: doDoc } = await admin
-      .from('documents')
-      .select('id, doc_no, display_doc_no, status')
-      .eq('order_id', orderId)
-      .eq('doc_type', 'DO')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const { doc: doDoc, created: doCreated, skippedReason } = await ensureSerappDeliveryOrder(admin, {
+      orderId,
+      createdBy: user.id,
+    })
+
+    if (!doDoc && skippedReason) {
+      console.warn('[serapp/warehouse-accept] DO not issued:', skippedReason, { orderId })
+    }
+
+    const doStatus = String(doDoc?.status || '').toLowerCase() || 'pending'
+    const doLabel = doDoc ? (doDoc.display_doc_no || doDoc.doc_no) : null
+    const downloadUrl = doDoc ? serappDoDownloadUrl(orderId, doDoc.id) : null
 
     // Push acceptance/DO progress into persisted chats so distributors get a WhatsApp-like
     // thread update even when acceptance happens from History/HQ side.
@@ -117,21 +122,45 @@ export async function POST(request: Request) {
         .eq('is_archived', false)
 
       const warehouseText = doDoc
-        ? `✅ Warehouse accepted hold for *${orderLabel}*. Delivery Order *${doDoc.display_doc_no || doDoc.doc_no}* is ${String(doDoc.status || '').toLowerCase() || 'available'}.`
-        : `✅ Warehouse accepted hold for *${orderLabel}*. DO will be issued in the current order workflow; you can track documents from Dashboard/History.`
+        ? `✅ Warehouse accepted hold for *${orderLabel}*. Delivery Order *${doLabel}* is ${doStatus}.${doCreated ? ' DO issued now.' : ''}`
+        : `✅ Warehouse accepted hold for *${orderLabel}*. DO could not be issued automatically — check Dashboard documents.`
 
       const assistantText = doDoc
-        ? `Update: warehouse accepted *${orderLabel}*. DO *${doDoc.display_doc_no || doDoc.doc_no}* is now ${String(doDoc.status || '').toLowerCase() || 'available'}.`
-        : `Update: warehouse accepted *${orderLabel}*. DO will follow in the current order workflow.`
+        ? `Update: warehouse accepted *${orderLabel}*. DO *${doLabel}* is now ${doStatus}. Open Warehouse chat for the PDF.`
+        : `Update: warehouse accepted *${orderLabel}*. DO issuance needs follow-up in Dashboard.`
+
+      const doStoryCard = doDoc
+        ? {
+            kind: 'do_stories',
+            doStories: [
+              {
+                orderId,
+                orderLabel,
+                orderStatus: order?.status || 'submitted',
+                holdStatus: 'accepted',
+                story: `Order ${orderLabel}: DO ${doLabel} is ${doStatus}.`,
+                do: {
+                  docNo: doDoc.doc_no,
+                  displayDocNo: doDoc.display_doc_no,
+                  status: doDoc.status,
+                  downloadUrl,
+                },
+                updatedAt: doDoc.created_at || new Date().toISOString(),
+              },
+            ],
+          }
+        : null
 
       for (const conv of targetConversations || []) {
-        const body = conv.kind === 'warehouse' ? warehouseText : assistantText
+        const msgBody = conv.kind === 'warehouse' ? warehouseText : assistantText
+        const card = conv.kind === 'warehouse' ? doStoryCard : null
         const { data: msg } = await admin
           .from('serapp_messages')
           .insert({
             conversation_id: conv.id,
             role: 'system',
-            body,
+            body: msgBody,
+            card_json: card,
           })
           .select('created_at')
           .single()
@@ -139,7 +168,7 @@ export async function POST(request: Request) {
         await admin
           .from('serapp_conversations')
           .update({
-            last_message_preview: body.slice(0, 72),
+            last_message_preview: msgBody.slice(0, 72),
             last_message_at: msg?.created_at || new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -156,9 +185,13 @@ export async function POST(request: Request) {
             doc_no: doDoc.doc_no,
             display_doc_no: doDoc.display_doc_no,
             status: doDoc.status,
+            created: doCreated,
+            downloadUrl,
           }
         : null,
-      note: 'Serapp hold accepted. Order remains in Current Order Module and will no longer auto-expire.',
+      note: doDoc
+        ? 'Serapp hold accepted and Delivery Order issued. Order remains in Current Order Module for HQ approve/fulfill.'
+        : 'Serapp hold accepted. Order remains in Current Order Module and will no longer auto-expire.',
     })
   } catch (error) {
     const status = typeof (error as { status?: number })?.status === 'number'
