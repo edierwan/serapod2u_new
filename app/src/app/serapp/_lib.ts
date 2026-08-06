@@ -10,7 +10,7 @@ export async function getSerappPageContext() {
   const supabase = await createClient()
 
   const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) redirect('/login?next=/serapp')
+  if (error || !user) redirect('/login?next=/serapp/conversation')
 
   const { data: userProfile, error: userProfileError } = await supabase
     .from('users')
@@ -35,7 +35,7 @@ export async function getSerappPageContext() {
     .eq('id', user.id)
     .single()
 
-  if (userProfileError || !userProfile) redirect('/login?next=/serapp')
+  if (userProfileError || !userProfile) redirect('/login?next=/serapp/conversation')
 
   const organization = Array.isArray(userProfile.organizations)
     ? userProfile.organizations[0]
@@ -45,7 +45,7 @@ export async function getSerappPageContext() {
     : userProfile.roles
 
   if (!organization?.id || !userProfile.organization_id) {
-    redirect('/login?next=/serapp')
+    redirect('/login?next=/serapp/conversation')
   }
 
   const profile: SerappUserProfile = {

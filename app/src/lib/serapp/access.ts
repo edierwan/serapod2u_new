@@ -25,6 +25,21 @@ export interface SerappAccessDecision {
   isHqSupport: boolean
 }
 
+/** Default landing route after login for Serapp-eligible portal users (distributors first). */
+export function getSerappDefaultPath(decision: SerappAccessDecision): string | null {
+  if (!decision.allowed) return null
+  if (decision.isDistributor) return '/serapp/conversation'
+  return null
+}
+
+/** Portal home route from org type (pure — safe for middleware / edge). */
+export function resolvePortalHomePath(
+  input: Pick<SerappAccessInput, 'accountScope' | 'orgTypeCode' | 'organizationId' | 'roleLevel'>,
+): string {
+  const access = getSerappAccessDecision(input)
+  return getSerappDefaultPath(access) || '/dashboard'
+}
+
 export function getSerappAccessDecision(input: SerappAccessInput): SerappAccessDecision {
   const isPortal = input.accountScope === 'portal' && Boolean(input.organizationId)
   const orgType = (input.orgTypeCode || '').toUpperCase()

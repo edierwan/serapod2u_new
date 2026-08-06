@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useTransition } from 'react'
+import { useTransition } from 'react'
 import { usePathname } from 'next/navigation'
 import { LogOut } from 'lucide-react'
 import type { SerappUserProfile } from '@/lib/serapp/types'
 import { signOut } from '@/app/actions/auth'
 import { SerappProvider } from './SerappContext'
 import SerappBottomNav from './SerappBottomNav'
-import SerappInstallPrompt from './SerappInstallPrompt'
+import SerappInstallButton from './SerappInstallButton'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -30,25 +30,6 @@ export default function SerappShell({
   const pathname = usePathname()
   const isChat =
     pathname === '/serapp/conversation' || pathname?.startsWith('/serapp/conversation/')
-
-  useEffect(() => {
-    // Prefer Serapp manifest over the root dashboard manifest on this tree.
-    const existing = document.querySelectorAll('link[rel="manifest"]')
-    existing.forEach((node) => node.parentElement?.removeChild(node))
-    const link = document.createElement('link')
-    link.rel = 'manifest'
-    link.href = '/serapp-manifest.json'
-    document.head.appendChild(link)
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/serapp-sw.js', { scope: '/serapp' })
-        .then((reg) => {
-          void reg.update()
-        })
-        .catch((err) => console.warn('[Serapp SW] registration failed:', err))
-    }
-  }, [])
 
   const displayName = userProfile.full_name || userProfile.email
   const orgLabel = userProfile.organizations.org_name
@@ -86,6 +67,7 @@ export default function SerappShell({
                 {isHqSupport ? ' · HQ Support' : ''}
               </p>
             </div>
+            <SerappInstallButton />
             <button
               type="button"
               disabled={signingOut}
@@ -101,14 +83,9 @@ export default function SerappShell({
         <main
           className={cn(
             'mx-auto w-full max-w-lg flex-1 overscroll-y-contain pb-20',
-            isChat ? 'overflow-hidden pt-0' : 'overflow-y-auto',
+            isChat ? 'overflow-hidden pt-0' : 'overflow-y-auto pt-3',
           )}
         >
-          {!isChat && (
-            <div className="px-0 pt-3">
-              <SerappInstallPrompt />
-            </div>
-          )}
           {children}
         </main>
 

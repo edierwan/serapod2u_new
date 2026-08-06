@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSerappAccessDecision } from './access'
+import { getSerappAccessDecision, getSerappDefaultPath, resolvePortalHomePath } from './access'
 import { summarizeSerappPasteCheck } from './paste-check-summary'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 
@@ -20,6 +20,38 @@ describe('getSerappAccessDecision', () => {
       organizationId: 'hq-1',
       roleLevel: 10,
     })).toMatchObject({ allowed: true, isHqSupport: true })
+  })
+
+  it('returns serapp chat path for distributors', () => {
+    expect(getSerappDefaultPath(getSerappAccessDecision({
+      accountScope: 'portal',
+      orgTypeCode: 'DIST',
+      organizationId: 'dist-1',
+      roleLevel: 40,
+    }))).toBe('/serapp/conversation')
+
+    expect(getSerappDefaultPath(getSerappAccessDecision({
+      accountScope: 'portal',
+      orgTypeCode: 'HQ',
+      organizationId: 'hq-1',
+      roleLevel: 10,
+    }))).toBeNull()
+  })
+
+  it('routes portal users to serapp or dashboard', () => {
+    expect(resolvePortalHomePath({
+      accountScope: 'portal',
+      orgTypeCode: 'DIST',
+      organizationId: 'dist-1',
+      roleLevel: 40,
+    })).toBe('/serapp/conversation')
+
+    expect(resolvePortalHomePath({
+      accountScope: 'portal',
+      orgTypeCode: 'WH',
+      organizationId: 'wh-1',
+      roleLevel: 30,
+    })).toBe('/dashboard')
   })
 
   it('blocks shop and non-portal accounts', () => {

@@ -7,7 +7,7 @@
  * beforeinstallprompt → no "Install app" affordance.
  */
 
-const CACHE_NAME = 'serapp-v4'
+const CACHE_NAME = 'serapp-v6'
 const PRECACHE = [
   '/icons/serapp-homescreen-192.png',
   '/icons/serapp-homescreen-512.png',
