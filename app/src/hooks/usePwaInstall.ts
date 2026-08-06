@@ -2,17 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getSerappInstallPrompt,
-  subscribeSerappInstallPrompt,
-  type SerappInstallPromptEvent,
-} from '@/lib/serapp/pwa-install'
+  getPwaInstallPrompt,
+  subscribePwaInstallPrompt,
+  type PwaInstallPromptEvent,
+} from '@/lib/pwa/install'
 
-/**
- * Hook to manage the PWA install prompt experience.
- * Relies on early capture in serapp/layout inline script + module fallback.
- */
 export function usePwaInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<SerappInstallPromptEvent | null>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<PwaInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [isIos, setIsIos] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
@@ -26,22 +22,22 @@ export function usePwaInstall() {
     setIsInstalled(standalone)
 
     const ua = navigator.userAgent
-    const ios =
+    setIsIos(
       /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    setIsIos(ios)
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    )
     setIsAndroid(/Android/i.test(ua))
 
-    setDeferredPrompt(getSerappInstallPrompt())
-    return subscribeSerappInstallPrompt(setDeferredPrompt)
+    setDeferredPrompt(getPwaInstallPrompt())
+    return subscribePwaInstallPrompt(setDeferredPrompt)
   }, [])
 
   const promptInstall = useCallback(async () => {
-    const prompt = deferredPrompt ?? getSerappInstallPrompt()
+    const prompt = deferredPrompt ?? getPwaInstallPrompt()
     if (!prompt) return false
     await prompt.prompt()
     const { outcome } = await prompt.userChoice
-    if (window.__serappInstall) window.__serappInstall.prompt = null
+    if (window.__pwaInstall) window.__pwaInstall.prompt = null
     setDeferredPrompt(null)
     return outcome === 'accepted'
   }, [deferredPrompt])
