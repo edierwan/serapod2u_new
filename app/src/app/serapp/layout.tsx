@@ -1,14 +1,12 @@
 import { redirect } from 'next/navigation'
 import type { Metadata, Viewport } from 'next'
 import SerappShell from '@/modules/serapp/components/SerappShell'
-import SerappPwaBootstrap from '@/modules/serapp/components/SerappPwaBootstrap'
 import { getSerappPageContext } from './_lib'
 import './serapp.css'
 
 export const metadata: Metadata = {
   title: 'Serapp · Serapod',
   description: 'Distributor ordering companion for Serapod2U',
-  manifest: '/serapp-manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -20,9 +18,6 @@ export const metadata: Metadata = {
       { url: '/icons/serapp-homescreen-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: '/icons/serapp-homescreen-192.png',
-  },
-  other: {
-    'mobile-web-app-capable': 'yes',
   },
 }
 
@@ -49,15 +44,12 @@ export default async function SerappLayout({
   }
 
   return (
-    <>
-      <SerappPwaBootstrap />
-      <SerappShell
-        userProfile={userProfile}
-        isDistributor={access.isDistributor}
-        isHqSupport={access.isHqSupport}
-      >
-        {children}
-      </SerappShell>
-    </>
+    <SerappShell
+      userProfile={userProfile}
+      isDistributor={access.isDistributor}
+      isHqSupport={access.isHqSupport}
+    >
+      {children}
+    </SerappShell>
   )
 }

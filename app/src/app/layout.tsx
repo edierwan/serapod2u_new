@@ -6,6 +6,7 @@ import { AuthProvider } from '@/components/providers/AuthProvider'
 import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { LanguageProvider } from '@/lib/i18n/LanguageProvider'
 import { Toaster } from '@/components/ui/toaster'
+import PwaBootstrap from '@/components/pwa/PwaBootstrap'
 
 const syne = Syne({
   subsets: ['latin'],
@@ -22,15 +23,19 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: 'Serapod2U - Supply Chain Management System',
   description: 'Professional multi-tenant Supply Chain Management System for retail distribution',
+  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Serapod2U'
+    title: 'Serapod2U',
   },
   icons: {
-    icon: '/icons/icon-192x192.png',
-    apple: '/icons/icon-192x192.png'
-  }
+    icon: '/icons/serapp-homescreen-192.png',
+    apple: '/icons/serapp-homescreen-192.png',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 }
 
 export function generateViewport() {
@@ -52,6 +57,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${syne.variable} ${manrope.variable}`}>
       <body className="font-sans antialiased">
+        <PwaBootstrap />
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>

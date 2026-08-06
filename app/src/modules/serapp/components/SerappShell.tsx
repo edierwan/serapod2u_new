@@ -1,6 +1,6 @@
 'use client'
 
-import '@/lib/serapp/pwa-install'
+import '@/lib/pwa/install'
 import { useTransition } from 'react'
 import { usePathname } from 'next/navigation'
 import { LogOut } from 'lucide-react'

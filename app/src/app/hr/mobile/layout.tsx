@@ -8,7 +8,6 @@ import type { Metadata, Viewport } from 'next'
 export const metadata: Metadata = {
   title: 'Serapod HR',
   description: 'Employee self-service HR portal — attendance, leave, payslip',
-  manifest: '/hr-manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',

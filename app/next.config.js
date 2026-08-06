@@ -146,7 +146,12 @@ const nextConfig = {
     return [
       {
         source: '/serapp-sw.js',
-        destination: '/serapp/sw.js',
+        destination: '/sw.js',
+        permanent: false,
+      },
+      {
+        source: '/serapp/sw.js',
+        destination: '/sw.js',
         permanent: false,
       },
     ]
@@ -163,25 +168,12 @@ const nextConfig = {
           },
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/serapp-manifest.json',
-        headers: [
-          {
-            key: 'Content-Type',
-            value: 'application/manifest+json',
-          },
-          {
-            key: 'Cache-Control',
             value: 'public, max-age=86400',
           },
         ],
       },
       {
-        source: '/serapp/sw.js',
+        source: '/sw.js',
         headers: [
           {
             key: 'Content-Type',

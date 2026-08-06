@@ -425,6 +425,6 @@ export const config = {
      *   reachable without auth; otherwise <img src="/brand/..."> gets a
      *   307 → /login HTML response and renders as a broken image)
      */
-    '/((?!_next/static|_next/image|favicon.ico|images/|icons/|brand/|sounds/|serapp-manifest\\.json|serapp-sw\\.js|serapp/sw\\.js).*)',
+    '/((?!_next/static|_next/image|favicon.ico|images/|icons/|brand/|sounds/|manifest\\.json|sw\\.js|hr-sw\\.js|serapp-manifest\\.json|serapp-sw\\.js|serapp/sw\\.js).*)',
   ],
 }
