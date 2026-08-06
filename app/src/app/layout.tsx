@@ -22,7 +22,6 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: 'Serapod2U - Supply Chain Management System',
   description: 'Professional multi-tenant Supply Chain Management System for retail distribution',
-  manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

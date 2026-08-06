@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import DashboardContent from '@/components/dashboard/DashboardContent'
 import { headers } from 'next/headers'
+import { getSerappAccessDecision } from '@/lib/serapp/access'
 
 // Force dynamic rendering to ensure fresh user data on every request
 export const dynamic = 'force-dynamic'
@@ -87,6 +88,19 @@ export default async function DashboardPage({
         </div>
       </div>
     )
+  }
+
+  const serappAccess = getSerappAccessDecision({
+    accountScope: transformedUserProfile.account_scope,
+    orgTypeCode: transformedUserProfile.organizations?.org_type_code,
+    organizationId: transformedUserProfile.organization_id,
+    roleLevel: transformedUserProfile.roles?.role_level ?? null,
+  })
+  const hasDashboardView = Boolean(resolvedSearchParams?.view)
+  const serappDenied = Boolean(resolvedSearchParams?.serapp_denied)
+
+  if (serappAccess.isDistributor && !hasDashboardView && !serappDenied) {
+    redirect('/serapp/conversation')
   }
 
   return (

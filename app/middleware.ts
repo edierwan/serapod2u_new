@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolvePortalHomePath } from '@/lib/serapp/access'
 import {
   extractQRCodeFromPath,
   extractTokenFromQRCode,
@@ -344,22 +345,63 @@ export async function middleware(request: NextRequest) {
         && !requestedNext.startsWith('//')
         && !requestedNext.startsWith('/api/')
 
-      // Use account_scope to decide redirect
       const { data: profile } = await supabase
         .from('users')
-        .select('account_scope, organization_id')
+        .select(`
+          account_scope,
+          organization_id,
+          organizations:organization_id (
+            org_type_code
+          )
+        `)
         .eq('id', user.id)
         .maybeSingle()
 
       if (profile?.account_scope === 'portal' && profile?.organization_id) {
-        if (isSafeNext) {
-          return NextResponse.redirect(new URL(requestedNext, request.url))
-        }
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+        const org = Array.isArray(profile.organizations)
+          ? profile.organizations[0]
+          : profile.organizations
+        const destination = isSafeNext
+          ? requestedNext
+          : resolvePortalHomePath({
+              accountScope: profile.account_scope,
+              orgTypeCode: org?.org_type_code,
+              organizationId: profile.organization_id,
+              roleLevel: null,
+            })
+        return NextResponse.redirect(new URL(destination, request.url))
       }
       // Non-portal users (storefront/consumer): let them through to /login
       // so they can access Business Login from the store page.
       // The login page will handle sign-out / account switching if needed.
+    }
+
+    // Portal users should not land on the consumer storefront after auth.
+    if (user && request.nextUrl.pathname === '/store') {
+      const { data: profile } = await supabase
+        .from('users')
+        .select(`
+          account_scope,
+          organization_id,
+          organizations:organization_id (
+            org_type_code
+          )
+        `)
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.account_scope === 'portal' && profile?.organization_id) {
+        const org = Array.isArray(profile.organizations)
+          ? profile.organizations[0]
+          : profile.organizations
+        const destination = resolvePortalHomePath({
+          accountScope: profile.account_scope,
+          orgTypeCode: org?.org_type_code,
+          organizationId: profile.organization_id,
+          roleLevel: null,
+        })
+        return NextResponse.redirect(new URL(destination, request.url))
+      }
     }
   } catch (error) {
     console.error('Middleware error:', error)
