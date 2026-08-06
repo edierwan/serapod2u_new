@@ -112,6 +112,7 @@ export function helpBotText(): string {
     '• I reply with Available / Partial / Out of Stock / Needs Review',
     '• *Confirm* allocates stock and starts the 1-hour warehouse window',
     '• Delivery Order (DO) is issued automatically after warehouse acceptance — open Warehouse chat for the PDF',
+    '• Ask free-text questions anytime — I use smart reply from your latest check/hold context',
     '',
     'Commands: *confirm* · *new order* · *help*',
   ].join('\n')

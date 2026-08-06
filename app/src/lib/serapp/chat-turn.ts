@@ -16,6 +16,7 @@ import type {
 } from '@/lib/serapp/chat-types'
 import { DEFAULT_SESSION } from '@/lib/serapp/conversation-types'
 import type { SerappConversationKind } from '@/lib/serapp/conversation-types'
+import { serappSmartReply } from '@/lib/serapp/smart-reply'
 
 export interface ChatTurnBotReply {
   text: string
@@ -74,6 +75,8 @@ export async function processSerappChatTurn(input: {
   session: SerappChatSessionState
   distributorName: string
   distributorId?: string | null
+  userId?: string | null
+  orgId?: string | null
 }): Promise<ChatTurnBotReply> {
   // Natural WhatsApp-like pause before the bot "types" a reply
   await sleep(700 + Math.floor(Math.random() * 500))
@@ -100,6 +103,8 @@ export async function processSerappChatTurn(input: {
     session,
     distributorName,
     distributorId,
+    userId: input.userId,
+    orgId: input.orgId,
   })
 }
 
@@ -237,6 +242,8 @@ async function assistantTurn(input: {
   session: SerappChatSessionState
   distributorName: string
   distributorId?: string | null
+  userId?: string | null
+  orgId?: string | null
 }): Promise<ChatTurnBotReply> {
   const intent = detectChatIntent(input.text)
   let session = { ...input.session }
@@ -442,6 +449,25 @@ async function assistantTurn(input: {
     return {
       text: `Hold cancelled for *${orderNo}*. Stock released. This chat is ready for a new list.`,
       quickReplies: quickRepliesForPhase('awaiting_list'),
+      session,
+    }
+  }
+
+  // Free-text: grounded AI Smart Reply when provider is enabled; else rule fallback.
+  if (input.userId && input.orgId) {
+    const smart = await serappSmartReply({
+      text: input.text,
+      session,
+      distributorName: input.distributorName,
+      userId: input.userId,
+      orgId: input.orgId,
+    })
+    return {
+      text: smart.text,
+      quickReplies: quickRepliesForPhase(
+        session.phase === 'idle' ? 'awaiting_list' : session.phase,
+        session.lastCheck?.summary.bucket,
+      ),
       session,
     }
   }
