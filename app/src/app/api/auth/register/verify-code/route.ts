@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhoneE164 } from '@/utils/phone'
 import {
+    REGISTRATION_OTP_CHANNEL,
     findActiveCode,
     hashOtp,
     incrementAttemptCount,
@@ -23,11 +24,12 @@ export async function POST(req: NextRequest) {
         const phone = normalizePhoneE164(phoneRaw)
         const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
 
-        const activeCode = await findActiveCode(admin, phone)
+        const activeCode = await findActiveCode(admin, phone, { channel: REGISTRATION_OTP_CHANNEL })
         if (!activeCode) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_otp_verify_failed',
                 phone,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'No active registration code found',
                 ip,
@@ -39,6 +41,8 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_otp_verify_failed',
                 phone,
+                email: activeCode.email_normalized || activeCode.meta?.email || null,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'Maximum verification attempts exceeded',
                 meta: { codeId: activeCode.id, attempts: activeCode.attempt_count },
@@ -54,6 +58,8 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_otp_verify_failed',
                 phone,
+                email: activeCode.email_normalized || activeCode.meta?.email || null,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'Invalid verification code',
                 meta: { codeId: activeCode.id, remaining },
@@ -70,6 +76,8 @@ export async function POST(req: NextRequest) {
         await logNotificationEvent(admin, {
             eventType: 'registration_otp_verified',
             phone,
+            email: activeCode.email_normalized || activeCode.meta?.email || null,
+            channel: REGISTRATION_OTP_CHANNEL,
             status: 'verified',
             meta: { codeId: activeCode.id, email: activeCode.meta?.email || null },
             ip,
@@ -77,7 +85,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'Mobile number verified successfully.',
+            message: 'Email verified successfully.',
             verificationToken,
         })
     } catch (error: any) {

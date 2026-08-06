@@ -6,9 +6,11 @@ import {
     SIGNUP_PASSWORDS_DO_NOT_MATCH_MESSAGE,
 } from '@/lib/engagement/registration-link-selection'
 import { sanitizeRoadtourRegistrationContext } from '@/lib/roadtour/registration-context'
+import { maskEmail } from '@/lib/auth/registration-otp-email'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhoneE164 } from '@/utils/phone'
 import {
+    REGISTRATION_OTP_CHANNEL,
     RESEND_COOLDOWN_SECONDS,
     checkRegistrationAvailability,
     checkSendRateLimit,
@@ -17,8 +19,10 @@ import {
     hashOtp,
     invalidateExistingCodes,
     logNotificationEvent,
-    sendOtpViaWhatsApp,
+    sendOtpViaEmail,
 } from '@/server/auth/registrationVerificationService'
+
+const emailChannel = { channel: REGISTRATION_OTP_CHANNEL as const }
 
 export async function POST(req: NextRequest) {
     try {
@@ -82,18 +86,20 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_rate_limited',
                 phone,
+                email,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'rate_limited',
                 meta: { reason: 'send_limit_exceeded', email },
                 ip,
             })
             return NextResponse.json({
                 success: false,
-                error: 'Too many verification requests were submitted for this number. Please wait a moment before trying again.',
+                error: 'Too many verification requests were submitted. Please wait a moment before trying again.',
                 resendCooldown: RESEND_COOLDOWN_SECONDS,
             }, { status: 429 })
         }
 
-        await invalidateExistingCodes(admin, phone)
+        await invalidateExistingCodes(admin, phone, emailChannel)
 
         const code = generateOtp()
         const codeId = await createVerificationCode(
@@ -114,20 +120,24 @@ export async function POST(req: NextRequest) {
             },
             ip,
             ua,
+            emailChannel,
         )
 
-        const sendResult = await sendOtpViaWhatsApp(admin, phone, code, orgId)
+        const sendResult = await sendOtpViaEmail(admin, email, code, orgId, fullName)
 
         if (sendResult.success) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_otp_sent',
                 phone,
+                email,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'sent',
-                providerMessageId: sendResult.providerMessageId,
+                providerMessageId: sendResult.providerName || null,
                 meta: {
                     codeId,
                     email,
                     org_id: orgId,
+                    email_org_id: sendResult.usedOrgId || orgId,
                     reference_user_id: linkSelection.referenceUserId,
                     shop_organization_id: linkSelection.organizationId,
                     pending_shop_request: Boolean(linkSelection.pendingShopRequest),
@@ -140,12 +150,15 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'registration_otp_send_failed',
                 phone,
+                email,
+                channel: REGISTRATION_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: sendResult.error,
                 meta: {
                     codeId,
                     email,
                     org_id: orgId,
+                    notConfigured: Boolean(sendResult.notConfigured),
                     reference_user_id: linkSelection.referenceUserId,
                     shop_organization_id: linkSelection.organizationId,
                     pending_shop_request: Boolean(linkSelection.pendingShopRequest),
@@ -156,13 +169,17 @@ export async function POST(req: NextRequest) {
             })
             return NextResponse.json({
                 success: false,
-                error: 'We could not send the WhatsApp verification code right now. Please try again shortly.',
+                error: sendResult.notConfigured
+                    ? 'Email verification is not configured yet. Please contact support.'
+                    : 'We could not send the email verification code right now. Please try again shortly.',
             }, { status: 500 })
         }
 
         await logNotificationEvent(admin, {
             eventType: 'registration_otp_requested',
             phone,
+            email,
+            channel: REGISTRATION_OTP_CHANNEL,
             status: 'sent',
             meta: {
                 codeId,
@@ -179,8 +196,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'A 4-digit WhatsApp verification code has been sent to your mobile number.',
+            message: `A 4-digit verification code has been sent to ${maskEmail(email)}.`,
             resendCooldown: RESEND_COOLDOWN_SECONDS,
+            channel: 'email',
         })
     } catch (error: any) {
         console.error('Registration OTP request error:', error)
