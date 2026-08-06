@@ -1,6 +1,9 @@
 import crypto from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
+import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
+import { buildRegistrationOtpEmail } from '@/lib/auth/registration-otp-email'
+import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 
 export const OTP_LENGTH = 4
 export const OTP_EXPIRY_MINUTES = 5
@@ -11,11 +14,17 @@ export const MAX_RESEND_PER_15MIN = 5
 export const VERIFICATION_TOKEN_EXPIRY_MINUTES = 15
 
 const PURPOSE = 'registration_verification'
-const CHANNEL = 'whatsapp'
-const PROVIDER = 'baileys'
+/** Default channel for shared helpers (shop contact still uses WhatsApp). */
+export const CHANNEL_WHATSAPP = 'whatsapp'
+export const CHANNEL_EMAIL = 'email'
+/** Consumer Create Account OTP uses email. */
+export const REGISTRATION_OTP_CHANNEL = CHANNEL_EMAIL
+const PROVIDER_WHATSAPP = 'baileys'
+const PROVIDER_EMAIL = 'email'
 
 type VerificationPurposeOptions = {
     purpose?: string
+    channel?: 'whatsapp' | 'email'
 }
 
 type VerificationRateLimitOptions = VerificationPurposeOptions & {
@@ -29,6 +38,10 @@ type VerificationMessageOptions = {
 
 function resolvePurpose(options?: VerificationPurposeOptions) {
     return options?.purpose || PURPOSE
+}
+
+function resolveChannel(options?: VerificationPurposeOptions) {
+    return options?.channel || CHANNEL_WHATSAPP
 }
 
 export function generateOtp(): string {
@@ -133,13 +146,14 @@ export async function invalidateExistingCodes(
     options?: VerificationPurposeOptions,
 ) {
     const purpose = resolvePurpose(options)
+    const channel = resolveChannel(options)
 
     await admin
         .from('auth_verification_codes')
         .update({ invalidated_at: new Date().toISOString() })
         .eq('phone_normalized', phone)
         .eq('purpose', purpose)
-        .eq('channel', CHANNEL)
+        .eq('channel', channel)
         .is('invalidated_at', null)
         .is('used_at', null)
 }
@@ -155,13 +169,18 @@ export async function createVerificationCode(
 ) {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000).toISOString()
     const purpose = resolvePurpose(options)
+    const channel = resolveChannel(options)
+    const emailNormalized = typeof meta?.email === 'string'
+        ? String(meta.email).trim().toLowerCase()
+        : null
 
     const { data, error } = await admin
         .from('auth_verification_codes')
         .insert({
             purpose,
-            channel: CHANNEL,
+            channel,
             phone_normalized: phone,
+            email_normalized: emailNormalized || null,
             code_hash: codeHash,
             expires_at: expiresAt,
             max_attempts: MAX_VERIFY_ATTEMPTS_PER_OTP,
@@ -185,13 +204,14 @@ export async function findActiveCode(
     options?: VerificationPurposeOptions,
 ) {
     const purpose = resolvePurpose(options)
+    const channel = resolveChannel(options)
 
     const { data, error } = await admin
         .from('auth_verification_codes')
         .select('*')
         .eq('phone_normalized', phone)
         .eq('purpose', purpose)
-        .eq('channel', CHANNEL)
+        .eq('channel', channel)
         .is('invalidated_at', null)
         .is('used_at', null)
         .gt('expires_at', new Date().toISOString())
@@ -270,6 +290,8 @@ export async function logNotificationEvent(
         eventType: string
         phone: string
         status: string
+        email?: string | null
+        channel?: 'whatsapp' | 'email'
         userId?: string | null
         providerMessageId?: string | null
         errorCode?: string | null
@@ -279,16 +301,19 @@ export async function logNotificationEvent(
     },
 ) {
     const now = new Date().toISOString()
-    const sentTypes = ['registration_otp_sent', 'registration_otp_resend_sent']
-    const verifiedTypes = ['registration_otp_verified']
+    const sentTypes = ['registration_otp_sent', 'registration_otp_resend_sent', 'shop_contact_otp_sent', 'shop_contact_otp_resend_sent']
+    const verifiedTypes = ['registration_otp_verified', 'shop_contact_otp_verified']
     const completedTypes = ['registration_completed']
+    const channel = params.channel || CHANNEL_WHATSAPP
+    const provider = channel === 'email' ? PROVIDER_EMAIL : PROVIDER_WHATSAPP
 
     await admin.from('notification_events').insert({
-        channel: CHANNEL,
-        provider: PROVIDER,
+        channel,
+        provider,
         event_type: params.eventType,
         purpose: PURPOSE,
         recipient_phone: params.phone,
+        recipient_email: params.email ? String(params.email).trim().toLowerCase() : null,
         user_id: params.userId ?? null,
         status: params.status,
         provider_message_id: params.providerMessageId ?? null,
@@ -334,5 +359,53 @@ export async function sendOtpViaWhatsApp(
         }
     } catch (error: any) {
         return { success: false, error: error?.message || 'WhatsApp send failed' }
+    }
+}
+
+/**
+ * Create Account OTP via Dynamic Config email provider.
+ * Tries the journey org first, then falls back to any org with an active email provider.
+ */
+export async function sendOtpViaEmail(
+    admin: SupabaseClient,
+    email: string,
+    code: string,
+    orgId: string,
+    fullName?: string | null,
+): Promise<{ success: boolean; providerName?: string; error?: string; notConfigured?: boolean; usedOrgId?: string }> {
+    try {
+        const built = buildRegistrationOtpEmail({ code, fullName })
+        const tryOrgs = [orgId, await resolveOrgForEmail(admin)].filter(
+            (id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index,
+        )
+
+        if (tryOrgs.length === 0) {
+            return { success: false, notConfigured: true, error: 'No email provider configured' }
+        }
+
+        let lastError = 'Email send failed'
+        let notConfigured = false
+        for (const candidateOrgId of tryOrgs) {
+            const result = await sendTransactionalHtmlEmail(admin, candidateOrgId, {
+                to: email,
+                subject: built.subject,
+                text: built.text,
+                html: built.html,
+                fromName: 'Serapod2U',
+            })
+            if (result.success) {
+                return {
+                    success: true,
+                    providerName: result.providerName || PROVIDER_EMAIL,
+                    usedOrgId: candidateOrgId,
+                }
+            }
+            notConfigured = Boolean(result.notConfigured) || notConfigured
+            lastError = result.error || lastError
+        }
+
+        return { success: false, notConfigured, error: lastError }
+    } catch (error: any) {
+        return { success: false, error: error?.message || 'Email send failed' }
     }
 }
