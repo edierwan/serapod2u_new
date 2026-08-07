@@ -627,6 +627,10 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
 
       console.log('🔍 Checking for D2H orders from distributor:', distributorId)
       
+      // D2H/S2D ready to ship for this warehouse org:
+      // - classic: seller_org_id = current org (HQ acting as warehouse seller)
+      // - HQ→WH fulfillment: fulfillment_warehouse_id = current WH org (Serapp / default WH)
+      const orgId = userProfile.organization_id
       const { data: d2hOrders, error: orderError } = await supabase
         .from('orders')
         .select(`
@@ -634,6 +638,8 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
           order_no,
           order_type,
           status,
+          seller_org_id,
+          fulfillment_warehouse_id,
           order_items (
             id,
             qty,
@@ -657,7 +663,7 @@ export default function WarehouseShipV2({ userProfile }: WarehouseShipV2Props) {
         `)
         .in('order_type', ['D2H', 'S2D'])
         .eq('buyer_org_id', distributorId)
-        .eq('seller_org_id', userProfile.organization_id)
+        .or(`seller_org_id.eq.${orgId},fulfillment_warehouse_id.eq.${orgId}`)
         .in('status', ['warehouse_packed', 'approved', 'closed'])
         .order('created_at', { ascending: false })
         .limit(5)
