@@ -190,8 +190,8 @@ export async function POST(request: Request) {
           }
         : null,
       note: doDoc
-        ? 'Serapp hold accepted and Delivery Order issued. Order remains in Current Order Module for HQ approve/fulfill.'
-        : 'Serapp hold accepted. Order remains in Current Order Module and will no longer auto-expire.',
+        ? 'Serapp hold accepted and Delivery Order issued. Next: approve in Current Orders (Dashboard) for SO + Invoice, then warehouse ship.'
+        : 'Serapp hold accepted. Next: approve in Current Orders (Dashboard). Order will no longer auto-expire.',
     })
   } catch (error) {
     const status = typeof (error as { status?: number })?.status === 'number'

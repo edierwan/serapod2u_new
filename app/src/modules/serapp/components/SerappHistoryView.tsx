@@ -28,7 +28,7 @@ function holdLabel(hold: HistoryHold | null | undefined) {
     case 'active':
       return `Hold until ${new Date(hold.expires_at).toLocaleString()}`
     case 'accepted':
-      return 'Warehouse accepted'
+      return 'Accepted · DO issued · approve in Current Orders'
     case 'expired':
       return 'Hold expired'
     case 'cancelled_by_distributor':
@@ -36,6 +36,10 @@ function holdLabel(hold: HistoryHold | null | undefined) {
     default:
       return hold.status
   }
+}
+
+function dashboardOrderHref(orderId: string) {
+  return `/dashboard?view=view-order&order_id=${encodeURIComponent(orderId)}`
 }
 
 export default function SerappHistoryView() {
@@ -99,8 +103,8 @@ export default function SerappHistoryView() {
       const doLabel = payload?.do?.display_doc_no || payload?.do?.doc_no
       setNotice(
         doLabel
-          ? `Hold accepted. Delivery Order ${doLabel} issued — distributor sees Open DO PDF in Warehouse chat.`
-          : 'Hold accepted. Order will no longer auto-expire.',
+          ? `Hold accepted. Delivery Order ${doLabel} issued. Next: open Current Orders in Dashboard to approve (SO + Invoice).`
+          : 'Hold accepted. Next: open Current Orders in Dashboard to approve.',
       )
       await load()
     } catch (err) {
@@ -119,8 +123,8 @@ export default function SerappHistoryView() {
         </h1>
         <p className="mt-2 text-sm leading-6 text-[var(--sera-muted)]">
           {isHqSupport
-            ? 'HQ sees only Serapp hold records here (to Accept). Full order management stays in the Dashboard.'
-            : 'Serapp orders show a 1-hour warehouse acceptance hold. Unaccepted holds expire and release stock.'}
+            ? 'Accept holds here to issue DO. Then open Current Orders in the Dashboard to approve (SO + Invoice) and continue fulfillment.'
+            : 'Serapp orders show a 1-hour warehouse acceptance hold. After accept, DO is issued automatically; remaining fulfillment continues in Current Orders.'}
         </p>
       </div>
 
@@ -159,6 +163,9 @@ export default function SerappHistoryView() {
           isHqSupport &&
           order.hold?.status === 'active' &&
           order.status === 'submitted'
+        const showDashboardLink =
+          order.hold?.status === 'accepted' ||
+          (order.fromSerapp && ['submitted', 'approved', 'warehouse_packed', 'closed'].includes(order.status))
 
         return (
           <div key={order.id} className="serapp-card serapp-rise rounded-2xl px-4 py-3">
@@ -197,7 +204,7 @@ export default function SerappHistoryView() {
               </div>
             </div>
 
-            {(canCancel || canAccept) && (
+            {(canCancel || canAccept || showDashboardLink) && (
               <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--sera-line)] pt-3">
                 {canAccept && (
                   <button
@@ -218,6 +225,14 @@ export default function SerappHistoryView() {
                   >
                     {actionBusy === order.id ? 'Cancelling…' : 'Cancel hold'}
                   </button>
+                )}
+                {showDashboardLink && (
+                  <a
+                    href={dashboardOrderHref(order.id)}
+                    className="rounded-xl border border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--sera-ink)] hover:border-[var(--sera-orange)]/40 hover:text-[var(--sera-orange)]"
+                  >
+                    {isHqSupport ? 'Open in Current Orders' : 'View in Current Orders'}
+                  </a>
                 )}
               </div>
             )}
