@@ -1,0 +1,38 @@
+﻿name: List Coolify apps (temp)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List Coolify applications
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          base="${COOLIFY_URL%/}"
+          echo "Coolify base: $base"
+          curl -sS -H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json" \
+            "$base/api/v1/applications" | python3 -c '
+import json,sys
+raw=sys.stdin.read()
+try:
+  data=json.loads(raw)
+except Exception as e:
+  print(raw[:2000]); raise
+apps=data if isinstance(data,list) else data.get("data",data)
+if not isinstance(apps,list):
+  print(type(apps), str(apps)[:2000]); sys.exit(0)
+for a in apps:
+  if not isinstance(a,dict):
+    continue
+  uuid=a.get("uuid") or a.get("id")
+  name=a.get("name") or a.get("fqdn") or ""
+  fqdn=a.get("fqdn") or a.get("domains") or ""
+  git=a.get("git_branch") or a.get("branch") or ""
+  status=a.get("status") or a.get("description") or ""
+  print(f"{uuid}\tbranch={git}\tname={name}\tfqdn={fqdn}\tstatus={status}")
+'
