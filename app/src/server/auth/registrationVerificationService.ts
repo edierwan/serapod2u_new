@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { normalizePhoneE164, toProviderPhone } from '@/utils/phone'
 import { sendTransactionalHtmlEmail } from '@/lib/email/transactional-html-email'
-import { buildRegistrationOtpEmail } from '@/lib/auth/registration-otp-email'
+import { buildRegistrationOtpEmail, buildShopContactOtpEmail } from '@/lib/auth/registration-otp-email'
 import { resolveOrgForEmail } from '@/server/auth/passwordResetService'
 
 export const OTP_LENGTH = 4
@@ -14,11 +14,12 @@ export const MAX_RESEND_PER_15MIN = 5
 export const VERIFICATION_TOKEN_EXPIRY_MINUTES = 15
 
 const PURPOSE = 'registration_verification'
-/** Default channel for shared helpers (shop contact still uses WhatsApp). */
 export const CHANNEL_WHATSAPP = 'whatsapp'
 export const CHANNEL_EMAIL = 'email'
 /** Consumer Create Account OTP uses email. */
 export const REGISTRATION_OTP_CHANNEL = CHANNEL_EMAIL
+/** Shop contact verification (Create New Shop from QR/registration) uses email. */
+export const SHOP_CONTACT_OTP_CHANNEL = CHANNEL_EMAIL
 const PROVIDER_WHATSAPP = 'baileys'
 const PROVIDER_EMAIL = 'email'
 
@@ -376,7 +377,7 @@ export async function sendOtpViaWhatsApp(
 }
 
 /**
- * Create Account OTP via Dynamic Config email provider.
+ * OTP via Dynamic Config email provider.
  * Same resolution order as password-reset (proven on production):
  * prefer the org that owns the active email provider, then fall back to journey orgId.
  */
@@ -386,9 +387,15 @@ export async function sendOtpViaEmail(
     code: string,
     orgId: string,
     fullName?: string | null,
+    options?: {
+        template?: 'registration' | 'shop_contact'
+        shopName?: string | null
+    },
 ): Promise<{ success: boolean; providerName?: string; error?: string; notConfigured?: boolean; usedOrgId?: string }> {
     try {
-        const built = buildRegistrationOtpEmail({ code, fullName })
+        const built = options?.template === 'shop_contact'
+            ? buildShopContactOtpEmail({ code, fullName, shopName: options.shopName })
+            : buildRegistrationOtpEmail({ code, fullName })
         const preferredOrgId = await resolveOrgForEmail(admin)
         const tryOrgs = [preferredOrgId, orgId].filter(
             (id, index, arr): id is string => Boolean(id) && arr.indexOf(id) === index,

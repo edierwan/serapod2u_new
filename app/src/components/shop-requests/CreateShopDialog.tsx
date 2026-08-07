@@ -76,6 +76,7 @@ export function CreateShopDialog({
     const [step, setStep] = useState<DialogStep>('form')
     const [preparedShopRequest, setPreparedShopRequest] = useState<ShopRequestFormInput | null>(null)
     const [verificationPhone, setVerificationPhone] = useState('')
+    const [verificationEmail, setVerificationEmail] = useState('')
     const [verificationCode, setVerificationCode] = useState('')
     const [verificationError, setVerificationError] = useState('')
     const [verificationToken, setVerificationToken] = useState('')
@@ -113,6 +114,7 @@ export function CreateShopDialog({
         setStep('form')
         setPreparedShopRequest(null)
         setVerificationPhone('')
+        setVerificationEmail('')
         setVerificationCode('')
         setVerificationError('')
         setVerificationToken('')
@@ -248,7 +250,18 @@ export function CreateShopDialog({
             return null
         }
 
-        if (contactEmail.trim()) {
+        if (mode === 'prepare-registration') {
+            if (!contactEmail.trim()) {
+                setEmailError('Contact email is required.')
+                setError('Contact email is required to send the verification code.')
+                return null
+            }
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+            if (!emailRegex.test(contactEmail.trim())) {
+                setEmailError('Invalid email format')
+                return null
+            }
+        } else if (contactEmail.trim()) {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
             if (!emailRegex.test(contactEmail.trim())) {
                 setEmailError('Invalid email format')
@@ -386,6 +399,7 @@ export function CreateShopDialog({
             clearDuplicateState()
             setPreparedShopRequest(result.shopRequest || null)
             setVerificationPhone(String(result.contactPhone || validated.normalizedContactPhone || ''))
+            setVerificationEmail(String(result.contactEmail || contactEmail.trim().toLowerCase() || ''))
             setVerificationCode('')
             setVerificationError('')
             setVerificationToken('')
@@ -501,8 +515,8 @@ export function CreateShopDialog({
                     <DialogDescription>
                         {mode === 'prepare-registration'
                             ? step === 'verify'
-                                ? 'Enter the 4-digit WhatsApp code sent to the shop contact mobile number before we create and link this shop to your registration.'
-                                : 'Enter the shop details first. We will verify the contact mobile number by 4-digit WhatsApp OTP before creating the shop.'
+                                ? 'Enter the 4-digit email code sent to the shop contact email before we create and link this shop to your registration.'
+                                : 'Enter the shop details first. We will verify the contact email by 4-digit email OTP before creating the shop.'
                             : linkUser
                             ? 'Create a new shop directly. This will be linked to your profile immediately.'
                             : 'Create a new shop, then review it below before saving your profile changes.'}
@@ -665,15 +679,24 @@ export function CreateShopDialog({
 
                         {/* Contact Email */}
                         <div className="space-y-2">
-                            <Label>Contact Email</Label>
+                            <Label>Contact Email{mode === 'prepare-registration' ? ' *' : ''}</Label>
                             <Input
                                 value={contactEmail}
-                                onChange={(e) => setContactEmail(e.target.value)}
+                                onChange={(e) => {
+                                    setContactEmail(e.target.value)
+                                    if (emailError) setEmailError('')
+                                }}
                                 onBlur={handleEmailBlur}
                                 placeholder="shop@example.com"
                                 type="email"
+                                autoComplete="email"
                             />
                             {emailError && <p className="text-xs text-red-600">{emailError}</p>}
+                            {mode === 'prepare-registration' && (
+                                <p className="text-xs text-muted-foreground">
+                                    Required. The verification code will be sent to this email.
+                                </p>
+                            )}
                         </div>
 
                         {/* Address */}
@@ -736,9 +759,9 @@ export function CreateShopDialog({
                 {!showDuplicates && step === 'verify' && (
                     <div className="space-y-4 py-2">
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1">
-                            <p className="text-sm font-medium text-slate-900">Verify shop contact mobile number</p>
+                            <p className="text-sm font-medium text-slate-900">Verify shop contact email</p>
                             <p className="text-xs text-slate-600">
-                                Enter the 4-digit WhatsApp code sent to {formatPhoneDisplay(verificationPhone) || verificationPhone}.
+                                Enter the 4-digit code sent to {verificationEmail || 'the shop contact email'}.
                                 We will only create the shop after this verification succeeds.
                             </p>
                         </div>
@@ -769,7 +792,12 @@ export function CreateShopDialog({
                                     <p className="text-slate-600">State: {preparedShopRequest.state}</p>
                                 )}
                                 <p className="text-slate-600">Contact: {preparedShopRequest.contactName}</p>
-                                <p className="text-slate-600">Mobile: {formatPhoneDisplay(preparedShopRequest.contactPhone || '') || preparedShopRequest.contactPhone}</p>
+                                <p className="text-slate-600">
+                                    Mobile: {formatPhoneDisplay(preparedShopRequest.contactPhone || verificationPhone || '') || preparedShopRequest.contactPhone || verificationPhone}
+                                </p>
+                                <p className="text-slate-600">
+                                    Email: {preparedShopRequest.contactEmail || verificationEmail}
+                                </p>
                             </div>
                         )}
 
