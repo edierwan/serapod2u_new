@@ -231,6 +231,15 @@ export default function SerappOrderView() {
             Power-user fallback. Prefer <Link href="/serapp/conversation" className="font-semibold text-[var(--sera-orange)]">Chat</Link> for the WhatsApp-style Assistant.
             Check is read-only; Confirm allocates stock and starts the 1-hour warehouse hold.
           </p>
+          {!isHqSupport && (
+            <p className="mt-2 text-xs text-[var(--sera-muted)]">
+              Official channel:{' '}
+              <Link href="/serapp/telegram" className="font-semibold text-[var(--sera-orange)]">
+                Link Telegram (@SerapodOrdersBot)
+              </Link>
+              . Use this Order page only as emergency fallback.
+            </p>
+          )}
         </div>
 
         {isHqSupport && (
