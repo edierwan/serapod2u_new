@@ -5,7 +5,7 @@
  *
  * Decision matrix:
  *   No session             → /login
- *   account_scope='portal' AND organization_id present → /dashboard
+ *   account_scope='portal' AND organization_id present → /serapp/conversation (DIST) or /dashboard
  *   account_scope='portal' AND organization_id NULL    → /store (misconfigured, audit logged)
  *   account_scope='store'  → /store
  *   Any unexpected state   → /store (fallback, logged)
@@ -17,6 +17,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolvePortalHomePath } from '@/lib/serapp/access'
 import { ensureUserRow, type EnsuredUser } from './ensureUserRow'
 
 export interface PostLoginRedirectResult {
@@ -26,8 +27,19 @@ export interface PostLoginRedirectResult {
   warnings: string[]
 }
 
-export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
+function sanitizeNextPath(nextPath: string | null | undefined): string | null {
+  if (!nextPath) return null
+  const trimmed = nextPath.trim()
+  if (!trimmed) return null
+  if (!trimmed.startsWith('/')) return null
+  if (trimmed.startsWith('//')) return null
+  if (trimmed.startsWith('/api/')) return null
+  return trimmed
+}
+
+export async function getPostLoginRedirect(nextPath?: string | null): Promise<PostLoginRedirectResult> {
   const warnings: string[] = []
+  const safeNext = sanitizeNextPath(nextPath)
 
   try {
     // 1. Get session from SSR server client
@@ -63,8 +75,8 @@ export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
       console.log(`[getPostLoginRedirect] New user row created for ${user.email}`)
     }
 
-    // 3. Route based on account_scope + organization_id
-    return resolveRedirect(user, warnings)
+    // 3. Route based on account_scope + organization_id (+ Serapp default for distributors)
+    return await resolveRedirect(user, warnings, safeNext)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[getPostLoginRedirect] Unexpected error:', message)
@@ -80,20 +92,22 @@ export async function getPostLoginRedirect(): Promise<PostLoginRedirectResult> {
 /**
  * Pure routing logic — separated for testability.
  */
-function resolveRedirect(
+async function resolveRedirect(
   user: EnsuredUser,
-  warnings: string[]
-): PostLoginRedirectResult {
+  warnings: string[],
+  safeNext: string | null
+): Promise<PostLoginRedirectResult> {
   const base = {
     userId: user.id,
     warnings,
   }
 
-  // Portal user with valid org → dashboard
+  // Portal user with valid org → Serapp for distributors, else dashboard
   if (user.account_scope === 'portal' && user.organization_id) {
+    const portalDefault = await resolvePortalDefaultPath(user.organization_id)
     return {
       ...base,
-      redirectTo: '/dashboard',
+      redirectTo: safeNext || portalDefault,
       accountScope: 'portal',
     }
   }
@@ -137,6 +151,26 @@ function resolveRedirect(
     ...base,
     redirectTo: '/store',
     accountScope: null,
+  }
+}
+
+export async function resolvePortalDefaultPath(organizationId: string): Promise<string> {
+  try {
+    const admin = createAdminClient()
+    const { data: org } = await admin
+      .from('organizations')
+      .select('org_type_code')
+      .eq('id', organizationId)
+      .maybeSingle()
+
+    return resolvePortalHomePath({
+      accountScope: 'portal',
+      orgTypeCode: org?.org_type_code,
+      organizationId,
+      roleLevel: null,
+    })
+  } catch {
+    return '/dashboard'
   }
 }
 

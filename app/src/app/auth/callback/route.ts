@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { ensureUserRow } from '@/server/auth/ensureUserRow'
+import { getPostLoginRedirect } from '@/server/auth/getPostLoginRedirect'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -122,12 +123,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Redirect based on account_scope (single path, no duplication)
-    if (ensuredUser.account_scope === 'portal' && ensuredUser.organization_id) {
-      return NextResponse.redirect(new URL('/dashboard', requestUrl.origin))
-    }
-
-    // Default: store
-    return NextResponse.redirect(new URL('/store', requestUrl.origin))
+    const { redirectTo } = await getPostLoginRedirect()
+    return NextResponse.redirect(new URL(redirectTo, requestUrl.origin))
   } catch (error) {
     console.error('[auth/callback] Unexpected error:', error)
     return NextResponse.redirect(new URL('/login?error=unexpected', requestUrl.origin))

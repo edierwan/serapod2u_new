@@ -142,6 +142,21 @@ const nextConfig = {
     cpus: 2,
   },
 
+  async redirects() {
+    return [
+      {
+        source: '/serapp-sw.js',
+        destination: '/sw.js',
+        permanent: false,
+      },
+      {
+        source: '/serapp/sw.js',
+        destination: '/sw.js',
+        permanent: false,
+      },
+    ]
+  },
+
   async headers() {
     return [
       {
@@ -153,7 +168,20 @@ const nextConfig = {
           },
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'public, max-age=86400',
+          },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/javascript; charset=utf-8',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
           },
         ],
       },

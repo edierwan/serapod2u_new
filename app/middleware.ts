@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { resolvePortalHomePath } from '@/lib/serapp/access'
 import {
   extractQRCodeFromPath,
   extractTokenFromQRCode,
@@ -291,15 +292,18 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // ── Business routes: /dashboard, /hr, /finance, /settings ──
-    const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings']
+    // ── Business routes: /dashboard, /hr, /finance, /settings, /serapp, /supply-chain ──
+    const BUSINESS_PREFIXES = ['/dashboard', '/hr', '/finance', '/settings', '/serapp', '/supply-chain']
     const isBusinessRoute = BUSINESS_PREFIXES.some(p =>
       request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/')
     )
 
-    // No session on any business route → /login
+    // No session on any business route → /login (preserve intended target).
     if (!user && isBusinessRoute) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      const loginUrl = new URL('/login', request.url)
+      const intended = `${request.nextUrl.pathname}${request.nextUrl.search || ''}`
+      loginUrl.searchParams.set('next', intended)
+      return NextResponse.redirect(loginUrl)
     }
 
     // Authenticated user on business route → check account_scope
@@ -336,19 +340,68 @@ export async function middleware(request: NextRequest) {
 
     // Handle login redirect for authenticated users
     if (user && request.nextUrl.pathname === '/login') {
-      // Use account_scope to decide redirect
+      const requestedNext = request.nextUrl.searchParams.get('next') || ''
+      const isSafeNext = requestedNext.startsWith('/')
+        && !requestedNext.startsWith('//')
+        && !requestedNext.startsWith('/api/')
+
       const { data: profile } = await supabase
         .from('users')
-        .select('account_scope, organization_id')
+        .select(`
+          account_scope,
+          organization_id,
+          organizations:organization_id (
+            org_type_code
+          )
+        `)
         .eq('id', user.id)
         .maybeSingle()
 
       if (profile?.account_scope === 'portal' && profile?.organization_id) {
-        return NextResponse.redirect(new URL('/dashboard', request.url))
+        const org = Array.isArray(profile.organizations)
+          ? profile.organizations[0]
+          : profile.organizations
+        const destination = isSafeNext
+          ? requestedNext
+          : resolvePortalHomePath({
+              accountScope: profile.account_scope,
+              orgTypeCode: org?.org_type_code,
+              organizationId: profile.organization_id,
+              roleLevel: null,
+            })
+        return NextResponse.redirect(new URL(destination, request.url))
       }
       // Non-portal users (storefront/consumer): let them through to /login
       // so they can access Business Login from the store page.
       // The login page will handle sign-out / account switching if needed.
+    }
+
+    // Portal users should not land on the consumer storefront after auth.
+    if (user && request.nextUrl.pathname === '/store') {
+      const { data: profile } = await supabase
+        .from('users')
+        .select(`
+          account_scope,
+          organization_id,
+          organizations:organization_id (
+            org_type_code
+          )
+        `)
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.account_scope === 'portal' && profile?.organization_id) {
+        const org = Array.isArray(profile.organizations)
+          ? profile.organizations[0]
+          : profile.organizations
+        const destination = resolvePortalHomePath({
+          accountScope: profile.account_scope,
+          orgTypeCode: org?.org_type_code,
+          organizationId: profile.organization_id,
+          roleLevel: null,
+        })
+        return NextResponse.redirect(new URL(destination, request.url))
+      }
     }
   } catch (error) {
     console.error('Middleware error:', error)
@@ -372,6 +425,6 @@ export const config = {
      *   reachable without auth; otherwise <img src="/brand/..."> gets a
      *   307 → /login HTML response and renders as a broken image)
      */
-    '/((?!_next/static|_next/image|favicon.ico|images/|icons/|brand/|sounds/).*)',
+    '/((?!_next/static|_next/image|favicon.ico|images/|icons/|brand/|sounds/|manifest\\.json|sw\\.js|hr-sw\\.js|serapp-manifest\\.json|serapp-sw\\.js|serapp/sw\\.js).*)',
   ],
 }
