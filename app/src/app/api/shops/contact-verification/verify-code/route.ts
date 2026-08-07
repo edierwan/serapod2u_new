@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhoneE164 } from '@/utils/phone'
 import {
+    SHOP_CONTACT_OTP_CHANNEL,
     findActiveCode,
     hashOtp,
     incrementAttemptCount,
@@ -27,12 +28,14 @@ export async function POST(req: NextRequest) {
 
         const activeCode = await findActiveCode(admin, phone, {
             purpose: SHOP_CONTACT_VERIFICATION_PURPOSE,
+            channel: SHOP_CONTACT_OTP_CHANNEL,
         })
 
         if (!activeCode) {
             await logNotificationEvent(admin, {
                 eventType: 'shop_contact_otp_verify_failed',
                 phone,
+                channel: SHOP_CONTACT_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'No active shop contact code found',
                 ip,
@@ -45,6 +48,8 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'shop_contact_otp_verify_failed',
                 phone,
+                email: activeCode.email_normalized || activeCode.meta?.email || null,
+                channel: SHOP_CONTACT_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'Maximum verification attempts exceeded',
                 meta: { codeId: activeCode.id, attempts: activeCode.attempt_count },
@@ -62,6 +67,8 @@ export async function POST(req: NextRequest) {
             await logNotificationEvent(admin, {
                 eventType: 'shop_contact_otp_verify_failed',
                 phone,
+                email: activeCode.email_normalized || activeCode.meta?.email || null,
+                channel: SHOP_CONTACT_OTP_CHANNEL,
                 status: 'failed',
                 errorMessage: 'Invalid verification code',
                 meta: { codeId: activeCode.id, remaining },
@@ -80,6 +87,8 @@ export async function POST(req: NextRequest) {
         await logNotificationEvent(admin, {
             eventType: 'shop_contact_otp_verified',
             phone,
+            email: activeCode.email_normalized || activeCode.meta?.email || null,
+            channel: SHOP_CONTACT_OTP_CHANNEL,
             status: 'verified',
             meta: {
                 codeId: activeCode.id,
@@ -90,7 +99,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'Shop contact mobile number verified successfully.',
+            message: 'Shop contact email verified successfully.',
             verificationToken,
         })
     } catch (error) {

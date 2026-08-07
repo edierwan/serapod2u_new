@@ -25,13 +25,14 @@ describe('CreateShopDialog', () => {
                         success: true,
                         resendCooldown: 60,
                         contactPhone: '+60123456789',
+                        contactEmail: 'ali@example.com',
                         shopRequest: {
                             shopName: 'Kedai Baru',
                             branch: null,
                             state: null,
                             contactName: 'Ali',
                             contactPhone: '+60123456789',
-                            contactEmail: null,
+                            contactEmail: 'ali@example.com',
                             address: null,
                             hotFlavourBrands: null,
                             sellsSerapodFlavour: false,
@@ -135,6 +136,7 @@ describe('CreateShopDialog', () => {
         await user.type(await screen.findByPlaceholderText('e.g. ABC Vape Shop'), 'Kedai Baru')
         await user.type(screen.getByPlaceholderText('Person in charge'), 'Ali')
         await user.type(screen.getByPlaceholderText('e.g. 0123456789'), '0123456789')
+        await user.type(screen.getByPlaceholderText('shop@example.com'), 'ali@example.com')
         const addressInput = screen.getByPlaceholderText('Shop address') as HTMLTextAreaElement
         await user.type(addressInput, 'jalan dato onn, taman bukit indah')
         await user.tab()
@@ -148,10 +150,11 @@ describe('CreateShopDialog', () => {
             const requestBody = JSON.parse(requestCodeCall[1].body)
             expect(requestBody.shopName).toBe('Kedai Baru')
             expect(requestBody.address).toBe('Jalan Dato Onn, Taman Bukit Indah')
+            expect(requestBody.contactEmail).toBe('ali@example.com')
         })
 
         await waitFor(() => {
-            expect(screen.getByText(/Verify shop contact mobile number/i)).toBeTruthy()
+            expect(screen.getByText(/Verify shop contact email/i)).toBeTruthy()
         })
 
         await user.type(screen.getByPlaceholderText('1234'), '1234')
