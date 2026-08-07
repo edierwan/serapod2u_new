@@ -38,6 +38,23 @@ function holdLabel(hold: HistoryHold | null | undefined) {
   }
 }
 
+function orderStatusLabel(status: string) {
+  switch (status) {
+    case 'submitted':
+      return 'Submitted'
+    case 'approved':
+      return 'Approved · ready to ship'
+    case 'warehouse_packed':
+      return 'Packed / shipped'
+    case 'closed':
+      return 'Closed'
+    case 'cancelled':
+      return 'Cancelled'
+    default:
+      return status.replace(/_/g, ' ')
+  }
+}
+
 function dashboardOrderHref(orderId: string, preferOrdersList = false) {
   const view = preferOrdersList ? 'orders' : 'view-order'
   return `/dashboard?view=${view}&order_id=${encodeURIComponent(orderId)}`
@@ -192,7 +209,7 @@ export default function SerappHistoryView() {
               </div>
               <div className="shrink-0 text-right">
                 <span className="rounded-lg bg-[var(--sera-mist)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
-                  {order.status}
+                  {orderStatusLabel(order.status)}
                 </span>
                 {fromSerapp && (
                   <p className="mt-1 text-[10px] font-semibold text-[var(--sera-orange)]">Serapp</p>

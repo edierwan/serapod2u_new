@@ -6,6 +6,7 @@ import {
   listMessages,
   parseSession,
   updateConversationSession,
+  archiveConversation,
 } from '@/lib/serapp/conversation-service'
 
 export async function GET(
@@ -127,6 +128,36 @@ export async function PATCH(
     console.error('[serapp/conversations/:id PATCH]', error)
     return NextResponse.json({
       error: error instanceof Error ? error.message : 'Failed to update conversation.',
+    }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const actor = await requireSerappActor()
+    if (!actor.ok) return actor.error
+
+    const { id } = await context.params
+    const admin = createAdminClient()
+    const result = await archiveConversation(admin, id, actor.userId)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+
+    return NextResponse.json({ ok: true, archived: true })
+  } catch (error) {
+    if (isMissingChatTable(error)) {
+      return NextResponse.json({
+        error: 'Chat tables not installed yet.',
+        code: 'CHAT_SCHEMA_MISSING',
+      }, { status: 503 })
+    }
+    console.error('[serapp/conversations/:id DELETE]', error)
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Failed to delete conversation.',
     }, { status: 500 })
   }
 }

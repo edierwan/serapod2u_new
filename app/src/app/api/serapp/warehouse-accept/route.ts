@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { acceptSerappOrderHold } from '@/lib/serapp/hold-service'
 import { ensureSerappDeliveryOrder, serappDoDownloadUrl } from '@/lib/serapp/do-service'
+import { bumpUnreadIfOwnerAway } from '@/lib/serapp/conversation-service'
 
 /**
  * Warehouse / HQ accepts a Serapp hold within the 1-hour window.
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
     if (hold.created_by) {
       const { data: targetConversations } = await admin
         .from('serapp_conversations')
-        .select('id, kind')
+        .select('id, kind, unread_count')
         .eq('owner_user_id', hold.created_by)
         .in('kind', ['assistant', 'warehouse'])
         .eq('is_archived', false)
@@ -165,13 +166,15 @@ export async function POST(request: Request) {
           .select('created_at')
           .single()
 
+        const patch: Record<string, unknown> = {
+          last_message_preview: msgBody.slice(0, 72),
+          last_message_at: msg?.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        await bumpUnreadIfOwnerAway(admin, conv.id, patch)
         await admin
           .from('serapp_conversations')
-          .update({
-            last_message_preview: msgBody.slice(0, 72),
-            last_message_at: msg?.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .update(patch)
           .eq('id', conv.id)
       }
     }

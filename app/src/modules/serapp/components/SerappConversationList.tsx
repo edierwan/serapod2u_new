@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones } from 'lucide-react'
+import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones, Trash2 } from 'lucide-react'
 import type { SerappConversationRow } from '@/lib/serapp/conversation-types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
+import { useSerapp } from './SerappContext'
 
 function formatListTime(iso: string | null) {
   if (!iso) return ''
@@ -15,6 +16,10 @@ function formatListTime(iso: string | null) {
   const sameDay = d.toDateString() === now.toDateString()
   if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function canDeleteConversation(kind: string) {
+  return kind !== 'warehouse' && kind !== 'news'
 }
 
 function Avatar({ avatarKey }: { avatarKey: string }) {
@@ -35,10 +40,13 @@ function Avatar({ avatarKey }: { avatarKey: string }) {
 
 export default function SerappConversationList() {
   const router = useRouter()
+  const { setTotalUnread } = useSerapp()
   const [conversations, setConversations] = useState<SerappConversationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<SerappConversationRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const supabaseRef = useRef(createClient())
 
   const load = useCallback(async () => {
@@ -50,13 +58,15 @@ export default function SerappConversationList() {
       if (!res.ok) {
         throw new Error(payload?.error || 'Failed to load chats.')
       }
-      setConversations(payload.conversations || [])
+      const list = (payload.conversations || []) as SerappConversationRow[]
+      setConversations(list)
+      setTotalUnread(list.reduce((sum, c) => sum + (c.unread_count || 0), 0))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load chats.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setTotalUnread])
 
   useEffect(() => {
     void load()
@@ -95,6 +105,25 @@ export default function SerappConversationList() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create chat.')
       setCreating(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/serapp/conversations/${pendingDelete.id}`, {
+        method: 'DELETE',
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not delete chat.')
+      setPendingDelete(null)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete chat.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -138,10 +167,10 @@ export default function SerappConversationList() {
 
         <ul className="divide-y divide-[var(--sera-line)]">
           {conversations.map((chat) => (
-            <li key={chat.id}>
+            <li key={chat.id} className="flex items-stretch">
               <Link
                 href={`/serapp/conversation/${chat.id}`}
-                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--sera-paper)]"
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--sera-paper)]"
               >
                 <Avatar avatarKey={chat.avatar_key} />
                 <div className="min-w-0 flex-1">
@@ -165,6 +194,16 @@ export default function SerappConversationList() {
                   </div>
                 </div>
               </Link>
+              {canDeleteConversation(chat.kind) && (
+                <button
+                  type="button"
+                  onClick={() => setPendingDelete(chat)}
+                  className="inline-flex w-11 shrink-0 items-center justify-center text-[var(--sera-muted)] hover:bg-[var(--sera-danger-soft)] hover:text-[var(--sera-danger)]"
+                  aria-label={`Delete ${chat.title}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </li>
           ))}
         </ul>
@@ -173,6 +212,42 @@ export default function SerappConversationList() {
       <p className={cn('px-4 py-2 text-center text-[10px] text-[var(--sera-muted)]')}>
         Assistant · Warehouse · News are different conversations with separate history
       </p>
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-8 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="serapp-delete-title"
+            className="w-full max-w-sm rounded-2xl border border-[var(--sera-line)] bg-[var(--sera-surface)] p-4 shadow-xl"
+          >
+            <p id="serapp-delete-title" className="font-display text-base font-semibold text-[var(--sera-ink)]">
+              Delete conversation?
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--sera-muted)]">
+              “{pendingDelete.title}” will be removed from your chat list. This cannot be undone.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setPendingDelete(null)}
+                className="flex-1 rounded-xl border border-[var(--sera-line)] px-3 py-2.5 text-sm font-semibold text-[var(--sera-ink)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDelete()}
+                className="flex-1 rounded-xl bg-[var(--sera-danger)] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
