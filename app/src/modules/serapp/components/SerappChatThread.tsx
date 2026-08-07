@@ -14,6 +14,7 @@ import {
   Megaphone,
   Paperclip,
   Send,
+  Trash2,
   Warehouse,
   Check,
   CheckCheck,
@@ -102,6 +103,8 @@ export default function SerappChatThread() {
   })
   const [distributors, setDistributors] = useState<DistributorOption[]>([])
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
+  const [pendingDelete, setPendingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -359,6 +362,27 @@ export default function SerappChatThread() {
     }
   }
 
+  const canDelete =
+    conversation?.kind !== 'warehouse' && conversation?.kind !== 'news'
+
+  const confirmDelete = async () => {
+    if (!conversationId || !canDelete) return
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/serapp/conversations/${conversationId}`, {
+        method: 'DELETE',
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not delete chat.')
+      router.push('/serapp/conversation')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete chat.')
+      setPendingDelete(false)
+      setDeleting(false)
+    }
+  }
+
   const latestQuickReplies =
     [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||
     []
@@ -424,6 +448,16 @@ export default function SerappChatThread() {
             {presenceLabel}
           </p>
         </div>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => setPendingDelete(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/10"
+            aria-label="Delete conversation"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {conversation.kind === 'warehouse' && (
@@ -684,6 +718,42 @@ export default function SerappChatThread() {
           >
             Remove
           </button>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-8 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="serapp-thread-delete-title"
+            className="w-full max-w-sm rounded-2xl border border-[var(--sera-line)] bg-[var(--sera-surface)] p-4 shadow-xl"
+          >
+            <p id="serapp-thread-delete-title" className="font-display text-base font-semibold text-[var(--sera-ink)]">
+              Delete conversation?
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--sera-muted)]">
+              “{conversation.title}” will be removed from your chat list. This cannot be undone.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => setPendingDelete(false)}
+                className="flex-1 rounded-xl border border-[var(--sera-line)] px-3 py-2.5 text-sm font-semibold text-[var(--sera-ink)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmDelete()}
+                className="flex-1 rounded-xl bg-[var(--sera-danger)] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

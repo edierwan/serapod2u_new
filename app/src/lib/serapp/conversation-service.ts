@@ -29,17 +29,56 @@ export async function listConversationsForUser(
   return (data || []) as SerappConversationRow[]
 }
 
+/** Soft-delete a conversation. Warehouse/News system desks cannot be deleted. */
+export async function archiveConversation(
+  admin: Admin,
+  conversationId: string,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const conversation = await getConversationForOwner(admin, conversationId, userId)
+  if (!conversation) {
+    return { ok: false, error: 'Conversation not found.', status: 404 }
+  }
+  if (conversation.kind === 'warehouse' || conversation.kind === 'news') {
+    return {
+      ok: false,
+      error: 'Warehouse Desk and News chats cannot be deleted.',
+      status: 400,
+    }
+  }
+
+  const { error } = await admin
+    .from('serapp_conversations')
+    .update({
+      is_archived: true,
+      unread_count: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', conversationId)
+    .eq('owner_user_id', userId)
+
+  if (error) throw error
+  return { ok: true }
+}
+
 export async function ensureSeedConversations(
   admin: Admin,
   input: { userId: string; orgId: string },
 ): Promise<SerappConversationRow[]> {
-  const existing = await listConversationsForUser(admin, input.userId)
-  if (existing.length > 0) return existing
+  // Include archived so deleting a seed does not recreate duplicates forever.
+  const { data: existingKinds, error: kindsError } = await admin
+    .from('serapp_conversations')
+    .select('kind')
+    .eq('owner_user_id', input.userId)
 
+  if (kindsError) throw kindsError
+
+  const present = new Set((existingKinds || []).map((row) => row.kind as SerappConversationKind))
   const now = new Date().toISOString()
-  const created: SerappConversationRow[] = []
 
   for (const seed of SEED_CHATS) {
+    if (present.has(seed.kind)) continue
+
     const { data: conv, error } = await admin
       .from('serapp_conversations')
       .insert({
@@ -78,11 +117,9 @@ export async function ensureSeedConversations(
       body: seed.welcome,
       quick_replies_json: replies,
     })
-
-    created.push(conv as SerappConversationRow)
   }
 
-  return created
+  return listConversationsForUser(admin, input.userId)
 }
 
 export async function createConversation(
@@ -215,18 +252,54 @@ export async function appendMessage(
 
   if (error) throw error
 
+  const preview = previewFromBody(
+    input.body || (input.attachment ? `Attachment: ${input.attachment.name}` : ''),
+  )
+  const patch: Record<string, unknown> = {
+    last_message_preview: preview,
+    last_message_at: data.created_at,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (input.role === 'bot' || input.role === 'system') {
+    await bumpUnreadIfOwnerAway(admin, input.conversationId, patch)
+  }
+
   await admin
     .from('serapp_conversations')
-    .update({
-      last_message_preview: previewFromBody(
-        input.body || (input.attachment ? `Attachment: ${input.attachment.name}` : ''),
-      ),
-      last_message_at: data.created_at,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq('id', input.conversationId)
 
   return data as SerappMessageRow
+}
+
+/** Bump unread when inbound message arrives and owner is not viewing this thread. */
+export async function bumpUnreadIfOwnerAway(
+  admin: Admin,
+  conversationId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const { data: conv } = await admin
+    .from('serapp_conversations')
+    .select('owner_user_id, unread_count')
+    .eq('id', conversationId)
+    .maybeSingle()
+
+  if (!conv?.owner_user_id) return
+
+  const { data: presence } = await admin
+    .from('serapp_user_presence')
+    .select('current_conversation_id, is_online')
+    .eq('user_id', conv.owner_user_id)
+    .maybeSingle()
+
+  const viewing =
+    Boolean(presence?.is_online) &&
+    presence?.current_conversation_id === conversationId
+
+  if (!viewing) {
+    patch.unread_count = Number(conv.unread_count || 0) + 1
+  }
 }
 
 export async function updateConversationSession(

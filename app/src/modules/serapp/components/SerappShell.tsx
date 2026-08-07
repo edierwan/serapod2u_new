@@ -9,6 +9,7 @@ import { signOut } from '@/app/actions/auth'
 import { SerappProvider } from './SerappContext'
 import SerappBottomNav from './SerappBottomNav'
 import SerappInstallButton from './SerappInstallButton'
+import SerappMessageNotifier from './SerappMessageNotifier'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -90,6 +91,7 @@ export default function SerappShell({
           {children}
         </main>
 
+        <SerappMessageNotifier />
         <SerappBottomNav />
       </div>
     </SerappProvider>
