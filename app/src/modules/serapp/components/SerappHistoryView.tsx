@@ -38,8 +38,9 @@ function holdLabel(hold: HistoryHold | null | undefined) {
   }
 }
 
-function dashboardOrderHref(orderId: string) {
-  return `/dashboard?view=view-order&order_id=${encodeURIComponent(orderId)}`
+function dashboardOrderHref(orderId: string, preferOrdersList = false) {
+  const view = preferOrdersList ? 'orders' : 'view-order'
+  return `/dashboard?view=${view}&order_id=${encodeURIComponent(orderId)}`
 }
 
 export default function SerappHistoryView() {
@@ -228,7 +229,7 @@ export default function SerappHistoryView() {
                 )}
                 {showDashboardLink && (
                   <a
-                    href={dashboardOrderHref(order.id)}
+                    href={dashboardOrderHref(order.id, isHqSupport)}
                     className="rounded-xl border border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--sera-ink)] hover:border-[var(--sera-orange)]/40 hover:text-[var(--sera-orange)]"
                   >
                     {isHqSupport ? 'Open in Current Orders' : 'View in Current Orders'}

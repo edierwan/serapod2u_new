@@ -31,6 +31,9 @@ describe('stock configuration operational UI contracts', () => {
     expect(ship).toContain('Every order line must have a confirmed Stock SKU and order-item allocation before scanning.')
     expect(ship).toContain('Blocked: missing confirmed order-item configuration')
     expect(ship).toContain('QR identity does not select inventory')
+    // Fulfillment WH (Serapp / HQ→WH) must bind ship sessions, not only seller_org_id.
+    expect(ship).toContain('fulfillment_warehouse_id.eq.')
+    expect(ship).toContain('seller_org_id.eq.')
   })
 
   it('uses exact configurations while hiding dimension controls for STD products', () => {
