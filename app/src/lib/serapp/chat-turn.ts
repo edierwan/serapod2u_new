@@ -127,7 +127,8 @@ async function warehouseTurn(
         '',
         '• Active Serapp orders have a *1-hour* acceptance hold',
         '• HQ / warehouse accepts from History',
-        '• After accept, Delivery Order (DO) is issued to this warehouse (rolling out next)',
+        '• After accept, Delivery Order (DO) is issued automatically',
+        '• Next step: approve in *Current Orders* (Dashboard) for SO + Invoice, then warehouse ship',
         '',
         'Place new orders in *Serapp Assistant* — this chat stays for warehouse questions.',
       ].join('\n'),
@@ -140,7 +141,7 @@ async function warehouseTurn(
     return {
       text: [
         'Open *History* in the bottom nav to see holds for this distributor.',
-        'Active = waiting for warehouse accept. Accepted = hold stopped; order continues in Current Order Module.',
+        'Active = waiting for warehouse accept. Accepted = DO issued; next approve the order in Current Orders (Dashboard).',
         session.lastConfirm
           ? `\nLast order in a linked Assistant chat: *${session.lastConfirm.orderNo}* (${session.lastConfirm.status}).`
           : '\nNo confirm recorded in this Warehouse thread — check Assistant chats or History.',

@@ -178,7 +178,7 @@ export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): 
     `✅ Order *${orderNo}* submitted & stock allocated.`,
     hold,
     '',
-    'Warehouse can accept from History. After acceptance, Delivery Order (DO) is issued automatically — ask for *do status* or open the PDF from Warehouse chat.',
+    'Warehouse can accept from History. After acceptance, Delivery Order (DO) is issued automatically — then approve in Current Orders (Dashboard). Ask for *do status* or open the PDF from Warehouse chat.',
     '',
     'Say *new order* to start another list, or *cancel hold* before the warehouse accepts.',
   ].join('\n')
