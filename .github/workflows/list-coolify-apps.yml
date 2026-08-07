@@ -2,6 +2,9 @@
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/list-coolify-apps.yml'
 
 jobs:
   list:
@@ -15,24 +18,26 @@ jobs:
           set -euo pipefail
           base="${COOLIFY_URL%/}"
           echo "Coolify base: $base"
-          curl -sS -H "Authorization: Bearer $COOLIFY_API_TOKEN" -H "Accept: application/json" \
-            "$base/api/v1/applications" | python3 -c '
-import json,sys
-raw=sys.stdin.read()
-try:
-  data=json.loads(raw)
-except Exception as e:
-  print(raw[:2000]); raise
-apps=data if isinstance(data,list) else data.get("data",data)
-if not isinstance(apps,list):
-  print(type(apps), str(apps)[:2000]); sys.exit(0)
-for a in apps:
-  if not isinstance(a,dict):
-    continue
-  uuid=a.get("uuid") or a.get("id")
-  name=a.get("name") or a.get("fqdn") or ""
-  fqdn=a.get("fqdn") or a.get("domains") or ""
-  git=a.get("git_branch") or a.get("branch") or ""
-  status=a.get("status") or a.get("description") or ""
-  print(f"{uuid}\tbranch={git}\tname={name}\tfqdn={fqdn}\tstatus={status}")
-'
+          code=$(curl -sS -o /tmp/coolify-apps.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+            -H "Accept: application/json" \
+            "${base}/api/v1/applications" || true)
+          echo "HTTP $code"
+          python3 <<'PY'
+          import json
+          raw=open('/tmp/coolify-apps.json','r',encoding='utf-8').read()
+          print(raw[:500])
+          data=json.loads(raw)
+          apps=data if isinstance(data,list) else data.get('data', data)
+          if not isinstance(apps, list):
+              print('unexpected', type(apps))
+              raise SystemExit(0)
+          for a in apps:
+              if not isinstance(a, dict):
+                  continue
+              uuid=a.get('uuid') or a.get('id')
+              name=a.get('name') or ''
+              fqdn=a.get('fqdn') or a.get('domains') or ''
+              git=a.get('git_branch') or a.get('branch') or ''
+              print(f"{uuid}\tbranch={git}\tname={name}\tfqdn={fqdn}")
+          PY
