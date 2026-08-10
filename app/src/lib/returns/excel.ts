@@ -32,11 +32,11 @@ export const ITEM_COLUMNS = [
     'Variant ID',                   // D (hidden/identity)
     'Internal SKU',                 // E
     'Barcode',                      // F
-    'Quantity Mode',                // G  PCS | Box
-    'Return Quantity',              // H  PCS mode → total pcs; Box mode → full boxes
-    'PCS Per Box',                  // I  (derived/display)
-    'Loose PCS',                    // J  Box mode → extra loose pcs (editable)
-    'Full Boxes',                   // K  (derived/display)
+    'Quantity Mode',                // G  PCS | Cases
+    'Return Quantity',              // H  PCS mode → total pcs; Cases mode → full cases
+    'PCS Per Case',                 // I  (derived/display)
+    'Loose PCS',                    // J  Cases mode → extra loose pcs (editable)
+    'Full Cases',                   // K  (derived/display)
     'Total PCS',                    // L  (derived/display)
     'Return Reason',                // M
     'Condition',                    // N
@@ -240,7 +240,7 @@ function buildMetadataSheet(wb: any, ctx: ReturnExcelContext) {
     ctx.reasons.forEach((r, i) => { sheet.getCell(`D${i + 2}`).value = r.label })
     ctx.conditions.forEach((c, i) => { sheet.getCell(`E${i + 2}`).value = c.label })
     sheet.getCell('F2').value = 'PCS'
-    sheet.getCell('F3').value = 'Box'
+    sheet.getCell('F3').value = 'Cases'
 }
 
 function buildItemsSheet(wb: any, ctx: ReturnExcelContext, rows: ReturnExcelRowInput[]) {
@@ -269,7 +269,7 @@ function buildItemsSheet(wb: any, ctx: ReturnExcelContext, rows: ReturnExcelRowI
     })
     const instr = sheet.addRow([
         'Instructions',
-        'Fill Return Quantity and, for Hero/Zero, choose Quantity Mode (PCS or Box). '
+        'Fill Return Quantity and, for Hero/Zero, choose Quantity Mode (PCS or Cases). '
         + 'Devices (S.Line / S.Box) are PCS only. Do not edit Product ID, Variant ID, or the grey derived columns. '
         + 'Save as .xlsx and import back into the system to update the worksheet.',
     ])
@@ -323,7 +323,7 @@ function buildItemsSheet(wb: any, ctx: ReturnExcelContext, rows: ReturnExcelRowI
             r.variant_id || '',
             r.manual_sku || '',
             r.barcode || '',
-            device ? 'PCS' : (r.entry_unit === 'box' ? 'Box' : 'PCS'),
+            device ? 'PCS' : (r.entry_unit === 'box' ? 'Cases' : 'PCS'),
             view.quantity,
             device ? '' : upb,
             view.loose,
@@ -341,12 +341,12 @@ function buildItemsSheet(wb: any, ctx: ReturnExcelContext, rows: ReturnExcelRowI
             })
         }
 
-        // Quantity Mode dropdown — devices are fixed PCS, Hero/Zero PCS/Box.
+        // Quantity Mode dropdown — devices are fixed PCS, Hero/Zero PCS/Cases.
         excelRow.getCell(COL.mode).dataValidation = {
             type: 'list', allowBlank: false,
             formulae: [device ? '"PCS"' : modeRange],
             showErrorMessage: true,
-            error: device ? 'Devices (S.Line / S.Box) are PCS only.' : 'Choose PCS or Box.',
+            error: device ? 'Devices (S.Line / S.Box) are PCS only.' : 'Choose PCS or Cases.',
         }
         // Return Quantity — whole number ≥ 0.
         excelRow.getCell(COL.qty).dataValidation = {
@@ -354,7 +354,7 @@ function buildItemsSheet(wb: any, ctx: ReturnExcelContext, rows: ReturnExcelRowI
             formulae: [0], showErrorMessage: true,
             error: 'Return Quantity must be a whole number of 0 or more.',
         }
-        // Loose PCS (extra pcs for Box mode) — whole number ≥ 0.
+        // Loose PCS (extra pcs for Cases mode) — whole number ≥ 0.
         excelRow.getCell(COL.loose).dataValidation = {
             type: 'whole', operator: 'greaterThanOrEqual', allowBlank: true,
             formulae: [0], showErrorMessage: true,
@@ -541,17 +541,20 @@ export async function parseReturnWorkbook(
         const device = isDeviceLine(matched.product_line)
 
         // ── Quantity mode ──
+        // "Cases" is the current wording; "Box" is still accepted so templates
+        // downloaded before the rename keep importing.
         let mode: EntryUnit
         const modeLc = modeRaw.toLowerCase()
+        const isCaseMode = modeLc === 'cases' || modeLc === 'case' || modeLc === 'box'
         if (device) {
-            if (modeLc === 'box') { push('error', 'Devices (S.Line / S.Box) are PCS only — Box mode is not allowed.'); return }
+            if (isCaseMode) { push('error', 'Devices (S.Line / S.Box) are PCS only — Cases mode is not allowed.'); return }
             mode = 'pcs'
-        } else if (modeLc === 'box') {
+        } else if (isCaseMode) {
             mode = 'box'
         } else if (modeLc === 'pcs' || modeLc === '') {
             mode = 'pcs'
         } else {
-            push('error', `Unrecognised Quantity Mode "${modeRaw}". Use PCS or Box.`)
+            push('error', `Unrecognised Quantity Mode "${modeRaw}". Use PCS or Cases.`)
             return
         }
 
