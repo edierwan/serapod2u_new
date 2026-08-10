@@ -121,6 +121,7 @@ export async function POST(request: Request) {
         notify = await notifyMessagingOrderTelegram({
           buyerOrgId: order.buyer_org_id,
           createdByUserId: order.created_by,
+          orderId,
           text: [
             `<b>${escapeTelegramHtml(orderNo)}</b>`,
             'Warehouse can only prepare part of this order.',
@@ -143,6 +144,7 @@ export async function POST(request: Request) {
         notify = await notifyMessagingOrderTelegram({
           buyerOrgId: order.buyer_org_id,
           createdByUserId: order.created_by,
+          orderId,
           text: formatMessagingStatusTelegram({
             orderNo,
             stage,

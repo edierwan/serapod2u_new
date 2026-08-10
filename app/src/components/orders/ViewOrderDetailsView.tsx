@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
+import { MessagingOrderTimelinePanel } from '@/components/orders/MessagingOrderTimelinePanel'
 
 interface UserProfile {
   id: string
@@ -940,6 +941,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </div>
         </div>
       </div>
+
+      {orderData?.id && <MessagingOrderTimelinePanel orderId={orderData.id} />}
 
       {/* Order Documents Dialog */}
       {orderData && (

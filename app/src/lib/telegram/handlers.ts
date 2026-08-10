@@ -22,6 +22,7 @@ import {
   listPendingReceiptOrdersForTelegram,
   runTelegramAcknowledgeReceipt,
   runTelegramReportDiscrepancy,
+  splitReportDifferenceArgs,
 } from '@/lib/messaging/receipt-actions'
 import { runTelegramAcceptPartial } from '@/lib/messaging/partial-actions'
 import type { TelegramMessage, TelegramSessionJson } from '@/lib/telegram/types'
@@ -265,16 +266,20 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
   }
 
   if (command === TELEGRAM_COMMANDS.REPORT_DIFFERENCE) {
-    const space = args.indexOf(' ')
-    const orderNoArg = space === -1 ? args.trim() || null : args.slice(0, space).trim()
-    const remarks = space === -1 ? '' : args.slice(space + 1).trim()
+    const { orderNoArg, remarks } = splitReportDifferenceArgs(args)
     if (!remarks) {
-      await reply(chatId, 'Send <code>/report_difference ORDER_NO describe the problem</code>.')
+      await reply(
+        chatId,
+        [
+          'Send <code>/report_difference ORDER_NO describe the problem</code>',
+          'or <code>/report_difference ORDER_NO short:100:95,damaged:50:48 note</code>.',
+        ].join('\n'),
+      )
       return
     }
     try {
       const result = await runTelegramReportDiscrepancy(telegramUserId, remarks, orderNoArg)
-      await reply(chatId, formatDiscrepancyReportTelegramReply(result.orderNo))
+      await reply(chatId, formatDiscrepancyReportTelegramReply(result.orderNo, result.lineCount))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Report failed.'
       await reply(chatId, escapeTelegramHtml(message))

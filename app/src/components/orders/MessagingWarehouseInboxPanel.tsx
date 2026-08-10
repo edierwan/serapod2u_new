@@ -224,6 +224,11 @@ export function MessagingWarehouseInboxPanel() {
                     {new Date(item.created_at).toLocaleString()} · {item.status.replace(/_/g, ' ')}
                     {item.receipt_status ? ` · receipt: ${item.receipt_status.replace(/_/g, ' ')}` : ''}
                   </p>
+                  {item.receipt_status === 'discrepancy_pending' && (
+                    <p className="mt-1 text-xs text-amber-800">
+                      Open order details to review discrepancy line items before resolving.
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-[10px] uppercase tracking-wide">

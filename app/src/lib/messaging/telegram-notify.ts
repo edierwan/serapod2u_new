@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { escapeTelegramHtml, sendTelegramMessage } from '@/lib/telegram/bot-api'
+import { buildMessagingOrderDeepLink } from '@/lib/messaging/deep-links'
 
 /**
  * Best-effort Telegram notify for messaging orders.
@@ -9,6 +10,7 @@ export async function notifyMessagingOrderTelegram(input: {
   buyerOrgId: string
   createdByUserId?: string | null
   text: string
+  orderId?: string | null
 }): Promise<{ sent: boolean; reason?: string }> {
   try {
     const admin = createAdminClient()
@@ -40,10 +42,18 @@ export async function notifyMessagingOrderTelegram(input: {
       return { sent: false, reason: 'no_telegram_link' }
     }
 
+    const deepLink = input.orderId ? buildMessagingOrderDeepLink(input.orderId) : null
+    const text = deepLink
+      ? `${input.text}\n\n<a href="${escapeTelegramHtml(deepLink)}">View Order</a>`
+      : input.text
+
     await sendTelegramMessage({
       chatId,
-      text: input.text,
+      text,
       parseMode: 'HTML',
+      replyMarkup: deepLink
+        ? { inline_keyboard: [[{ text: 'View Order', url: deepLink }]] }
+        : undefined,
     })
     return { sent: true }
   } catch (error) {
@@ -80,6 +90,9 @@ export function formatMessagingStatusTelegram(input: {
       'When goods arrive:',
       '/received — confirm full receipt',
       '/report_difference — report a problem',
+      '',
+      'Line format (optional):',
+      '<code>/report_difference ORDER short:100:95,damaged:50:48 note</code>',
     ].join('\n')
   }
   return `<b>${no}</b> status updated.`

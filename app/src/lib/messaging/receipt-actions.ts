@@ -124,27 +124,117 @@ export async function runTelegramAcknowledgeReceipt(
   }
 }
 
+export type DiscrepancyIssueType = 'short_quantity' | 'extra_quantity' | 'wrong_item' | 'damaged_item'
+
+export interface ParsedDiscrepancyLine {
+  issue_type: DiscrepancyIssueType
+  shipped_quantity: number
+  received_quantity: number
+}
+
+const ISSUE_ALIASES: Record<string, DiscrepancyIssueType> = {
+  short: 'short_quantity',
+  short_quantity: 'short_quantity',
+  shortage: 'short_quantity',
+  extra: 'extra_quantity',
+  extra_quantity: 'extra_quantity',
+  wrong: 'wrong_item',
+  wrong_item: 'wrong_item',
+  damaged: 'damaged_item',
+  damaged_item: 'damaged_item',
+}
+
+/**
+ * Split Telegram `/report_difference` args so structured lines are not mistaken for order nos.
+ * Examples:
+ *   SO123 short:100:95 boxes wet
+ *   short:100:95,damaged:50:48 note   (no order → latest pending)
+ */
+export function splitReportDifferenceArgs(args: string): {
+  orderNoArg: string | null
+  remarks: string
+} {
+  const trimmed = args.trim()
+  if (!trimmed) return { orderNoArg: null, remarks: '' }
+
+  const space = trimmed.indexOf(' ')
+  const first = space === -1 ? trimmed : trimmed.slice(0, space)
+  const rest = space === -1 ? '' : trimmed.slice(space + 1).trim()
+
+  if (/^[a-z_]+:\d+:\d+$/i.test(first) || first.includes(',')) {
+    return { orderNoArg: null, remarks: trimmed }
+  }
+
+  return { orderNoArg: first || null, remarks: rest }
+}
+
+/**
+ * Parse optional structured lines from Telegram:
+ *   short:100:95,damaged:50:48 boxes wet
+ * Returns { items, remarks }
+ */
+export function parseDiscrepancyArgs(raw: string): {
+  items: ParsedDiscrepancyLine[]
+  remarks: string
+} {
+  const trimmed = raw.trim()
+  if (!trimmed) return { items: [], remarks: '' }
+
+  const tokens = trimmed.split(/[,\s]+/).filter(Boolean)
+  const items: ParsedDiscrepancyLine[] = []
+  const remarkParts: string[] = []
+
+  for (const token of tokens) {
+    const match = token.match(/^([a-z_]+):(\d+):(\d+)$/i)
+    if (!match) {
+      remarkParts.push(token)
+      continue
+    }
+    const issue = ISSUE_ALIASES[match[1].toLowerCase()]
+    if (!issue) {
+      remarkParts.push(token)
+      continue
+    }
+    items.push({
+      issue_type: issue,
+      shipped_quantity: Number(match[2]),
+      received_quantity: Number(match[3]),
+    })
+  }
+
+  return { items, remarks: remarkParts.join(' ').trim() }
+}
+
 export async function runTelegramReportDiscrepancy(
   telegramUserId: number,
   remarks: string,
   orderNoArg?: string | null,
-): Promise<{ orderNo: string }> {
+): Promise<{ orderNo: string; lineCount: number }> {
   const ctx = await resolveTelegramDistributorContext(telegramUserId)
   const { orderId, orderNo } = await resolveReceiptOrderForTelegram(telegramUserId, orderNoArg)
+  const parsed = parseDiscrepancyArgs(remarks)
+
+  if (!parsed.remarks && parsed.items.length === 0) {
+    throw Object.assign(
+      new Error('Describe the problem, or use short:100:95,damaged:50:48 note'),
+      { status: 400 },
+    )
+  }
 
   const { data, error } = await (ctx.supabase as any).rpc('messaging_report_discrepancy', {
     p_order_id: orderId,
     p_user_id: ctx.userId,
-    p_remarks: remarks,
+    p_remarks: parsed.remarks || remarks,
     p_channel: 'telegram',
     p_channel_user_id: String(telegramUserId),
+    p_items: parsed.items,
   })
 
   if (error || !data) {
     throw Object.assign(new Error(error?.message || 'Could not report discrepancy.'), { status: 409 })
   }
 
-  return { orderNo: data.order_no || orderNo }
+  return { orderNo: data.order_no || orderNo, lineCount: Number(data.line_count || parsed.items.length || 0) }
 }
 
 export function formatReceiptAckTelegramReply(result: {
@@ -164,13 +254,14 @@ export function formatReceiptAckTelegramReply(result: {
   ].join('\n')
 }
 
-export function formatDiscrepancyReportTelegramReply(orderNo: string): string {
+export function formatDiscrepancyReportTelegramReply(orderNo: string, lineCount = 0): string {
   return [
     `<b>Difference reported</b>`,
     `Order: <b>${orderNo}</b>`,
+    lineCount > 0 ? `Lines: ${lineCount}` : null,
     '',
     'HQ will review before the invoice is issued.',
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 export function formatPendingReceiptsTelegramReply(items: PendingReceiptOrder[]): string {
