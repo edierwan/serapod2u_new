@@ -58,7 +58,7 @@ export async function GET() {
         ready_at,
         shipped_at
       `)
-      .or('status.in.(pending_preparation,preparing,ready_to_ship),and(status.eq.shipped,receipt_status.in.(pending_receipt,discrepancy_pending))')
+      .or('status.in.(pending_preparation,preparing,awaiting_partial_confirmation,ready_to_ship),and(status.eq.shipped,receipt_status.in.(pending_receipt,discrepancy_pending))')
       .order('created_at', { ascending: false })
       .limit(50)
 

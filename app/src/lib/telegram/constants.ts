@@ -26,7 +26,7 @@ export const TELEGRAM_COMMANDS = {
   STATUS: '/status',
   RECEIPTS: '/receipts',
   RECEIVED: '/received',
-  REPORT_DIFFERENCE: '/report_difference',
+  ACCEPT_PARTIAL: '/accept_partial',
 } as const
 
 export function getTelegramBotToken(): string | null {

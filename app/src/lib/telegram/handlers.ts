@@ -23,6 +23,7 @@ import {
   runTelegramAcknowledgeReceipt,
   runTelegramReportDiscrepancy,
 } from '@/lib/messaging/receipt-actions'
+import { runTelegramAcceptPartial } from '@/lib/messaging/partial-actions'
 import type { TelegramMessage, TelegramSessionJson } from '@/lib/telegram/types'
 
 function parseCommand(text: string): { command: string; args: string } {
@@ -56,6 +57,7 @@ async function sendHelp(chatId: number, linked: boolean): Promise<void> {
     '/receipts — orders awaiting receipt',
     '/received ORDER_NO — confirm full receipt (issues invoice)',
     '/report_difference ORDER_NO message — report delivery problem',
+    '/accept_partial — accept short prepared quantities',
     '/help — this message',
   ]
   await reply(chatId, lines.join('\n'))
@@ -275,6 +277,26 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
       await reply(chatId, formatDiscrepancyReportTelegramReply(result.orderNo))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Report failed.'
+      await reply(chatId, escapeTelegramHtml(message))
+    }
+    return
+  }
+
+  if (command === TELEGRAM_COMMANDS.ACCEPT_PARTIAL) {
+    try {
+      const result = await runTelegramAcceptPartial(telegramUserId, args.trim() || null)
+      await reply(
+        chatId,
+        [
+          `<b>Partial quantity accepted</b>`,
+          `Order: <b>${escapeTelegramHtml(result.orderNo)}</b>`,
+          `Short lines accepted: ${result.shortLines}`,
+          '',
+          'Warehouse can now reserve stock and ship the available quantity.',
+        ].join('\n'),
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Accept failed.'
       await reply(chatId, escapeTelegramHtml(message))
     }
     return

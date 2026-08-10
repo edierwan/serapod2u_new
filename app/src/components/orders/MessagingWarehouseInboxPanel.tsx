@@ -17,6 +17,14 @@ interface InboxItem {
   delivery_reference?: string | null
 }
 
+interface PrepLine {
+  orderItemId: string
+  orderedQuantity: number
+  preparedQuantity: number
+  shortQuantity: number
+  variantName: string
+}
+
 const DELIVERY_METHODS = [
   { value: 'lalamove', label: 'Lalamove' },
   { value: 'company_transport', label: 'Company Transport' },
@@ -36,6 +44,8 @@ export function MessagingWarehouseInboxPanel() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actorOrgType, setActorOrgType] = useState<string | null>(null)
   const [shipDraft, setShipDraft] = useState<Record<string, { method: string; reference: string }>>({})
+  const [prepByOrder, setPrepByOrder] = useState<Record<string, PrepLine[]>>({})
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -63,6 +73,14 @@ export function MessagingWarehouseInboxPanel() {
     void load()
   }, [load])
 
+  const loadPrep = async (orderId: string) => {
+    const res = await fetch(`/api/messaging/preparation-items?orderId=${encodeURIComponent(orderId)}`)
+    const payload = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(payload?.error || 'Unable to load lines.')
+    setPrepByOrder((prev) => ({ ...prev, [orderId]: payload.lines || [] }))
+    setExpandedOrderId(orderId)
+  }
+
   const runAction = async (
     item: InboxItem,
     action: 'start_preparing' | 'ready_to_ship' | 'ship',
@@ -85,15 +103,51 @@ export function MessagingWarehouseInboxPanel() {
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Action failed.')
 
-      const labels = {
-        start_preparing: 'Preparation started',
-        ready_to_ship: 'Marked ready to ship — stock reserved',
-        ship: 'Shipped — inventory deducted and DO created',
-      } as const
-      setNotice(`${labels[action]} for ${item.order_no || item.order_id.slice(0, 8)}.`)
+      if (action === 'ready_to_ship' && payload?.result?.status === 'awaiting_partial_confirmation') {
+        setNotice(
+          `${item.order_no || item.order_id.slice(0, 8)}: waiting for distributor to accept short quantities.`,
+        )
+      } else {
+        const labels = {
+          start_preparing: 'Preparation started',
+          ready_to_ship: 'Marked ready to ship — stock reserved',
+          ship: 'Shipped — inventory deducted and DO created',
+        } as const
+        setNotice(`${labels[action]} for ${item.order_no || item.order_id.slice(0, 8)}.`)
+      }
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Action failed.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const savePrepared = async (item: InboxItem) => {
+    const lines = prepByOrder[item.order_id] || []
+    setBusyId(item.order_id)
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/messaging/warehouse-inbox/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: item.order_id,
+          action: 'set_prepared_quantities',
+          items: lines.map((line) => ({
+            order_item_id: line.orderItemId,
+            prepared_quantity: line.preparedQuantity,
+          })),
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Save failed.')
+      setNotice(`Prepared quantities saved for ${item.order_no || item.order_id.slice(0, 8)}.`)
+      await load()
+      await loadPrep(item.order_id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed.')
     } finally {
       setBusyId(null)
     }
@@ -131,7 +185,7 @@ export function MessagingWarehouseInboxPanel() {
             Warehouse incoming · Messaging
           </p>
           <p className="mt-1 text-sm text-[var(--sera-ink)]">
-            HQ-approved Telegram/WhatsApp orders. Reserve at Ready to Ship; deduct on Ship; invoice after receipt.
+            Prepare → optional short qty → Ready (reserve) → Ship. Invoice after distributor receipt.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
@@ -154,6 +208,8 @@ export function MessagingWarehouseInboxPanel() {
         {items.map((item) => {
           const draft = shipDraft[item.order_id] || { method: 'lalamove', reference: '' }
           const busy = busyId === item.order_id
+          const canEditPrep = ['pending_preparation', 'preparing', 'awaiting_partial_confirmation'].includes(item.status)
+          const lines = prepByOrder[item.order_id] || []
           return (
             <li
               key={item.id}
@@ -193,18 +249,67 @@ export function MessagingWarehouseInboxPanel() {
                     {busy ? 'Working…' : 'Start Preparing'}
                   </Button>
                 )}
-                {(item.status === 'preparing' || item.status === 'pending_preparation') && (
+                {canEditPrep && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void loadPrep(item.order_id)}
+                  >
+                    Edit prepared qty
+                  </Button>
+                )}
+                {(item.status === 'preparing' || item.status === 'pending_preparation' || item.status === 'awaiting_partial_confirmation') && (
                   <Button
                     type="button"
                     size="sm"
                     variant={item.status === 'preparing' ? 'default' : 'outline'}
-                    disabled={busy}
+                    disabled={busy || item.status === 'awaiting_partial_confirmation'}
+                    title={
+                      item.status === 'awaiting_partial_confirmation'
+                        ? 'Waiting for distributor /accept_partial'
+                        : undefined
+                    }
                     onClick={() => void runAction(item, 'ready_to_ship')}
                   >
                     {busy ? 'Working…' : 'Ready to Ship (Reserve)'}
                   </Button>
                 )}
               </div>
+
+              {expandedOrderId === item.order_id && canEditPrep && lines.length > 0 && (
+                <div className="mt-3 space-y-2 rounded-md border border-dashed border-[var(--sera-line)] p-3">
+                  <p className="text-xs font-semibold text-[var(--sera-muted)]">Prepared quantities</p>
+                  {lines.map((line) => (
+                    <div key={line.orderItemId} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="min-w-[140px] flex-1 font-medium">{line.variantName}</span>
+                      <span className="text-[var(--sera-muted)]">Ordered {line.orderedQuantity}</span>
+                      <Input
+                        className="h-8 w-24 text-xs"
+                        type="number"
+                        min={0}
+                        max={line.orderedQuantity}
+                        value={line.preparedQuantity}
+                        onChange={(event) => {
+                          const value = Math.max(0, Math.min(line.orderedQuantity, Number(event.target.value || 0)))
+                          setPrepByOrder((prev) => ({
+                            ...prev,
+                            [item.order_id]: (prev[item.order_id] || []).map((row) =>
+                              row.orderItemId === line.orderItemId
+                                ? { ...row, preparedQuantity: value, shortQuantity: line.orderedQuantity - value }
+                                : row,
+                            ),
+                          }))
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <Button type="button" size="sm" disabled={busy} onClick={() => void savePrepared(item)}>
+                    {busy ? 'Saving…' : 'Save prepared qty'}
+                  </Button>
+                </div>
+              )}
 
               {item.status === 'ready_to_ship' && (
                 <div className="mt-3 space-y-2 rounded-md border border-dashed border-[var(--sera-line)] p-3">

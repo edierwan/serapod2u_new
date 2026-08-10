@@ -5,8 +5,9 @@ import {
   formatMessagingStatusTelegram,
   notifyMessagingOrderTelegram,
 } from '@/lib/messaging/telegram-notify'
+import { escapeTelegramHtml } from '@/lib/telegram/bot-api'
 
-type MessagingAction = 'start_preparing' | 'ready_to_ship' | 'ship'
+type MessagingAction = 'start_preparing' | 'ready_to_ship' | 'ship' | 'set_prepared_quantities'
 
 /**
  * Warehouse actions for messaging D2H inbox orders.
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     if (!orderId) {
       return NextResponse.json({ error: 'orderId is required.' }, { status: 400 })
     }
-    if (!['start_preparing', 'ready_to_ship', 'ship'].includes(action)) {
+    if (!['start_preparing', 'ready_to_ship', 'ship', 'set_prepared_quantities'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action.' }, { status: 400 })
     }
 
@@ -54,6 +55,17 @@ export async function POST(request: Request) {
       const res = await supabase.rpc('messaging_start_preparing' as any, { p_order_id: orderId })
       rpcResult = res.data
       rpcError = res.error
+    } else if (action === 'set_prepared_quantities') {
+      const items = Array.isArray(body?.items) ? body.items : null
+      if (!items) {
+        return NextResponse.json({ error: 'items array is required.' }, { status: 400 })
+      }
+      const res = await supabase.rpc('messaging_set_prepared_quantities' as any, {
+        p_order_id: orderId,
+        p_items: items,
+      })
+      rpcResult = res.data
+      rpcError = res.error
     } else if (action === 'ready_to_ship') {
       const res = await supabase.rpc('messaging_ready_to_ship' as any, { p_order_id: orderId })
       rpcResult = res.data
@@ -83,28 +95,62 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     const orderNo = order?.display_doc_no || order?.order_no || orderId.slice(0, 8)
-    const stage =
-      action === 'start_preparing'
-        ? 'preparing'
-        : action === 'ready_to_ship'
-          ? 'ready_to_ship'
-          : 'shipped'
+    const readyPayload =
+      action === 'ready_to_ship' && rpcResult && typeof rpcResult === 'object'
+        ? (rpcResult as { status?: string; short_lines?: number })
+        : null
 
     let notify: { sent: boolean; reason?: string } | null = null
-    if (order?.buyer_org_id && (order.source_channel === 'telegram' || order.source_channel === 'whatsapp')) {
-      const shipPayload = action === 'ship' && rpcResult && typeof rpcResult === 'object'
-        ? (rpcResult as { inbox?: { delivery_method?: string; delivery_reference?: string } })
-        : null
-      notify = await notifyMessagingOrderTelegram({
-        buyerOrgId: order.buyer_org_id,
-        createdByUserId: order.created_by,
-        text: formatMessagingStatusTelegram({
-          orderNo,
-          stage,
-          deliveryMethod: shipPayload?.inbox?.delivery_method,
-          deliveryReference: shipPayload?.inbox?.delivery_reference || body?.deliveryReference,
-        }),
-      })
+    if (
+      order?.buyer_org_id
+      && (order.source_channel === 'telegram' || order.source_channel === 'whatsapp')
+      && action !== 'set_prepared_quantities'
+    ) {
+      if (readyPayload?.status === 'awaiting_partial_confirmation') {
+        const { data: shortLines } = await supabase.rpc('messaging_list_short_lines' as any, {
+          p_order_id: orderId,
+        })
+        const lines = Array.isArray(shortLines) ? shortLines : []
+        const detail = lines
+          .slice(0, 8)
+          .map((line: any) => {
+            const name = escapeTelegramHtml(String(line.variant_name || 'Item'))
+            return `• ${name}: ordered ${line.ordered} → available ${line.prepared} (short ${line.short})`
+          })
+          .join('\n')
+        notify = await notifyMessagingOrderTelegram({
+          buyerOrgId: order.buyer_org_id,
+          createdByUserId: order.created_by,
+          text: [
+            `<b>${escapeTelegramHtml(orderNo)}</b>`,
+            'Warehouse can only prepare part of this order.',
+            detail || `Short lines: ${readyPayload.short_lines || 0}`,
+            '',
+            'Reply /accept_partial to accept available quantities.',
+            'Or /accept_partial ORDER_NO',
+          ].join('\n'),
+        })
+      } else {
+        const stage =
+          action === 'start_preparing'
+            ? 'preparing'
+            : action === 'ready_to_ship'
+              ? 'ready_to_ship'
+              : 'shipped'
+        const shipPayload = action === 'ship' && rpcResult && typeof rpcResult === 'object'
+          ? (rpcResult as { inbox?: { delivery_method?: string; delivery_reference?: string } })
+          : null
+        notify = await notifyMessagingOrderTelegram({
+          buyerOrgId: order.buyer_org_id,
+          createdByUserId: order.created_by,
+          text: formatMessagingStatusTelegram({
+            orderNo,
+            stage,
+            deliveryMethod: shipPayload?.inbox?.delivery_method,
+            deliveryReference: shipPayload?.inbox?.delivery_reference || body?.deliveryReference,
+          }),
+        })
+      }
     }
 
     return NextResponse.json({
