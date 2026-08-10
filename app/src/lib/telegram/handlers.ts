@@ -25,6 +25,11 @@ import {
   splitReportDifferenceArgs,
 } from '@/lib/messaging/receipt-actions'
 import { runTelegramAcceptPartial } from '@/lib/messaging/partial-actions'
+import {
+  attachTelegramPhotoToLatestDiscrepancy,
+  rememberPendingDiscrepancyPhoto,
+} from '@/lib/messaging/discrepancy-evidence'
+import { notifyWarehouseMessagingDiscrepancy } from '@/lib/messaging/notifications'
 import type { TelegramMessage, TelegramSessionJson } from '@/lib/telegram/types'
 
 function parseCommand(text: string): { command: string; args: string } {
@@ -279,6 +284,13 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
     }
     try {
       const result = await runTelegramReportDiscrepancy(telegramUserId, remarks, orderNoArg)
+      await rememberPendingDiscrepancyPhoto(telegramUserId, result.orderId, result.orderNo)
+      await notifyWarehouseMessagingDiscrepancy({
+        hqOrgId: result.sellerOrgId,
+        orderId: result.orderId,
+        orderNo: result.orderNo,
+        lineCount: result.lineCount,
+      })
       await reply(chatId, formatDiscrepancyReportTelegramReply(result.orderNo, result.lineCount))
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Report failed.'
@@ -297,7 +309,7 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
           `Order: <b>${escapeTelegramHtml(result.orderNo)}</b>`,
           `Short lines accepted: ${result.shortLines}`,
           '',
-          'Warehouse can now reserve stock and ship the available quantity.',
+          'Warehouse can now mark Ready to Ship and dispatch the available quantity.',
         ].join('\n'),
       )
     } catch (error) {
@@ -315,11 +327,52 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
   await handlePasteCheck(chatId, telegramUserId, text)
 }
 
+async function handleTelegramPhoto(message: TelegramMessage): Promise<void> {
+  const chatId = message.chat.id
+  const telegramUserId = message.from?.id
+  if (!telegramUserId || !message.photo?.length) return
+
+  const link = await getTelegramLinkByTelegramUserId(telegramUserId)
+  if (!link) {
+    await reply(chatId, 'Link your Serapod2U account first with /link CODE from Settings.')
+    return
+  }
+
+  const caption = message.caption?.trim() || ''
+  if (caption.startsWith('/')) {
+    await handleTelegramMessage({ ...message, text: caption })
+    return
+  }
+
+  try {
+    const orderNoArg = link.session_json?.pendingDiscrepancyOrderNo || null
+    const result = await attachTelegramPhotoToLatestDiscrepancy({
+      telegramUserId,
+      photos: message.photo,
+      caption,
+      orderNoArg,
+    })
+    if (!result.attached) {
+      await reply(chatId, 'Send /report_difference ORDER_NO first, then attach a photo as evidence.')
+      return
+    }
+    await reply(chatId, `<b>Evidence attached</b> for order <b>${escapeTelegramHtml(result.orderNo || '')}</b>.`)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Could not attach photo.'
+    await reply(chatId, escapeTelegramHtml(msg))
+  }
+}
+
 export async function processTelegramUpdate(update: {
   message?: TelegramMessage
   edited_message?: TelegramMessage
 }): Promise<void> {
   const message = update.message || update.edited_message
-  if (!message?.text) return
+  if (!message) return
+  if (message.photo?.length) {
+    await handleTelegramPhoto(message)
+    return
+  }
+  if (!message.text) return
   await handleTelegramMessage(message)
 }

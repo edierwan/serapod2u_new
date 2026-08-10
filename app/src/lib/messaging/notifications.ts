@@ -175,6 +175,45 @@ export async function notifyFinanceMessagingInvoice(input: {
   })
 }
 
+/** §40 — warehouse delivery discrepancy alert. */
+export async function notifyWarehouseMessagingDiscrepancy(input: {
+  hqOrgId: string
+  orderId: string
+  orderNo: string
+  lineCount?: number
+}): Promise<{ sent: boolean; reason?: string }> {
+  const settings = await loadMessagingSettings(input.hqOrgId)
+  if (settings && !settings.telegram_notifications_enabled) {
+    return { sent: false, reason: 'telegram_notifications_disabled' }
+  }
+
+  const chatId =
+    (settings?.warehouse_telegram_chat_id ? Number(settings.warehouse_telegram_chat_id) : null)
+    ?? envWarehouseChatId()
+
+  if (chatId == null || !Number.isFinite(chatId)) {
+    return { sent: false, reason: 'no_warehouse_chat' }
+  }
+
+  const text = [
+    '<b>Delivery discrepancy reported</b>',
+    `Order: <b>${escapeTelegramHtml(input.orderNo)}</b>`,
+    input.lineCount ? `Lines: ${input.lineCount}` : null,
+    '',
+    'Review in Serapod2U before issuing the invoice.',
+  ].filter(Boolean).join('\n')
+
+  return sendTelegramToChat({
+    chatId,
+    text,
+    orderId: input.orderId,
+    organizationId: input.hqOrgId,
+    messageType: 'warehouse_discrepancy',
+    referenceType: 'order',
+    referenceId: input.orderId,
+  })
+}
+
 /** Post-confirm bundle: distributor confirmation + warehouse alert (§12, §15). */
 export async function notifyMessagingOrderConfirmed(input: {
   hqOrgId: string

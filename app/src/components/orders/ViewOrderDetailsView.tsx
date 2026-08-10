@@ -13,6 +13,7 @@ import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
 import { MessagingOrderTimelinePanel } from '@/components/orders/MessagingOrderTimelinePanel'
+import { MessagingOrderFulfilmentPanel } from '@/components/orders/MessagingOrderFulfilmentPanel'
 
 interface UserProfile {
   id: string
@@ -941,6 +942,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           </div>
         </div>
       </div>
+
+      {orderData?.id && <MessagingOrderFulfilmentPanel orderId={orderData.id} />}
 
       {orderData?.id && <MessagingOrderTimelinePanel orderId={orderData.id} />}
 

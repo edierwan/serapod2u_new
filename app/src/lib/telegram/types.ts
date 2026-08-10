@@ -21,6 +21,8 @@ export interface TelegramSessionJson {
   idempotencyKey?: string
   lastOrderId?: string
   lastOrderNo?: string | null
+  pendingDiscrepancyOrderId?: string
+  pendingDiscrepancyOrderNo?: string | null
 }
 
 export interface TelegramUpdate {
@@ -43,6 +45,14 @@ export interface TelegramMessage {
   }
   date: number
   text?: string
+  caption?: string
+  photo?: Array<{
+    file_id: string
+    file_unique_id: string
+    file_size?: number
+    width?: number
+    height?: number
+  }>
 }
 
 export interface TelegramLinkTokenRow {

@@ -22,6 +22,14 @@ interface DiscrepancyItem {
   remarks: string | null
 }
 
+interface DiscrepancyAttachment {
+  id: string
+  discrepancy_id: string
+  file_name: string | null
+  signed_url: string | null
+  created_at: string
+}
+
 interface DiscrepancyRow {
   id: string
   status: string
@@ -39,6 +47,7 @@ function labelAction(action: string): string {
 export function MessagingOrderTimelinePanel({ orderId }: { orderId: string }) {
   const [events, setEvents] = useState<TimelineEvent[]>([])
   const [discrepancies, setDiscrepancies] = useState<DiscrepancyRow[]>([])
+  const [attachments, setAttachments] = useState<DiscrepancyAttachment[]>([])
   const [visible, setVisible] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -53,6 +62,7 @@ export function MessagingOrderTimelinePanel({ orderId }: { orderId: string }) {
         setVisible(Boolean(payload?.messaging))
         setEvents(payload?.events || [])
         setDiscrepancies(payload?.discrepancies || [])
+        setAttachments(payload?.attachments || [])
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load timeline.')
       }
@@ -105,6 +115,24 @@ export function MessagingOrderTimelinePanel({ orderId }: { orderId: string }) {
                   {item.remarks ? ` · ${item.remarks}` : ''}
                 </p>
               ))}
+              {attachments
+                .filter((att) => att.discrepancy_id === disc.id)
+                .map((att) => (
+                  <p key={att.id} className="mt-2 text-xs">
+                    {att.signed_url ? (
+                      <a
+                        href={att.signed_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--sera-orange)] hover:underline"
+                      >
+                        View evidence{att.file_name ? `: ${att.file_name}` : ''}
+                      </a>
+                    ) : (
+                      <span className="text-[var(--sera-muted)]">Evidence uploaded</span>
+                    )}
+                  </p>
+                ))}
             </div>
           ))}
         </div>

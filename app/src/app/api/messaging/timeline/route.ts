@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 /** Messaging order timeline (additive audit trail). Uses caller RLS. */
 export async function GET(request: Request) {
@@ -55,10 +56,28 @@ export async function GET(request: Request) {
       .order('reported_at', { ascending: false })
       .limit(5)
 
+    const admin = createAdminClient()
+    const { data: attachments } = await admin
+      .from('messaging_delivery_discrepancy_attachments')
+      .select('id, discrepancy_id, file_name, mime_type, storage_path, created_at')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    const attachmentsWithUrls = await Promise.all(
+      (attachments || []).map(async (row) => {
+        const { data: signed } = await admin.storage
+          .from('messaging-discrepancy-evidence')
+          .createSignedUrl(row.storage_path, 3600)
+        return { ...row, signed_url: signed?.signedUrl || null }
+      }),
+    )
+
     return NextResponse.json({
       messaging: true,
       events: events || [],
       discrepancies: discrepancies || [],
+      attachments: attachmentsWithUrls,
     })
   } catch (error) {
     console.error('[messaging/timeline]', error)

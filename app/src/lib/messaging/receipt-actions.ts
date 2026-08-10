@@ -212,7 +212,7 @@ export async function runTelegramReportDiscrepancy(
   telegramUserId: number,
   remarks: string,
   orderNoArg?: string | null,
-): Promise<{ orderNo: string; lineCount: number }> {
+): Promise<{ orderId: string; orderNo: string; lineCount: number; sellerOrgId: string }> {
   const ctx = await resolveTelegramDistributorContext(telegramUserId)
   const { orderId, orderNo } = await resolveReceiptOrderForTelegram(telegramUserId, orderNoArg)
   const parsed = parseDiscrepancyArgs(remarks)
@@ -237,7 +237,12 @@ export async function runTelegramReportDiscrepancy(
     throw Object.assign(new Error(error?.message || 'Could not report discrepancy.'), { status: 409 })
   }
 
-  return { orderNo: data.order_no || orderNo, lineCount: Number(data.line_count || parsed.items.length || 0) }
+  return {
+    orderId,
+    orderNo: data.order_no || orderNo,
+    lineCount: Number(data.line_count || parsed.items.length || 0),
+    sellerOrgId: ctx.hqId,
+  }
 }
 
 export function formatReceiptAckTelegramReply(result: {
@@ -264,6 +269,7 @@ export function formatDiscrepancyReportTelegramReply(orderNo: string, lineCount 
     lineCount > 0 ? `Lines: ${lineCount}` : null,
     '',
     'HQ will review before the invoice is issued.',
+    'You can send a photo now to attach evidence.',
   ].filter(Boolean).join('\n')
 }
 
