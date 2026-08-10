@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
+import { distributorHasActiveCelleraMembership } from '@/lib/orders/d2h-product-program'
 import {
   resolveQuickOrderCatalog,
   resolveSellableAvailability,
@@ -130,13 +132,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'A distributor is required.' }, { status: 400 })
     }
 
+    const { data: distributor, error: distributorError } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', body.distributorId)
+      .eq('parent_org_id', hqOrganizationId)
+      .eq('org_type_code', 'DIST')
+      .eq('is_active', true)
+      .maybeSingle()
+    if (distributorError || !distributor) {
+      return NextResponse.json({ error: 'The selected distributor is not available in this HQ scope.' }, { status: 403 })
+    }
+
+    const restrictedToVape = await distributorHasActiveCelleraMembership(
+      createAdminClient(),
+      body.distributorId,
+      hqOrganizationId,
+    )
+    const categoryRelation = restrictedToVape
+      ? 'product_categories!inner(is_active, is_vape)'
+      : 'product_categories(is_active, is_vape)'
+    // The relation shape is conditional because non-Cellera distributors must
+    // retain products without a category, while Cellera requires an inner join.
+    let variantsQuery = (supabase as any)
+      .from('product_variants')
+      .select(`id, distributor_price, is_active, products!inner(is_active, ${categoryRelation})`)
+      .in('id', variantIds)
+      .eq('is_active', true)
+      .eq('products.is_active', true)
+    if (restrictedToVape) {
+      variantsQuery = variantsQuery
+        .eq('products.product_categories.is_vape', true)
+        .eq('products.product_categories.is_active', true)
+    }
+
     const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
-      supabase
-        .from('product_variants')
-        .select('id, distributor_price, is_active, products!inner(is_active)')
-        .in('id', variantIds)
-        .eq('is_active', true)
-        .eq('products.is_active', true),
+      variantsQuery,
       supabase
         .from('product_inventory')
         .select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
@@ -157,7 +188,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'One or more variants are inactive, unauthorized, or no longer available.' }, { status: 409 })
     }
 
-    const variantsById = new Map((variants || []).map(variant => [variant.id, variant]))
+    const variantsById = new Map<string, { id: string; distributor_price: number | null }>(
+      (variants || []).map((variant: { id: string; distributor_price: number | null }) => [variant.id, variant]),
+    )
     const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
     if (items.some(item => unclassifiedVariantIds.has(item.variantId))) {
       return NextResponse.json({ error: UNCLASSIFIED_INVENTORY_ORDER_MESSAGE }, { status: 409 })
