@@ -6,6 +6,8 @@ const source = fs.readFileSync(path.resolve(__dirname, 'DistributorOrderView.tsx
 const quickGrid = fs.readFileSync(path.resolve(__dirname, 'QuickOrderGrid.tsx'), 'utf8')
 const preflight = fs.readFileSync(path.resolve(__dirname, '../../app/api/orders/d2h/preflight/route.ts'), 'utf8')
 const catalogResolver = fs.readFileSync(path.resolve(__dirname, '../../lib/orders/quick-order-catalog.ts'), 'utf8')
+const standardCatalogResolver = fs.readFileSync(path.resolve(__dirname, '../../lib/orders/standard-order-catalog.ts'), 'utf8')
+const programResolver = fs.readFileSync(path.resolve(__dirname, '../../lib/orders/d2h-product-program.ts'), 'utf8')
 
 describe('Distributor D2H Quick Order integration', () => {
   it('opens in Quick mode and preserves one shared item collection across mode switches', () => {
@@ -45,6 +47,18 @@ describe('Distributor D2H Quick Order integration', () => {
     expect(catalogResolver).toContain("product_categories!inner (id, is_active, is_vape)")
     expect(preflight).toContain('validateQuickOrderCatalogItems(')
     expect(catalogResolver).toContain('This product is not available in the distributor Quick Order catalog.')
+  })
+
+  it('restricts Standard Order to active Cellera distributors using category relationships', () => {
+    expect(source).toContain("fetch('/api/orders/d2h/standard-order-catalog'")
+    expect(programResolver).toContain(".from('loyalty_program_organization_memberships')")
+    expect(programResolver).toContain(".from('loyalty_programs')")
+    expect(programResolver).toContain(".eq('status', 'active')")
+    expect(programResolver).toContain("CELLERA_PROGRAM_CODE = 'cellera'")
+    expect(standardCatalogResolver).toContain('if (restrictedToVape)')
+    expect(standardCatalogResolver).toContain(".eq('products.product_categories.is_vape', true)")
+    expect(preflight).toContain('distributorHasActiveCelleraMembership(')
+    expect(preflight).toContain(".eq('products.product_categories.is_vape', true)")
   })
 
   it('provides compact filtering, keyboard quantity entry, and reviewed paste handling', () => {

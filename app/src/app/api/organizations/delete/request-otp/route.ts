@@ -5,9 +5,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   generateOtp,
   hashOtp,
-  logNotificationEvent,
 } from '@/server/auth/passwordResetService'
-import { maskPhone, normalizePhoneE164 } from '@/utils/phone'
+import {
+  buildDeleteOrganizationMessage,
+  DELETE_ORGANIZATION_EVENT_CODE,
+  DeleteVerificationConfigurationError,
+  deliverDeleteVerification,
+  resolveDeleteVerificationPreset,
+} from '@/lib/notifications/organization-delete-verification'
+import { normalizePhoneE164 } from '@/utils/phone'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,26 +121,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No organization found. OTP cannot be sent.' }, { status: 400 })
     }
 
-    const { data: currentOrg } = await admin
+    const [{ data: currentOrg }, { data: notificationType }, { data: notificationSetting }] = await Promise.all([
+      admin
       .from('organizations')
-      .select('contact_phone, org_name')
+      .select('contact_phone, contact_email, org_name')
       .eq('id', currentOrgId)
-      .single()
+      .single(),
+      admin
+        .from('notification_types')
+        .select('event_code, available_channels')
+        .eq('event_code', DELETE_ORGANIZATION_EVENT_CODE)
+        .maybeSingle(),
+      admin
+        .from('notification_settings')
+        .select('enabled, channels_enabled, recipient_config')
+        .eq('org_id', currentOrgId)
+        .eq('event_code', DELETE_ORGANIZATION_EVENT_CODE)
+        .maybeSingle(),
+    ])
 
-    if (!currentOrg?.contact_phone) {
-      return NextResponse.json({ error: 'Organization phone not configured. Set it in Settings > Organization.' }, { status: 400 })
+    if (!notificationType) {
+      return NextResponse.json({
+        error: 'Delete Organization Verification Code notification type is missing. Apply the latest database migration, then configure Notifications > Notification Types > Delete Organization Masterdata.',
+      }, { status: 409 })
     }
 
-    const phoneForSend = normalizePhoneE164(currentOrg.contact_phone)
-    if (!phoneForSend) {
-      return NextResponse.json({ error: 'Organization phone is invalid. Update it in Settings > Organization.' }, { status: 400 })
+    let routingPreset
+    try {
+      routingPreset = resolveDeleteVerificationPreset(notificationSetting)
+    } catch (error) {
+      if (error instanceof DeleteVerificationConfigurationError) {
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
     }
 
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { count } = await db
       .from('notification_events')
       .select('id', { count: 'exact', head: true })
-      .eq('recipient_phone', phoneForSend)
+      .eq('user_id', user.id)
       .eq('purpose', PURPOSE)
       .eq('event_type', 'delete_organization_otp_requested')
       .gte('created_at', since)
@@ -146,7 +172,7 @@ export async function POST(request: NextRequest) {
     await db
       .from('auth_verification_codes')
       .update({ invalidated_at: new Date().toISOString() })
-      .eq('phone_normalized', phoneForSend)
+      .eq('user_id', user.id)
       .eq('purpose', PURPOSE)
       .is('invalidated_at', null)
       .is('used_at', null)
@@ -155,12 +181,37 @@ export async function POST(request: NextRequest) {
     const codeHash = hashOtp(code)
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
 
+    const message = buildDeleteOrganizationMessage({
+      code,
+      organizationName: targetOrg.org_name,
+      organizationCode: targetOrg.org_code,
+      requestedBy: user.email || 'Authorized administrator',
+    })
+
+    const candidatePhone = currentOrg?.contact_phone ? normalizePhoneE164(currentOrg.contact_phone) : null
+    const candidateEmail = String(currentOrg?.contact_email || user.email || '').trim().toLowerCase() || null
+    if (routingPreset === 'sms_only') {
+      return NextResponse.json({
+        error: 'SMS Only is selected for Delete Organization Verification Code, but SMS verification delivery is not available. Choose Email Only, WhatsApp Only, or WhatsApp > Email.',
+      }, { status: 409 })
+    }
+    if (routingPreset === 'email_only' && !candidateEmail) {
+      return NextResponse.json({ error: 'Email delivery is selected, but the current organization and requesting admin have no email address configured.' }, { status: 409 })
+    }
+    if (routingPreset === 'whatsapp_only' && !candidatePhone) {
+      return NextResponse.json({ error: 'WhatsApp delivery is selected, but the current organization has no valid phone number configured in organization master data.' }, { status: 409 })
+    }
+    if (!candidatePhone && !candidateEmail) {
+      return NextResponse.json({ error: 'No valid WhatsApp phone or email recipient is configured for organization deletion verification.' }, { status: 409 })
+    }
+
     const { data: codeRow, error: codeError } = await db
       .from('auth_verification_codes')
       .insert({
         purpose: PURPOSE,
-        channel: 'whatsapp',
-        phone_normalized: phoneForSend,
+        channel: routingPreset === 'email_only' ? 'email' : 'whatsapp',
+        phone_normalized: candidatePhone,
+        email_normalized: candidateEmail,
         user_id: user.id,
         code_hash: codeHash,
         expires_at: expiresAt,
@@ -171,6 +222,8 @@ export async function POST(request: NextRequest) {
           target_org_id: orgId,
           target_org_name: targetOrg.org_name,
           target_org_code: targetOrg.org_code,
+          notification_event_code: DELETE_ORGANIZATION_EVENT_CODE,
+          routing_preset: routingPreset,
         },
       })
       .select('id')
@@ -178,49 +231,134 @@ export async function POST(request: NextRequest) {
 
     if (codeError) {
       console.error('Failed to create organization delete OTP:', codeError)
-      return NextResponse.json({ error: 'Failed to create verification code' }, { status: 500 })
+      return NextResponse.json({ error: 'Unable to prepare the verification code. Please try again.' }, { status: 500 })
     }
 
-    const message = `⚠️ ORGANIZATION DELETION VERIFICATION\n\nCode: *${code}*\n\nOrganization: ${targetOrg.org_name} (${targetOrg.org_code})\nRequested by: ${user.email}\n\nThis code expires in 5 minutes. Only enter it if you authorize this deletion.`
+    let delivery
+    try {
+      delivery = await deliverDeleteVerification({
+        admin,
+        orgId: currentOrgId,
+        preset: routingPreset,
+        phone: currentOrg?.contact_phone,
+        email: currentOrg?.contact_email || user.email,
+        message,
+      })
+    } catch (error) {
+      await db
+        .from('auth_verification_codes')
+        .update({ invalidated_at: new Date().toISOString() })
+        .eq('id', codeRow.id)
+      if (error instanceof DeleteVerificationConfigurationError) {
+        await logOrganizationNotificationEvent(admin, {
+          channel: routingPreset === 'email_only' ? 'email' : routingPreset === 'sms_only' ? 'sms' : 'whatsapp',
+          userId: user.id,
+          status: 'failed',
+          errorMessage: error.message,
+          targetOrg,
+          ip,
+        })
+        return NextResponse.json({ error: error.message }, { status: error.status })
+      }
+      throw error
+    }
 
-    const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
+    const { error: deliveryUpdateError } = await db
+      .from('auth_verification_codes')
+      .update({
+        channel: delivery.channel,
+        phone_normalized: delivery.channel === 'whatsapp' ? delivery.recipient : null,
+        email_normalized: delivery.channel === 'email' ? delivery.recipient : null,
+        meta: {
+          target_org_id: orgId,
+          target_org_name: targetOrg.org_name,
+          target_org_code: targetOrg.org_code,
+          notification_event_code: DELETE_ORGANIZATION_EVENT_CODE,
+          routing_preset: routingPreset,
+          delivery_channel: delivery.channel,
+        },
+      })
+      .eq('id', codeRow.id)
 
-    const recipientDigits = phoneForSend.replace(/^\+/, '')
-    await sendWhatsAppMessage(admin, currentOrgId, { to: recipientDigits, text: message })
+    if (deliveryUpdateError) {
+      console.error('Failed to finalize organization delete OTP delivery metadata:', deliveryUpdateError)
+    }
 
-    await logNotificationEvent(admin, {
-      eventType: 'delete_organization_otp_requested',
-      phone: phoneForSend,
+    await logOrganizationNotificationEvent(admin, {
+      channel: delivery.channel,
+      recipientPhone: delivery.channel === 'whatsapp' ? delivery.recipient : null,
+      recipientEmail: delivery.channel === 'email' ? delivery.recipient : null,
+      provider: delivery.provider,
+      providerMessageId: delivery.providerMessageId,
       userId: user.id,
       status: 'sent',
-      meta: {
-        target_org_id: orgId,
-        target_org_name: targetOrg.org_name,
-        target_org_code: targetOrg.org_code,
-        code_id: codeRow.id,
-      },
+      targetOrg,
+      codeId: codeRow.id,
       ip,
-      purpose: PURPOSE,
-    } as any)
+    })
 
     await logOrganizationDeletionAudit(admin, {
       operation: 'delete_organization_otp_request',
       userId: user.id,
       userEmail: user.email || null,
       allowed: true,
-      reason: `OTP sent to org phone for deleting ${targetOrg.org_name} (${targetOrg.org_code})`,
+      reason: `OTP sent by ${delivery.channel} for deleting ${targetOrg.org_name} (${targetOrg.org_code})`,
       ip,
     })
 
     return NextResponse.json({
       success: true,
-      message: `Verification code sent to ${maskPhone(phoneForSend)}`,
-      maskedPhone: maskPhone(phoneForSend),
+      message: `Verification code sent by ${delivery.channel === 'email' ? 'email' : 'WhatsApp'} to ${delivery.maskedRecipient}`,
+      channel: delivery.channel,
+      maskedRecipient: delivery.maskedRecipient,
       codeId: codeRow.id,
     })
   } catch (error: any) {
     console.error('Organization delete OTP request error:', error)
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    return NextResponse.json({ error: 'Unable to send the organization deletion verification code. Check Notification Types and provider configuration, then try again.' }, { status: 500 })
+  }
+}
+
+async function logOrganizationNotificationEvent(admin: any, entry: {
+  channel: string
+  recipientPhone?: string | null
+  recipientEmail?: string | null
+  provider?: string | null
+  providerMessageId?: string | null
+  userId: string
+  status: string
+  errorMessage?: string | null
+  targetOrg: { id: string; org_name: string; org_code: string }
+  codeId?: string
+  ip: string | null
+}) {
+  try {
+    await admin.from('notification_events').insert({
+      channel: entry.channel,
+      provider: entry.provider || null,
+      event_type: 'delete_organization_otp_requested',
+      purpose: PURPOSE,
+      recipient_phone: entry.recipientPhone || null,
+      recipient_email: entry.recipientEmail || null,
+      user_id: entry.userId,
+      related_entity_type: 'organization',
+      related_entity_id: entry.targetOrg.id,
+      provider_message_id: entry.providerMessageId || null,
+      status: entry.status,
+      error_message: entry.errorMessage || null,
+      meta: {
+        notification_event_code: DELETE_ORGANIZATION_EVENT_CODE,
+        target_org_id: entry.targetOrg.id,
+        target_org_name: entry.targetOrg.org_name,
+        target_org_code: entry.targetOrg.org_code,
+        code_id: entry.codeId || null,
+      },
+      request_ip: entry.ip,
+      requested_at: new Date().toISOString(),
+      sent_at: entry.status === 'sent' ? new Date().toISOString() : null,
+    })
+  } catch (error) {
+    console.error('Failed to write organization deletion notification audit:', error)
   }
 }
 

@@ -354,73 +354,19 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (!distributorId) return
 
     try {
-      // Get company_id for order creation (still needed later)
-      const { data: companyData } = await supabase
-        .rpc('get_company_id', { p_org_id: userProfile.organization_id })
+      const response = await fetch('/api/orders/d2h/standard-order-catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ distributorId, fulfillmentWarehouseId: inventoryOrgId }),
+      })
+      const result = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(result?.error || 'Unable to load the distributor Standard Order catalog.')
 
-      const companyId = companyData || userProfile.organization_id
-
-      // Load product variants with inventory quantities
-      const { data, error } = await supabase
-        .from('product_variants')
-        .select(`
-          id,
-          product_id,
-          variant_name,
-          alternative_name,
-          attributes,
-          barcode,
-          manufacturer_sku,
-          distributor_price,
-          is_active,
-          products!inner (
-            id,
-            product_code,
-            product_name,
-            is_active,
-            product_groups (group_name)
-          )
-        `)
-        .eq('is_active', true)
-        .eq('products.is_active', true)
-        .order('variant_name')
-
-      if (error) throw error
-
-      // Get inventory for each variant
-      const variantsWithInventory = await Promise.all(
-        (data || []).map(async (v: any) => {
-          const product = Array.isArray(v.products) ? v.products[0] : v.products
-          const productGroup = Array.isArray(product?.product_groups) ? product.product_groups[0] : product?.product_groups
-
-          // Get available quantity from product_inventory using inventoryOrgId (Warehouse)
-          const { data: inventoryData } = await supabase
-            .from('product_inventory')
-            .select('quantity_available')
-            .eq('variant_id', v.id)
-            .eq('organization_id', inventoryOrgId)
-            .maybeSingle()
-
-          const availableQty = inventoryData?.quantity_available || 0
-
-          return {
-            id: v.id,
-            product_id: v.product_id,
-            product_name: product?.product_name || '',
-            product_code: product?.product_code || '',
-            group_name: productGroup?.group_name || 'Other',
-            variant_name: v.variant_name,
-            alternative_name: v.alternative_name || null,
-            attributes: v.attributes || {},
-            barcode: v.barcode,
-            manufacturer_sku: v.manufacturer_sku,
-            distributor_price: v.distributor_price || 0,
-            available_qty: availableQty
-          }
-        })
-      )
+      const variantsWithInventory = (result?.variants || []) as ProductVariant[]
 
       setAvailableVariants(variantsWithInventory)
+      setSelectedVariantId('')
+      setSelectedProductFilter('')
 
       if (variantsWithInventory.length === 0) {
         toast({
@@ -431,9 +377,10 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
       }
     } catch (error: any) {
       console.error('Error loading products:', error)
+      setAvailableVariants([])
       toast({
         title: 'Error',
-        description: 'Failed to load available products',
+        description: error.message || 'Failed to load available products',
         variant: 'destructive'
       })
     }

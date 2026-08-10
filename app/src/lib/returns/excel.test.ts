@@ -107,7 +107,7 @@ describe('buildReturnWorkbook (export)', () => {
         expect(String(items.getRow(h).getCell(8).value)).toBe('Return Quantity')
     })
 
-    it('exports existing UI quantities (Hero PCS + Zero Box) without resetting them', async () => {
+    it('exports existing UI quantities (Hero PCS + Zero Cases) without resetting them', async () => {
         const heroFilled = { ...HERO, entry_unit: 'pcs' as EntryUnit, entered_pcs: 5, total_units: 5, case_qty: 1, loose_piece_qty: 1, reason: 'defective', condition: 'opened' }
         const zeroFilled = { ...ZERO, entry_unit: 'box' as EntryUnit, entered_box_qty: 2, entered_extra_pcs: 1, total_units: 9, case_qty: 2, loose_piece_qty: 1 }
         const wb = await buildReturnWorkbook(ctx(), [heroFilled, zeroFilled])
@@ -118,8 +118,8 @@ describe('buildReturnWorkbook (export)', () => {
         expect(Number(hRow.getCell(12).value)).toBe(5)  // Total PCS
         expect(String(hRow.getCell(13).value)).toBe('Defective') // reason label
         const zRow = findRow(items, 'v-zero')
-        expect(String(zRow.getCell(7).value)).toBe('Box')
-        expect(Number(zRow.getCell(8).value)).toBe(2)   // full boxes
+        expect(String(zRow.getCell(7).value)).toBe('Cases')
+        expect(Number(zRow.getCell(8).value)).toBe(2)   // full cases
         expect(Number(zRow.getCell(10).value)).toBe(1)  // loose extra pcs
         expect(Number(zRow.getCell(12).value)).toBe(9)  // total = 2*4 + 1
     })
@@ -129,7 +129,7 @@ describe('buildReturnWorkbook (export)', () => {
         const items = wb.getWorksheet(ITEMS_SHEET)!
         const r = findRow(items, 'v-sline')
         expect(String(r.getCell(7).value)).toBe('PCS')
-        expect(r.getCell(9).value === '' || r.getCell(9).value == null).toBe(true) // PCS per box blank
+        expect(r.getCell(9).value === '' || r.getCell(9).value == null).toBe(true) // PCS per case blank
         expect(Number(r.getCell(12).value)).toBe(3)
     })
 })
@@ -154,7 +154,16 @@ describe('parseReturnWorkbook (import validation + matching)', () => {
         expect(res.updates[0]).toMatchObject({ rowKey: 'hero', entry_unit: 'pcs', entered_pcs: 6, reason: 'defective' })
     })
 
-    it('imports a valid Hero Box + loose quantity', async () => {
+    it('imports a valid Hero Cases + loose quantity', async () => {
+        const res = await exportThenEdit((items) => {
+            const r = findRow(items, 'v-hero')
+            r.getCell(7).value = 'Cases'; r.getCell(8).value = 2; r.getCell(10).value = 3
+        })
+        expect(res.ok).toBe(true)
+        expect(res.updates[0]).toMatchObject({ entry_unit: 'box', entered_box_qty: 2, entered_extra_pcs: 3 })
+    })
+
+    it('still accepts the legacy "Box" quantity mode from older templates', async () => {
         const res = await exportThenEdit((items) => {
             const r = findRow(items, 'v-hero')
             r.getCell(7).value = 'Box'; r.getCell(8).value = 2; r.getCell(10).value = 3
@@ -171,9 +180,9 @@ describe('parseReturnWorkbook (import validation + matching)', () => {
         expect(res.updates[0]).toMatchObject({ rowKey: 'sline', entry_unit: 'pcs', entered_pcs: 4 })
     })
 
-    it('rejects a Device row using Box mode', async () => {
+    it('rejects a Device row using Cases mode', async () => {
         const res = await exportThenEdit((items) => {
-            const r = findRow(items, 'v-sbox'); r.getCell(7).value = 'Box'; r.getCell(8).value = 2
+            const r = findRow(items, 'v-sbox'); r.getCell(7).value = 'Cases'; r.getCell(8).value = 2
         })
         expect(res.ok).toBe(false)
         expect(res.rows.some((x) => x.status === 'error' && /PCS only/i.test(x.message))).toBe(true)

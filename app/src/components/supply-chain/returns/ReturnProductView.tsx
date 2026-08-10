@@ -36,6 +36,7 @@ import {
     isDeviceLine, getRowUnitsPerCase,
     getUnitsPerCase, getUnitsPerBox, computePcsMode, computeBoxMode,
     pcsModeToStorage, boxModeToStorage, storageToPcsMode, storageToBoxMode,
+    formatReturnAmount, caseUnitLabel, CASE_UNIT_LABEL,
     type ProductLine, type EntryUnit,
 } from '@/lib/returns/format'
 import type {
@@ -227,7 +228,7 @@ export default function ReturnProductView({ userProfile }: { userProfile: UserPr
                                     {c.is_overdue && <Badge variant="destructive" className="ml-1 text-[10px]">Overdue</Badge>}
                                 </td>
                                 <td className="px-3 py-2 text-right">{c.total_qty ?? 0}</td>
-                                <td className="px-3 py-2 text-right">{Number(c.total_value ?? 0).toFixed(2)}</td>
+                                <td className="px-3 py-2 text-right">{formatReturnAmount(c.total_value)}</td>
                                 <td className="px-3 py-2 text-muted-foreground">{c.created_at ? new Date(c.created_at).toLocaleDateString('en-MY') : '—'}</td>
                                 <td className="px-3 py-2 text-right"><ChevronRight className="h-4 w-4 text-muted-foreground" /></td>
                             </tr>
@@ -258,7 +259,7 @@ interface WorksheetRow {
     unit_cost: number
     is_active: boolean
     isExtra: boolean
-    // Pcs/Box mode
+    // Pcs/Cases mode
     entry_unit: EntryUnit
     entered_pcs: number
     entered_box_qty: number
@@ -1369,21 +1370,21 @@ function PackingReference() {
             <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-orange)]/10"><Package className="h-5 w-5 text-[var(--sera-orange)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Enter Quantity in Pcs or Box</div>
-                    <div className="text-xs text-[var(--sera-muted)]">Choose Pcs mode to enter the total piece count, or Box mode to enter full boxes plus extra pieces.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Enter Quantity in Pcs or Cases</div>
+                    <div className="text-xs text-[var(--sera-muted)]">Choose Pcs mode to enter the total piece count, or Cases mode to enter full cases plus extra pieces.</div>
                 </div>
             </div>
             <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden p-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--sera-ink)]/5"><Boxes className="h-5 w-5 text-[var(--sera-ink)]" /></div>
                 <div>
-                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Box (4 Pcs)</div>
-                    <div className="text-xs text-[var(--sera-muted)]">1 Box = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
+                    <div className="text-sm font-semibold text-[var(--sera-ink)]">Cases (4 Pcs)</div>
+                    <div className="text-xs text-[var(--sera-muted)]">1 Case = 4 Pcs for Cellera Hero and Cellera Zero. Varies by product — see tooltip on each row.</div>
                 </div>
             </div>
             <div className="flex items-start gap-3 rounded-lg sera-sc-panel overflow-hidden border border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.05] p-4">
                 <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sera-orange)]" />
                 <div className="text-xs text-[var(--sera-orange-deep)]">
-                    Total Pcs is auto-calculated. Switch between Pcs and Box mode without losing your quantity.
+                    Total Pcs is auto-calculated. Switch between Pcs and Cases mode without losing your quantity.
                 </div>
             </div>
         </div>
@@ -1610,7 +1611,7 @@ function ReturnWorksheet({
                                             <div className="text-sm">
                                                 {r.entry_unit === 'pcs'
                                                     ? `${r.entered_pcs} Pcs`
-                                                    : `${r.entered_box_qty} Box${r.entered_extra_pcs > 0 ? ` + ${r.entered_extra_pcs} Pcs` : ''}`}
+                                                    : `${r.entered_box_qty} ${caseUnitLabel(r.entered_box_qty)}${r.entered_extra_pcs > 0 ? ` + ${r.entered_extra_pcs} Pcs` : ''}`}
                                             </div>
                                         ) : (
                                             <QuantityCell
@@ -1622,7 +1623,7 @@ function ReturnWorksheet({
                                     <td className="px-2 py-2 text-center text-xs text-muted-foreground">
                                         {isDeviceLine(r.product_line)
                                             ? '—'
-                                            : entered ? `${r.case_qty} Box + ${r.loose_piece_qty} Pc${r.loose_piece_qty !== 1 ? 's' : ''}` : '—'}
+                                            : entered ? `${r.case_qty} ${caseUnitLabel(r.case_qty)} + ${r.loose_piece_qty} Pc${r.loose_piece_qty !== 1 ? 's' : ''}` : '—'}
                                     </td>
                                     <td className="px-2 py-2 text-center font-semibold text-foreground">{total}</td>
                                     <td className="px-2 py-2">
@@ -1669,10 +1670,10 @@ function ReturnWorksheet({
             {/* Summary */}
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
                 <SummaryCard label="Total Products Entered" value={`${summary.entered} / ${summary.totalRows}`} />
-                <SummaryCard label="Total Qty (Box)" value={String(summary.totalCase)} />
+                <SummaryCard label={`Total Qty (${CASE_UNIT_LABEL})`} value={String(summary.totalCase)} />
                 <SummaryCard label="Total Qty (Loose Pcs)" value={String(summary.totalLoose)} />
                 <SummaryCard label="Total Pcs" value={String(summary.totalPcs)} />
-                <SummaryCard label="Estimated Return Value (RM)" value={summary.value.toFixed(2)} />
+                <SummaryCard label="Estimated Return Value (RM)" value={formatReturnAmount(summary.value)} />
                 <div className="flex items-center">
                     {!readOnly && (
                         <Button variant="outline" onClick={onReset} className="w-full gap-1.5"><RotateCcw className="h-4 w-4" /> Reset Quantities</Button>
@@ -1683,13 +1684,13 @@ function ReturnWorksheet({
     )
 }
 
-// ── Quantity Cell (Pcs/Box mode) ──
+// ── Quantity Cell (Pcs/Cases mode) ──
 
 function QuantityCell({ row, onUpdate }: { row: WorksheetRow; onUpdate: (patch: Partial<WorksheetRow>) => void }) {
     const [unit, setUnit] = useState<EntryUnit>(row.entry_unit)
     const upb = row.units_per_case > 0 ? row.units_per_case : 1
 
-    // Device lines (S.Line / S.Box) are PCS-only: no mode selector, no Box, no
+    // Device lines (S.Line / S.Box) are PCS-only: no mode selector, no Cases, no
     // breakdown. Entered quantity equals Total PCS directly.
     if (isDeviceLine(row.product_line)) {
         return (
@@ -1710,11 +1711,11 @@ function QuantityCell({ row, onUpdate }: { row: WorksheetRow; onUpdate: (patch: 
         if (newUnit === unit) return
         setUnit(newUnit)
         if (newUnit === 'pcs') {
-            // Switch from Box to Pcs: preserve total
+            // Switch from Cases to Pcs: preserve total
             const totalPcs = row.total_units
             onUpdate({ entry_unit: 'pcs', entered_pcs: totalPcs, entered_box_qty: 0, entered_extra_pcs: 0 })
         } else {
-            // Switch from Pcs to Box: preserve total
+            // Switch from Pcs to Cases: preserve total
             const boxQty = Math.floor(row.total_units / upb)
             const extraPcs = row.total_units % upb
             onUpdate({ entry_unit: 'box', entered_pcs: row.total_units, entered_box_qty: boxQty, entered_extra_pcs: extraPcs })
@@ -1736,10 +1737,10 @@ function QuantityCell({ row, onUpdate }: { row: WorksheetRow; onUpdate: (patch: 
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="pcs">Pcs</SelectItem>
-                        <SelectItem value="box">Box</SelectItem>
+                        <SelectItem value="box">Cases</SelectItem>
                     </SelectContent>
                 </Select>
-                <span title={`1 Box = ${upb} Pcs`} className="cursor-help text-[10px] text-muted-foreground">
+                <span title={`1 Case = ${upb} Pcs`} className="cursor-help text-[10px] text-muted-foreground">
                     <Info className="inline h-3 w-3" />
                 </span>
             </div>
@@ -1761,7 +1762,7 @@ function QuantityCell({ row, onUpdate }: { row: WorksheetRow; onUpdate: (patch: 
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="pcs">Pcs</SelectItem>
-                        <SelectItem value="box">Box</SelectItem>
+                        <SelectItem value="box">Cases</SelectItem>
                     </SelectContent>
                 </Select>
                 <span className="text-xs text-muted-foreground">+</span>
@@ -1773,13 +1774,13 @@ function QuantityCell({ row, onUpdate }: { row: WorksheetRow; onUpdate: (patch: 
                     placeholder="Extra"
                 />
                 <span className="text-xs text-muted-foreground">Pcs</span>
-                <span title={`1 Box = ${upb} Pcs`} className="cursor-help text-[10px] text-muted-foreground">
+                <span title={`1 Case = ${upb} Pcs`} className="cursor-help text-[10px] text-muted-foreground">
                     <Info className="inline h-3 w-3" />
                 </span>
             </div>
             {row.entered_extra_pcs >= upb && (
                 <div className="text-[10px] leading-tight text-muted-foreground">
-                    {row.entered_extra_pcs} Extra Pcs normalised to {row.entered_box_qty} Box + {row.entered_extra_pcs} Pcs
+                    {row.entered_extra_pcs} Extra Pcs normalised to {row.entered_box_qty} {caseUnitLabel(row.entered_box_qty)} + {row.entered_extra_pcs} Pcs
                 </div>
             )}
         </div>
@@ -2028,7 +2029,7 @@ function AddOtherProduct({
                             <span className="text-muted-foreground"> · {o.product_name}{o.manual_sku ? ` · ${o.manual_sku}` : ''}</span>
                             {!o.is_active && <span className="ml-1 text-xs text-amber-600">(inactive)</span>}
                         </span>
-                        <span className="text-xs text-muted-foreground">1 Box = {o.units_per_case}</span>
+                        <span className="text-xs text-muted-foreground">1 Case = {o.units_per_case}</span>
                     </button>
                 ))}
             </div>

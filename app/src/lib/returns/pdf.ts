@@ -5,8 +5,8 @@
  *   - serapod-return-header.png  → top banner (every page)
  *   - Footer.png                 → bottom footer (every page)
  *   - Text-only section headings (no product-line logos in the body).
- *   - Flavour sections (Cellera Zero / Hero): PCS · BOX · TOTAL columns.
- *   - Device sections (S.Line / S.Box): PCS · TOTAL only — never a BOX column.
+ *   - Flavour sections (Cellera Zero / Hero): PCS · CASES · TOTAL columns.
+ *   - Device sections (S.Line / S.Box): PCS · TOTAL only — never a CASES column.
  *
  * Uses jsPDF + jspdf-autotable (existing project dependencies). Only sections
  * with at least one entered item are rendered; empty rows/sections are omitted.
@@ -139,7 +139,7 @@ function joinAddress(org?: { address?: string | null; city?: string | null; post
     return [org.address, org.postal_code ? `${org.postal_code}` : null, org.city].filter(Boolean).join(', ') || '—'
 }
 
-/** Total full boxes (sum of case_qty) — flavour rows only carry boxes. */
+/** Total full cases (sum of case_qty) — flavour rows only carry cases. */
 function itemsTotalBoxes(items: ReturnCaseItem[]): number {
     return items.reduce((sum, it) => sum + Math.max(0, Math.floor(Number(it.case_qty || 0))), 0)
 }
@@ -345,7 +345,7 @@ export async function generateReturnPdf(
         // Build table body
         const head = sec.device
             ? [['PRODUCT / VARIANT', 'RETURN REASON', 'PCS', 'TOTAL']]
-            : [['PRODUCT / FLAVOUR', 'RETURN REASON', 'PCS', 'BOX', 'TOTAL']]
+            : [['PRODUCT / FLAVOUR', 'RETURN REASON', 'PCS', 'CASES', 'TOTAL']]
 
         const body: Array<Array<string>> = []
         for (const it of secItems) {
@@ -424,7 +424,7 @@ export async function generateReturnPdf(
     const cards: Array<[string, string]> = [
         ['TOTAL ITEM LINES', String(grandLines)],
         ['TOTAL PCS', String(grandPcs)],
-        ['TOTAL BOXES', String(grandBoxes)],
+        ['TOTAL CASES', String(grandBoxes)],
     ]
     cards.forEach(([label, value], i) => {
         const cx = margin + i * (cardW + cardGap)
