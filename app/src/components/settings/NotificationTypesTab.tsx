@@ -106,6 +106,7 @@ const PRESETS: Array<{
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
+  'Delete Organization Masterdata': 'Delete Organization Masterdata',
   order: 'Order Status',
   document: 'Order Document',
   inventory: 'Inventory & Stock',
@@ -113,7 +114,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['Delete Organization Masterdata', 'order', 'document', 'inventory', 'qr', 'return', 'user']
 
 function normalizeRecipientConfig(
   recipientConfig: NotificationSetting['recipient_config'] | null | undefined,

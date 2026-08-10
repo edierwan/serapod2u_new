@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { hashOtp, logNotificationEvent } from '@/server/auth/passwordResetService'
+import { hashOtp } from '@/server/auth/passwordResetService'
+import { DELETE_ORGANIZATION_EVENT_CODE } from '@/lib/notifications/organization-delete-verification'
 
 export const dynamic = 'force-dynamic'
 
@@ -175,25 +176,31 @@ export async function POST(request: NextRequest) {
       ip,
     })
 
-    await logNotificationEvent(admin, {
-      eventType: data?.success ? 'delete_organization_completed' : 'delete_organization_blocked',
-      phone: codeRow.phone_normalized,
-      userId: user.id,
+    await admin.from('notification_events').insert({
+      channel: codeRow.channel,
+      event_type: data?.success ? 'delete_organization_completed' : 'delete_organization_blocked',
+      purpose: PURPOSE,
+      recipient_phone: codeRow.phone_normalized || null,
+      recipient_email: codeRow.email_normalized || null,
+      user_id: user.id,
+      related_entity_type: 'organization',
+      related_entity_id: orgId,
       status: data?.success ? 'completed' : 'blocked',
+      completed_at: data?.success ? new Date().toISOString() : null,
       meta: {
+        notification_event_code: DELETE_ORGANIZATION_EVENT_CODE,
         target_org_id: orgId,
         target_org_name: targetOrg?.org_name,
         target_org_code: targetOrg?.org_code,
         result: data,
       },
-      ip,
-      purpose: PURPOSE,
-    } as any)
+      request_ip: ip,
+    })
 
     return NextResponse.json(data)
   } catch (error: any) {
     console.error('Organization delete verify error:', error)
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    return NextResponse.json({ error: 'Unable to verify the code or delete the organization. Please try again; if the issue continues, contact an administrator.' }, { status: 500 })
   }
 }
 

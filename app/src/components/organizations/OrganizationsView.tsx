@@ -279,6 +279,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
   const [deleteOtpCode, setDeleteOtpCode] = useState('')
   const [deleteOtpCodeId, setDeleteOtpCodeId] = useState('')
   const [deleteOtpMaskedPhone, setDeleteOtpMaskedPhone] = useState('')
+  const [deleteOtpChannel, setDeleteOtpChannel] = useState<'email' | 'whatsapp'>('whatsapp')
   const [deleteOtpError, setDeleteOtpError] = useState('')
   const [deleteOtpSending, setDeleteOtpSending] = useState(false)
   const { isReady, supabase } = useSupabaseAuth()
@@ -871,6 +872,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     setDeleteOtpCode('')
     setDeleteOtpCodeId('')
     setDeleteOtpMaskedPhone('')
+    setDeleteOtpChannel('whatsapp')
     setDeleteOtpError('')
     setDeleteDependenciesModal({ show: true, loading: true, deleting: false, orgId, data: null })
 
@@ -936,7 +938,8 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
 
       setDeleteOtpCode('')
       setDeleteOtpCodeId(data.codeId || '')
-      setDeleteOtpMaskedPhone(data.maskedPhone || '')
+      setDeleteOtpMaskedPhone(data.maskedRecipient || '')
+      setDeleteOtpChannel(data.channel === 'email' ? 'email' : 'whatsapp')
       setDeleteOtpStep('otp')
     } catch (error: any) {
       setDeleteOtpError(error.message || 'Failed to send verification code')
@@ -995,6 +998,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
     setDeleteOtpCode('')
     setDeleteOtpCodeId('')
     setDeleteOtpMaskedPhone('')
+    setDeleteOtpChannel('whatsapp')
     setDeleteOtpError('')
     setDeleteDependenciesModal({ show: false, loading: false, deleting: false, orgId: null, data: null })
   }
@@ -1811,7 +1815,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
             {deleteDependenciesModal.data && (
               <DialogDescription>
                 {deleteOtpStep === 'otp' ? (
-                  <>A 4-digit WhatsApp code was sent to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to authorize deletion.</>
+                  <>A 4-digit code was sent by <strong>{deleteOtpChannel === 'email' ? 'email' : 'WhatsApp'}</strong> to <strong>{deleteOtpMaskedPhone}</strong>. Enter it below to authorize deletion.</>
                 ) : deleteOtpStep === 'deleting' ? (
                   'Please wait while the organization is being deleted.'
                 ) : (
@@ -1843,7 +1847,7 @@ export default function OrganizationsView({ userProfile, onViewChange }: Organiz
                   <div className="space-y-3">
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                       <p className="text-amber-700">
-                        For protection, deletion requires a 4-digit WhatsApp verification code sent to the organization phone configured in Settings &gt; Organization.
+                        For protection, deletion requires the 4-digit verification code sent using the configured Delete Organization Masterdata notification route.
                       </p>
                     </div>
                     <div>

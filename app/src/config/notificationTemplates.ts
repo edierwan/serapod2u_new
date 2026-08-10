@@ -12,6 +12,7 @@ export type NotificationKey =
     | 'out_of_stock'
     | 'stock_received'
     | 'stock_count_posting_verification'
+    | 'delete_organization_verification_code'
     | 'qr_activated'
     | 'points_awarded'
     | 'lucky_draw_entry'
