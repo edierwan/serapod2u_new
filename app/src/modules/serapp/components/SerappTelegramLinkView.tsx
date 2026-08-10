@@ -97,7 +97,8 @@ export default function SerappTelegramLinkView() {
           <h1 className="text-lg font-semibold text-[var(--sera-ink)]">Official ordering · Telegram</h1>
         </div>
         <p className="mt-2 text-sm text-[var(--sera-muted)]">
-          Telegram is the official ordering channel. Link once here, then paste-check and confirm only in Telegram.
+          Telegram is the official ordering channel. Link once here, then paste-check and submit only in Telegram.
+          Prices are not shown in Telegram.
         </p>
       </header>
 
@@ -193,7 +194,9 @@ export default function SerappTelegramLinkView() {
         <p className="font-medium text-[var(--sera-ink-soft)]">Daily workflow (Telegram only)</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>Open @SerapodOrdersBot and paste your order list</li>
-          <li>Send /confirm to submit (1-hour warehouse hold)</li>
+          <li>Send /submit (or /confirm) — creates the order without reserving stock yet</li>
+          <li>HQ approves in Current Orders → appears in Warehouse incoming</li>
+          <li>After delivery: /receipts then /received or /report_difference</li>
           <li>/help for all commands — use this page only to link or unlink</li>
         </ul>
       </section>

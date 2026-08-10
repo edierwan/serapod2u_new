@@ -170,10 +170,17 @@ export function buildSerappOrderNotes(input: {
   pasteText: string
   distributorName: string
   warehouseName?: string | null
+  /**
+   * Optional messaging channel label (e.g. Telegram).
+   * Keeps the existing Serapp source marker so warehouse hold / history filters still match.
+   */
+  channelLabel?: string | null
 }) {
   const pastePreview = input.pasteText.trim().slice(0, 1800)
+  const channel = input.channelLabel?.trim()
   return [
     SERAPP_ORDER_SOURCE_MARKER,
+    channel ? `Channel: ${channel}` : null,
     `Distributor: ${input.distributorName}`,
     input.warehouseName ? `Fulfillment Warehouse: ${input.warehouseName}` : null,
     'Original paste:',

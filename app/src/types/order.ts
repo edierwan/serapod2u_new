@@ -47,6 +47,8 @@ export interface Order {
   has_lucky_draw: boolean;
   has_redeem: boolean;
   notes?: string;
+  /** Intake channel: telegram/whatsapp = messaging fulfil path; null = classic. */
+  source_channel?: string | null;
   created_by: string;
   updated_by?: string;
   approved_by?: string;

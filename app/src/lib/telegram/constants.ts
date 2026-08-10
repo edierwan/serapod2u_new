@@ -18,9 +18,15 @@ export const TELEGRAM_COMMANDS = {
   LINK: '/link',
   HELP: '/help',
   CHECK: '/check',
+  /** Preferred distributor wording (manager: submit, not confirmed). */
+  SUBMIT: '/submit',
+  /** Kept as alias so existing users/docs keep working. */
   CONFIRM: '/confirm',
   CANCEL: '/cancel',
   STATUS: '/status',
+  RECEIPTS: '/receipts',
+  RECEIVED: '/received',
+  REPORT_DIFFERENCE: '/report_difference',
 } as const
 
 export function getTelegramBotToken(): string | null {

@@ -1,8 +1,6 @@
 import { randomUUID } from 'crypto'
 import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
 import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import { summarizeSerappPasteCheck } from '@/lib/serapp/paste-check-summary'
 import {
   buildSerappConfirmItems,
@@ -10,24 +8,27 @@ import {
   loadSerappCatalog,
 } from '@/lib/serapp/order-context'
 import { resolveTelegramDistributorContext } from '@/lib/telegram/order-context'
+import { TELEGRAM_ORDER_SOURCE_CHANNEL } from '@/lib/telegram/source-channel'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 
 export interface TelegramPasteCheckResult {
   summary: SerappPasteCheckSummary
   distributorName: string
   warehouseName: string
+  /** Kept for internal snapshot / future invoice use — never shown in Telegram replies. */
   estimatedOrderValue: number
   lineCount: number
+  totalQuantity: number
 }
 
 export interface TelegramConfirmResult {
   orderNo: string | null
   orderId: string
-  holdExpiresAt: string
   confirmedLines: number
   skippedLines: number
   estimatedOrderValue: number
   summary: SerappPasteCheckSummary
+  warehouseName: string
 }
 
 export async function runTelegramPasteCheck(
@@ -47,12 +48,19 @@ export async function runTelegramPasteCheck(
     return sum + (result.quantity * (variant?.distributor_price || 0))
   }, 0)
 
+  const totalQuantity = results.reduce((sum, result) => {
+    if (result.status === 'section_header') return sum
+    if (!result.quantity || result.quantity <= 0) return sum
+    return sum + result.quantity
+  }, 0)
+
   return {
     summary,
     distributorName: ctx.distributorName,
     warehouseName: catalog.fulfillmentWarehouseName,
     estimatedOrderValue,
     lineCount: summary.totalLines,
+    totalQuantity,
   }
 }
 
@@ -68,14 +76,14 @@ export async function runTelegramConfirmOrder(
 
   if (summary.bucket === 'unmatched_or_review' || summary.bucket === 'out_of_stock') {
     throw Object.assign(
-      new Error(`Cannot confirm while status is "${summary.label}". Fix the list and Check again.`),
+      new Error(`Cannot submit while status is "${summary.label}". Fix the list and Check again.`),
       { status: 409, summary },
     )
   }
 
   const { items, skipped } = buildSerappConfirmItems(results, catalog.variants, { acceptAvailableOnly: true })
   if (items.length === 0) {
-    throw Object.assign(new Error('No confirmable lines remain after stock re-check.'), { status: 409, summary })
+    throw Object.assign(new Error('No submittable lines remain after stock re-check.'), { status: 409, summary })
   }
 
   validateQuickOrderCatalogItems(
@@ -95,13 +103,15 @@ export async function runTelegramConfirmOrder(
     pasteText,
     distributorName: ctx.distributorName,
     warehouseName: catalog.fulfillmentWarehouseName,
+    channelLabel: 'Telegram',
   })
 
   const estimatedOrderValue = items.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
   const key = idempotencyKey?.trim().slice(0, 120) || `tg-${telegramUserId}-${randomUUID()}`
 
+  // Messaging path: submit SO without allocating. Classic Serapp keeps submit_and_allocate.
   const { data: order, error: submitError } = await (ctx.supabase as any).rpc(
-    'submit_and_allocate_d2h_order',
+    'submit_d2h_order',
     {
       p_company_id: companyId,
       p_buyer_org_id: ctx.distributorId,
@@ -116,82 +126,54 @@ export async function runTelegramConfirmOrder(
       p_notes: notes,
       p_created_by: ctx.userId,
       p_idempotency_key: key,
+      p_source_channel: TELEGRAM_ORDER_SOURCE_CHANNEL,
     },
   )
 
   if (submitError || !order) {
     throw Object.assign(
-      new Error(submitError?.message || 'Failed to submit and allocate the order.'),
+      new Error(submitError?.message || 'Failed to submit the order.'),
       { status: 409 },
-    )
-  }
-
-  const admin = createAdminClient()
-  let hold
-  try {
-    hold = await registerSerappOrderHold(admin, {
-      orderId: order.id,
-      buyerOrgId: ctx.distributorId,
-      sellerHqId: ctx.hqId,
-      fulfillmentWarehouseId: ctx.fulfillmentWarehouseId,
-      createdBy: ctx.userId,
-      orderNo: order.display_doc_no || order.order_no,
-      warehouseName: catalog.fulfillmentWarehouseName,
-    })
-  } catch (holdError) {
-    console.error('[telegram/confirm] hold registration failed — rolling back', holdError)
-
-    await admin
-      .from('orders')
-      .update({
-        status: 'cancelled',
-        updated_at: new Date().toISOString(),
-        notes: `${notes}\n\nCancelled: Serapp hold registration failed after allocate.`,
-      })
-      .eq('id', order.id)
-      .eq('status', 'submitted')
-
-    await admin.rpc('release_allocation_for_order', { p_order_id: order.id })
-
-    throw Object.assign(
-      new Error('Order was rolled back because the 1-hour hold could not be saved. Try /confirm again.'),
-      { status: 500 },
     )
   }
 
   return {
     orderNo: order.display_doc_no || order.order_no || null,
     orderId: order.id,
-    holdExpiresAt: hold.expires_at,
     confirmedLines: items.length,
     skippedLines: skipped,
     estimatedOrderValue,
     summary,
+    warehouseName: catalog.fulfillmentWarehouseName,
   }
 }
 
+/**
+ * Distributor-facing Telegram copy only.
+ * Prices stay hidden. Submit does not allocate (HQ approve → warehouse inbox next).
+ */
 export function formatTelegramCheckReply(result: TelegramPasteCheckResult): string {
-  const value = result.estimatedOrderValue.toFixed(2)
   const lines = [
-    `<b>Paste &amp; Check</b>`,
+    `<b>Order summary</b>`,
     `Status: <b>${result.summary.label}</b>`,
-    `Lines: ${result.lineCount} · Est. RM ${value}`,
+    `Lines: ${result.lineCount} · Total qty: ${result.totalQuantity}`,
     `Warehouse: ${result.warehouseName}`,
     '',
-    'Reply /confirm to submit (1h warehouse acceptance window).',
+    'Reply /submit (or /confirm) to submit this order.',
+    'Stock is checked now; it is reserved only after HQ approval and warehouse preparation.',
     '/cancel clears this draft.',
   ]
   return lines.join('\n')
 }
 
 export function formatTelegramConfirmReply(result: TelegramConfirmResult): string {
-  const expires = new Date(result.holdExpiresAt).toLocaleString('en-MY', { hour12: true })
   return [
-    `<b>Order confirmed</b>`,
+    `<b>Order submitted</b>`,
     `No: <b>${result.orderNo || result.orderId.slice(0, 8)}</b>`,
-    `Lines: ${result.confirmedLines} · Est. RM ${result.estimatedOrderValue.toFixed(2)}`,
-    `Hold expires: ${expires}`,
+    `Lines: ${result.confirmedLines}`,
+    `Warehouse: ${result.warehouseName}`,
     '',
-    'Warehouse must accept within 1 hour or stock is released.',
+    'HQ will review and approve. Stock is not reserved yet.',
+    'You will be notified when the warehouse starts preparing.',
   ].join('\n')
 }

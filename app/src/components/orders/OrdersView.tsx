@@ -38,6 +38,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import type { Order, OrderStatus, OrderType, OrderSummary } from '@/types/order'
+import { MessagingWarehouseInboxPanel } from '@/components/orders/MessagingWarehouseInboxPanel'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
 import {
   SeraModalOverlay,
@@ -1229,6 +1230,8 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         }
       />
 
+      <MessagingWarehouseInboxPanel />
+
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1490,6 +1493,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                               title={order.display_doc_no ? `Legacy: ${order.order_no}` : undefined}
                             >
                               {order.display_doc_no || order.order_no}
+                              {(order.source_channel === 'telegram' || order.source_channel === 'whatsapp') && (
+                                <Badge variant="outline" className="ml-2 text-[10px] uppercase tracking-wide">
+                                  {order.source_channel}
+                                </Badge>
+                              )}
                             </button>
                           </td>
 
@@ -1696,6 +1704,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                           <Badge variant="outline" className="text-xs sera-sc-badge sera-sc-badge--info border-[var(--sera-line)]">
                             {order.order_type}
                           </Badge>
+                          {(order.source_channel === 'telegram' || order.source_channel === 'whatsapp') && (
+                            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                              {order.source_channel}
+                            </Badge>
+                          )}
                           <span className="text-xs text-[var(--sera-muted)]">
                             {getOrderTypeLabel(order.order_type)}
                           </span>

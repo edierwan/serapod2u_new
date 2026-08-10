@@ -838,7 +838,14 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                             </button>
                           })}
                           {selectable.length === 0 ? <div className="rounded border border-red-200 bg-red-50 p-2 font-medium text-red-700">Insufficient available stock. Fulfilment is blocked.</div> : null}
-                          <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>{item.stock_config_confirmed_at ? 'Exact configuration confirmed for picking' : 'Confirmation required before approval'}</div>
+                          <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>
+                            {item.stock_config_confirmed_at
+                              ? 'Exact configuration confirmed for picking'
+                              : (orderData as { source_channel?: string | null }).source_channel === 'telegram'
+                                || (orderData as { source_channel?: string | null }).source_channel === 'whatsapp'
+                                ? 'Optional now — messaging orders can be approved without config lock; confirm before warehouse ship'
+                                : 'Confirmation required before approval'}
+                          </div>
                         </div>
                       })()
                     ) : (

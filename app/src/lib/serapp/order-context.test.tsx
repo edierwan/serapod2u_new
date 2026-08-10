@@ -111,5 +111,16 @@ describe('buildSerappOrderNotes', () => {
     expect(notes).toContain(SERAPP_ORDER_SOURCE_MARKER)
     expect(notes).toContain('Demo Dist')
     expect(notes).toContain('BANANA VANILLA - 100')
+    expect(notes).not.toContain('Channel:')
+  })
+
+  it('adds an optional channel label without replacing the Serapp source marker', () => {
+    const notes = buildSerappOrderNotes({
+      pasteText: 'MANGO - 10',
+      distributorName: 'Demo Dist',
+      channelLabel: 'Telegram',
+    })
+    expect(notes).toContain(SERAPP_ORDER_SOURCE_MARKER)
+    expect(notes).toContain('Channel: Telegram')
   })
 })

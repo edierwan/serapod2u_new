@@ -15,16 +15,24 @@ import {
   runTelegramConfirmOrder,
   runTelegramPasteCheck,
 } from '@/lib/telegram/order-actions'
+import {
+  formatDiscrepancyReportTelegramReply,
+  formatPendingReceiptsTelegramReply,
+  formatReceiptAckTelegramReply,
+  listPendingReceiptOrdersForTelegram,
+  runTelegramAcknowledgeReceipt,
+  runTelegramReportDiscrepancy,
+} from '@/lib/messaging/receipt-actions'
 import type { TelegramMessage, TelegramSessionJson } from '@/lib/telegram/types'
 
 function parseCommand(text: string): { command: string; args: string } {
   const trimmed = text.trim()
   const space = trimmed.indexOf(' ')
-  if (space === -1) return { command: trimmed.toLowerCase(), args: '' }
-  return {
-    command: trimmed.slice(0, space).toLowerCase(),
-    args: trimmed.slice(space + 1).trim(),
-  }
+  const head = (space === -1 ? trimmed : trimmed.slice(0, space)).toLowerCase()
+  // Telegram may send "/submit@SerapodOrdersBot"
+  const command = head.includes('@') ? head.slice(0, head.indexOf('@')) : head
+  const args = space === -1 ? '' : trimmed.slice(space + 1).trim()
+  return { command, args }
 }
 
 async function reply(chatId: number, text: string): Promise<void> {
@@ -36,14 +44,18 @@ async function sendHelp(chatId: number, linked: boolean): Promise<void> {
     '<b>Serapod Orders</b> — official ordering channel',
     linked ? 'Account: linked ✓' : 'Account: not linked — open portal → Telegram and generate a link code.',
     '',
-    'Paste your order list as a message to Check stock.',
+    'Paste your order list as a message to check stock (no prices shown).',
     '',
     '<b>Commands</b>',
     '/check — re-check the last pasted list',
-    '/confirm — submit the last checked list',
+    '/submit — submit the last checked list (no stock reservation yet)',
+    '/confirm — same as /submit (alias)',
     '/cancel — clear draft',
     '/status — link + draft status',
     '/link CODE — link Serapod account',
+    '/receipts — orders awaiting receipt',
+    '/received ORDER_NO — confirm full receipt (issues invoice)',
+    '/report_difference ORDER_NO message — report delivery problem',
     '/help — this message',
   ]
   await reply(chatId, lines.join('\n'))
@@ -216,7 +228,7 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
     return
   }
 
-  if (command === TELEGRAM_COMMANDS.CONFIRM) {
+  if (command === TELEGRAM_COMMANDS.SUBMIT || command === TELEGRAM_COMMANDS.CONFIRM) {
     await handleConfirm(chatId, telegramUserId)
     return
   }
@@ -228,6 +240,43 @@ export async function handleTelegramMessage(message: TelegramMessage): Promise<v
 
   if (command === TELEGRAM_COMMANDS.STATUS) {
     await handleStatus(chatId, telegramUserId)
+    return
+  }
+
+  if (command === TELEGRAM_COMMANDS.RECEIPTS) {
+    const items = await listPendingReceiptOrdersForTelegram(telegramUserId)
+    await reply(chatId, formatPendingReceiptsTelegramReply(items))
+    return
+  }
+
+  if (command === TELEGRAM_COMMANDS.RECEIVED) {
+    try {
+      const parts = args.trim().split(/\s+/)
+      const orderNoArg = parts[0] || null
+      const result = await runTelegramAcknowledgeReceipt(telegramUserId, orderNoArg)
+      await reply(chatId, formatReceiptAckTelegramReply(result))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Receipt failed.'
+      await reply(chatId, escapeTelegramHtml(message))
+    }
+    return
+  }
+
+  if (command === TELEGRAM_COMMANDS.REPORT_DIFFERENCE) {
+    const space = args.indexOf(' ')
+    const orderNoArg = space === -1 ? args.trim() || null : args.slice(0, space).trim()
+    const remarks = space === -1 ? '' : args.slice(space + 1).trim()
+    if (!remarks) {
+      await reply(chatId, 'Send <code>/report_difference ORDER_NO describe the problem</code>.')
+      return
+    }
+    try {
+      const result = await runTelegramReportDiscrepancy(telegramUserId, remarks, orderNoArg)
+      await reply(chatId, formatDiscrepancyReportTelegramReply(result.orderNo))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Report failed.'
+      await reply(chatId, escapeTelegramHtml(message))
+    }
     return
   }
 
