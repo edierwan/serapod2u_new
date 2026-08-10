@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { escapeTelegramHtml, sendTelegramMessage } from '@/lib/telegram/bot-api'
 import { buildMessagingOrderDeepLink } from '@/lib/messaging/deep-links'
+import { logMessageNotification } from '@/lib/messaging/notification-log'
 
 /**
  * Best-effort Telegram notify for messaging orders.
@@ -12,9 +13,9 @@ export async function notifyMessagingOrderTelegram(input: {
   text: string
   orderId?: string | null
 }): Promise<{ sent: boolean; reason?: string }> {
+  let chatId: number | null = null
   try {
     const admin = createAdminClient()
-    let chatId: number | null = null
 
     if (input.createdByUserId) {
       const { data: byUser } = await admin
@@ -55,9 +56,30 @@ export async function notifyMessagingOrderTelegram(input: {
         ? { inline_keyboard: [[{ text: 'View Order', url: deepLink }]] }
         : undefined,
     })
+    await logMessageNotification({
+      organizationId: input.buyerOrgId,
+      userId: input.createdByUserId ?? null,
+      channel: 'telegram',
+      messageType: 'distributor_status',
+      referenceType: 'order',
+      referenceId: input.orderId ?? null,
+      recipientIdentifier: String(chatId),
+      status: 'sent',
+    })
     return { sent: true }
   } catch (error) {
     console.warn('[messaging/telegram-notify]', error)
+    await logMessageNotification({
+      organizationId: input.buyerOrgId,
+      userId: input.createdByUserId ?? null,
+      channel: 'telegram',
+      messageType: 'distributor_status',
+      referenceType: 'order',
+      referenceId: input.orderId ?? null,
+      recipientIdentifier: chatId != null ? String(chatId) : null,
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : 'telegram_send_failed',
+    })
     return {
       sent: false,
       reason: error instanceof Error ? error.message : 'telegram_send_failed',
@@ -76,7 +98,7 @@ export function formatMessagingStatusTelegram(input: {
     return `<b>${no}</b> is now being prepared by the warehouse.`
   }
   if (input.stage === 'ready_to_ship') {
-    return `<b>${no}</b> is ready for shipment.\nStock has been reserved for your order.`
+    return `<b>${no}</b> is ready for shipment.\nPrepared quantities are locked for dispatch.`
   }
   if (input.stage === 'shipped') {
     const method = escapeTelegramHtml(input.deliveryMethod || 'other')

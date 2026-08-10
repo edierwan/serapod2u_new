@@ -23,7 +23,7 @@ describe('messaging prepare/ready/ship migration', () => {
 describe('messaging telegram status copy', () => {
   it('formats stage messages without prices', () => {
     expect(formatMessagingStatusTelegram({ orderNo: 'SO1', stage: 'preparing' })).toContain('being prepared')
-    expect(formatMessagingStatusTelegram({ orderNo: 'SO1', stage: 'ready_to_ship' })).toContain('reserved')
+    expect(formatMessagingStatusTelegram({ orderNo: 'SO1', stage: 'ready_to_ship' })).toContain('ready for shipment')
     const shipped = formatMessagingStatusTelegram({
       orderNo: 'SO1',
       stage: 'shipped',

@@ -28,17 +28,17 @@ const checkBase: TelegramPasteCheckResult = {
 }
 
 describe('Telegram distributor-facing copy', () => {
-  it('hides price on check and uses submit wording', () => {
+  it('hides price on check and uses confirm wording', () => {
     const text = formatTelegramCheckReply(checkBase)
     expect(text).toContain('Order summary')
     expect(text).toContain('Total qty: 200')
     expect(text).toContain('/submit')
+    expect(text).toContain('reserved when you confirm')
     expect(text).not.toContain('RM ')
-    expect(text).not.toContain('Est. RM')
     expect(text).not.toMatch(/\bprice\b/i)
   })
 
-  it('hides price on submit reply and does not claim reservation', () => {
+  it('hides price on confirm reply and claims reservation', () => {
     const result: TelegramConfirmResult = {
       orderNo: 'SO26000107',
       orderId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
@@ -49,28 +49,22 @@ describe('Telegram distributor-facing copy', () => {
       warehouseName: 'Serapod Warehouse Balakong',
     }
     const text = formatTelegramConfirmReply(result)
-    expect(text).toContain('Order submitted')
+    expect(text).toContain('Order confirmed')
     expect(text).toContain('SO26000107')
-    expect(text).toContain('Stock is not reserved yet')
-    expect(text).not.toContain('Order confirmed')
+    expect(text).toContain('Stock has been reserved')
+    expect(text).toContain('warehouse has been notified')
     expect(text).not.toContain('RM ')
-    expect(text).not.toContain('Est. RM')
     expect(text).not.toMatch(/\bprice\b/i)
   })
 })
 
-describe('messaging submit-without-allocate migration', () => {
-  it('adds submit_d2h_order and messaging-safe approve branch without removing classic fulfill', () => {
+describe('legacy submit migration reference', () => {
+  it('documents original submit_d2h_order migration superseded by spec alignment', () => {
     const migration = readFileSync(
       path.resolve(process.cwd(), '../supabase/migrations/20260810160000_messaging_submit_without_allocate.sql'),
       'utf8',
     )
     expect(migration).toContain('CREATE OR REPLACE FUNCTION public.submit_d2h_order')
-    expect(migration).toContain('does NOT allocate')
     expect(migration).toContain('messaging_warehouse_inbox')
-    expect(migration).toContain("v.source_channel IN ('telegram', 'whatsapp')")
-    expect(migration).toContain('PERFORM public.fulfill_order_inventory(p_order_id)')
-    expect(migration).toContain('submit_and_allocate_d2h_order')
   })
 })
-

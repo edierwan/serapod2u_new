@@ -9,6 +9,9 @@ import {
 } from '@/lib/serapp/order-context'
 import { resolveTelegramDistributorContext } from '@/lib/telegram/order-context'
 import { TELEGRAM_ORDER_SOURCE_CHANNEL } from '@/lib/telegram/source-channel'
+import {
+  notifyMessagingOrderConfirmed,
+} from '@/lib/messaging/notifications'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 
 export interface TelegramPasteCheckResult {
@@ -137,6 +140,18 @@ export async function runTelegramConfirmOrder(
     )
   }
 
+  const totalQuantity = items.reduce((sum, item) => sum + item.qty, 0)
+  await notifyMessagingOrderConfirmed({
+    hqOrgId: ctx.hqId,
+    buyerOrgId: ctx.distributorId,
+    createdByUserId: ctx.userId,
+    orderId: order.id,
+    orderNo: order.display_doc_no || order.order_no || order.id.slice(0, 8),
+    distributorName: ctx.distributorName,
+    lineCount: items.length,
+    totalQuantity,
+  })
+
   return {
     orderNo: order.display_doc_no || order.order_no || null,
     orderId: order.id,
@@ -150,7 +165,7 @@ export async function runTelegramConfirmOrder(
 
 /**
  * Distributor-facing Telegram copy only.
- * Prices stay hidden. Submit does not allocate (HQ approve → warehouse inbox next).
+ * Prices stay hidden. Confirm reserves stock and notifies warehouse (spec §7–§12).
  */
 export function formatTelegramCheckReply(result: TelegramPasteCheckResult): string {
   const lines = [
@@ -159,8 +174,8 @@ export function formatTelegramCheckReply(result: TelegramPasteCheckResult): stri
     `Lines: ${result.lineCount} · Total qty: ${result.totalQuantity}`,
     `Warehouse: ${result.warehouseName}`,
     '',
-    'Reply /submit (or /confirm) to submit this order.',
-    'Stock is checked now; it is reserved only after HQ approval and warehouse preparation.',
+    'Reply /submit (or /confirm) to confirm this order.',
+    'Stock is checked now; it will be reserved when you confirm.',
     '/cancel clears this draft.',
   ]
   return lines.join('\n')
@@ -168,12 +183,13 @@ export function formatTelegramCheckReply(result: TelegramPasteCheckResult): stri
 
 export function formatTelegramConfirmReply(result: TelegramConfirmResult): string {
   return [
-    `<b>Order submitted</b>`,
+    `<b>Order confirmed</b>`,
     `No: <b>${result.orderNo || result.orderId.slice(0, 8)}</b>`,
     `Lines: ${result.confirmedLines}`,
     `Warehouse: ${result.warehouseName}`,
     '',
-    'HQ will review and approve. Stock is not reserved yet.',
-    'You will be notified when the warehouse starts preparing.',
+    'Your warehouse has been notified.',
+    'Stock has been reserved for your order.',
+    'You will be notified when preparation starts.',
   ].join('\n')
 }

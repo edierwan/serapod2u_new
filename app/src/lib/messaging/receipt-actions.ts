@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTelegramDistributorContext } from '@/lib/telegram/order-context'
 import { getTelegramLinkByTelegramUserId } from '@/lib/telegram/link-service'
+import { notifyAfterMessagingInvoice } from '@/lib/messaging/invoice-notify'
 
 export interface PendingReceiptOrder {
   orderId: string
@@ -116,6 +117,8 @@ export async function runTelegramAcknowledgeReceipt(
   if (error || !data) {
     throw Object.assign(new Error(error?.message || 'Receipt acknowledgement failed.'), { status: 409 })
   }
+
+  await notifyAfterMessagingInvoice(orderId, data)
 
   return {
     orderNo: data.order_no || orderNo,

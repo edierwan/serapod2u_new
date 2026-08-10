@@ -55,5 +55,6 @@ describe('messaging deep links', () => {
     })
     expect(text).toContain('/report_difference')
     expect(text).not.toContain('RM')
+    expect(formatMessagingStatusTelegram({ orderNo: 'SO1', stage: 'ready_to_ship' })).not.toContain('reserved')
   })
 })

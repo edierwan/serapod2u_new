@@ -185,7 +185,7 @@ export function MessagingWarehouseInboxPanel() {
             Warehouse incoming · Messaging
           </p>
           <p className="mt-1 text-sm text-[var(--sera-ink)]">
-            Prepare → optional short qty → Ready (reserve) → Ship. Invoice after distributor receipt.
+            Prepare → optional short qty → Ready (lock qty) → Ship. Invoice after distributor receipt.
           </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void load()}>

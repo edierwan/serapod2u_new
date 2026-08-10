@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { notifyAfterMessagingInvoice } from '@/lib/messaging/invoice-notify'
 
 /** HQ resolves messaging discrepancy and issues invoice. */
 export async function POST(request: Request) {
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message || 'Resolve failed.' }, { status: 409 })
     }
+
+    await notifyAfterMessagingInvoice(orderId, data)
 
     return NextResponse.json({ ok: true, result: data })
   } catch (error) {
