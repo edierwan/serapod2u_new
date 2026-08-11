@@ -8,6 +8,7 @@ import {
 import { createShopOrganization, findSimilarShopSuggestions } from '@/lib/shop-requests/create-shop'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
 import { upsertUserProgramMembership } from '@/lib/server/loyalty-memberships'
+import { getShopOrgReassignmentBlockReason } from '@/lib/auth/employment-org-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,17 @@ export async function POST(request: NextRequest) {
 
         const { data: userRow } = await adminClient
             .from('users')
-            .select('id, organization_id, full_name, phone, email')
+            .select(`
+                id,
+                organization_id,
+                full_name,
+                phone,
+                email,
+                role_code,
+                account_scope,
+                roles(role_level),
+                organizations!fk_users_organization(org_type_code)
+            `)
             .eq('id', user.id)
             .single()
 
@@ -99,7 +110,26 @@ export async function POST(request: NextRequest) {
         }
 
         // --- Link user to the new shop ---
-        if (rawBody.linkUser !== false) {
+        // Default is NO link. Explicit linkUser=true only, and never for portal employment accounts.
+        // (Previous default linkUser!==false could move HQ Admin onto a SHOP and hide admin menus.)
+        const shouldLinkUser = rawBody.linkUser === true
+        if (shouldLinkUser) {
+            const linkBlockReason = getShopOrgReassignmentBlockReason({
+                currentOrgTypeCode: (userRow.organizations as any)?.org_type_code || null,
+                currentRoleCode: userRow.role_code,
+                currentRoleLevel: (userRow.roles as any)?.role_level ?? null,
+                currentAccountScope: userRow.account_scope,
+                nextOrgTypeCode: 'SHOP',
+            })
+
+            if (linkBlockReason) {
+                return NextResponse.json({
+                    success: true,
+                    organization: createdOrganization,
+                    linkError: linkBlockReason,
+                })
+            }
+
             const { error: linkError } = await adminClient
                 .from('users')
                 .update({
