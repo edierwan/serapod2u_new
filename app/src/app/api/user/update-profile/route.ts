@@ -5,6 +5,7 @@ import { normalizePhone, validatePhoneNumber } from '@/lib/utils'
 import { hasLinkedShopProfile } from '@/lib/engagement/point-claim-settings'
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { buildPersonalBankUpdateData, validateMsiaBankAccount } from '@/lib/engagement/personal-bank-details'
+import { getShopOrgReassignmentBlockReason } from '@/lib/auth/employment-org-guard'
 
 /**
  * POST /api/user/update-profile
@@ -251,6 +252,39 @@ export async function POST(request: NextRequest) {
         if (!orgData.is_active || orgData.org_type_code !== 'SHOP') {
           return NextResponse.json(
             { success: false, error: 'Selected organization must be an active shop' },
+            { status: 400 }
+          )
+        }
+
+        const { data: currentUserRow, error: currentUserError } = await adminClient
+          .from('users')
+          .select(`
+            role_code,
+            account_scope,
+            roles(role_level),
+            organizations!fk_users_organization(org_type_code)
+          `)
+          .eq('id', userId)
+          .single()
+
+        if (currentUserError) {
+          return NextResponse.json(
+            { success: false, error: 'Failed to resolve current profile state' },
+            { status: 500 }
+          )
+        }
+
+        const shopLinkBlockReason = getShopOrgReassignmentBlockReason({
+          currentOrgTypeCode: (currentUserRow?.organizations as any)?.org_type_code || null,
+          currentRoleCode: currentUserRow?.role_code,
+          currentRoleLevel: (currentUserRow?.roles as any)?.role_level ?? null,
+          currentAccountScope: currentUserRow?.account_scope,
+          nextOrgTypeCode: 'SHOP',
+        })
+
+        if (shopLinkBlockReason) {
+          return NextResponse.json(
+            { success: false, error: shopLinkBlockReason },
             { status: 400 }
           )
         }

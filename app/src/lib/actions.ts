@@ -452,6 +452,9 @@ export async function updateUserWithAuth(userId: string, userData: {
         .select(`
           organization_id,
           referral_phone,
+          role_code,
+          account_scope,
+          roles(role_level),
           organizations!fk_users_organization(org_type_code)
         `)
         .eq('id', userId)
@@ -482,6 +485,22 @@ export async function updateUserWithAuth(userId: string, userData: {
         }
 
         nextOrganizationTypeCode = organizationData?.org_type_code || null
+
+        // Prevent accidental HQ Admin → Shop move when saving own profile.
+        // Intentional User Management transfers (edit_users by another admin) remain allowed.
+        if (isSelfUpdate && nextOrganizationTypeCode === 'SHOP') {
+          const { getShopOrgReassignmentBlockReason } = await import('@/lib/auth/employment-org-guard')
+          const blockReason = getShopOrgReassignmentBlockReason({
+            currentOrgTypeCode: (existingUser?.organizations as any)?.org_type_code || null,
+            currentRoleCode: existingUser?.role_code,
+            currentRoleLevel: (existingUser?.roles as any)?.role_level ?? null,
+            currentAccountScope: existingUser?.account_scope,
+            nextOrgTypeCode: 'SHOP',
+          })
+          if (blockReason) {
+            return { success: false, error: blockReason }
+          }
+        }
       } else if (!nextOrganizationId) {
         nextOrganizationTypeCode = null
       }
