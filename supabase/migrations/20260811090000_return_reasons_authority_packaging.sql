@@ -1,13 +1,13 @@
 -- Return Product: add two new return reasons (additive, idempotent).
--- Requested: Authority Seizure, Packaging Change.
+-- Requested: Authority Change (KKM), Packaging Change.
 -- Existing reasons and return workflow logic are unchanged.
 
 BEGIN;
 
 INSERT INTO public.return_reasons (code, label, sort_order, is_active)
 VALUES
-  ('authority_seizure', 'Authority Seizure', 70, true),
-  ('packaging_change',  'Packaging Change',  80, true)
+  ('authority_seizure', 'Authority Change (KKM)', 70, true),
+  ('packaging_change',  'Packaging Change',       80, true)
 ON CONFLICT (code) DO UPDATE
 SET
   label = EXCLUDED.label,

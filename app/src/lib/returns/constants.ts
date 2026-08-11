@@ -132,7 +132,7 @@ export const DEFAULT_RETURN_REASONS = [
     { code: 'expired', label: 'Expired' },
     { code: 'leaking', label: 'Leaking' },
     { code: 'customer_complaint', label: 'Customer Complaint' },
-    { code: 'authority_seizure', label: 'Authority Seizure' },
+    { code: 'authority_seizure', label: 'Authority Change (KKM)' },
     { code: 'packaging_change', label: 'Packaging Change' },
     { code: 'other', label: 'Other' },
 ]
