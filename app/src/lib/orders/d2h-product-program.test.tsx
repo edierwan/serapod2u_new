@@ -40,9 +40,9 @@ describe('D2H Standard Order catalog category policy', () => {
   ]
   const availability = new Map([['vape-variant', 5], ['chair-variant', 3]])
 
-  it('keeps only active vape-category products for Cellera distributors', () => {
+  it('keeps all active products regardless of vape category for Cellera distributors', () => {
     const catalog = filterStandardOrderCatalogRows(rows, availability, new Set(), true)
-    expect(catalog.map(variant => variant.id)).toEqual(['vape-variant'])
+    expect(catalog.map(variant => variant.id)).toEqual(['vape-variant', 'chair-variant'])
     expect(catalog[0].available_qty).toBe(5)
   })
 

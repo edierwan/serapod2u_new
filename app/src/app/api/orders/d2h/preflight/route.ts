@@ -144,27 +144,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The selected distributor is not available in this HQ scope.' }, { status: 403 })
     }
 
-    const restrictedToVape = await distributorHasActiveCelleraMembership(
-      createAdminClient(),
-      body.distributorId,
-      hqOrganizationId,
-    )
-    const categoryRelation = restrictedToVape
-      ? 'product_categories!inner(is_active, is_vape)'
-      : 'product_categories(is_active, is_vape)'
-    // The relation shape is conditional because non-Cellera distributors must
-    // retain products without a category, while Cellera requires an inner join.
     let variantsQuery = (supabase as any)
       .from('product_variants')
-      .select(`id, distributor_price, is_active, products!inner(is_active, ${categoryRelation})`)
+      .select(`id, distributor_price, is_active, products!inner(is_active, product_categories(id, is_active, is_vape))`)
       .in('id', variantIds)
       .eq('is_active', true)
       .eq('products.is_active', true)
-    if (restrictedToVape) {
-      variantsQuery = variantsQuery
-        .eq('products.product_categories.is_vape', true)
-        .eq('products.product_categories.is_active', true)
-    }
 
     const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
       variantsQuery,

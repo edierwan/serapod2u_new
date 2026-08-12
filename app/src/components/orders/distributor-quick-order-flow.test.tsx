@@ -49,16 +49,15 @@ describe('Distributor D2H Quick Order integration', () => {
     expect(catalogResolver).toContain('This product is not available in the distributor Quick Order catalog.')
   })
 
-  it('restricts Standard Order to active Cellera distributors using category relationships', () => {
+  it('resolves Standard Order catalog for Cellera distributors without restricting to vape-only', () => {
     expect(source).toContain("fetch('/api/orders/d2h/standard-order-catalog'")
     expect(programResolver).toContain(".from('loyalty_program_organization_memberships')")
     expect(programResolver).toContain(".from('loyalty_programs')")
     expect(programResolver).toContain(".eq('status', 'active')")
     expect(programResolver).toContain("CELLERA_PROGRAM_CODE = 'cellera'")
-    expect(standardCatalogResolver).toContain('if (restrictedToVape)')
-    expect(standardCatalogResolver).toContain(".eq('products.product_categories.is_vape', true)")
-    expect(preflight).toContain('distributorHasActiveCelleraMembership(')
-    expect(preflight).toContain(".eq('products.product_categories.is_vape', true)")
+    expect(standardCatalogResolver).toContain('restrictedToVape')
+    expect(standardCatalogResolver).toContain('product_categories!inner')
+    expect(preflight).toContain('product_categories(id, is_active, is_vape)')
   })
 
   it('provides compact filtering, keyboard quantity entry, and reviewed paste handling', () => {

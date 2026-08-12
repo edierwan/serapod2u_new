@@ -12,12 +12,10 @@ export function filterStandardOrderCatalogRows(
   rows: any[],
   availableByVariant: Map<string, number>,
   unclassifiedVariantIds: Set<string>,
-  restrictedToVape: boolean,
+  _restrictedToVape: boolean,
 ): QuickOrderCatalogVariant[] {
   return rows.flatMap((row: any) => {
     const product = asSingle<any>(row.products)
-    const category = asSingle<any>(product?.product_categories)
-    if (restrictedToVape && (category?.is_vape !== true || category?.is_active !== true)) return []
     const group = asSingle<any>(product?.product_groups)
     return [{
       id: row.id,
@@ -119,12 +117,6 @@ export async function resolveStandardOrderCatalog(
     `)
     .eq('is_active', true)
     .eq('products.is_active', true)
-
-  if (restrictedToVape) {
-    variantsQuery = variantsQuery
-      .eq('products.product_categories.is_vape', true)
-      .eq('products.product_categories.is_active', true)
-  }
 
   const { data: rows, error: variantsError } = await variantsQuery.order('variant_name')
   if (variantsError) throw new Error('Unable to load the Standard Order catalog.')
