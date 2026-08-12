@@ -1,4 +1,10 @@
-import { distributorHasActiveCelleraMembership } from '@/lib/orders/d2h-product-program'
+import {
+  applyCategoryFilters,
+  categoryRelationForRule,
+  isCategoryAllowed,
+  resolveDistributorCategoryRule,
+  type ProgramCategoryRule,
+} from '@/lib/orders/d2h-program-category-policy'
 import {
   resolveSellableAvailability,
   resolveUnclassifiedVariantIds,
@@ -8,16 +14,22 @@ import { resolveSellerHqId } from '@/lib/orders/hq-fulfillment-warehouses'
 
 const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArray(value) ? (value[0] || null) : (value || null)
 
+/**
+ * Keeps rows whose product category is allowed by the distributor's program
+ * rule. Group and subgroup are display-only here: every group/subgroup under an
+ * allowed category is kept, so a new group under Vape needs no code change.
+ */
 export function filterStandardOrderCatalogRows(
   rows: any[],
   availableByVariant: Map<string, number>,
   unclassifiedVariantIds: Set<string>,
-  restrictedToVape: boolean,
+  categoryRule: ProgramCategoryRule | null,
 ): QuickOrderCatalogVariant[] {
   return rows.flatMap((row: any) => {
     const product = asSingle<any>(row.products)
     const category = asSingle<any>(product?.product_categories)
-    if (restrictedToVape && (category?.is_vape !== true || category?.is_active !== true)) return []
+    if (!isCategoryAllowed(categoryRule, category)) return []
+
     const group = asSingle<any>(product?.product_groups)
     return [{
       id: row.id,
@@ -48,6 +60,7 @@ export async function resolveStandardOrderCatalog(
   inventoryOrganizationId: string
   fulfillmentWarehouseName: string | null
   restrictedToVape: boolean
+  programCategoryKey: string | null
 }> {
   const { data: requesterOrganization, error: requesterError } = await supabase
     .from('organizations')
@@ -88,47 +101,39 @@ export async function resolveStandardOrderCatalog(
     throw new Error('The selected fulfillment warehouse is not an active warehouse under this HQ.')
   }
 
-  const restrictedToVape = await distributorHasActiveCelleraMembership(
-    admin,
-    distributorId,
-    hqOrganizationId,
-  )
+  const categoryRule = await resolveDistributorCategoryRule(admin, distributorId, hqOrganizationId)
 
-  const categoryRelation = restrictedToVape
-    ? 'product_categories!inner (id, is_active, is_vape)'
-    : 'product_categories (id, is_active, is_vape)'
-  let variantsQuery = supabase
-    .from('product_variants')
-    .select(`
-      id,
-      product_id,
-      variant_name,
-      alternative_name,
-      attributes,
-      barcode,
-      manufacturer_sku,
-      distributor_price,
-      is_active,
-      products!inner (
-        product_name,
-        product_code,
+  const variantsQuery = applyCategoryFilters(
+    supabase
+      .from('product_variants')
+      .select(`
+        id,
+        product_id,
+        variant_name,
+        alternative_name,
+        attributes,
+        barcode,
+        manufacturer_sku,
+        distributor_price,
         is_active,
-        ${categoryRelation},
-        product_groups (group_name)
-      )
-    `)
-    .eq('is_active', true)
-    .eq('products.is_active', true)
-
-  if (restrictedToVape) {
-    variantsQuery = variantsQuery
-      .eq('products.product_categories.is_vape', true)
-      .eq('products.product_categories.is_active', true)
-  }
+        products!inner (
+          product_name,
+          product_code,
+          is_active,
+          category_id,
+          ${categoryRelationForRule(categoryRule)},
+          product_groups (group_name)
+        )
+      `)
+      .eq('is_active', true)
+      .eq('products.is_active', true),
+    categoryRule,
+  )
 
   const { data: rows, error: variantsError } = await variantsQuery.order('variant_name')
   if (variantsError) throw new Error('Unable to load the Standard Order catalog.')
 
+  const restrictedToVape = categoryRule?.categoryKey === 'vape'
   const variantIds = (rows || []).map((row: any) => row.id)
   if (variantIds.length === 0) {
     return {
@@ -136,6 +141,7 @@ export async function resolveStandardOrderCatalog(
       inventoryOrganizationId: fulfillmentWarehouse.id,
       fulfillmentWarehouseName: fulfillmentWarehouse.org_name,
       restrictedToVape,
+      programCategoryKey: categoryRule?.categoryKey ?? null,
     }
   }
 
@@ -160,7 +166,7 @@ export async function resolveStandardOrderCatalog(
     rows || [],
     availableByVariant,
     unclassifiedVariantIds,
-    restrictedToVape,
+    categoryRule,
   )
 
   return {
@@ -168,5 +174,6 @@ export async function resolveStandardOrderCatalog(
     inventoryOrganizationId: fulfillmentWarehouse.id,
     fulfillmentWarehouseName: fulfillmentWarehouse.org_name,
     restrictedToVape,
+    programCategoryKey: categoryRule?.categoryKey ?? null,
   }
 }

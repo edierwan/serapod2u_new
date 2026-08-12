@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { distributorHasActiveCelleraMembership } from '@/lib/orders/d2h-product-program'
+import {
+  outsideProgramCategoryMessage,
+  resolveDistributorCategoryRule,
+  variantIdsOutsideProgramCategory,
+} from '@/lib/orders/d2h-program-category-policy'
 import {
   resolveQuickOrderCatalog,
   resolveSellableAvailability,
@@ -144,27 +148,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The selected distributor is not available in this HQ scope.' }, { status: 403 })
     }
 
-    const restrictedToVape = await distributorHasActiveCelleraMembership(
+    // Same program -> category rule the Standard Order catalog uses. The
+    // category is validated in memory rather than joined away so an
+    // out-of-category variant reports why it was rejected instead of looking
+    // like it no longer exists.
+    const categoryRule = await resolveDistributorCategoryRule(
       createAdminClient(),
       body.distributorId,
       hqOrganizationId,
     )
-    const categoryRelation = restrictedToVape
-      ? 'product_categories!inner(is_active, is_vape)'
-      : 'product_categories(is_active, is_vape)'
-    // The relation shape is conditional because non-Cellera distributors must
-    // retain products without a category, while Cellera requires an inner join.
-    let variantsQuery = (supabase as any)
+
+    const variantsQuery = (supabase as any)
       .from('product_variants')
-      .select(`id, distributor_price, is_active, products!inner(is_active, ${categoryRelation})`)
+      .select(`id, distributor_price, is_active, products!inner(is_active, category_id, product_categories(id, is_active, is_vape))`)
       .in('id', variantIds)
       .eq('is_active', true)
       .eq('products.is_active', true)
-    if (restrictedToVape) {
-      variantsQuery = variantsQuery
-        .eq('products.product_categories.is_vape', true)
-        .eq('products.product_categories.is_active', true)
-    }
 
     const [{ data: variants, error: variantsError }, { data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
       variantsQuery,
@@ -186,6 +185,10 @@ export async function POST(request: Request) {
     }
     if ((variants || []).length !== variantIds.length) {
       return NextResponse.json({ error: 'One or more variants are inactive, unauthorized, or no longer available.' }, { status: 409 })
+    }
+
+    if (variantIdsOutsideProgramCategory(variants || [], categoryRule).length > 0) {
+      return NextResponse.json({ error: outsideProgramCategoryMessage(categoryRule!) }, { status: 409 })
     }
 
     const variantsById = new Map<string, { id: string; distributor_price: number | null }>(
