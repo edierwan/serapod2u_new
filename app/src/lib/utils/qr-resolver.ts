@@ -25,6 +25,10 @@ export interface QRCodeRecord {
   product_id?: string
   variant_id?: string
   status?: string
+  is_buffer?: boolean | null
+  master_code_id?: string | null
+  sequence_number?: number | null
+  is_lucky_draw_entered?: boolean | null
 }
 
 export interface PointsBalanceContext {
@@ -106,7 +110,7 @@ export async function resolveQrCodeRecord(
   // Step 1: Try exact match with full code (including hash if present)
   const { data: fullCodeMatch, error: fullCodeError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered, is_buffer, master_code_id, sequence_number')
     .eq('code', qr_code)
     .maybeSingle()
 
@@ -133,7 +137,7 @@ export async function resolveQrCodeRecord(
 
   const { data: baseCodeMatch, error: baseCodeError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered, is_buffer, master_code_id, sequence_number')
     .eq('code', baseCode)
     .maybeSingle()
 
@@ -154,7 +158,7 @@ export async function resolveQrCodeRecord(
 
   const { data: patternMatch, error: patternError } = await supabase
     .from('qr_codes')
-    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered')
+    .select('id, code, company_id, order_id, product_id, variant_id, status, is_lucky_draw_entered, is_buffer, master_code_id, sequence_number')
     .like('code', `${qr_code}__`)
     .maybeSingle()
 

@@ -9,6 +9,7 @@ import { resolveCollectProfileCompletion } from '@/lib/engagement/profile-comple
 import { resolveProfileLinkValidation } from '@/lib/engagement/profile-link-validation'
 import { getConsumerCollectScanId, getPrimaryRoadtourProgressMission, recordRoadtourProductQrMilestoneProgress } from '@/lib/roadtour/milestone'
 import { reportScanIssue } from '@/lib/server/scan-issues/logger'
+import { getCollectPointsInactiveQrMessage, isQrEligibleForCollectPoints } from '@/lib/consumer/collect-points-qr-status'
 
 /**
  * POST /api/consumer/collect-points
@@ -249,23 +250,24 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ QR Code found:', qrCodeData.code)
 
-    // Only allow valid statuses - must be shipped/activated/verified to collect points
-    // Include 'redeemed' and 'scanned' for already-used codes that might still need points collection
-    const validStatuses = ['received_warehouse', 'warehouse_packed', 'shipped_distributor', 'activated', 'verified', 'redeemed', 'scanned']
-    if (!qrCodeData.status || !validStatuses.includes(qrCodeData.status)) {
-      console.log('❌ Invalid QR status:', qrCodeData.status, '| Valid:', validStatuses)
-      const isBuffer = (qrCodeData as any).is_buffer === true && qrCodeData.status === 'buffer_available'
+    const isBufferFlag = qrCodeData.is_buffer === true
+    if (!isQrEligibleForCollectPoints({ status: qrCodeData.status, isBuffer: isBufferFlag })) {
+      console.log('❌ Invalid QR status:', qrCodeData.status, '| is_buffer:', isBufferFlag)
+      const userFacingMessage = getCollectPointsInactiveQrMessage({
+        isBuffer: isBufferFlag,
+        status: qrCodeData.status,
+      })
       reportScanIssue(supabaseAdmin, {
         qrCodeText: qr_code,
         qrCodeId: qrCodeData.id,
         orderId: qrCodeData.order_id,
-        productId: (qrCodeData as any).product_id || null,
-        masterCodeId: (qrCodeData as any).master_code_id || null,
-        issueType: isBuffer ? 'buffer_unpromoted' : 'not_shipped_yet',
+        productId: qrCodeData.product_id || null,
+        masterCodeId: qrCodeData.master_code_id || null,
+        issueType: isBufferFlag ? 'buffer_unpromoted' : 'not_shipped_yet',
         errorCode: qrCodeData.status || 'unknown',
-        errorMessage: `QR status "${qrCodeData.status}" is not in valid statuses ${JSON.stringify(validStatuses)}`,
-        userFacingMessage: 'QR code is not active or has not been shipped yet',
-        priority: isBuffer ? 'high' : 'medium',
+        errorMessage: `QR status "${qrCodeData.status}" is not eligible for collect points (is_buffer=${isBufferFlag})`,
+        userFacingMessage,
+        priority: isBufferFlag ? 'high' : 'medium',
         sourcePage: '/collect-points',
         ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
         userAgent: request.headers.get('user-agent') || null,
@@ -273,10 +275,10 @@ export async function POST(request: NextRequest) {
         consumerPhoneSnapshot: shopUser?.phone || null,
         consumerEmailSnapshot: shopUser?.email || null,
         consumerNameSnapshot: shopUser?.full_name || null,
-        metadata: { is_buffer: (qrCodeData as any).is_buffer === true, sequence_number: (qrCodeData as any).sequence_number },
+        metadata: { is_buffer: isBufferFlag, sequence_number: qrCodeData.sequence_number },
       }).catch(() => { })
       return NextResponse.json(
-        { success: false, error: 'QR code is not active or has not been shipped yet' },
+        { success: false, error: userFacingMessage },
         { status: 400 }
       )
     }

@@ -82,3 +82,72 @@ export async function markWarrantyBufferReceived(
 
   return marked
 }
+
+/**
+ * Promote Mode C replacement buffers (`buffer_used`) to `received_warehouse`
+ * once their case has been received.
+ *
+ * Mode C marks spares as `buffer_used` and links them to a case, but warehouse
+ * receive historically only updated `is_buffer = false` codes — leaving
+ * replacements unscannable for Collect Points.
+ *
+ * Safe / scoped:
+ * - only `is_buffer = true` + `status = buffer_used`
+ * - only codes for the given batch (and optional case_number)
+ * - does not touch unused `buffer_available` spares
+ */
+export async function promoteModeCBufferUsedForReceivedCases(
+  supabase: any,
+  batchId: string,
+  options?: {
+    caseNumber?: number | null
+    warehouseOrgId?: string | null
+    receivedAt?: string
+    receivedBy?: string | null
+  },
+): Promise<number> {
+  if (!batchId) return 0
+
+  let query = supabase
+    .from('qr_codes')
+    .select('id')
+    .eq('batch_id', batchId)
+    .eq('is_buffer', true)
+    .eq('status', 'buffer_used')
+
+  if (options?.caseNumber !== undefined && options?.caseNumber !== null) {
+    query = query.eq('case_number', options.caseNumber)
+  }
+
+  const { data: bufferCodes, error } = await query.limit(100000)
+  if (error || !bufferCodes?.length) return 0
+
+  const ids = bufferCodes.map((row: { id: string }) => row.id)
+  const receivedAt = options?.receivedAt || new Date().toISOString()
+  const updatePayload: Record<string, unknown> = {
+    status: 'received_warehouse',
+    updated_at: receivedAt,
+  }
+  if (options?.warehouseOrgId) {
+    updatePayload.current_location_org_id = options.warehouseOrgId
+  }
+  if (options?.receivedBy) {
+    updatePayload.last_scanned_by = options.receivedBy
+    updatePayload.last_scanned_at = receivedAt
+  }
+
+  let promoted = 0
+  for (let i = 0; i < ids.length; i += 50) {
+    const slice = ids.slice(i, i + 50)
+    const { error: updateError } = await supabase
+      .from('qr_codes')
+      .update(updatePayload)
+      .in('id', slice)
+      .eq('status', 'buffer_used')
+      .eq('is_buffer', true)
+
+    if (!updateError) promoted += slice.length
+  }
+
+  return promoted
+}
