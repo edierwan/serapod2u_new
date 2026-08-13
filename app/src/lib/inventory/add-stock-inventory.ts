@@ -38,6 +38,9 @@ export interface ManualStockCatalogRow {
   productCode: string
   productName: string
   variantName: string
+  variantProductCode: string
+  alternativeName: string
+  baseCost: number | null
   flavour: string
   productLine: string
   manufacturerId: string | null
@@ -208,6 +211,8 @@ export function filterManualStockCatalogRows(
       row.variantName,
       row.productName,
       row.productCode,
+      row.variantProductCode,
+      row.alternativeName,
       row.stockSku,
       row.configLabel,
       row.configCode,
@@ -409,6 +414,11 @@ export function mapCatalogRowFromQuery(item: any): ManualStockCatalogRow | null 
     productCode: product.product_code || '',
     productName: product.product_name || '',
     variantName: variant.variant_name || '',
+    variantProductCode: variant.product_code || '',
+    alternativeName: variant.alternative_name || '',
+    baseCost: variant.base_cost === null || variant.base_cost === undefined
+      ? null
+      : Number(variant.base_cost),
     flavour: extractFlavour(variant.variant_name || ''),
     productLine: group?.group_name || 'Ungrouped',
     manufacturerId: product.manufacturer_id || null,
