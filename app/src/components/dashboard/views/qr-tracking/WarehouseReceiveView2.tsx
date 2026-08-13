@@ -15,6 +15,7 @@ import {
   Search, Download, ChevronDown, ChevronRight, MoreVertical, Boxes, PackageCheck, PackagePlus, PackageMinus, ScrollText,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { formatStockStrength } from '@/lib/inventory/stock-config-unit-label'
 import { useToast } from '@/components/ui/use-toast'
 
 interface UserProfile {
@@ -648,7 +649,7 @@ export default function WarehouseReceiveView2({ userProfile }: WarehouseReceiveV
                               <div className="font-medium text-gray-900">{it.product_name}</div>
                               {it.variant_name && <div className="text-xs text-gray-500">[{it.variant_name}]</div>}
                               {it.destination_stock_config ? <Badge variant="outline" className="mt-1 border-blue-200 bg-blue-50 text-blue-700">
-                                Inventory destination: {it.destination_stock_config.volume_ml ? `${it.destination_stock_config.volume_ml}ml · ${it.destination_stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'} · {it.destination_stock_config.stock_sku}
+                                Inventory destination: {it.destination_stock_config.volume_ml ? `${formatStockStrength(it.destination_stock_config.volume_ml)} · ${it.destination_stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'} · {it.destination_stock_config.stock_sku}
                               </Badge> : null}
                             </td>
                             <td className="py-3 px-2 text-right">{it.ordered_qty.toLocaleString()}</td>

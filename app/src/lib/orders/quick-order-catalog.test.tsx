@@ -121,6 +121,36 @@ describe('D2H Quick Order Vape catalog', () => {
     expect([...resolveUnclassifiedVariantIds(inventory, configurations)]).toEqual(['guava'])
   })
 
+  // Production regression: Strawberry Corn at Serapod Warehouse Balakong held
+  // 10,514 sellable units in 20NB plus a 73-unit residual in the phase_out
+  // UNCLASSIFIED configuration. The residual alone flagged the whole variant,
+  // so Quick Order and the paste review reported "Inventory Unclassified"
+  // against stock that View Inventory showed as healthy and orderable.
+  it('does not block a variant whose Legacy residual sits beside sellable stock', () => {
+    const configurations = [
+      { id: 'legacy', config_code: 'UNCLASSIFIED', volume_ml: null, packaging: null, status: 'phase_out', allow_so: true, requires_repacking_before_sale: false },
+      { id: '20nb', config_code: '20NB', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+    ]
+    const inventory = [
+      { variant_id: 'strawberry-corn', stock_config_id: '20nb', quantity_on_hand: 10514, quantity_available: 10514 },
+      { variant_id: 'strawberry-corn', stock_config_id: 'legacy', quantity_on_hand: 73, quantity_available: 73 },
+      { variant_id: 'stranded', stock_config_id: '20nb', quantity_on_hand: 0, quantity_available: 0 },
+      { variant_id: 'stranded', stock_config_id: 'legacy', quantity_on_hand: 500, quantity_available: 500 },
+    ]
+    const sellable = resolveSellableAvailability(inventory, configurations, false)
+
+    expect(sellable.get('strawberry-corn')).toBe(10514)
+    expect([...resolveUnclassifiedVariantIds(inventory, configurations, sellable)]).toEqual(['stranded'])
+
+    const catalog = filterQuickOrderCatalogRows(
+      [row('strawberry-corn', 'Cellera Hero', 'Cartridge')],
+      sellable,
+      resolveUnclassifiedVariantIds(inventory, configurations, sellable),
+    )
+    expect(catalog[0].inventory_classification).toBe('classified')
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'strawberry-corn', quantity: 50 }], catalog)).not.toThrow()
+  })
+
   it('uses one eligible configuration per line and never exposes old-box stock', () => {
     const inventory = [
       { variant_id: 'hero', stock_config_id: '20nb', quantity_available: 8 },

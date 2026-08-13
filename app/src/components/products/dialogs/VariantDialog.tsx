@@ -539,13 +539,13 @@ export default function VariantDialog({
                 <div className="flex items-start gap-2">
                   <RadioGroupItem value="new_standard" id="profile-new-standard" className="mt-1" />
                   <Label htmlFor="profile-new-standard" className="font-normal cursor-pointer">
-                    <span className="font-medium">New Standard Product</span> — 20ml New Box only (default)
+                    <span className="font-medium">New Standard Product</span> — 20 mg New Box only (default)
                   </Label>
                 </div>
                 <div className="flex items-start gap-2">
                   <RadioGroupItem value="transition" id="profile-transition" className="mt-1" />
                   <Label htmlFor="profile-transition" className="font-normal cursor-pointer">
-                    <span className="font-medium">Existing / Transition Product</span> — 20ml New Box, 50ml New Box, and 50ml Old Box
+                    <span className="font-medium">Existing / Transition Product</span> — 20 mg New Box, 50 mg New Box, and 50 mg Old Box
                   </Label>
                 </div>
               </RadioGroup>

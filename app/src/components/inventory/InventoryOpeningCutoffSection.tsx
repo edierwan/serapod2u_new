@@ -163,6 +163,7 @@ import {
   type TransactionsFilter,
   type TransactionsPolicy,
 } from '@/lib/inventory/opening-balance-transactions-policy'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface Props {
   userProfile: any
@@ -1875,7 +1876,7 @@ export default function InventoryOpeningCutoffSection({
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-900">{b.type}</p>
                       {id?.variantName && (
-                        <p className="text-xs text-slate-500">{id.variantName}{id.configLabel ? ` · ${id.configLabel}` : ''}</p>
+                        <p className="text-xs text-slate-500">{id.variantName}{id.configLabel ? ` · ${withStockStrengthUnit(id.configLabel)}` : ''}</p>
                       )}
                     </div>
                     <Badge className="bg-slate-100 text-slate-700">Step: {b.step}</Badge>
@@ -1956,7 +1957,7 @@ export default function InventoryOpeningCutoffSection({
               <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
                 <p className="font-semibold text-slate-800">
                   {resolveTarget.blocker.identity.variantName ?? 'Allocation'}
-                  {resolveTarget.blocker.identity.configLabel ? ` · ${resolveTarget.blocker.identity.configLabel}` : ''}
+                  {resolveTarget.blocker.identity.configLabel ? ` · ${withStockStrengthUnit(resolveTarget.blocker.identity.configLabel)}` : ''}
                 </p>
                 <p>
                   Allocated {resolveTarget.blocker.identity.allocatedQuantity ?? 0}
@@ -3529,7 +3530,7 @@ function AllocationBlockerCard({ blocker, highlighted, onOpenSource, onResolve }
               : (identity.variantName || 'Allocation')}
           </p>
           <p className="text-xs text-slate-500">
-            Configuration: {identity.configLabel || 'Unclassified (Pending Stock Take)'}
+            Configuration: {withStockStrengthUnit(identity.configLabel) || 'Unclassified (Pending Stock Take)'}
           </p>
         </div>
         <Badge className="bg-red-100 text-red-800">Requires Resolution</Badge>
@@ -3731,7 +3732,7 @@ function TransactionRow({
               <p className="font-semibold text-slate-700">Lines</p>
               {items.map((it, i) => (
                 <p key={it.item_id || i} className="text-slate-600">
-                  {(it.variant_name || 'Variant').trim()} · {(it.stock_configuration || 'Unclassified')} · qty {Number(it.quantity || 0).toLocaleString()}
+                  {(it.variant_name || 'Variant').trim()} · {withStockStrengthUnit(it.stock_configuration) || 'Unclassified'} · qty {Number(it.quantity || 0).toLocaleString()}
                 </p>
               ))}
             </div>

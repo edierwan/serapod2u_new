@@ -401,7 +401,7 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
             Repack Stock
           </h1>
           <p className="text-muted-foreground">
-            Reclassify 50ml Old Box or 50ml New Box into 20ml New Box at a 1:1 unit ratio. This operation changes the recorded box configuration, not measured liquid contents.
+            Reclassify 50 mg Old Box or 50 mg New Box into 20 mg New Box at a 1:1 unit ratio. This operation changes the recorded box configuration, not measured liquid contents.
           </p>
         </div>
         <Button
@@ -452,7 +452,7 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
           <CardHeader>
             <CardTitle>Stock eligible for reclassification</CardTitle>
             <CardDescription>
-              50ml Old Box and 50ml New Box balances are listed separately when unallocated available stock is greater than zero.
+              50 mg Old Box and 50 mg New Box balances are listed separately when unallocated available stock is greater than zero.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -461,7 +461,7 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
             ) : rows.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
                 <AlertCircle className="h-4 w-4" />
-                No eligible 50ml stock at this warehouse.
+                No eligible 50 mg stock at this warehouse.
               </div>
             ) : (
               <div className="space-y-4">
@@ -483,7 +483,7 @@ export default function RepackStockView({ userProfile }: RepackStockViewProps) {
                         <TableHead>Product / Flavour</TableHead>
                         <TableHead>Source Configuration</TableHead>
                         <TableHead></TableHead>
-                        <TableHead>Destination (20ml New Box)</TableHead>
+                        <TableHead>Destination (20 mg New Box)</TableHead>
                         <TableHead className="text-right">Available</TableHead>
                         <TableHead></TableHead>
                       </TableRow>

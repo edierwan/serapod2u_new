@@ -57,6 +57,7 @@ import {
   downloadTransferNotePdf,
   transferNoteLinesFromItems,
 } from '@/lib/inventory/stock-transfer-note'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface Warehouse {
   id: string
@@ -875,7 +876,7 @@ export default function StockTransferView({ userProfile }: StockTransferViewProp
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
-                              {row.configLabel}
+                              {withStockStrengthUnit(row.configLabel)}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-mono text-xs">{row.stockSku}</TableCell>

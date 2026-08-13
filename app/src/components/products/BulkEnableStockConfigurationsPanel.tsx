@@ -63,7 +63,7 @@ export default function BulkEnableStockConfigurationsPanel({ canManage }: { canM
 
   const submit = async () => {
     if (selected.size === 0) return
-    if (!window.confirm(`Enable 20ml New Box, 50ml New Box, and 50ml Old Box for ${selected.size} selected flavour(s)? Existing balances stay in Legacy/Unclassified and are not moved.`)) return
+    if (!window.confirm(`Enable 20 mg New Box, 50 mg New Box, and 50 mg Old Box for ${selected.size} selected flavour(s)? Existing balances stay in Legacy/Unclassified and are not moved.`)) return
     setSubmitting(true)
     setError('')
     setResults(null)
@@ -89,7 +89,7 @@ export default function BulkEnableStockConfigurationsPanel({ canManage }: { canM
     <Card className="border-blue-200">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><Boxes className="h-4 w-4 text-blue-700" />Enable Stock Configurations for Existing Cellera Flavours</CardTitle>
-        <p className="text-xs text-slate-600">HQ Admin only. Creates exactly 20ml New Box, 50ml New Box, and 50ml Old Box for the flavours you select. Does not move or classify any existing balance.</p>
+        <p className="text-xs text-slate-600">HQ Admin only. Creates exactly 20 mg New Box, 50 mg New Box, and 50 mg Old Box for the flavours you select. Does not move or classify any existing balance.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         {loading ? <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Loading Cellera vape variants…</div> : null}

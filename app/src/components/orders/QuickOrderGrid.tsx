@@ -5,6 +5,7 @@ import { ClipboardPaste, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { variantAlternativeLabel, variantIdentityLabel } from '@/lib/inventory/variant-display-label'
 import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome } from './quick-order-matcher'
 
 interface QuickVariant {
@@ -12,6 +13,7 @@ interface QuickVariant {
   product_id: string
   product_name: string
   product_code: string
+  variant_product_code?: string | null
   group_name?: string
   variant_name: string
   alternative_name?: string | null
@@ -71,15 +73,29 @@ const isPasteResultBlocked = (
   return resolvePasteInventoryOutcome(result.quantity, selected) !== 'matched'
 }
 
-const displayVariantName = (variantName: string) => {
-  const bracketedFlavour = variantName.match(/\[\s*([^\[\]]+?)\s*\]/)
-  return bracketedFlavour ? `[ ${bracketedFlavour[1].trim()} ]` : variantName
+/**
+ * Master-data identity for a catalog row: the bracketed flavour plus the
+ * variant Product Code, with the distributor-facing Alternative Name beneath
+ * it — the same two lines View Inventory and Product Management > Variants
+ * show, so operators read one identity everywhere.
+ */
+const VariantIdentity = ({ variant, withProduct = false }: { variant: QuickVariant; withProduct?: boolean }) => {
+  const identity = variantIdentityLabel(variant.variant_name, variant.variant_product_code)
+  const alternative = variantAlternativeLabel(variant.alternative_name)
+  return (
+    <>
+      <span className="block font-medium text-gray-900">
+        {withProduct ? `${variant.product_name} - ${identity}` : identity}
+      </span>
+      {alternative && <span className="block text-xs font-normal text-[var(--sera-muted)]">{alternative}</span>}
+    </>
+  )
 }
 
 const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?: () => void }) => {
   const content = (
     <>
-      <span className="block font-semibold text-gray-900">{variant.product_name} - {displayVariantName(variant.variant_name)}</span>
+      <VariantIdentity variant={variant} withProduct />
       <span className="block text-[var(--sera-muted)]">{variant.available_qty.toLocaleString()} available</span>
     </>
   )
@@ -111,7 +127,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
     const needle = search.trim().toLowerCase()
     return variants.filter(variant => {
       const group = variant.group_name || 'Other'
-      const haystack = [variant.variant_name, variant.alternative_name, variant.product_name, variant.product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
+      const haystack = [variant.variant_name, variant.alternative_name, variant.product_name, variant.product_code, variant.variant_product_code, variant.manufacturer_sku].filter(Boolean).join(' ').toLowerCase()
       return (activeGroup === 'All' || group === activeGroup)
         && (!needle || haystack.includes(needle))
         && (!selectedOnly || (quantities.get(variant.id) || 0) > 0)
@@ -196,7 +212,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
               const unclassified = variant.inventory_classification === 'unclassified'
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
-                  <td className="px-3 py-2 font-medium">{variant.variant_name}</td>
+                  <td className="px-3 py-2"><VariantIdentity variant={variant} /></td>
                   <td className="px-3 py-2">{variant.product_name}</td>
                   <td className="px-3 py-2 tabular-nums">{variant.available_qty.toLocaleString()}</td>
                   <td className="px-3 py-2"><Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-28" aria-label={`Order quantity for ${variant.variant_name}`} /></td>

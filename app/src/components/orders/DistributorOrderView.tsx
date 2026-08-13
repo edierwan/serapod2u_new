@@ -54,6 +54,7 @@ interface ProductVariant {
   product_id: string
   product_name: string
   product_code: string
+  variant_product_code?: string | null
   group_name?: string
   variant_name: string
   alternative_name?: string | null

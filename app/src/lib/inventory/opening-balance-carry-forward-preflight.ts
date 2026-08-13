@@ -45,7 +45,7 @@ export interface CarryForwardLineEligibility {
 /** Keyed by `order_item_id`. A missing key means "not yet checked" (unknown). */
 export type CarryForwardEligibilityMap = Record<string, CarryForwardLineEligibility>
 
-export const CARRY_FORWARD_CONFIG_REQUIREMENT = '20ml New Box stock configuration'
+export const CARRY_FORWARD_CONFIG_REQUIREMENT = '20 mg New Box stock configuration'
 
 /**
  * The single order-level explanation shown when an order cannot Carry Forward
@@ -53,7 +53,7 @@ export const CARRY_FORWARD_CONFIG_REQUIREMENT = '20ml New Box stock configuratio
  * task specifies so the message is stable and testable.
  */
 export const CARRY_FORWARD_BLOCKED_EXPLANATION =
-  'Carry Forward is unavailable because one or more items do not have a valid 20ml New Box stock configuration for this warehouse.'
+  'Carry Forward is unavailable because one or more items do not have a valid 20 mg New Box stock configuration for this warehouse.'
 
 export interface CarryForwardAffectedItem {
   orderItemId: string
@@ -93,12 +93,12 @@ const REASON_GUIDANCE: Record<string, {
 }> = {
   inventory_cutoff_configuration_missing: {
     reason: (variant, warehouse) =>
-      `${variant} has no 20ml New Box configuration for ${warehouse}.`,
+      `${variant} has no 20 mg New Box configuration for ${warehouse}.`,
     action: 'Create the required stock configuration, then refresh this check.',
   },
   inventory_cutoff_configuration_inactive: {
     reason: (variant, warehouse) =>
-      `${variant} has a 20ml New Box configuration, but it is inactive for ${warehouse}.`,
+      `${variant} has a 20 mg New Box configuration, but it is inactive for ${warehouse}.`,
     action: 'Activate the existing configuration, then refresh this check.',
   },
   inventory_cutoff_configuration_wrong_warehouse: {
@@ -113,22 +113,22 @@ const REASON_GUIDANCE: Record<string, {
   },
   inventory_cutoff_configuration_wrong_variant: {
     reason: (variant) =>
-      `The available 20ml New Box configuration references a different product variant than ${variant}.`,
+      `The available 20 mg New Box configuration references a different product variant than ${variant}.`,
     action: 'Correct the variant association; do not select a configuration by display name.',
   },
   inventory_cutoff_configuration_not_order_eligible: {
     reason: (variant, warehouse) =>
-      `${variant} has an active 20ml New Box configuration, but it is not order-eligible for ${warehouse}.`,
+      `${variant} has an active 20 mg New Box configuration, but it is not order-eligible for ${warehouse}.`,
     action: 'Enable distributor-order eligibility on the existing configuration, then refresh this check.',
   },
   inventory_cutoff_configuration_not_in_session_scope: {
     reason: (variant) =>
-      `${variant} has an eligible 20ml New Box configuration, but it is not part of this Opening Balance session’s immutable scope.`,
+      `${variant} has an eligible 20 mg New Box configuration, but it is not part of this Opening Balance session’s immutable scope.`,
     action: 'Use the configuration captured by the correct Opening Balance draft; do not create a duplicate.',
   },
   inventory_cutoff_configuration_ambiguous: {
     reason: (variant) =>
-      `${variant} has more than one 20ml New Box configuration, so no target can be selected safely.`,
+      `${variant} has more than one 20 mg New Box configuration, so no target can be selected safely.`,
     action: 'Resolve the duplicate configuration records, then refresh this check.',
   },
   inventory_cutoff_stale_preflight_data: {
@@ -372,7 +372,7 @@ export function mapOpeningBalanceError(
         code,
         title: 'Configuration inactive',
         message: withContext(
-          'The 20ml New Box configuration exists, but it is inactive. Activate the existing configuration, then refresh and recheck',
+          'The 20 mg New Box configuration exists, but it is inactive. Activate the existing configuration, then refresh and recheck',
           ctx,
         ) + '.',
       }
@@ -391,7 +391,7 @@ export function mapOpeningBalanceError(
         code,
         title: 'Variant mismatch',
         message: withContext(
-          'The available 20ml New Box configuration references a different product variant. Correct the stable-ID association; do not match by display name',
+          'The available 20 mg New Box configuration references a different product variant. Correct the stable-ID association; do not match by display name',
           ctx,
         ) + '.',
       }
@@ -400,7 +400,7 @@ export function mapOpeningBalanceError(
         code,
         title: 'Configuration not order-eligible',
         message: withContext(
-          'The active 20ml New Box configuration is not enabled for distributor orders. Enable order eligibility on the existing configuration, then refresh and recheck',
+          'The active 20 mg New Box configuration is not enabled for distributor orders. Enable order eligibility on the existing configuration, then refresh and recheck',
           ctx,
         ) + '.',
       }
@@ -418,7 +418,7 @@ export function mapOpeningBalanceError(
         code,
         title: 'Configuration outside Opening Balance scope',
         message: withContext(
-          'The eligible 20ml New Box configuration is not part of this Opening Balance session’s immutable scope. Use the correct draft; do not create a duplicate configuration',
+          'The eligible 20 mg New Box configuration is not part of this Opening Balance session’s immutable scope. Use the correct draft; do not create a duplicate configuration',
           ctx,
         ) + '.',
       }
@@ -427,7 +427,7 @@ export function mapOpeningBalanceError(
         code,
         title: 'Configuration is ambiguous',
         message: withContext(
-          'More than one 20ml New Box configuration was found, so the server will not choose silently. Resolve the duplicate records, then refresh and recheck',
+          'More than one 20 mg New Box configuration was found, so the server will not choose silently. Resolve the duplicate records, then refresh and recheck',
           ctx,
         ) + '.',
       }

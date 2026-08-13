@@ -8,12 +8,13 @@ import QuickOrderGrid from './QuickOrderGrid'
 const variants = [
   {
     id: 'teh', product_id: 'product-1', product_name: 'Cellera Hero', product_code: 'CEL-TEH',
-    group_name: 'Cartridge', variant_name: 'Teh Tarik', manufacturer_sku: 'SKU-HIDDEN-TEH',
+    variant_product_code: 'TT', group_name: 'Cartridge', variant_name: 'Teh Tarik', manufacturer_sku: 'SKU-HIDDEN-TEH',
     distributor_price: 32, available_qty: 100,
   },
   {
     id: 'mango', product_id: 'product-2', product_name: 'Cellera Zero', product_code: 'CEL-MANGO',
-    group_name: 'Cartridge', variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]', manufacturer_sku: 'SKU-HIDDEN-MANGO',
+    variant_product_code: 'MP', alternative_name: 'Sunset Mango', group_name: 'Cartridge',
+    variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]', manufacturer_sku: 'SKU-HIDDEN-MANGO',
     distributor_price: 30, available_qty: 50,
   },
   {
@@ -64,14 +65,14 @@ describe('Quick Order product display and hidden identifier search', () => {
     const search = screen.getByPlaceholderText('Search flavour, product or Product Code')
 
     await user.type(search, 'SKU-HIDDEN-TEH')
-    expect(screen.getByText('Teh Tarik')).not.toBeNull()
+    expect(screen.getByText('[ Teh Tarik ] - TT')).not.toBeNull()
     expect(screen.queryByText('Mango')).toBeNull()
 
     await user.clear(search)
     await user.type(search, 'CEL-MANGO')
-    expect(screen.getByText('Fruity Cellera Cartridge [ Mango Peach ]')).not.toBeNull()
-    expect(screen.getByText('Fruity Cellera Cartridge [ Mango Smoothie ]')).not.toBeNull()
-    expect(screen.queryByText('Teh Tarik')).toBeNull()
+    expect(screen.getByText('[ Mango Peach ] - MP')).not.toBeNull()
+    expect(screen.getByText('[ Mango Smoothie ]')).not.toBeNull()
+    expect(screen.queryByText('[ Teh Tarik ] - TT')).toBeNull()
   })
 
   it('displays matched inventory and stock outcomes separately from product identity', async () => {
@@ -87,7 +88,8 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(screen.getByText('Matched — Insufficient Stock')).not.toBeNull()
     expect(screen.getByText('Product Not Found')).not.toBeNull()
     expect(within(dialog).getByText('Cellera Hero - [ Guava ]')).not.toBeNull()
-    expect(within(dialog).getByText('Cellera Zero - [ Mango Peach ]')).not.toBeNull()
+    expect(within(dialog).getByText('Cellera Zero - [ Mango Peach ] - MP')).not.toBeNull()
+    expect(within(dialog).getByText('Alternative: Sunset Mango')).not.toBeNull()
     expect(within(dialog).queryByText('Fruity Cellera Cartridge [ Guava ]')).toBeNull()
     expect(within(dialog).getByText('0 available')).not.toBeNull()
     expect(within(dialog).queryByText(/Legacy \/ Unclassified/)).toBeNull()
@@ -150,7 +152,7 @@ describe('Quick Order product display and hidden identifier search', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
 
     expect(within(dialog).getByText('Possible Match — Review Required')).not.toBeNull()
-    expect(within(dialog).getByText('Cellera Hero - Teh Tarik')).not.toBeNull()
+    expect(within(dialog).getByText('Cellera Hero - [ Teh Tarik ] - TT')).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
     await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
     expect(within(dialog).getByText('Matched')).not.toBeNull()

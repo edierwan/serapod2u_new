@@ -50,6 +50,7 @@ import {
   variantAlternativeLabel,
   variantIdentityLabel,
 } from '@/lib/inventory/variant-display-label'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface WarehouseLocation {
   id: string
@@ -799,7 +800,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className={configBadgeClass(row.volumeMl, row.packaging)}>
-                              {row.configLabel}
+                              {withStockStrengthUnit(row.configLabel)}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums">{row.currentOnHand.toLocaleString()}</TableCell>
@@ -924,7 +925,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           {variantIdentityLabel(row.variantName, row.variantProductCode)}
                         </div>
                       </TableCell>
-                      <TableCell>{row.configLabel}</TableCell>
+                      <TableCell>{withStockStrengthUnit(row.configLabel)}</TableCell>
                       <TableCell className="text-right">{item.quantity}</TableCell>
                       <TableCell className="text-right">
                         {row.currentOnHand.toLocaleString()} → {newBalance(row.currentOnHand, item.quantity).toLocaleString()}

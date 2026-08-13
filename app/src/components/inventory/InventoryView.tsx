@@ -58,6 +58,7 @@ import {
   variantAlternativeLabel,
   variantIdentityLabel,
 } from '@/lib/inventory/variant-display-label'
+import { formatStockStrength } from '@/lib/inventory/stock-config-unit-label'
 
 interface InventoryItem {
   id: string
@@ -1671,7 +1672,6 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                           <table className="w-full text-xs">
                             <thead className="text-[11px] uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="px-4 py-2 text-left">Stock SKU</th>
                                 <th className="px-4 py-2 text-left">Volume / Packaging</th>
                                 <th className="px-4 py-2 text-left">Lifecycle</th>
                                 <th className="px-4 py-2 text-right">On Hand</th>
@@ -1684,13 +1684,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             <tbody>
                               {summary.configs.map((config) => (
                                 <tr key={config.id} className="border-t border-slate-200">
-                                  <td className="px-4 py-2 font-mono text-blue-700">{config.stockSku || 'Legacy'}</td>
                                   <td className="px-4 py-2">
                                     {config.isLegacy ? (
                                       <span className="text-amber-700">Legacy / Unclassified</span>
                                     ) : (
                                       <span>
-                                        {config.volumeMl ? `${config.volumeMl}ml` : '—'}
+                                        {formatStockStrength(config.volumeMl)}
                                         {config.packaging ? ` · ${config.packaging === 'new_box' ? 'New Box' : config.packaging === 'old_box' ? 'Old Box' : config.packaging}` : ''}
                                       </span>
                                     )}

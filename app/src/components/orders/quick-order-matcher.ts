@@ -6,6 +6,8 @@ export interface MatchableVariant {
   alternative_name?: string | null
   product_name: string
   product_code: string
+  /** Variant-level master-data code (product_variants.product_code), e.g. "SC". */
+  variant_product_code?: string | null
   group_name?: string
   manufacturer_sku?: string | null
   available_qty?: number
@@ -158,6 +160,7 @@ const exactFallbackNames = (variant: MatchableVariant) => [
 
 const exactIdentifiers = (variant: MatchableVariant) => [
   variant.product_code,
+  variant.variant_product_code || '',
   variant.manufacturer_sku || '',
 ].map(normalizeOrderText).filter(Boolean)
 

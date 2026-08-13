@@ -2,7 +2,14 @@ export interface QuickOrderCatalogVariant {
   id: string
   product_id: string
   product_name: string
+  /** Parent product code (products.product_code) — identical across flavours. */
   product_code: string
+  /**
+   * Variant-level master-data code (product_variants.product_code), the value
+   * Product Management > Variants shows ("SC", "BV"). Distinct from
+   * product_code above, which is the parent product's shared code.
+   */
+  variant_product_code: string | null
   group_name: string
   variant_name: string
   alternative_name: string | null
@@ -56,6 +63,7 @@ interface QuickOrderCatalogRow {
   id: string
   product_id: string
   variant_name: string
+  product_code?: string | null
   alternative_name?: string | null
   attributes?: Record<string, unknown> | null
   barcode?: string | null
@@ -106,14 +114,28 @@ export function resolveSellableAvailability(
   return result
 }
 
+/**
+ * Variants whose only orderable stock is stranded in a Legacy/Unclassified
+ * configuration.
+ *
+ * A residual Legacy/Unclassified balance on its own is a data-cleanup matter,
+ * not an order blocker: a warehouse that carries, say, 10,514 units in 20NB and
+ * 73 leftover units in UNCLASSIFIED can still fulfil the line entirely from
+ * 20NB. Flagging those variants blocked Quick Order and the paste review with
+ * "Inventory Unclassified" even though View Inventory showed healthy sellable
+ * stock. So a variant counts as unclassified only when it has a positive
+ * Legacy/Unclassified balance AND no sellable availability to draw from.
+ */
 export function resolveUnclassifiedVariantIds(
   inventory: SellableInventoryRow[],
   configurations: SellableConfigurationRow[],
+  sellableByVariant: Map<string, number> = new Map(),
 ): Set<string> {
   const configs = new Map(configurations.map(config => [config.id, config]))
   return new Set(inventory.flatMap(stock => {
     const balance = Number(stock.quantity_on_hand ?? stock.quantity_available ?? 0)
     if (balance <= 0) return []
+    if ((sellableByVariant.get(stock.variant_id) || 0) > 0) return []
     const configCode = stock.stock_config_id ? configs.get(stock.stock_config_id)?.config_code || '' : 'UNCLASSIFIED'
     return /UNCLASSIFIED|LEGACY/i.test(configCode) ? [stock.variant_id] : []
   }))
@@ -152,6 +174,7 @@ export function filterQuickOrderCatalogRows(
       product_id: row.product_id,
       product_name: product.product_name || '',
       product_code: product.product_code || '',
+      variant_product_code: row.product_code || null,
       group_name: group?.group_name || 'Other',
       variant_name: row.variant_name,
       alternative_name: row.alternative_name || null,
@@ -224,6 +247,7 @@ export async function resolveQuickOrderCatalog(
       id,
       product_id,
       variant_name,
+      product_code,
       alternative_name,
       attributes,
       barcode,
@@ -262,7 +286,7 @@ export async function resolveQuickOrderCatalog(
   if (inventoryError || configurationsError) throw new Error('Unable to load current Quick Order inventory.')
 
   const availableByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
-  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], availableByVariant)
   return {
     variants: filterQuickOrderCatalogRows(rows || [], availableByVariant, unclassifiedVariantIds),
     inventoryOrganizationId,

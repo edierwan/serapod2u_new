@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
+import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface UserProfile {
   id: string
@@ -495,7 +496,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const confirmStockConfiguration = async (item: any, stockConfig: any) => {
     if (item.stock_config_id && item.stock_config_id !== stockConfig.id) {
       const current = item.stock_config?.config_label || 'the current configuration'
-      if (!window.confirm(`Move this line's allocation from ${current} to ${stockConfig.config_label}? This change is atomic and will not alter the order price.`)) return
+      if (!window.confirm(`Move this line's allocation from ${current} to ${withStockStrengthUnit(stockConfig.config_label)}? This change is atomic and will not alter the order price.`)) return
     }
     try {
       setConfirmingItemId(item.id)

@@ -118,7 +118,7 @@ describe('error-code mapping', () => {
     expect(mapped.message).toContain('Serapod Warehouse Balakong')
     expect(mapped.message).toContain('SO26000085')
     expect(mapped.message).not.toBe('inventory_cutoff_20ml_new_box_missing')
-    expect(mapped.message).toContain('20ml New Box')
+    expect(mapped.message).toContain('20 mg New Box')
   })
 
   it('gives a safe, actionable fallback for unknown errors and keeps a code slot', () => {
@@ -149,6 +149,6 @@ describe('error-code mapping', () => {
   })
 
   it('exposes a stable explanation constant for the order-level banner', () => {
-    expect(CARRY_FORWARD_BLOCKED_EXPLANATION).toContain('20ml New Box')
+    expect(CARRY_FORWARD_BLOCKED_EXPLANATION).toContain('20 mg New Box')
   })
 })

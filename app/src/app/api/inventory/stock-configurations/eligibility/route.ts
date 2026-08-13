@@ -84,7 +84,7 @@ export async function DELETE(request: NextRequest) {
       .limit(1)
     if (dependentError) return NextResponse.json({ error: dependentError.message }, { status: 500 })
     if (dependent && dependent.length > 0) {
-      return NextResponse.json({ error: 'Eligibility cannot be removed while a submitted order has an open 50ml allocation.' }, { status: 409 })
+      return NextResponse.json({ error: 'Eligibility cannot be removed while a submitted order has an open 50 mg allocation.' }, { status: 409 })
     }
   }
 

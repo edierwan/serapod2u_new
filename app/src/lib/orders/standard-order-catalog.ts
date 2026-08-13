@@ -36,6 +36,7 @@ export function filterStandardOrderCatalogRows(
       product_id: row.product_id,
       product_name: product?.product_name || '',
       product_code: product?.product_code || '',
+      variant_product_code: row.product_code || null,
       group_name: group?.group_name || 'Other',
       variant_name: row.variant_name,
       alternative_name: row.alternative_name || null,
@@ -110,6 +111,7 @@ export async function resolveStandardOrderCatalog(
         id,
         product_id,
         variant_name,
+        product_code,
         alternative_name,
         attributes,
         barcode,
@@ -160,7 +162,7 @@ export async function resolveStandardOrderCatalog(
     configurations || [],
     eligibility?.allow_50ml_new_box === true,
   )
-  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], availableByVariant)
 
   const variants = filterStandardOrderCatalogRows(
     rows || [],

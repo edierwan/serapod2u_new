@@ -194,11 +194,11 @@ export async function POST(request: Request) {
     const variantsById = new Map<string, { id: string; distributor_price: number | null }>(
       (variants || []).map((variant: { id: string; distributor_price: number | null }) => [variant.id, variant]),
     )
-    const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [])
+    const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
+    const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], stockByVariant)
     if (items.some(item => unclassifiedVariantIds.has(item.variantId))) {
       return NextResponse.json({ error: UNCLASSIFIED_INVENTORY_ORDER_MESSAGE }, { status: 409 })
     }
-    const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
     const validated = items.map(item => {
       const variant = variantsById.get(item.variantId)!
       return {
