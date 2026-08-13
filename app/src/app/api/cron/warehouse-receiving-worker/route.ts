@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queueNotificationEvent } from '@/lib/notifications/supplyChainEventQueue'
-import { markWarrantyBufferReceived } from '@/lib/warehouse/qrEligibility'
+import { markWarrantyBufferReceived, promoteModeCBufferUsedForReceivedCases } from '@/lib/warehouse/qrEligibility'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes max
@@ -340,6 +340,19 @@ export async function GET(request: NextRequest) {
     if (warrantyBonusPercent > 0 && orderVariantIds.length > 0) {
       bufferMarked = await markWarrantyBufferReceived(supabase, batch.id, orderVariantIds, warrantyBonusPercent)
       await dbLog(`Buffer eligibility marked: ${Array.from(bufferMarked.values()).reduce((a, b) => a + b, 0)} codes`)
+    }
+
+    // Mode C replacements linked to received cases must become scannable.
+    try {
+      const modeCPromoted = await promoteModeCBufferUsedForReceivedCases(supabase, batch.id, {
+        warehouseOrgId,
+      })
+      if (modeCPromoted > 0) {
+        await dbLog(`Mode C buffer_used promoted: ${modeCPromoted}`)
+        console.log(`🔁 [${workerId}] Mode C buffer_used promoted to received_warehouse: ${modeCPromoted}`)
+      }
+    } catch (modeCErr: any) {
+      console.warn(`⚠️ [${workerId}] Mode C buffer promote failed (non-blocking):`, modeCErr?.message || modeCErr)
     }
 
     // Step 5b: Inventory movements.
