@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { promoteModeCBufferUsedForReceivedCases } from '@/lib/warehouse/qrEligibility'
 
 type ReceiveOutcome =
   | 'received'
@@ -505,6 +506,25 @@ const receiveSingleMaster = async (
         message: 'Failed to update child codes for master',
         details: codesUpdateError
       }
+    }
+
+    // Mode C replacements: promote buffer_used codes for this case so they become scannable.
+    try {
+      const promotedBuffers = await promoteModeCBufferUsedForReceivedCases(
+        supabase,
+        masterRecord.batch_id,
+        {
+          caseNumber: masterRecord.case_number,
+          warehouseOrgId: resolvedWarehouseOrgId,
+          receivedAt,
+          receivedBy: requestingUserId,
+        },
+      )
+      if (promotedBuffers > 0) {
+        console.log(`✅ [Warehouse Receive] Promoted ${promotedBuffers} Mode C buffer_used code(s) for case #${masterRecord.case_number}`)
+      }
+    } catch (bufferPromoteError) {
+      console.warn('⚠️ [Warehouse Receive] Mode C buffer promote failed (non-blocking):', bufferPromoteError)
     }
 
     const variantCounts = new Map<string, number>()
