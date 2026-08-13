@@ -46,6 +46,10 @@ import {
   buildManualStockAdditionWorksheet,
   parseManualStockAdditionImport,
 } from '@/lib/inventory/add-stock-excel'
+import {
+  variantAlternativeLabel,
+  variantIdentityLabel,
+} from '@/lib/inventory/variant-display-label'
 
 interface WarehouseLocation {
   id: string
@@ -785,11 +789,12 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                           <TableCell>
                             <div className="font-medium text-slate-900">{row.productName}</div>
                             <div className="text-xs text-slate-500">
-                              {row.flavour || row.variantName}
-                              {row.variantProductCode ? ` - ${row.variantProductCode}` : ''}
+                              {variantIdentityLabel(row.variantName, row.variantProductCode)}
                             </div>
-                            {row.alternativeName && (
-                              <div className="text-xs text-slate-400">{row.alternativeName}</div>
+                            {variantAlternativeLabel(row.alternativeName) && (
+                              <div className="text-xs text-slate-400">
+                                {variantAlternativeLabel(row.alternativeName)}
+                              </div>
                             )}
                           </TableCell>
                           <TableCell>
@@ -916,8 +921,7 @@ export default function AddStockView({ userProfile, onViewChange }: AddStockView
                       <TableCell>
                         <div className="font-medium">{row.productName}</div>
                         <div className="text-xs text-slate-500">
-                          {row.flavour || row.variantName}
-                          {row.variantProductCode ? ` - ${row.variantProductCode}` : ''}
+                          {variantIdentityLabel(row.variantName, row.variantProductCode)}
                         </div>
                       </TableCell>
                       <TableCell>{row.configLabel}</TableCell>

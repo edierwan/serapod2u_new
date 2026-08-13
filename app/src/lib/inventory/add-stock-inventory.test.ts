@@ -359,8 +359,8 @@ describe('Manual Stock Addition UI contracts', () => {
   it('drops the Stock SKU column and shows variant Product Code, alternative name and Base Cost', () => {
     expect(addStockComponent).not.toContain('<TableHead>Stock SKU</TableHead>')
     expect(addStockComponent).not.toContain('{row.stockSku}')
-    expect(addStockComponent).toContain('row.variantProductCode')
-    expect(addStockComponent).toContain('row.alternativeName')
+    expect(addStockComponent).toContain('variantIdentityLabel(row.variantName, row.variantProductCode)')
+    expect(addStockComponent).toContain('variantAlternativeLabel(row.alternativeName)')
     expect(addStockComponent).toContain('product_code,\n            alternative_name,\n            base_cost,')
     expect(addStockComponent).toContain('next[row.rowKey] = String(row.baseCost)')
   })
