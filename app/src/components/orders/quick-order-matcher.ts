@@ -58,6 +58,15 @@ export const normalizeDashes = (value: string) => value.replace(UNICODE_DASHES, 
 const buildStatusEmojiRegex = () =>
   /(?:[✅❌✔✖☑☒✓✗✘]️?|[\u{1F534}\u{1F7E2}\u{1F7E1}\u{1F7E0}\u{1F535}])+/gu
 
+/**
+ * The distributor's own ✅/❌ marks, removed for display. The review table
+ * reports the system's verdict in the Result column, so echoing the sender's
+ * marks back in the Entry column is noise that reads like a second, conflicting
+ * status. `raw` itself keeps them — it is the untouched pasted text.
+ */
+export const stripStatusMarkers = (value: string) =>
+  value.replace(buildStatusEmojiRegex(), ' ').replace(/\s+/g, ' ').trim()
+
 interface OrderToken {
   localStart: number
   localEnd: number
@@ -293,6 +302,30 @@ export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) 
   }
 }
 
+/**
+ * A pasted WhatsApp list interleaves section headings with order lines:
+ *
+ *   vanilla tobacco 50✅
+ *
+ *   cellera zero
+ *   almond 50✅
+ *
+ * "cellera zero" names the product the following lines belong to; it is not an
+ * order for a flavour. Treated as an entry it surfaced as a bogus "Invalid
+ * Quantity" row that blocked Apply. A quantity-less segment naming a catalog
+ * product is therefore dropped before it becomes a result.
+ *
+ * The test is deliberately narrow — the segment must carry NO quantity and must
+ * match a product name in the authorized catalog. Anything else (a misspelt
+ * flavour, a stray note) still surfaces for review rather than being silently
+ * swallowed.
+ */
+export function isCatalogProductHeading(name: string, variants: MatchableVariant[]) {
+  const normalized = normalizeMatchName(name)
+  if (!normalized) return false
+  return variants.some(variant => normalizeMatchName(variant.product_name) === normalized)
+}
+
 export function resolvePasteInventoryOutcome(
   quantity: number | null,
   variant?: MatchableVariant,
@@ -316,6 +349,9 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
     if (!physicalLine.trim()) return
 
     for (const segment of parsePhysicalLine(physicalLine, index + 1, codeSet)) {
+      // Skipped before numbering so the review table stays contiguous.
+      if (segment.quantity === null && isCatalogProductHeading(segment.name, variants)) continue
+
       entryNumber += 1
       const line = entryNumber
       const name = segment.name.trim() || segment.raw.trim()

@@ -1,12 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ClipboardPaste, Search, Trash2 } from 'lucide-react'
+import { Check, ClipboardCopy, ClipboardPaste, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { variantAlternativeLabel, variantIdentityLabel } from '@/lib/inventory/variant-display-label'
-import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome } from './quick-order-matcher'
+import { AVAILABLE_MARK, UNAVAILABLE_MARK, buildPasteResultText } from '@/lib/orders/paste-order-result-text'
+import { resolveProductShortNames } from '@/lib/orders/product-short-name'
+import { matchPastedOrder, PasteMatchResult, resolvePasteInventoryOutcome, stripStatusMarkers } from './quick-order-matcher'
 
 interface QuickVariant {
   id: string
@@ -61,6 +63,11 @@ const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]) 
   return { label: 'Product Not Found', style: statusStyle('not_found') }
 }
 
+/**
+ * Whether the line can actually be ordered as reviewed. Drives both the ✅/❌
+ * in the Result column and the mark in the copied WhatsApp reply, so the two
+ * can never disagree.
+ */
 const isPasteResultBlocked = (
   result: PasteMatchResult,
   variants: QuickVariant[],
@@ -115,8 +122,12 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const [pasteText, setPasteText] = useState('')
   const [pasteResults, setPasteResults] = useState<PasteMatchResult[]>([])
   const [combineDuplicates, setCombineDuplicates] = useState(false)
+  const [resultCopied, setResultCopied] = useState(false)
 
   const quantities = useMemo(() => new Map(items.map(item => [item.variant_id, item.qty])), [items])
+  // Group-relative product labels ("Cellera Hero" -> "Hero"). Derived from the
+  // whole catalog, not the visible rows, so switching tabs never relabels.
+  const productShortNames = useMemo(() => resolveProductShortNames(variants), [variants])
   const groups = useMemo(() => {
     const counts = new Map<string, number>()
     variants.forEach(variant => counts.set(variant.group_name || 'Other', (counts.get(variant.group_name || 'Other') || 0) + 1))
@@ -145,6 +156,24 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   const reviewPaste = () => {
     setPasteResults(matchPastedOrder(pasteText, variants))
     setCombineDuplicates(false)
+    setResultCopied(false)
+  }
+
+  const copyResult = async () => {
+    const text = buildPasteResultText(
+      pasteResults,
+      variants,
+      result => !isPasteResultBlocked(result, variants, combineDuplicates),
+    )
+    try {
+      await navigator.clipboard.writeText(text)
+      setResultCopied(true)
+      window.setTimeout(() => setResultCopied(false), 2000)
+    } catch {
+      // Clipboard access can be denied (insecure origin, permission prompt).
+      // Falling back keeps the reply reachable instead of failing silently.
+      window.prompt('Copy the reply below and paste it into WhatsApp', text)
+    }
   }
 
   const updateResolution = (line: number, variantId: string) => {
@@ -203,7 +232,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[900px] text-sm">
           <thead className="bg-gray-50 text-left text-[var(--sera-muted)]">
-            <tr>{['Flavour', 'Product', 'Available', 'Order Qty', 'Unit Price (RM)', 'Line Total (RM)', 'Status'].map(label => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
+            <tr>{['Flavour', 'Product', 'Available', 'Order Qty (Cases)', 'Unit Price (RM)', 'Line Total (RM)', 'Status'].map(label => <th key={label} className="px-3 py-3 font-medium">{label}</th>)}</tr>
           </thead>
           <tbody>
             {visibleVariants.map((variant, index) => {
@@ -213,7 +242,7 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
                   <td className="px-3 py-2"><VariantIdentity variant={variant} /></td>
-                  <td className="px-3 py-2">{variant.product_name}</td>
+                  <td className="px-3 py-2">{productShortNames.get(variant.product_name) || variant.product_name}</td>
                   <td className="px-3 py-2 tabular-nums">{variant.available_qty.toLocaleString()}</td>
                   <td className="px-3 py-2"><Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-28" aria-label={`Order quantity for ${variant.variant_name}`} /></td>
                   <td className="px-3 py-2 tabular-nums">{formatCurrency(variant.distributor_price)}</td>
@@ -239,17 +268,20 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
             <textarea autoFocus value={pasteText} onChange={event => setPasteText(event.target.value)} rows={10} className="w-full rounded-md border p-3 font-mono text-sm" placeholder={'LYCHEE BLACKCURRANT - 200\nGUAVA - 300'} />
           ) : (
             <div className="space-y-3">
-              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2">Qty</th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
+              <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-sm"><thead><tr className="border-b text-left"><th className="p-2">Line</th><th className="p-2">Entry</th><th className="p-2"><div>Qty</div><div className="text-[11px] font-normal text-[var(--sera-muted)]">(Cases)</div></th><th className="p-2">Result</th><th className="p-2">Resolve to authorized variant</th></tr></thead><tbody>
                 {pasteResults.map(result => {
                   const display = pasteResultDisplay(result, variants)
                   const selectedVariant = variants.find(variant => variant.id === result.selectedVariantId)
+                  const mark = isPasteResultBlocked(result, variants, combineDuplicates) ? UNAVAILABLE_MARK : AVAILABLE_MARK
                   return (
                     <tr key={result.line} className="border-b align-top">
                       <td className="p-2">{result.line}</td>
-                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-[var(--sera-muted)]">Original: {result.raw}</div></td>
+                      <td className="p-2"><div>{result.name}</div><div className="text-xs text-[var(--sera-muted)]">Original: {stripStatusMarkers(result.raw)}</div></td>
                       <td className="p-2">{result.quantity ?? 'Invalid'}</td>
                       <td className="p-2">
-                        <span className={`rounded-full px-2 py-1 text-xs ${display.style}`}>{display.label}</span>
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${display.style}`}>
+                          <span aria-hidden="true">{mark}</span>{display.label}
+                        </span>
                         {result.duplicateOfLine && <div className="mt-1 text-xs text-[var(--sera-muted)]">Duplicates line {result.duplicateOfLine}</div>}
                       </td>
                       <td className="min-w-[320px] p-2">
@@ -272,6 +304,12 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
           )}
           <DialogFooter>
             {pasteResults.length > 0 && <Button type="button" variant="outline" onClick={() => setPasteResults([])}>Edit text</Button>}
+            {pasteResults.length > 0 && (
+              <Button type="button" variant="outline" onClick={copyResult}>
+                {resultCopied ? <Check className="mr-2 h-4 w-4" /> : <ClipboardCopy className="mr-2 h-4 w-4" />}
+                {resultCopied ? 'Copied' : 'Copy Result'}
+              </Button>
+            )}
             {pasteResults.length === 0 ? <Button type="button" onClick={reviewPaste} disabled={!pasteText.trim()}>Review matches</Button> : <Button type="button" onClick={applyPaste} disabled={!canApplyPaste}>Apply reviewed quantities</Button>}
           </DialogFooter>
         </DialogContent>

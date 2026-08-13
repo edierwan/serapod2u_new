@@ -53,10 +53,18 @@ afterEach(cleanup)
 describe('Quick Order product display and hidden identifier search', () => {
   it('shows clean product names without rendering Product Code or SKU in product rows', () => {
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
-    expect(screen.getAllByText('Cellera Hero').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('Cellera Zero')).not.toBeNull()
+    // The Product column drops the words shared across the group, so the
+    // Cartridge rows read "Hero"/"Zero" rather than repeating "Cellera".
+    expect(screen.getAllByText('Hero').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Zero')).not.toBeNull()
+    expect(screen.queryByText('Cellera Hero')).toBeNull()
     expect(screen.queryByText('CEL-TEH')).toBeNull()
     expect(screen.queryByText('SKU-HIDDEN-TEH')).toBeNull()
+  })
+
+  it('labels the order quantity column in cases', () => {
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+    expect(screen.getByText('Order Qty (Cases)')).not.toBeNull()
   })
 
   it('still searches by hidden Product Code and SKU', async () => {
@@ -157,5 +165,56 @@ describe('Quick Order product display and hidden identifier search', () => {
     await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
     expect(within(dialog).getByText('Matched')).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+})
+
+describe('Paste review presentation and WhatsApp reply', () => {
+  it('keeps the sender marks out of Entry and reports the system verdict in Result', async () => {
+    const user = userEvent.setup()
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10\u2705\nGUAVA - 300\u2705')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    // The distributor's own tick is stripped from the echoed entry text.
+    expect(within(dialog).getByText('Original: MANGO PEACH - 10')).not.toBeNull()
+    expect(within(dialog).queryByText(/Original: MANGO PEACH - 10\u2705/)).toBeNull()
+
+    // Guava is unclassified with 0 available, so the system says no; the
+    // mark sits in the Result badge beside the reason.
+    expect(within(dialog).getByText('Matched \u2014 Inventory Unclassified').textContent).toContain('\u274c')
+    expect(within(dialog).getByText('Matched').textContent).toContain('\u2705')
+
+    // Qty is labelled in cases without crowding the header.
+    expect(within(dialog).getByText('(Cases)')).not.toBeNull()
+  })
+
+  it('copies a WhatsApp reply grouped by product', async () => {
+    const user = userEvent.setup()
+    // Installed after setup(): userEvent stubs navigator.clipboard itself.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10\nDOUBLE MANGO - 20\nGUAVA - 300')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+    await user.click(within(dialog).getByRole('button', { name: /Copy Result/ }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText.mock.calls[0][0]).toBe(
+      [
+        'Cellera Zero',
+        'MANGO PEACH 10\u2705',
+        '',
+        'Cellera Hero',
+        'DOUBLE MANGO 20\u2705',
+        'GUAVA 300\u274c',
+      ].join('\n'),
+    )
+    expect(await within(dialog).findByText('Copied')).not.toBeNull()
   })
 })

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { matchPastedOrder, normalizeOrderText, stripTrailingWhatsAppMarkers } from './quick-order-matcher'
+import {
+  isCatalogProductHeading,
+  matchPastedOrder,
+  normalizeOrderText,
+  stripStatusMarkers,
+  stripTrailingWhatsAppMarkers,
+} from './quick-order-matcher'
 
 const variants = [
   { id: 'lychee', variant_name: 'Lychee Blackcurrant', product_name: 'Cellera Hero', product_code: 'CEL-H', manufacturer_sku: 'SKU-001' },
@@ -325,5 +331,39 @@ describe('Quick Order multi-entry paste parsing', () => {
     // The unparsable segment is preserved for review; the valid ones still resolve.
     expect(results[0].selectedVariantId).toBeUndefined()
     expect(results[2].selectedVariantId).toBeUndefined()
+  })
+})
+
+describe('WhatsApp noise in a pasted list', () => {
+  it('drops a quantity-less product heading instead of reporting Invalid Quantity', () => {
+    // The real message interleaves "cellera zero" as a section heading between
+    // the Hero lines and the Zero lines.
+    const results = matchPastedOrder('TEH - 5\ncellera zero\nMINT - 3', variants)
+    expect(results.map(result => result.name)).toEqual(['TEH', 'MINT'])
+    // Line numbers stay contiguous after the heading is dropped.
+    expect(results.map(result => result.line)).toEqual([1, 2])
+  })
+
+  it('keeps a heading that carries a quantity, which is a real order line', () => {
+    const results = matchPastedOrder('cellera zero 40', variants)
+    expect(results.map(result => result.quantity)).toEqual([40])
+  })
+
+  it('still surfaces unrecognised quantity-less text for review', () => {
+    const results = matchPastedOrder('TEH - 5\nnak yang kotak only', variants)
+    expect(results.map(result => result.status)).toEqual(['suggestion', 'invalid_quantity'])
+  })
+
+  it('recognises catalog product names as headings, nothing else', () => {
+    expect(isCatalogProductHeading('cellera zero', variants)).toBe(true)
+    expect(isCatalogProductHeading('CELLERA HERO', variants)).toBe(true)
+    expect(isCatalogProductHeading('mint', variants)).toBe(false)
+    expect(isCatalogProductHeading('', variants)).toBe(false)
+  })
+
+  it('strips the sender status marks for display without touching the text', () => {
+    expect(stripStatusMarkers('corn 50\u2705')).toBe('corn 50')
+    expect(stripStatusMarkers('kelapa 50\u274c')).toBe('kelapa 50')
+    expect(stripStatusMarkers('grape 100')).toBe('grape 100')
   })
 })
