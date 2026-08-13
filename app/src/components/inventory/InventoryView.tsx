@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { subscribeToInventoryDataRefresh } from '@/lib/inventory/inventory-data-refresh'
@@ -52,7 +52,12 @@ import {
   hqIdFromConsolidatedLocation,
   isHqConsolidatedLocation,
   remapRowsForHqConsolidatedView,
+  resolveDefaultInventoryLocationId,
 } from '@/lib/inventory/hq-consolidated-location'
+import {
+  variantAlternativeLabel,
+  variantIdentityLabel,
+} from '@/lib/inventory/variant-display-label'
 
 interface InventoryItem {
   id: string
@@ -60,6 +65,8 @@ interface InventoryItem {
   variant_code?: string | null
   variant_name?: string | null
   variant_image_url?: string | null
+  variant_product_code?: string | null
+  alternative_name?: string | null
   stock_config_id?: string | null
   config_code?: string | null
   config_label?: string | null
@@ -120,6 +127,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
   const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set())
+  // Guards the one-time default Location selection (see fetchLocations).
+  const defaultLocationApplied = useRef(false)
 
   const { isReady, supabase } = useSupabaseAuth()
   const { toast } = useToast()
@@ -557,6 +566,12 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       const variantBaseCostMap = new Map<string, number>()
       const variantImageMap = new Map<string, string>()
+      // Variant Product Code and Alternative Name are master data that
+      // vw_inventory_on_hand does not project (its product_code column is the
+      // PARENT product's code), so they are resolved from product_variants
+      // alongside base cost and image for both the view and fallback paths.
+      const variantProductCodeMap = new Map<string, string>()
+      const variantAlternativeNameMap = new Map<string, string>()
       const collectedVariantIds = Array.from(
         new Set(
           (data || [])
@@ -574,7 +589,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
       if (collectedVariantIds.length > 0) {
         const { data: variantCostRows, error: variantCostError } = await supabase
           .from('product_variants')
-          .select('id, base_cost, image_url')
+          .select('id, base_cost, image_url, product_code, alternative_name')
           .in('id', collectedVariantIds as string[])
 
         if (!variantCostError) {
@@ -588,6 +603,14 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
               }
               if (row?.image_url) {
                 variantImageMap.set(row.id, row.image_url)
+              }
+              const variantProductCode = typeof row?.product_code === 'string' ? row.product_code.trim() : ''
+              if (variantProductCode) {
+                variantProductCodeMap.set(row.id, variantProductCode)
+              }
+              const alternativeName = typeof row?.alternative_name === 'string' ? row.alternative_name.trim() : ''
+              if (alternativeName) {
+                variantAlternativeNameMap.set(row.id, alternativeName)
               }
             }
           })
@@ -694,6 +717,10 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
           variant_code: item.variant_code ?? rawVariant?.variant_code ?? null,
           variant_name: item.variant_name ?? rawVariant?.variant_name ?? null,
           variant_image_url: variantImage,
+          variant_product_code:
+            (variantId ? variantProductCodeMap.get(variantId) : null) ?? rawVariant?.product_code ?? null,
+          alternative_name:
+            (variantId ? variantAlternativeNameMap.get(variantId) : null) ?? rawVariant?.alternative_name ?? null,
           stock_config_id: item.stock_config_id ?? null,
           config_code: item.config_code ?? item.inventory_stock_configurations?.config_code ?? null,
           config_label: item.config_label ?? item.inventory_stock_configurations?.config_label ?? null,
@@ -947,7 +974,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_name, org_code, org_type_code, parent_org_id')
+        .select('id, org_name, org_code, org_type_code, parent_org_id, default_warehouse_org_id')
         .in('org_type_code', ['WH', 'HQ'])
         .eq('is_active', true)
         .order('org_name')
@@ -982,6 +1009,17 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
         org_code: row.org_code,
         is_consolidated: false,
       })), ...consolidatedOptions])
+
+      // Open on the HQ's default fulfillment warehouse instead of "All Locations".
+      // Applied exactly once per mount so a later refetch (Show inactive toggle)
+      // never overwrites a location the operator has since chosen.
+      if (!defaultLocationApplied.current) {
+        defaultLocationApplied.current = true
+        const defaultLocationId = resolveDefaultInventoryLocationId(rows)
+        if (defaultLocationId) {
+          setLocationFilter(defaultLocationId)
+        }
+      }
     } catch (error) {
       console.error('Error fetching locations:', error)
     }
@@ -1532,11 +1570,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                             {summary.productName || 'Unknown Product'}
                           </p>
                           <p className="text-xs text-[var(--sera-muted)]">
-                            [{summary.variantName || 'No variant'}]
+                            {variantIdentityLabel(summary.variantName, summary.variantProductCode)}
                           </p>
-                          <p className="text-xs text-[var(--sera-muted)]/80">
-                            {summary.configs.length + summary.hiddenConfigCount} configuration{(summary.configs.length + summary.hiddenConfigCount) === 1 ? '' : 's'} · Aggregate variant total
-                          </p>
+                          {variantAlternativeLabel(summary.alternativeName) && (
+                            <p className="text-xs text-[var(--sera-muted)]/80">
+                              {variantAlternativeLabel(summary.alternativeName)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </TableCell>

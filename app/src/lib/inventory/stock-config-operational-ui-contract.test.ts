@@ -48,7 +48,11 @@ describe('stock configuration operational UI contracts', () => {
   })
 
   it('provides non-duplicating inventory summaries and configuration movement filters', () => {
-    expect(inventory).toContain('Aggregate variant total')
+    // The summary row is still one aggregated row per organization + variant;
+    // the former "Aggregate variant total" caption was replaced by the
+    // master-data variant identity line, so anchor on the aggregation itself.
+    expect(inventory).toContain('aggregateVariantInventory')
+    expect(inventory).toContain('variantIdentityLabel(summary.variantName, summary.variantProductCode)')
     expect(inventory).toContain('Show inactive zero-balance configurations')
     expect(inventory).toContain('Legacy / Unclassified')
     expect(movementReport).toContain('Stock SKU / Configuration')

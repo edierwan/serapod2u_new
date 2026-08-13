@@ -6,6 +6,7 @@ import {
   hqIdFromConsolidatedLocation,
   isHqConsolidatedLocation,
   remapRowsForHqConsolidatedView,
+  resolveDefaultInventoryLocationId,
 } from './hq-consolidated-location'
 
 describe('HQ consolidated inventory location', () => {
@@ -32,5 +33,33 @@ describe('HQ consolidated inventory location', () => {
     expect(remapped.every((row) => row.organization_name === HQ_ALL_WAREHOUSES_LABEL)).toBe(true)
     expect(remapped.every((row) => row.organization_id === hqConsolidatedLocationValue('hq-1'))).toBe(true)
     expect(HQ_CONSOLIDATED_LEGACY_NOTE).toContain('Direct legacy inventory')
+  })
+})
+
+describe('default View Inventory location', () => {
+  const hq = {
+    id: 'hq-1',
+    org_type_code: 'HQ',
+    is_active: true,
+    default_warehouse_org_id: 'wh-balakong',
+  }
+  const balakong = { id: 'wh-balakong', org_type_code: 'WH', is_active: true, parent_org_id: 'hq-1' }
+  const alma = { id: 'wh-alma', org_type_code: 'WH', is_active: true, parent_org_id: 'hq-1' }
+
+  it("opens on the HQ's default fulfillment warehouse", () => {
+    expect(resolveDefaultInventoryLocationId([hq, balakong, alma])).toBe('wh-balakong')
+  })
+
+  it('stays on All Locations when no HQ names a default warehouse', () => {
+    expect(resolveDefaultInventoryLocationId([
+      { ...hq, default_warehouse_org_id: null },
+      balakong,
+    ])).toBeNull()
+    expect(resolveDefaultInventoryLocationId([])).toBeNull()
+  })
+
+  it('ignores a default that is not an active warehouse in the list', () => {
+    expect(resolveDefaultInventoryLocationId([hq, alma])).toBeNull()
+    expect(resolveDefaultInventoryLocationId([hq, { ...balakong, is_active: false }])).toBeNull()
   })
 })

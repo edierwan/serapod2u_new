@@ -32,7 +32,12 @@ export interface InventoryConfigRow {
   variant_code?: string | null
   variant_name?: string | null
   variant_image_url?: string | null
+  /** product_variants.product_code — the variant Product Code (e.g. "LB"). */
+  variant_product_code?: string | null
+  /** product_variants.alternative_name — distributor-facing variant name. */
+  alternative_name?: string | null
   product_name?: string | null
+  /** products.product_code — the parent product code, shared by every variant. */
   product_code?: string | null
   stock_config_id?: string | null
   config_code?: string | null
@@ -81,6 +86,10 @@ export interface VariantInventorySummary {
   variantCode: string | null
   variantName: string | null
   variantImageUrl: string | null
+  /** Variant Product Code from master data (product_variants.product_code). */
+  variantProductCode: string | null
+  /** Variant alternative name from master data (product_variants.alternative_name). */
+  alternativeName: string | null
   productName: string | null
   productCode: string | null
   onHand: number
@@ -189,6 +198,9 @@ export function filterVariantInventorySummaries(
     const matchesSearch = !search || [
       summary.variantCode,
       summary.variantName,
+      // Both are rendered on the row, so both must be searchable.
+      summary.variantProductCode,
+      summary.alternativeName,
       summary.productName,
       summary.productCode,
       summary.organizationName,
@@ -379,6 +391,8 @@ export function aggregateVariantInventory(
       variantCode: first.variant_code ?? null,
       variantName: first.variant_name ?? null,
       variantImageUrl: first.variant_image_url ?? null,
+      variantProductCode: first.variant_product_code ?? null,
+      alternativeName: first.alternative_name ?? null,
       productName: first.product_name ?? null,
       productCode: first.product_code ?? null,
       onHand,
