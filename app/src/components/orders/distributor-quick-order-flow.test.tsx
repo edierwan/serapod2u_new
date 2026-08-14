@@ -13,7 +13,7 @@ const categoryPolicy = fs.readFileSync(path.resolve(__dirname, '../../lib/orders
 describe('Distributor D2H Quick Order integration', () => {
   it('opens in Quick mode and preserves one shared item collection across mode switches', () => {
     expect(source).toContain("useState<'quick' | 'standard'>('quick')")
-    expect(source).toContain("orderMode === 'quick' ? 'Switch to Standard' : 'Try Quick Order'")
+    expect(source).toContain("orderMode === 'quick' ? 'Standard order' : 'Quick Order'")
     expect(source).toContain('items={orderItems}')
   })
 
@@ -73,8 +73,8 @@ describe('Distributor D2H Quick Order integration', () => {
   })
 
   it('provides compact filtering, keyboard quantity entry, and reviewed paste handling', () => {
-    expect(quickGrid).toContain('Show selected only')
-    expect(quickGrid).toContain('Available only')
+    expect(quickGrid).toContain('label="Selected"')
+    expect(quickGrid).toContain('label="In stock"')
     expect(quickGrid).toContain("event.key === 'Enter' || event.key === 'ArrowDown'")
     expect(quickGrid).toContain('Apply reviewed quantities')
     expect(quickGrid).toContain('Combine duplicate entries')

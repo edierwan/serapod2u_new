@@ -252,8 +252,8 @@ export default function OrderDocumentsDialog({
             <thead className="bg-gray-100">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Item</th>
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Quantity</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Unit Price</th>
+                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Qty Cases</th>
+                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Price/Case</th>
                 <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Total</th>
               </tr>
             </thead>
@@ -261,7 +261,7 @@ export default function OrderDocumentsDialog({
               {orderData.order_items?.map((item: any, index: number) => (
                 <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-4 py-3 text-sm text-gray-900">{item.product?.product_name || 'Product1'}</td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900">{item.qty.toFixed(2)} units</td>
+                  <td className="px-4 py-3 text-center text-sm text-gray-900">{Number(item.qty || 0).toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-sm text-gray-900">{formatCurrency(item.unit_price)}</td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{formatCurrency(item.line_total || 0)}</td>
                 </tr>

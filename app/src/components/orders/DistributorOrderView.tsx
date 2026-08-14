@@ -467,7 +467,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} units available in inventory`,
+        description: `Only ${variant.available_qty} cases available in inventory`,
         variant: 'destructive'
       })
       return
@@ -492,7 +492,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (variant.inventory_classification !== 'unclassified' && newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} units of ${variant.variant_name} are available`,
+        description: `Only ${variant.available_qty} cases of ${variant.variant_name} are available`,
         variant: 'destructive'
       })
       return
@@ -932,17 +932,16 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                 </div>
               ) : (
                 <>
-                  <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h4 className="font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
-                      <p className="text-xs text-[var(--sera-muted)]">{orderMode === 'quick' ? 'Enter quantities for multiple flavours at once.' : 'Add and edit products using the original order form.'}</p>
+                      <h4 className="text-lg font-semibold text-gray-900">{orderMode === 'quick' ? 'Quick Order' : 'Standard Order'}</h4>
+                      <p className="text-xs text-[var(--sera-muted)]">{orderMode === 'quick' ? 'Add multiple products at once' : 'Add and edit products one at a time'}</p>
                     </div>
-                    <div className="text-xs text-[var(--sera-muted)]">
-                      Using {orderMode === 'quick' ? 'Quick Order' : 'Standard Order'} <span aria-hidden="true">·</span>{' '}
-                      <button type="button" className="font-medium text-[var(--sera-orange)] underline underline-offset-2" onClick={handleOrderModeSwitch}>
-                        {orderMode === 'quick' ? 'Switch to Standard' : 'Try Quick Order'}
-                      </button>
-                    </div>
+                    {/* The other mode is a plain, labelled button rather than a sentence with a link. */}
+                    <Button type="button" variant="outline" onClick={handleOrderModeSwitch}
+                      className="border-[var(--sera-orange)] text-[var(--sera-orange)] hover:bg-[var(--sera-orange)]/[0.08] hover:text-[var(--sera-orange)]">
+                      {orderMode === 'quick' ? 'Standard order' : 'Quick Order'}
+                    </Button>
                   </div>
                   {orderMode === 'quick' ? (
                     <QuickOrderGrid
@@ -1032,7 +1031,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                                   <p className="text-xs text-[var(--sera-muted)] mt-1">SKU: {item.manufacturer_sku}</p>
                                 )}
                                 {variant && (
-                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} units</p>
+                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} cases</p>
                                 )}
                               </div>
                               <Button

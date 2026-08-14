@@ -1,7 +1,8 @@
 'use client'
 
-import { Package, PlusCircle, BarChart3, FileText } from 'lucide-react'
+import { Package, PlusCircle, BarChart3, FileText, ShoppingCart } from 'lucide-react'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
+import { canAccessSupplyChainView } from '@/modules/supply-chain/supplyChainNav'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
 import RecentActivities from './RecentActivities'
@@ -58,9 +59,19 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     return 'Good evening'
   }
 
+  // D2H sits behind the same access rule as its Order Management nav item
+  // (HQ/DIST, role level 40 and above), so the shortcut is hidden rather than
+  // dropping an unauthorized user onto the page.
+  const canOrderD2H = canAccessSupplyChainView(
+    'distributor-order',
+    userProfile.organizations?.org_type_code,
+    userProfile.roles?.role_level,
+  )
+
   const quickLinks = [
     { label: 'Orders', icon: Package, view: 'orders' },
     { label: 'Create Order', icon: PlusCircle, view: 'create-order' },
+    ...(canOrderD2H ? [{ label: 'D2H Order', icon: ShoppingCart, view: 'distributor-order' }] : []),
     { label: 'Reporting', icon: BarChart3, view: 'reporting' },
     { label: 'Documents', icon: FileText, view: 'track-order' },
   ]

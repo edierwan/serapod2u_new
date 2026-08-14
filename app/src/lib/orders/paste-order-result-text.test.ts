@@ -4,7 +4,23 @@ import {
   resolvePasteInventoryOutcome,
   type PasteMatchResult,
 } from '@/components/orders/quick-order-matcher'
-import { buildPasteResultText, titleCaseHeading } from './paste-order-result-text'
+import {
+  boxesForCases,
+  buildPasteResultText,
+  titleCaseEntry,
+  titleCaseHeading,
+  verificationStamp,
+  withCanonicalCode,
+} from './paste-order-result-text'
+
+// 14 August 2026, 10:00 in Kuala Lumpur (UTC+8).
+const stampedAt = new Date('2026-08-14T02:00:00Z')
+const stamp = (cases: number) => [
+  '🛡️ Verified by Serapod2U',
+  `Total Cases : ${cases}`,
+  `Total Box : ${boxesForCases(cases)}`,
+  '14 August 2026 · 10:00 AM',
+]
 
 const variant = (
   id: string,
@@ -45,13 +61,13 @@ const available = (result: PasteMatchResult) => {
 }
 
 describe('WhatsApp reply text', () => {
-  it('groups by product, marks each line, and separates groups with a blank line', () => {
+  it('groups by product in Title Case, states the unit, and stamps the reply', () => {
     const pasted = [
       'grape 100✅',
       'grape pudina 50✅',
       'corn 50✅',
       'strawberry cheesecake 200✅',
-      'vanilla tobacco 50✅',
+      'VANILLA TOBACCO 50✅',
       '',
       'cellera zero',
       'almond 50✅',
@@ -59,18 +75,22 @@ describe('WhatsApp reply text', () => {
     ].join('\n')
 
     const results = matchPastedOrder(pasted, catalog)
-    expect(buildPasteResultText(results, catalog, available)).toBe(
+    expect(buildPasteResultText(results, catalog, available, stampedAt)).toBe(
       [
-        'Cellera Hero',
-        'grape 100✅',
-        'grape pudina 50✅',
-        'corn 50❌',
-        'strawberry cheesecake 200✅',
-        'vanilla tobacco 50✅',
+        'Cellera Hero (Cases)',
         '',
-        'Cellera Zero',
-        'almond 50✅',
-        'jackfruit 100✅',
+        'Grape (GR) 100 ✅',
+        'Grape Pudina (GP) 50 ✅',
+        'Corn (CO) 50 ❌',
+        'Strawberry Cheesecake (SC) 200 ✅',
+        'Vanilla Tobacco (VT) 50 ✅',
+        '',
+        'Cellera Zero (Cases)',
+        '',
+        'Almond (AL) 50 ✅',
+        'Jackfruit (JAC) 100 ✅',
+        '',
+        ...stamp(550),
       ].join('\n'),
     )
   })
@@ -78,18 +98,62 @@ describe('WhatsApp reply text', () => {
   it('marks a line the warehouse cannot fill, not the mark the sender wrote', () => {
     // The distributor optimistically wrote ✅; Corn has zero stock.
     const results = matchPastedOrder('corn 50✅', catalog)
-    expect(buildPasteResultText(results, catalog, available)).toBe('Cellera Hero\ncorn 50❌')
+    expect(buildPasteResultText(results, catalog, available, stampedAt)).toBe(
+      ['Cellera Hero (Cases)', '', 'Corn (CO) 50 ❌', '', ...stamp(0)].join('\n'),
+    )
   })
 
   it('sends unresolved entries to a trailing Unmatched group', () => {
     const results = matchPastedOrder('grape 100\nunicorn dust 20', catalog)
-    expect(buildPasteResultText(results, catalog, available)).toBe(
-      'Cellera Hero\ngrape 100✅\n\nUnmatched\nunicorn dust 20❌',
+    expect(buildPasteResultText(results, catalog, available, stampedAt)).toBe(
+      [
+        'Cellera Hero (Cases)', '', 'Grape (GR) 100 ✅', '',
+        'Unmatched (Cases)', '', 'Unicorn Dust 20 ❌', '',
+        ...stamp(100),
+      ].join('\n'),
     )
   })
 
   it('returns an empty string when there is nothing to report', () => {
-    expect(buildPasteResultText([], catalog, available)).toBe('')
+    expect(buildPasteResultText([], catalog, available, stampedAt)).toBe('')
+  })
+
+  it('totals only the cases the warehouse will actually ship, in whole boxes', () => {
+    // 550 fillable cases = 5 full boxes of 100 plus a part box.
+    const reply = buildPasteResultText(
+      matchPastedOrder('grape 5000\ngrape pudina 550\ncorn 50', catalog),
+      catalog,
+      available,
+      stampedAt,
+    )
+    // Grape (5,000) and Grape Pudina (550) are in stock; Corn has none, so its
+    // 50 cases are left out of both totals.
+    expect(reply).toContain('Total Cases : 5,550')
+    expect(reply).toContain('Total Box : 56')
+
+    expect(boxesForCases(550)).toBe(6)
+    expect(boxesForCases(500)).toBe(5)
+    expect(boxesForCases(1)).toBe(1)
+    expect(boxesForCases(0)).toBe(0)
+  })
+
+  it('keeps one canonical code when the sender already typed it', () => {
+    const results = matchPastedOrder('strawberry cheesecake (sc) 249', catalog)
+    expect(buildPasteResultText(results, catalog, available, stampedAt))
+      .toContain('Strawberry Cheesecake (SC) 249 ✅')
+
+    expect(withCanonicalCode('Strawberry Vanilla (sv)', 'SV')).toBe('Strawberry Vanilla (SV)')
+    expect(withCanonicalCode('Jackfruit [JAC]', 'JAC')).toBe('Jackfruit (JAC)')
+    expect(withCanonicalCode('Mint (CEL-99)', 'CEL-99')).toBe('Mint (CEL-99)')
+    // A note the sender wrote that is not the code stays put.
+    expect(withCanonicalCode('Grape Ice (urgent)', 'AN')).toBe('Grape Ice (urgent) (AN)')
+    expect(withCanonicalCode('Unicorn Dust', null)).toBe('Unicorn Dust')
+  })
+
+  it('stamps Malaysian business time whatever the machine clock is set to', () => {
+    // 23:30 UTC on 13 August is already 07:30 on 14 August in Kuala Lumpur.
+    expect(verificationStamp(new Date('2026-08-13T23:30:00Z')))
+      .toBe('🛡️ Verified by Serapod2U\n14 August 2026 · 7:30 AM')
   })
 
   it('capitalises headings without mangling casing inside a word', () => {
@@ -97,5 +161,11 @@ describe('WhatsApp reply text', () => {
     expect(titleCaseHeading('Cellera Zero')).toBe('Cellera Zero')
     expect(titleCaseHeading('Serapod Device S.Line')).toBe('Serapod Device S.Line')
     expect(titleCaseHeading('SERAPOD® TUMBLER')).toBe('SERAPOD® TUMBLER')
+  })
+
+  it('normalises shouted entry text to Title Case', () => {
+    expect(titleCaseEntry('kelapa')).toBe('Kelapa')
+    expect(titleCaseEntry('GRAPE PUDINA')).toBe('Grape Pudina')
+    expect(titleCaseEntry('lychee   blackcurrant')).toBe('Lychee Blackcurrant')
   })
 })

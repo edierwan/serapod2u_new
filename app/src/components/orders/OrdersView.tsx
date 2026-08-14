@@ -521,6 +521,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
             description = 'The parent order must be approved first.'
           } else if (description.includes('Order not found')) {
             description = 'Order not found.'
+          } else if (description.includes('stock configuration is not confirmed')) {
+            // D2H/S2D lines are allocated on submit but left unconfirmed on
+            // purpose: an HQ or warehouse user picks the exact configuration
+            // first. The raw message only carries an order item UUID, which
+            // says nothing about what to do next.
+            title = 'Stock Configuration Not Confirmed'
+            description = `Open ${displayOrderNo}, confirm the exact stock configuration for every line, then approve.`
+          } else if (description.includes('Insufficient confirmed configuration stock')) {
+            description = 'The confirmed configuration no longer holds enough stock. Re-confirm the configuration on the order lines, then approve.'
           }
         } else if (typeof error === 'object' && Object.keys(error).length === 0) {
           // Empty error object usually means network or unknown error
@@ -1773,7 +1782,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
                         <div className="sera-sc-kpi__value !text-lg">{formatNumber(itemCount)}</div>
                       </div>
                       <div className="sera-sc-kpi text-center !p-2">
-                        <div className="sera-sc-kpi__label !text-[10px]">Units</div>
+                        <div className="sera-sc-kpi__label !text-[10px]">Cases</div>
                         <div className="sera-sc-kpi__value !text-lg">{formatNumber(totalUnits)}</div>
                       </div>
                       <div className="sera-sc-kpi text-center !p-2">

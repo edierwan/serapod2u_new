@@ -11,12 +11,16 @@ const inventory = source('components/inventory/InventoryView.tsx')
 const movementReport = source('components/inventory/StockMovementReportView.tsx')
 
 describe('stock configuration operational UI contracts', () => {
-  it('offers SO configurations only through eligibility and sufficient availability', () => {
-    expect(order).toContain("config.eligible")
-    expect(order).toContain('effectiveAvailable >= Number(item.qty || 0)')
-    expect(order).toContain('Insufficient available stock. Fulfilment is blocked.')
-    expect(order).toContain("config.packaging !== 'old_box'")
-    expect(order).toContain('Move this line\'s allocation')
+  it('keeps configuration off the sales order view now that allocation confirms it', () => {
+    // Eligibility, old-box exclusion and sufficient availability are enforced
+    // in resolve_so_stock_config() at allocation time (migration
+    // 20260814100000), so the order view no longer offers a manual choice and
+    // shows master-data identity instead. See
+    // src/lib/orders/so-stock-config-auto-confirm-sql.test.tsx.
+    expect(order).not.toContain('config.eligible')
+    expect(order).not.toContain('Insufficient available stock. Fulfilment is blocked.')
+    expect(order).not.toContain('Move this line\'s allocation')
+    expect(order).toContain('item.variant?.product_code')
   })
 
   it('shows the exact ORD destination and receipt history configuration', () => {

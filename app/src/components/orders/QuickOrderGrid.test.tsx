@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import QuickOrderGrid from './QuickOrderGrid'
@@ -51,20 +51,39 @@ const variants = [
 afterEach(cleanup)
 
 describe('Quick Order product display and hidden identifier search', () => {
-  it('shows clean product names without rendering Product Code or SKU in product rows', () => {
+  it('combines flavour, code, product and alternative name in one Product column', () => {
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
-    // The Product column drops the words shared across the group, so the
-    // Cartridge rows read "Hero"/"Zero" rather than repeating "Cellera".
-    expect(screen.getAllByText('Hero').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('Zero')).not.toBeNull()
+    // The Product column drops the words shared across the group and shows the
+    // remainder in caps, so the Cartridge rows read "HERO"/"ZERO" rather than
+    // repeating "Cellera"; the Alternative Name follows only when there is one.
+    expect(screen.getByText('ZERO · Sunset Mango')).not.toBeNull()
+    expect(screen.getAllByText('HERO').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Mango Peach')).not.toBeNull()
+    expect(screen.getByText('MP')).not.toBeNull()
     expect(screen.queryByText('Cellera Hero')).toBeNull()
     expect(screen.queryByText('CEL-TEH')).toBeNull()
     expect(screen.queryByText('SKU-HIDDEN-TEH')).toBeNull()
   })
 
-  it('labels the order quantity column in cases', () => {
+  it('keeps the catalog to six columns and labels quantities in cases per row', () => {
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
-    expect(screen.getByText('Order Qty (Cases)')).not.toBeNull()
+    expect(screen.getAllByRole('columnheader').map(header => header.textContent))
+      .toEqual(['Product', 'Stock', 'Qty', 'Price', 'Total', 'Status'])
+    expect(screen.getAllByText('cases').length).toBe(variants.length)
+  })
+
+  it('corrects the master-data group spelling on the tabs only', () => {
+    const misspelled = variants.map(variant => ({ ...variant, group_name: variant.group_name === 'Cartridge' ? 'Catridge' : variant.group_name }))
+    render(<QuickOrderGrid variants={misspelled} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+    expect(screen.getByRole('tab', { name: /Cartridge 6/ })).not.toBeNull()
+    expect(screen.queryByRole('tab', { name: /Catridge/ })).toBeNull()
+  })
+
+  it('shows a compact status marker instead of a repeated badge', () => {
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+    expect(screen.getByText('Unclassified')).not.toBeNull()
+    expect(screen.getAllByText('Available').length).toBeGreaterThanOrEqual(5)
+    expect(screen.queryByText('Inventory Unclassified')).toBeNull()
   })
 
   it('still searches by hidden Product Code and SKU', async () => {
@@ -73,28 +92,30 @@ describe('Quick Order product display and hidden identifier search', () => {
     const search = screen.getByPlaceholderText('Search flavour, product or Product Code')
 
     await user.type(search, 'SKU-HIDDEN-TEH')
-    expect(screen.getByText('[ Teh Tarik ] - TT')).not.toBeNull()
-    expect(screen.queryByText('Mango')).toBeNull()
+    expect(screen.getByText('Teh Tarik')).not.toBeNull()
+    expect(screen.queryByText('Mango Peach')).toBeNull()
 
     await user.clear(search)
     await user.type(search, 'CEL-MANGO')
-    expect(screen.getByText('[ Mango Peach ] - MP')).not.toBeNull()
-    expect(screen.getByText('[ Mango Smoothie ]')).not.toBeNull()
-    expect(screen.queryByText('[ Teh Tarik ] - TT')).toBeNull()
+    expect(screen.getByText('Mango Peach')).not.toBeNull()
+    expect(screen.getByText('Mango Smoothie')).not.toBeNull()
+    expect(screen.queryByText('Teh Tarik')).toBeNull()
   })
 
   it('displays matched inventory and stock outcomes separately from product identity', async () => {
     const user = userEvent.setup()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'GUAVA - 300\nMANGO PEACH - 100\nUNKNOWN FLAVOUR - 1')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
 
-    expect(screen.getByText('Matched — Inventory Unclassified')).not.toBeNull()
-    expect(screen.getByText('Matched — Insufficient Stock')).not.toBeNull()
-    expect(screen.getByText('Product Not Found')).not.toBeNull()
+    // The Result column speaks the same status vocabulary as the catalog rows.
+    expect(within(dialog).getByText('Unclassified')).not.toBeNull()
+    expect(within(dialog).getByText('Insufficient')).not.toBeNull()
+    expect(within(dialog).getByText('Product Not Found')).not.toBeNull()
+    expect(within(dialog).queryByText('Matched — Inventory Unclassified')).toBeNull()
     expect(within(dialog).getByText('Cellera Hero - [ Guava ]')).not.toBeNull()
     expect(within(dialog).getByText('Cellera Zero - [ Mango Peach ] - MP')).not.toBeNull()
     expect(within(dialog).getByText('Alternative: Sunset Mango')).not.toBeNull()
@@ -110,7 +131,7 @@ describe('Quick Order product display and hidden identifier search', () => {
     const user = userEvent.setup()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'MANGO - 1000')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
@@ -126,7 +147,7 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
 
     await user.click(within(dialog).getByRole('button', { name: /Mango Smoothie/ }))
-    expect(within(dialog).getByText('Matched — Insufficient Stock')).not.toBeNull()
+    expect(within(dialog).getByText('Insufficient')).not.toBeNull()
     expect(within(dialog).queryByText('Clear selection')).toBeNull()
   })
 
@@ -135,7 +156,7 @@ describe('Quick Order product display and hidden identifier search', () => {
     const onQuantityChange = vi.fn()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={onQuantityChange} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'MANGO - 20')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
@@ -143,18 +164,37 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(within(dialog).queryByPlaceholderText('Search full active Product Master')).toBeNull()
     await user.click(within(dialog).getByRole('button', { name: /Mango Smoothie/ }))
 
-    expect(within(dialog).getByText('Matched')).not.toBeNull()
+    expect(within(dialog).getByText('Available')).not.toBeNull()
     const apply = within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement
     expect(apply.disabled).toBe(false)
     await user.click(apply)
     expect(onQuantityChange).toHaveBeenCalledWith('mango-smoothie', 20)
   })
 
+  it('shows just the applied rows after Apply, whatever filters were set before', async () => {
+    const user = userEvent.setup()
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    // Filters that would otherwise hide what was just applied.
+    await user.click(screen.getByRole('tab', { name: /Device/ }))
+    await user.type(screen.getByPlaceholderText('Search flavour, product or Product Code'), 'black')
+
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }))
+
+    expect(screen.getByRole('button', { name: 'Selected' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('tab', { name: /All/ }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByPlaceholderText('Search flavour, product or Product Code') as HTMLInputElement).value).toBe('')
+  })
+
   it('requires explicit confirmation for a single low-confidence possible match', async () => {
     const user = userEvent.setup()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'TEH - 20')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
@@ -163,7 +203,7 @@ describe('Quick Order product display and hidden identifier search', () => {
     expect(within(dialog).getByText('Cellera Hero - [ Teh Tarik ] - TT')).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
     await user.click(within(dialog).getByRole('button', { name: /Teh Tarik/ }))
-    expect(within(dialog).getByText('Matched')).not.toBeNull()
+    expect(within(dialog).getByText('Available')).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(false)
   })
 })
@@ -173,7 +213,7 @@ describe('Paste review presentation and WhatsApp reply', () => {
     const user = userEvent.setup()
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10\u2705\nGUAVA - 300\u2705')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
@@ -182,10 +222,11 @@ describe('Paste review presentation and WhatsApp reply', () => {
     expect(within(dialog).getByText('Original: MANGO PEACH - 10')).not.toBeNull()
     expect(within(dialog).queryByText(/Original: MANGO PEACH - 10\u2705/)).toBeNull()
 
-    // Guava is unclassified with 0 available, so the system says no; the
-    // mark sits in the Result badge beside the reason.
-    expect(within(dialog).getByText('Matched \u2014 Inventory Unclassified').textContent).toContain('\u274c')
-    expect(within(dialog).getByText('Matched').textContent).toContain('\u2705')
+    // Guava is unclassified with 0 available, so the system says no. The
+    // Result reads in the same words as the catalog rows, no marks repeated.
+    expect(within(dialog).getByText('Unclassified')).not.toBeNull()
+    expect(within(dialog).getByText('Available')).not.toBeNull()
+    expect(within(dialog).queryByText(/\u2705Matched/)).toBeNull()
 
     // Qty is labelled in cases without crowding the header.
     expect(within(dialog).getByText('(Cases)')).not.toBeNull()
@@ -198,23 +239,59 @@ describe('Paste review presentation and WhatsApp reply', () => {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Paste Order List' }))
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10\nDOUBLE MANGO - 20\nGUAVA - 300')
     await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
     await user.click(within(dialog).getByRole('button', { name: /Copy Result/ }))
 
     expect(writeText).toHaveBeenCalledTimes(1)
-    expect(writeText.mock.calls[0][0]).toBe(
+    const reply = writeText.mock.calls[0][0] as string
+    expect(reply.split('\n').slice(0, 8)).toEqual(
       [
-        'Cellera Zero',
-        'MANGO PEACH 10\u2705',
+        'Cellera Zero (Cases)',
         '',
-        'Cellera Hero',
-        'DOUBLE MANGO 20\u2705',
-        'GUAVA 300\u274c',
-      ].join('\n'),
+        'Mango Peach (MP) 10 \u2705',
+        '',
+        'Cellera Hero (Cases)',
+        '',
+        'Double Mango 20 \u2705',
+        'Guava 300 \u274c',
+      ],
+    )
+    // Stamped with the moment it was copied, so the date is matched by shape.
+    // Only Mango Peach (10) and Double Mango (20) are fillable; Guava is not.
+    expect(reply).toMatch(
+      /\n\n\u{1F6E1}\u{FE0F} Verified by Serapod2U\nTotal Cases : 30\nTotal Box : 1\n\d{1,2} [A-Za-z]+ \d{4} · \d{1,2}:\d{2} (AM|PM)$/u,
     )
     expect(await within(dialog).findByText('Copied')).not.toBeNull()
+  })
+
+  it('previews the copied reply, then clears it on its own', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+      render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+      await user.click(screen.getByRole('button', { name: 'Paste list' }))
+      const dialog = await screen.findByRole('dialog')
+      await user.type(within(dialog).getByRole('textbox'), 'MANGO PEACH - 10')
+      await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+      await user.click(within(dialog).getByRole('button', { name: /Copy Result/ }))
+
+      // The operator sees the exact clipboard text before leaving for WhatsApp.
+      const preview = await within(dialog).findByRole('status')
+      expect(preview.textContent).toContain('Cellera Zero (Cases)')
+      expect(preview.textContent).toContain('Mango Peach (MP) 10 ✅')
+      expect(preview.textContent).toContain('Verified by Serapod2U')
+
+      await act(async () => { vi.advanceTimersByTime(5000) })
+      expect(within(dialog).queryByRole('status')).toBeNull()
+      expect(within(dialog).getByRole('button', { name: /Copy Result/ })).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -334,6 +334,60 @@ describe('Quick Order multi-entry paste parsing', () => {
   })
 })
 
+describe('Entries that already carry the variant Product Code', () => {
+  // The catalog our own reply is generated from: two flavours whose names alone
+  // are ambiguous or fuzzy, each with a distinct variant Product Code.
+  const codedVariants = [
+    {
+      id: 'corn-vanilla', variant_name: 'Fruity Cellera Cartridge [ Corn Vanilla ]', alternative_name: 'Butterscotch Cream',
+      product_name: 'Cellera Hero', product_code: 'CEL-HERO', variant_product_code: 'CV',
+      manufacturer_sku: 'SKU-CV', group_name: 'Cartridge', available_qty: 2564, inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'tobacco', variant_name: 'Fruity Cellera Cartridge [ Tobacco ]', alternative_name: 'Tobacco Classic',
+      product_name: 'Cellera Zero', product_code: 'CEL-ZERO', variant_product_code: 'TO',
+      manufacturer_sku: 'SKU-TO', group_name: 'Cartridge', available_qty: 4406, inventory_classification: 'classified' as const,
+    },
+    {
+      id: 'vanilla-tobacco', variant_name: 'Fruity Cellera Cartridge [ Vanilla Tobacco ]',
+      product_name: 'Cellera Hero', product_code: 'CEL-HERO', variant_product_code: 'VT',
+      manufacturer_sku: 'SKU-VT', group_name: 'Cartridge', available_qty: 5325, inventory_classification: 'classified' as const,
+    },
+  ]
+
+  it('settles a fuzzy alternative name outright when the code is stated', () => {
+    const results = matchPastedOrder('Butterscotch Cream (CV) 42', codedVariants)
+    expect(results[0].status).toBe('matched')
+    expect(results[0].selectedVariantId).toBe('corn-vanilla')
+    expect(results[0].quantity).toBe(42)
+    expect(results[0].matchMethod).toBe('code_or_sku')
+  })
+
+  it('settles an entry the name alone leaves ambiguous', () => {
+    // Without the code, "Tobacco Classic (TO)" scored against both [ Tobacco ]
+    // and [ Vanilla Tobacco ] and stopped for a selection.
+    const results = matchPastedOrder('Tobacco Classic (TO) 60', codedVariants)
+    expect(results[0].status).toBe('matched')
+    expect(results[0].selectedVariantId).toBe('tobacco')
+    expect(results[0].matchMethod).toBe('code_or_sku')
+  })
+
+  it('ignores a bracketed parent product code shared by several flavours', () => {
+    // CEL-HERO names two variants, so it must not auto-select either one; the
+    // line falls back to normal review rather than picking a sibling.
+    const results = matchPastedOrder('Vanilla Tobacco (CEL-HERO) 10', codedVariants)
+    expect(results[0].status).toBe('ambiguous')
+    expect(results[0].selectedVariantId).toBeUndefined()
+  })
+
+  it('does not let a flavour word that reads like a code hijack the line', () => {
+    // "TO" is a real Product Code, but only a bracketed token is trusted.
+    const results = matchPastedOrder('Vanilla Tobacco 10', codedVariants)
+    expect(results[0].selectedVariantId).toBe('vanilla-tobacco')
+    expect(results[0].matchMethod).toBe('bracket_flavour')
+  })
+})
+
 describe('WhatsApp noise in a pasted list', () => {
   it('drops a quantity-less product heading instead of reporting Invalid Quantity', () => {
     // The real message interleaves "cellera zero" as a section heading between
@@ -359,6 +413,17 @@ describe('WhatsApp noise in a pasted list', () => {
     expect(isCatalogProductHeading('CELLERA HERO', variants)).toBe(true)
     expect(isCatalogProductHeading('mint', variants)).toBe(false)
     expect(isCatalogProductHeading('', variants)).toBe(false)
+  })
+
+  it('treats our own "(Cases)" headings as headings when a reply is pasted back', () => {
+    expect(isCatalogProductHeading('Cellera Zero (Cases)', variants)).toBe(true)
+    expect(isCatalogProductHeading('Cellera Hero (Cases)', variants)).toBe(true)
+    // A unit qualifier does not turn a non-product into a heading.
+    expect(isCatalogProductHeading('Mint (Cases)', variants)).toBe(false)
+
+    const results = matchPastedOrder('Cellera Zero (Cases)\n\nMint (CEL-99) 3', variants)
+    expect(results.map(result => result.name)).toEqual(['Mint (CEL-99)'])
+    expect(results[0].status).toBe('matched')
   })
 
   it('strips the sender status marks for display without touching the text', () => {

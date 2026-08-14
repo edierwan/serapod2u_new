@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   variantAlternativeLabel,
   variantFlavourLabel,
+  variantFlavourName,
   variantIdentityLabel,
 } from './variant-display-label'
 
@@ -29,6 +30,13 @@ describe('View Inventory variant identity line', () => {
     expect(variantFlavourLabel(null)).toBe('[ No variant ]')
     expect(variantFlavourLabel('   ')).toBe('[ No variant ]')
     expect(variantFlavourLabel('Cellera Cartridge [  ]')).toBe('[ No variant ]')
+  })
+
+  it('drops the brackets where the flavour is the row identity', () => {
+    expect(variantFlavourName('Fruity Cellera Cartridge [ Lychee Blackcurrant ]'))
+      .toBe('Lychee Blackcurrant')
+    expect(variantFlavourName('Durian')).toBe('Durian')
+    expect(variantFlavourName(null)).toBe('No variant')
   })
 
   it('appends the variant Product Code from master data', () => {

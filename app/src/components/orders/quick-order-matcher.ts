@@ -252,10 +252,40 @@ const fuzzyScore = (query: string, variant: MatchableVariant) => {
   }))
 }
 
+/**
+ * Entries that carry the identifier alongside the flavour — "Butterscotch Cream
+ * (CV) 42", the shape our own WhatsApp reply produces — are already unambiguous:
+ * the code is master data and names one variant. Reading it turns what the name
+ * alone would score as a fuzzy suggestion into a settled match, so the operator
+ * is not asked to re-pick something the distributor already stated.
+ *
+ * Only a bracketed token is trusted, never a bare word, so a flavour that
+ * happens to read like a code ("PO", "MB") cannot hijack a line. The token must
+ * resolve to exactly ONE variant: a parent products.product_code is shared by
+ * every flavour under it, so those fall through to normal name matching rather
+ * than auto-selecting an arbitrary sibling.
+ */
+const BRACKETED_TOKEN = /[([]([^()[\]]+)[)\]]/g
+
+const resolveBracketedIdentifier = (name: string, variants: MatchableVariant[]) => {
+  for (const match of name.matchAll(BRACKETED_TOKEN)) {
+    const token = normalizeOrderText(match[1])
+    if (!token) continue
+    const hits = variants.filter(variant => exactIdentifiers(variant).includes(token))
+    if (hits.length === 1) return hits
+  }
+  return []
+}
+
 export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) {
   const normalizedName = normalizeOrderText(name)
   const identifierMatches = variants.filter(variant => exactIdentifiers(variant).includes(normalizedName))
   if (identifierMatches.length > 0) return { candidates: identifierMatches.slice(0, 8), method: 'code_or_sku' as const, totalMatches: identifierMatches.length }
+
+  const bracketedIdentifier = resolveBracketedIdentifier(name, variants)
+  if (bracketedIdentifier.length === 1) {
+    return { candidates: bracketedIdentifier, method: 'code_or_sku' as const, totalMatches: 1 }
+  }
 
   const normalizedMatchName = normalizeMatchName(name)
   const productLine = detectProductLine(name, variants)
@@ -320,8 +350,13 @@ export function resolveCatalogMatch(name: string, variants: MatchableVariant[]) 
  * flavour, a stray note) still surfaces for review rather than being silently
  * swallowed.
  */
+const TRAILING_UNIT_QUALIFIER = /\s*[([](?:CASES?|PCS?|PIECES?|UNITS?|BOX(?:ES)?)[)\]]\s*$/i
+
 export function isCatalogProductHeading(name: string, variants: MatchableVariant[]) {
-  const normalized = normalizeMatchName(name)
+  // "Cellera Zero (Cases)" — the unit qualifier our own reply appends to each
+  // product heading. Without stripping it, a reply pasted back for a re-check
+  // surfaces its own headings as bogus "Invalid Quantity" rows.
+  const normalized = normalizeMatchName(name.replace(TRAILING_UNIT_QUALIFIER, ''))
   if (!normalized) return false
   return variants.some(variant => normalizeMatchName(variant.product_name) === normalized)
 }

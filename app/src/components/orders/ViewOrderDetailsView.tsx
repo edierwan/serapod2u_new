@@ -12,7 +12,6 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatNumber, formatCurrency as formatCurrencyUtil } from '@/lib/utils/formatters'
 import OrderDocumentsDialogEnhanced from '@/components/dashboard/views/orders/OrderDocumentsDialogEnhanced'
 import DHReceiptDialog from '@/components/orders/DHReceiptDialog'
-import { withStockStrengthUnit } from '@/lib/inventory/stock-config-unit-label'
 
 interface UserProfile {
   id: string
@@ -70,8 +69,6 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
   const [creatorSignatureFailed, setCreatorSignatureFailed] = useState(false)
   const [approverSignatureUrl, setApproverSignatureUrl] = useState<string | null>(null)
   const [approverSignatureFailed, setApproverSignatureFailed] = useState(false)
-  const [stockConfigurations, setStockConfigurations] = useState<any[]>([])
-  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null)
   const printAreaRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   const { toast } = useToast()
@@ -238,8 +235,7 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
           .select(`
             *,
             product:products(product_name, product_code),
-            variant:product_variants(variant_name),
-            stock_config:inventory_stock_configurations!order_items_stock_config_variant_fkey(id, config_code, config_label, stock_sku, volume_ml, packaging)
+            variant:product_variants(variant_name, product_code)
           `)
           .eq('order_id', orderId),
 
@@ -261,49 +257,6 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
       ])
 
       if (itemsResult.error) throw itemsResult.error
-
-      const itemVariantIds = Array.from(new Set((itemsResult.data || []).map((item: any) => item.variant_id)))
-      if (itemVariantIds.length > 0 && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code)) {
-        const [{ data: configs, error: configsError }, inventoryOrgResult, eligibilityResult] = await Promise.all([
-          supabase
-          .from('inventory_stock_configurations')
-          .select('id, variant_id, config_code, config_label, stock_sku, volume_ml, packaging, allow_so, status, requires_repacking_before_sale')
-          .in('variant_id', itemVariantIds)
-          .eq('status', 'active')
-          .eq('allow_so', true)
-          .eq('requires_repacking_before_sale', false)
-          .order('sort_order'),
-          (supabase as any).rpc('order_inventory_organization', { p_order_id: orderId }),
-          supabase.from('distributor_stock_config_eligibility')
-            .select('allow_50ml_new_box')
-            .eq('distributor_org_id', order.buyer_org_id)
-            .maybeSingle(),
-        ])
-        if (configsError) throw configsError
-        const inventoryOrgId = inventoryOrgResult.data as string | null
-        const { data: balances, error: balancesError } = inventoryOrgId
-          ? await supabase.from('product_inventory')
-            .select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated, quantity_available')
-            .eq('organization_id', inventoryOrgId)
-            .in('variant_id', itemVariantIds)
-            .eq('is_active', true)
-          : { data: [], error: inventoryOrgResult.error }
-        if (balancesError) throw balancesError
-        const balanceMap = new Map((balances || []).map((balance: any) => [balance.stock_config_id, balance]))
-        const eligible50ml = eligibilityResult.data?.allow_50ml_new_box === true
-        setStockConfigurations((configs || []).filter((config: any) => config.packaging !== 'old_box').map((config: any) => {
-          const balance: any = balanceMap.get(config.id)
-          return {
-            ...config,
-            onHand: Number(balance?.quantity_on_hand || 0),
-            allocated: Number(balance?.quantity_allocated || 0),
-            available: Number(balance?.quantity_available || 0),
-            eligible: config.volume_ml === 50 ? eligible50ml : true,
-          }
-        }))
-      } else {
-        setStockConfigurations([])
-      }
 
       const itemsWithDetails = itemsResult.data || []
       const poDoc = poDocResult.data
@@ -491,27 +444,6 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
 
   const formatCurrency = (amount: number): string => {
     return formatCurrencyUtil(amount)
-  }
-
-  const confirmStockConfiguration = async (item: any, stockConfig: any) => {
-    if (item.stock_config_id && item.stock_config_id !== stockConfig.id) {
-      const current = item.stock_config?.config_label || 'the current configuration'
-      if (!window.confirm(`Move this line's allocation from ${current} to ${withStockStrengthUnit(stockConfig.config_label)}? This change is atomic and will not alter the order price.`)) return
-    }
-    try {
-      setConfirmingItemId(item.id)
-      const { error } = await supabase.rpc('set_order_item_stock_config', {
-        p_order_item_id: item.id,
-        p_stock_config_id: stockConfig.id,
-      })
-      if (error) throw error
-      await loadOrderData(orderData.id)
-      toast({ title: 'Configuration confirmed', description: 'The exact warehouse stock configuration is now locked to this line.' })
-    } catch (error: any) {
-      toast({ title: 'Configuration not confirmed', description: error?.message || 'Unable to confirm stock configuration.', variant: 'destructive' })
-    } finally {
-      setConfirmingItemId(null)
-    }
   }
 
   if (loading) {
@@ -783,8 +715,8 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
               <tr className="border-b border-gray-200">
                 <th className="py-2 text-left text-xs font-bold text-gray-900 w-12">No</th>
                 <th className="py-2 text-left text-xs font-bold text-gray-900">Description</th>
-                <th className="py-2 text-left text-xs font-bold text-gray-900 print:hidden">Stock configuration</th>
-                <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Unit</th>
+                <th className="py-2 text-left text-xs font-bold text-gray-900 w-32">Product Code</th>
+                <th className="py-2 text-right text-xs font-bold text-gray-900 w-24">Cases</th>
                 <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Price</th>
                 <th className="py-2 text-right text-xs font-bold text-gray-900 w-32">Amount</th>
               </tr>
@@ -812,39 +744,12 @@ export default function ViewOrderDetailsView({ userProfile, onViewChange, orderI
                       })()}
                     </p>
                   </td>
-                  <td className="py-3 pr-3 text-xs text-gray-900 align-top pt-4 print:hidden">
-                    {orderData.status === 'submitted' && ['D2H', 'S2D'].includes(orderData.order_type) && ['HQ', 'WH'].includes(userProfile.organizations?.org_type_code) ? (
-                      (() => {
-                        const options = stockConfigurations.filter(config => config.variant_id === item.variant_id && config.eligible)
-                        const selectable = options.filter(config => {
-                          const effectiveAvailable = config.available + (config.id === item.stock_config_id ? Number(item.qty || 0) : 0)
-                          return effectiveAvailable >= Number(item.qty || 0)
-                        })
-                        return <div className="min-w-[310px] space-y-2">
-                          <div className="font-semibold text-slate-900">Requested: {item.variant?.variant_name || 'Flavour'} · {formatNumber(item.qty)}</div>
-                          {options.map(config => {
-                            const enough = selectable.some(candidate => candidate.id === config.id)
-                            const selected = item.stock_config_id === config.id
-                            return <button
-                              key={config.id}
-                              type="button"
-                              disabled={!enough || confirmingItemId === item.id}
-                              onClick={() => confirmStockConfiguration(item, config)}
-                              className={`block w-full rounded-md border p-2 text-left transition ${selected ? 'border-[var(--sera-orange)] bg-[var(--sera-orange)]/[0.06]' : enough ? 'border-slate-200 bg-white hover:border-blue-300' : 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'}`}
-                            >
-                              <div className="flex items-center justify-between gap-2"><span className="font-semibold">{config.volume_ml ? `${config.volume_ml}ml · ${config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : 'Standard'}</span><span className={selected ? 'text-blue-700' : 'text-slate-500'}>{selected ? (item.stock_config_confirmed_at ? 'Confirmed' : 'Allocated') : enough ? 'Available' : 'Insufficient'}</span></div>
-                              <div className="font-mono text-[11px] text-blue-700">{config.stock_sku}</div>
-                              <div className="mt-1 grid grid-cols-3 gap-2 text-[11px] text-slate-600"><span>On hand {formatNumber(config.onHand)}</span><span>Allocated {formatNumber(config.allocated)}</span><span>Available {formatNumber(config.available)}</span></div>
-                              {config.volume_ml === 50 ? <div className="mt-1 text-[11px] text-emerald-700">Distributor eligible for 50ml New Box</div> : null}
-                            </button>
-                          })}
-                          {selectable.length === 0 ? <div className="rounded border border-red-200 bg-red-50 p-2 font-medium text-red-700">Insufficient available stock. Fulfilment is blocked.</div> : null}
-                          <div className={item.stock_config_confirmed_at ? 'text-green-700' : 'text-amber-700'}>{item.stock_config_confirmed_at ? 'Exact configuration confirmed for picking' : 'Confirmation required before approval'}</div>
-                        </div>
-                      })()
-                    ) : (
-                      <span>{item.stock_config ? `${item.stock_config.stock_sku} · ${item.stock_config.volume_ml ? `${item.stock_config.volume_ml}ml · ${item.stock_config.packaging === 'new_box' ? 'New Box' : 'Old Box'}` : item.stock_config.config_label}` : (item.stock_config_id ? 'Configured stock' : 'Legacy / not assigned')}</span>
-                    )}
+                  {/* Master-data identity, the same code Quick Order and the
+                      WhatsApp reply use. The exact warehouse stock configuration
+                      is resolved and confirmed at allocation, so it is picking
+                      detail rather than something to read on the order. */}
+                  <td className="py-3 pr-3 text-xs text-gray-900 align-top pt-4">
+                    <span className="font-medium">{item.variant?.product_code || '—'}</span>
                   </td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatNumber(item.qty)}</td>
                   <td className="py-3 text-xs text-gray-900 text-right align-top pt-4">{formatCurrency(item.unit_price).replace('RM', '')}</td>

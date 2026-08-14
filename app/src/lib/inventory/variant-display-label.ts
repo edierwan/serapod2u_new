@@ -37,6 +37,16 @@ export function variantFlavourLabel(variantName?: string | null): string {
 }
 
 /**
+ * The same flavour without the brackets: "Lychee Blackcurrant". Used where the
+ * flavour is already the row's leading, bolded identity (the Quick Order
+ * catalog), so the brackets add noise instead of separation. Missing variant
+ * names still read "No variant" rather than rendering blank.
+ */
+export function variantFlavourName(variantName?: string | null): string {
+  return variantFlavourLabel(variantName).replace(/^\[\s*|\s*\]$/g, '')
+}
+
+/**
  * Flavour plus the master-data variant Product Code:
  * "[ Lychee Blackcurrant ] - LB". Variants with no Product Code show the
  * flavour alone rather than a dangling separator.

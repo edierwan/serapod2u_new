@@ -1017,15 +1017,18 @@ export class PDFGenerator {
       // Column 3: Variant Name
       const variantName = item.variant?.variant_name || ''
 
-      const qtyUnits = Number(item.qty || 0).toLocaleString()
-      const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
+      // The ordered quantity is counted in cases; 100 cases fill one box. The
+      // stored columns still read qty_cases / units_per_case — only the
+      // customer-facing vocabulary changed, not the data.
+      const qtyCases = Number(item.qty || 0).toLocaleString()
+      const boxes = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
 
       return [
         (index + 1).toString(),
         productName,
         variantName,
-        qtyUnits,
-        qtyCases.toString(),
+        qtyCases,
+        boxes.toString(),
         this.formatCurrency(item.unit_price || 0),
         (item.line_total || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       ]
@@ -1037,9 +1040,9 @@ export class PDFGenerator {
         '#',
         'Product Name',
         'Description',
-        'Qty Units',
         'Qty Cases',
-        'Unit (RM)',
+        'Boxes',
+        'Price/Case (RM)',
         'Total (RM)'
       ]],
       body: tableData,
@@ -2392,15 +2395,18 @@ export class PDFGenerator {
       // Column 3: Variant Name
       const variantName = item.variant?.variant_name || ''
 
-      const qtyUnits = Number(item.qty || 0).toLocaleString()
-      const qtyCases = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
+      // The ordered quantity is counted in cases; 100 cases fill one box. The
+      // stored columns still read qty_cases / units_per_case — only the
+      // customer-facing vocabulary changed, not the data.
+      const qtyCases = Number(item.qty || 0).toLocaleString()
+      const boxes = item.qty_cases || Math.ceil((item.qty || 0) / (item.units_per_case || 100))
 
       return [
         (index + 1).toString(),
         productName,
         variantName,
-        qtyUnits,
-        qtyCases.toString()
+        qtyCases,
+        boxes.toString()
       ]
     })
 
@@ -2410,8 +2416,8 @@ export class PDFGenerator {
         '#',
         'Product Name',
         'Description',
-        'Qty Units',
-        'Qty Cases'
+        'Qty Cases',
+        'Boxes'
       ]],
       body: tableData,
       theme: 'grid',
