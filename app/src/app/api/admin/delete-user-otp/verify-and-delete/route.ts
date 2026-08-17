@@ -4,6 +4,86 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { hashOtp, logNotificationEvent } from '@/server/auth/passwordResetService'
 
 const PURPOSE = 'user_deletion'
+type UserRemovalMode = 'delete' | 'archive'
+
+async function getUserRemovalMode(admin: any, userId: string): Promise<UserRemovalMode> {
+    const checks = await Promise.all([
+        admin.from('orders').select('id', { count: 'exact', head: true })
+            .or(`created_by.eq.${userId},approved_by.eq.${userId},updated_by.eq.${userId}`),
+        admin.from('documents').select('id', { count: 'exact', head: true })
+            .or(`created_by.eq.${userId},acknowledged_by.eq.${userId}`),
+        admin.from('document_files').select('id', { count: 'exact', head: true })
+            .eq('uploaded_by', userId),
+        admin.from('document_signatures').select('id', { count: 'exact', head: true })
+            .eq('signer_user_id', userId),
+    ])
+
+    // A failed check must never fall through to hard deletion.
+    if (checks.some(({ error }: { error: unknown }) => Boolean(error))) return 'archive'
+    return checks.some(({ count }: { count: number | null }) => (count ?? 0) > 0)
+        ? 'archive'
+        : 'delete'
+}
+
+function archivedEmailFor(userId: string): string {
+    return `archived-${userId}@deleted.serapod.local`
+}
+
+function archivedPhoneFor(userId: string): string {
+    // A syntactically-valid, non-routable identifier. It preserves uniqueness in
+    // Supabase Auth while freeing the person's actual phone number.
+    const numericId = BigInt(`0x${userId.replace(/-/g, '')}`) % 1_000_000_000_000n
+    return `+999${numericId.toString().padStart(12, '0')}`
+}
+
+async function archiveUserAndReleaseIdentifiers(
+    admin: any,
+    targetUser: { id: string; email: string; phone: string | null; is_active: boolean },
+): Promise<{ error: string | null }> {
+    const archivedEmail = archivedEmailFor(targetUser.id)
+    const archivedPhone = archivedPhoneFor(targetUser.id)
+
+    // Archive the profile first. If Auth cannot release the credentials, roll
+    // the profile back so the identifiers remain consistently unavailable.
+    const { error: profileError } = await admin
+        .from('users')
+        .update({
+            email: archivedEmail,
+            phone: null,
+            is_active: false,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('id', targetUser.id)
+
+    if (profileError) return { error: profileError.message || 'Unable to archive user profile' }
+
+    const { error: authError } = await admin.auth.admin.updateUserById(targetUser.id, {
+        email: archivedEmail,
+        phone: archivedPhone,
+        email_confirm: true,
+        phone_confirm: true,
+    })
+    if (authError) {
+        await admin
+            .from('users')
+            .update({
+                email: targetUser.email,
+                phone: targetUser.phone,
+                is_active: targetUser.is_active,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', targetUser.id)
+        return { error: authError.message || 'Unable to release authentication identifiers' }
+    }
+
+    // Prevent an archived business user from continuing to submit Telegram orders.
+    await admin
+        .from('telegram_links')
+        .update({ is_active: false })
+        .eq('user_id', targetUser.id)
+
+    return { error: null }
+}
 
 /**
  * POST /api/admin/delete-user-otp/verify-and-delete
@@ -113,17 +193,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'This code was requested by a different admin.' }, { status: 403 })
         }
 
-        // --- OTP verified — proceed with deletion ---
-        // Mark code as used
-        await db
-            .from('auth_verification_codes')
-            .update({ used_at: new Date().toISOString(), verified_at: new Date().toISOString() })
-            .eq('id', codeId)
-
         // Get target user info
         const { data: targetUser } = await admin
             .from('users')
-            .select('email, phone, full_name, role_code, roles:role_code(role_level)')
+            .select('id, email, phone, full_name, is_active, role_code, roles:role_code(role_level)')
             .eq('id', targetUserId)
             .single()
 
@@ -138,6 +211,46 @@ export async function POST(request: NextRequest) {
                 { status: 403 }
             )
         }
+
+        // Recheck immediately before mutating: history may have been created
+        // between the OTP request and this confirmation.
+        const removalMode = await getUserRemovalMode(admin, targetUserId)
+
+        if (removalMode === 'archive') {
+            const archiveResult = await archiveUserAndReleaseIdentifiers(admin, targetUser)
+            if (archiveResult.error) {
+                return NextResponse.json({
+                    error: `Unable to archive this user and release their contact details: ${archiveResult.error}`,
+                }, { status: 500 })
+            }
+
+            await db
+                .from('auth_verification_codes')
+                .update({ used_at: new Date().toISOString(), verified_at: new Date().toISOString() })
+                .eq('id', codeId)
+
+            await logDeletionAudit(admin, {
+                operation: 'archive_user_release_identifiers',
+                userId: user.id,
+                userEmail: user.email || null,
+                allowed: true,
+                reason: `Archived ${targetUser.full_name || targetUser.email}; retained business history and released email/phone`,
+                ip,
+            })
+
+            return NextResponse.json({
+                success: true,
+                mode: 'archive',
+                message: `${targetUser.full_name || targetUser.email} was archived. Their original email and phone can now be reused.`,
+            })
+        }
+
+        // --- OTP verified — permanently delete a user with no retained history ---
+        // Mark code as used only once an irreversible operation is about to start.
+        await db
+            .from('auth_verification_codes')
+            .update({ used_at: new Date().toISOString(), verified_at: new Date().toISOString() })
+            .eq('id', codeId)
 
         // --- Cascading cleanup (same as deleteUserWithAuth but more thorough) ---
         const cleanupErrors: string[] = []
@@ -236,7 +349,9 @@ export async function POST(request: NextRequest) {
         })
     } catch (err: any) {
         console.error('Delete user verify error:', err)
-        return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+        return NextResponse.json({
+            error: 'Unable to complete the user removal. No account was deleted; please try again or contact support.',
+        }, { status: 500 })
     }
 }
 
