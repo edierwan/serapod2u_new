@@ -9,7 +9,7 @@ import { maskPhone, normalizePhoneE164 } from '@/utils/phone'
 const PURPOSE = 'user_deletion'
 const MAX_SENDS_PER_15MIN = 3
 type UserRemovalMode = 'delete' | 'archive'
-type DeliveryChannel = 'whatsapp' | 'email'
+type DeliveryChannel = 'whatsapp' | 'sms' | 'email'
 
 async function getUserRemovalMode(admin: any, userId: string): Promise<UserRemovalMode> {
     const checks = await Promise.all([
@@ -70,7 +70,7 @@ function buildDeletionOtpEmail(input: {
  *
  * Step 1: HQ Admin or Super Admin requests a deletion OTP.
  * Primary delivery: organization contact phone via WhatsApp.
- * Automatic fallback: organization contact email when WhatsApp fails.
+ * Fallbacks: SMS (Local MY provider), then organization contact email.
  */
 export async function POST(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null
@@ -256,11 +256,14 @@ export async function POST(request: NextRequest) {
         }
 
         const whatsappMessage = `⚠️ DELETION VERIFICATION\n\nCode: *${code}*\n\nUser: ${targetLabel}\nRequested by: ${user.email}\n\nThis code expires in 5 minutes. Only enter this code if you authorize this deletion.`
+        const smsMessage = `DELETION VERIFICATION\nCode: ${code}\nUser: ${targetLabel}\nRequested by: ${user.email || 'unknown'}\nExpires in 5 minutes.`
 
         let channel: DeliveryChannel = 'whatsapp'
         let whatsappError: string | null = null
+        let smsError: string | null = null
         let emailError: string | null = null
         let emailProvider: string | null = null
+        let smsProvider: string | null = null
 
         try {
             const { sendWhatsAppMessage } = await import('@/app/api/settings/whatsapp/_utils')
@@ -268,62 +271,95 @@ export async function POST(request: NextRequest) {
             await sendWhatsAppMessage(admin, orgId, { to: recipientDigits, text: whatsappMessage })
         } catch (err: any) {
             whatsappError = err?.message || 'WhatsApp delivery failed'
-            console.warn('Delete OTP WhatsApp failed; trying org email fallback:', whatsappError)
+            console.warn('Delete OTP WhatsApp failed; trying SMS fallback:', whatsappError)
 
-            if (!emailForSend) {
-                await db
-                    .from('auth_verification_codes')
-                    .update({ invalidated_at: new Date().toISOString() })
-                    .eq('id', codeRow.id)
-
-                return NextResponse.json({
-                    error: 'Unable to send via WhatsApp, and organization contact email is not configured. Set contact email in Settings > Organization (e.g. admin@serapod2u.com), then try again.',
-                    whatsappError,
-                }, { status: 500 })
-            }
-
-            const emailPayload = buildDeletionOtpEmail({
-                code,
-                targetName: String(targetLabel),
-                requesterEmail: user.email,
-            })
-            const emailResult = await sendTransactionalHtmlEmail(admin, orgId, {
-                to: emailForSend,
-                subject: emailPayload.subject,
-                text: emailPayload.text,
-                html: emailPayload.html,
-                fromName: 'Serapod2U',
+            const { sendSmsWithActiveProvider, recordSmsDelivery } = await import('@/lib/notifications/sms-send')
+            const smsResult = await sendSmsWithActiveProvider(admin, orgId, phoneForSend, smsMessage)
+            await recordSmsDelivery(admin, {
+                orgId,
+                to: phoneForSend,
+                eventCode: 'delete_user_otp',
+                result: smsResult,
             })
 
-            if (!emailResult.success) {
-                emailError = emailResult.error || 'Email delivery failed'
+            if (smsResult.success) {
+                channel = 'sms'
+                smsProvider = 'local_my'
                 await db
                     .from('auth_verification_codes')
-                    .update({ invalidated_at: new Date().toISOString() })
+                    .update({
+                        channel: 'sms',
+                        meta: {
+                            target_user_id: targetUserId,
+                            target_user_name: targetUser.full_name,
+                            target_user_email: targetUser.email,
+                            delivery_channel: 'sms',
+                            whatsapp_error: whatsappError,
+                        },
+                    })
                     .eq('id', codeRow.id)
+            } else {
+                smsError = smsResult.error || 'SMS delivery failed'
+                console.warn('Delete OTP SMS failed; trying org email fallback:', smsError)
 
-                return NextResponse.json({
-                    error: `Unable to send the verification code. WhatsApp failed (${whatsappError}). Email fallback also failed (${emailError}).`,
-                    whatsappError,
-                    emailError,
-                }, { status: 500 })
-            }
+                if (!emailForSend) {
+                    await db
+                        .from('auth_verification_codes')
+                        .update({ invalidated_at: new Date().toISOString() })
+                        .eq('id', codeRow.id)
 
-            channel = 'email'
-            emailProvider = emailResult.providerName || null
-            await db
-                .from('auth_verification_codes')
-                .update({
-                    channel: 'email',
-                    meta: {
-                        target_user_id: targetUserId,
-                        target_user_name: targetUser.full_name,
-                        target_user_email: targetUser.email,
-                        delivery_channel: 'email',
-                        whatsapp_error: whatsappError,
-                    },
+                    return NextResponse.json({
+                        error: `Unable to send via WhatsApp (${whatsappError}) or SMS (${smsError}), and organization contact email is not configured.`,
+                        whatsappError,
+                        smsError,
+                    }, { status: 500 })
+                }
+
+                const emailPayload = buildDeletionOtpEmail({
+                    code,
+                    targetName: String(targetLabel),
+                    requesterEmail: user.email,
                 })
-                .eq('id', codeRow.id)
+                const emailResult = await sendTransactionalHtmlEmail(admin, orgId, {
+                    to: emailForSend,
+                    subject: emailPayload.subject,
+                    text: emailPayload.text,
+                    html: emailPayload.html,
+                    fromName: 'Serapod2U',
+                })
+
+                if (!emailResult.success) {
+                    emailError = emailResult.error || 'Email delivery failed'
+                    await db
+                        .from('auth_verification_codes')
+                        .update({ invalidated_at: new Date().toISOString() })
+                        .eq('id', codeRow.id)
+
+                    return NextResponse.json({
+                        error: `Unable to send the verification code. WhatsApp failed (${whatsappError}). SMS failed (${smsError}). Email fallback also failed (${emailError}).`,
+                        whatsappError,
+                        smsError,
+                        emailError,
+                    }, { status: 500 })
+                }
+
+                channel = 'email'
+                emailProvider = emailResult.providerName || null
+                await db
+                    .from('auth_verification_codes')
+                    .update({
+                        channel: 'email',
+                        meta: {
+                            target_user_id: targetUserId,
+                            target_user_name: targetUser.full_name,
+                            target_user_email: targetUser.email,
+                            delivery_channel: 'email',
+                            whatsapp_error: whatsappError,
+                            sms_error: smsError,
+                        },
+                    })
+                    .eq('id', codeRow.id)
+            }
         }
 
         const maskedPhone = maskPhone(phoneForSend)
@@ -331,9 +367,15 @@ export async function POST(request: NextRequest) {
             ? maskEmail(emailForSend)
             : maskedPhone
 
+        const providerForEvent = channel === 'email'
+            ? (emailProvider || 'email')
+            : channel === 'sms'
+                ? (smsProvider || 'local_my')
+                : 'whatsapp'
+
         await db.from('notification_events').insert({
             channel,
-            provider: channel === 'email' ? (emailProvider || 'email') : 'whatsapp',
+            provider: providerForEvent,
             event_type: 'delete_user_otp_requested',
             purpose: PURPOSE,
             recipient_email: channel === 'email' ? emailForSend : null,
@@ -345,8 +387,9 @@ export async function POST(request: NextRequest) {
                 target_user_name: targetUser.full_name,
                 code_id: codeRow.id,
                 delivery_channel: channel,
-                fallback_used: channel === 'email',
+                fallback_used: channel !== 'whatsapp',
                 whatsapp_error: whatsappError,
+                sms_error: smsError,
             },
             request_ip: ip,
             requested_at: new Date().toISOString(),
@@ -354,24 +397,32 @@ export async function POST(request: NextRequest) {
             created_at: new Date().toISOString(),
         })
 
+        const deliveryReason = channel === 'email'
+            ? `OTP emailed to org contact after WhatsApp/SMS failure for deleting ${targetLabel}`
+            : channel === 'sms'
+                ? `OTP sent via SMS after WhatsApp failure for deleting ${targetLabel}`
+                : `OTP sent to org phone for deleting ${targetLabel}`
+
         await logDeletionAudit(admin, {
             operation: 'delete_user_otp_request',
             userId: user.id,
             userEmail: user.email || null,
             allowed: true,
-            reason: channel === 'email'
-                ? `OTP emailed to org contact after WhatsApp failure for deleting ${targetLabel}`
-                : `OTP sent to org phone for deleting ${targetLabel}`,
+            reason: deliveryReason,
             ip,
         })
 
+        const successMessage = channel === 'email'
+            ? `WhatsApp and SMS delivery failed, so the verification code was emailed to ${maskedRecipient}`
+            : channel === 'sms'
+                ? `WhatsApp delivery failed, so the verification code was sent by SMS to ${maskedRecipient}`
+                : `Verification code sent to ${maskedRecipient}`
+
         return NextResponse.json({
             success: true,
-            message: channel === 'email'
-                ? `WhatsApp delivery failed, so the verification code was emailed to ${maskedRecipient}`
-                : `Verification code sent to ${maskedRecipient}`,
+            message: successMessage,
             channel,
-            fallbackUsed: channel === 'email',
+            fallbackUsed: channel !== 'whatsapp',
             maskedPhone,
             maskedEmail: channel === 'email' && emailForSend ? maskEmail(emailForSend) : null,
             maskedRecipient,
@@ -381,7 +432,7 @@ export async function POST(request: NextRequest) {
     } catch (err: any) {
         console.error('Delete OTP request error:', err)
         return NextResponse.json({
-            error: 'Unable to send the verification code. Check WhatsApp/email delivery configuration and try again.',
+            error: 'Unable to send the verification code. Check WhatsApp/SMS/email delivery configuration and try again.',
         }, { status: 500 })
     }
 }

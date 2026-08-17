@@ -41,11 +41,13 @@ describe('user deletion archive-and-release safety contract', () => {
     expect(verifyRoute).not.toContain("error: 'Something went wrong'")
   })
 
-  it('falls back to organization contact email when WhatsApp delivery fails', () => {
+  it('falls back to SMS then organization contact email when WhatsApp delivery fails', () => {
     expect(requestRoute).toContain("select('contact_phone, contact_email, org_name')")
+    expect(requestRoute).toContain('sendSmsWithActiveProvider')
     expect(requestRoute).toContain('sendTransactionalHtmlEmail')
+    expect(requestRoute).toContain("channel = 'sms'")
     expect(requestRoute).toContain("channel = 'email'")
     expect(requestRoute).toContain('fallbackUsed')
-    expect(managementView).toContain('automatically fall back to the organization contact email')
+    expect(managementView).toContain('SMS is tried next, then the organization contact email')
   })
 })
