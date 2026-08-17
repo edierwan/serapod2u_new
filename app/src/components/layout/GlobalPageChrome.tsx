@@ -28,8 +28,9 @@ interface ChromeContext {
 const SEGMENT_LABELS: Record<string, string> = {
   providers: 'Providers',
   types: 'Notification Types',
-  'whatsapp-activity-recovery': 'WhatsApp Recovery',
-  'whatsapp-activity': 'WhatsApp Activity',
+  'whatsapp-activity-recovery': 'Notification Monitor',
+  'whatsapp-activity': 'Notification Monitor',
+  'sms-activity': 'Notification Monitor',
   'delivery-logs': 'Delivery Logs',
   failed: 'Failed Messages',
   organizations: 'Organizations',

@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { ArrowRight, Bell, Megaphone, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
@@ -20,8 +19,8 @@ interface NotificationsCardItem {
 const notificationCards: NotificationsCardItem[] = [
   {
     id: 'failed-notifications',
-    label: 'WhatsApp Activity & Recovery',
-    description: 'Monitor WhatsApp delivery activity, failed notifications, provider status, and recovery actions.',
+    label: 'Notification Monitor',
+    description: 'Monitor WhatsApp and SMS delivery, failed notifications, provider status, and recovery actions.',
     href: '/notifications/whatsapp-activity-recovery',
     icon: AlertTriangle,
     accent: landingAccents.amber,
@@ -45,7 +44,6 @@ const notificationCards: NotificationsCardItem[] = [
 ]
 
 export default function NotificationsLandingView() {
-  const router = useRouter()
   const [providersHref, setProvidersHref] = useState('/notifications/providers?channel=whatsapp&provider=meta&tab=configuration')
   const [providersAction, setProvidersAction] = useState('Continue Setup')
 
@@ -103,14 +101,13 @@ export default function NotificationsLandingView() {
               title={item.label}
               description={item.description}
             >
-              <button
-                type="button"
-                onClick={() => router.push(href)}
+              <a
+                href={href}
                 className="sera-module-landing__link sera-module-landing__link--text-only group"
               >
                 <span className="flex-1">{action}</span>
                 <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--sera-orange)]" />
-              </button>
+              </a>
             </ModuleLandingCard>
           )
         })}

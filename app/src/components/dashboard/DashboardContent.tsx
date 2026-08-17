@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, type ReactNode } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
 import { usePermissions } from '@/hooks/usePermissions'
 import ProductsView from '@/components/products/ProductsView'
@@ -89,10 +89,12 @@ import AccountingTab from '@/components/settings/AccountingTab'
 import SettingsTopNav from '@/modules/settings/components/SettingsTopNav'
 import SettingsLandingView from '@/modules/settings/components/SettingsLandingView'
 import NotificationsLandingView from '@/modules/notifications/components/NotificationsLandingView'
+import NotificationsTopNav from '@/modules/notifications/components/NotificationsTopNav'
 import SettingsView from '@/components/settings/SettingsView'
 import NotificationTypesTab from '@/components/settings/NotificationTypesTab'
 import NotificationProvidersTab from '@/components/settings/NotificationProvidersTab'
 import { WhatsAppRecoveryCenter } from '@/components/settings/WhatsAppRecoveryCenter'
+import SmsDeliveryMonitor from '@/components/settings/SmsDeliveryMonitor'
 import DocumentTemplateTab from '@/components/settings/DocumentTemplateTab'
 import DocSequenceTab from '@/components/settings/DocSequenceTab'
 import AuthorizationTab from '@/components/settings/AuthorizationTab'
@@ -208,10 +210,12 @@ interface DashboardContentProps {
   initialOrgId?: string
   /** Product id parsed from /supply-chain/products/<id>[/edit] */
   initialProductId?: string
+  children?: ReactNode
 }
 
-export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId, initialProductId }: DashboardContentProps) {
+export default function DashboardContent({ userProfile, initialView, initialOrderId, initialTargetId, initialOrgId, initialProductId, children }: DashboardContentProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { hasPermission } = usePermissions(
     userProfile.roles.role_level,
     userProfile.role_code,
@@ -285,10 +289,16 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   // Check for stored view from sessionStorage (set by EngagementShell when navigating from other pages)
   const getInitialView = () => {
     if (typeof window !== 'undefined') {
+      const pathView = window.location.pathname.replace(/^\//, '')
+      if (pathView === 'notifications' || pathView.startsWith('notifications/')) {
+        return pathView
+      }
       const storedView = sessionStorage.getItem('dashboardView')
       if (storedView) {
         sessionStorage.removeItem('dashboardView') // Clear after reading
-        return storedView
+        if (!initialView || initialView === 'dashboard') {
+          return storedView
+        }
       }
     }
     return initialView || 'dashboard'
@@ -298,10 +308,18 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
 
   // Sync state with URL params when they change
   useEffect(() => {
+    if (pathname === '/notifications' || pathname?.startsWith('/notifications/')) {
+      setCurrentView(pathname.replace(/^\//, ''))
+      return
+    }
+    if (pathname === '/settings/notifications/sms-activity') {
+      setCurrentView('notifications/sms-activity')
+      return
+    }
     if (initialView) {
       setCurrentView(initialView)
     }
-  }, [initialView])
+  }, [initialView, pathname])
 
   // Seed the selected organization from the URL (deep link / refresh / back-forward)
   // so organization detail/edit views load the right record without relying only
@@ -378,9 +396,21 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     }
 
     // ── Redirect Notifications to its landing page ──
-    if (view === 'notifications') {
-      setCurrentView(view)
+    if (view === 'notifications' || view === '/notifications') {
+      setCurrentView('notifications')
       router.push('/notifications')
+      return
+    }
+
+    const notificationView = view.startsWith('/') ? view.slice(1) : view
+    if (notificationView.startsWith('notifications/')) {
+      setCurrentView(notificationView)
+      router.push(`/${notificationView}`)
+      return
+    }
+    if (notificationView === 'settings/notifications/sms-activity') {
+      setCurrentView('notifications/sms-activity')
+      router.push('/notifications/sms-activity')
       return
     }
 
@@ -474,10 +504,11 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   }
 
   const renderCurrentView = () => {
+    const viewId = String(currentView || '').replace(/^\//, '')
     if (
-      currentView !== 'supply-chain' &&
-      isSupplyChainViewId(currentView) &&
-      !canAccessSupplyChainView(currentView, orgTypeCode, roleLevel)
+      viewId !== 'supply-chain' &&
+      isSupplyChainViewId(viewId) &&
+      !canAccessSupplyChainView(viewId, orgTypeCode, roleLevel)
     ) {
       return (
         <div className="p-8">
@@ -489,7 +520,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       )
     }
 
-    switch (currentView) {
+    switch (viewId) {
       case 'products':
         return <ProductsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'view-product':
@@ -686,12 +717,6 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <SettingsView userProfile={userProfile} initialTab="profile" />
       case 'settings/organization':
         return <SettingsView userProfile={userProfile} initialTab="organization" />
-      case 'settings/notifications/types':
-        return <NotificationTypesTab userProfile={userProfile} />
-      case 'settings/notifications/providers':
-        return <NotificationProvidersTab userProfile={userProfile} />
-      case 'settings/notifications/whatsapp-activity':
-        return <WhatsAppRecoveryCenter userProfile={userProfile} />
       case 'settings/preferences':
         return <SettingsView userProfile={userProfile} initialTab="preferences" />
       case 'settings/preferences/document-template':
@@ -701,11 +726,20 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       case 'notifications':
         return <NotificationsLandingView />
       case 'notifications/providers':
+      case 'settings/notifications/providers':
         return <NotificationProvidersTab userProfile={userProfile} />
       case 'notifications/types':
+      case 'settings/notifications/types':
         return <NotificationTypesTab userProfile={userProfile} />
       case 'notifications/whatsapp-activity-recovery':
+      case 'settings/notifications/whatsapp-activity':
         return <WhatsAppRecoveryCenter userProfile={userProfile} />
+      case 'notifications/sms-activity':
+      case 'settings/notifications/sms-activity':
+      case 'sms-activity':
+        return <SmsDeliveryMonitor />
+      case 'settings/notifications':
+        return <NotificationsLandingView />
       case 'settings/authorization':
         return <AuthorizationTab userProfile={userProfile} />
       case 'settings/ai':
@@ -914,6 +948,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
   const isHrView = currentView === 'hr' || currentView.startsWith('hr/') || currentView.startsWith('hr-')
   const isFinanceView = currentView === 'finance' || currentView.startsWith('finance/')
   const isSettingsView = currentView === 'settings' || currentView.startsWith('settings/')
+  const isNotificationsView = currentView === 'notifications' || currentView.startsWith('notifications/')
   const isSupplyChainView = isSupplyChainViewId(currentView)
   const isLoyaltyView = isLoyaltyViewId(currentView)
   const isCrmView = isCrmViewId(currentView)
@@ -927,6 +962,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
     isHrView ||
     isFinanceView ||
     isSettingsView ||
+    isNotificationsView ||
     isSupplyChainView ||
     isLoyaltyView ||
     isCrmView ||
@@ -999,6 +1035,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         {isSettingsView && (
           <SettingsTopNav currentView={currentView} onNavigate={handleSettingsNavigate} roleLevel={userProfile.roles.role_level} />
         )}
+        {isNotificationsView && (
+          <NotificationsTopNav currentView={currentView} onNavigate={handleSettingsNavigate} />
+        )}
         {/* Supply Chain Top Navigation — shown on SC views */}
         {isSupplyChainView && (
           <SupplyChainTopNav currentView={currentView} onNavigate={handleSupplyChainNavigate} orgTypeCode={orgTypeCode} roleLevel={roleLevel} />
@@ -1031,7 +1070,7 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         )}
         </div>
         <main className="sera-main sera-main__scroll flex-1 min-h-0 overflow-y-auto overscroll-contain print:p-0 print:pt-0 print:overflow-visible print:h-auto">
-          {renderCurrentView()}
+          {children ?? renderCurrentView()}
         </main>
         {/* HR AI Assistant – floating button + chat drawer */}
         {isHrView && <HrAiAssistant />}

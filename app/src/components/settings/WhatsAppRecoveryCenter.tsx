@@ -50,6 +50,7 @@ import {
 
 import type { UserProfileWithRelations } from "@/lib/server/get-user-profile"
 import type { RecoveryPurpose } from "@/lib/wa-recovery/templates"
+import NotificationChannelSwitch from "@/components/settings/NotificationChannelSwitch"
 import {
     hasTrendActivity,
     isFailedStatus,
@@ -678,10 +679,13 @@ export function WhatsAppRecoveryCenter({ userProfile: _userProfile }: Props) {
                         <MessageCircle className="h-5 w-5" />
                     </span>
                     <div>
-                        <h1 className="text-2xl font-bold text-slate-900">WhatsApp Activity & Recovery</h1>
+                        <h1 className="text-2xl font-bold text-slate-900">Notification Monitor</h1>
                         <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
                             Monitor failed WhatsApp notifications, identify the affected contact, and send a safe recovery message once the service has been restored.
                         </p>
+                        <div className="mt-3">
+                            <NotificationChannelSwitch active="whatsapp" />
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">

@@ -146,11 +146,16 @@ export async function queueNotificationEvent(supabase: SupabaseLikeClient, input
     const errors: string[] = []
 
     for (const channel of channels) {
+        const wantsPhone = channel === 'sms' || channel === 'whatsapp'
+        const recipientPhone = wantsPhone && channel === 'sms'
+            ? String(payload.customer_phone || payload.contact_phone || payload.phone || '').trim() || null
+            : null
+
         const { data, error } = await supabase.rpc('queue_notification', {
             p_org_id: orgId,
             p_event_code: eventCode,
             p_channel: channel,
-            p_recipient_phone: null,
+            p_recipient_phone: recipientPhone,
             p_recipient_email: null,
             p_template_code: null,
             p_payload: payload,
@@ -195,7 +200,7 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
             .eq('order_id', orderId),
         supabase
             .from('organizations')
-            .select('id, org_name')
+            .select('id, org_name, contact_phone, address, contact_name')
             .in('id', [order.buyer_org_id, order.seller_org_id].filter(Boolean)),
     ])
 
@@ -203,8 +208,12 @@ export async function buildOrderEventPayload(supabase: SupabaseLikeClient, input
     if (orgsError) throw new Error(orgsError.message)
 
     const orgNameById = new Map((orgs || []).map((org: any) => [org.id, org.org_name]))
+    const buyerOrg = (orgs || []).find((org: any) => org.id === order.buyer_org_id)
     const displayOrderNo = order.display_doc_no || order.order_no
-    const { customerName, customerPhone, deliveryAddress } = parseCustomerDetails(order.notes)
+    const parsed = parseCustomerDetails(order.notes)
+    const customerName = parsed.customerName !== 'Customer' ? parsed.customerName : (buyerOrg?.contact_name || buyerOrg?.org_name || 'Customer')
+    const customerPhone = parsed.customerPhone || buyerOrg?.contact_phone || ''
+    const deliveryAddress = parsed.deliveryAddress || buyerOrg?.address || ''
 
     let totalAmount = 0
     let totalCases = 0
