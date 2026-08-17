@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getWhatsAppConfig, callGateway, sendWhatsAppMessage } from '@/app/api/settings/whatsapp/_utils'
 import { expandNotificationRoleCodes } from '@/lib/notifications/recipientRoleCodes'
 import { resolveSmtpEndpoint } from '@/lib/email/smtp-endpoint'
+import { recordSmsDelivery, sendSmsWithActiveProvider } from '@/lib/notifications/sms-send'
 
 /**
  * CRON: /api/cron/notification-outbox-worker
@@ -30,6 +31,13 @@ function splitConfiguredRecipients(value?: string | null): string[] {
         .split(/[\n,;]+/)
         .map((entry) => entry.trim())
         .filter(Boolean)
+}
+
+function payloadPhone(payload: Record<string, any>): string | null {
+    const value = String(
+        payload.customer_phone || payload.contact_phone || payload.phone || payload.phone_number || ''
+    ).trim()
+    return value || null
 }
 
 async function queueEmailFallback(
@@ -324,6 +332,8 @@ export async function GET(request: NextRequest) {
                         templateBody = `⚙️ Your product return {{return_no}} is now being processed.`
                     } else if (event_code === 'return_completed') {
                         templateBody = `🎉 Your product return {{return_no}} has been completed.`
+                    } else if (event_code === 'system_sms_check') {
+                        templateBody = `Serapod2U SMS check. If you received this, Local Malaysian SMS is working.`
                     } else {
                         templateBody = `Update: ${event_code} occurred.\nOrder: {{order_no}}\nStatus: {{status}}`
                     }
@@ -333,7 +343,8 @@ export async function GET(request: NextRequest) {
                 const payload = (typeof payload_json === 'object' && payload_json !== null && !Array.isArray(payload_json))
                     ? payload_json as Record<string, any>
                     : {}
-                const messageBody = renderTemplate(templateBody, payload)
+                const editedSmsBody = channel === 'sms' ? String(payload._sms_body || '').trim() : ''
+                const messageBody = editedSmsBody || renderTemplate(templateBody, payload)
 
                 // 4. Resolve recipients if to_phone/to_email not set
                 let recipientPhone = to_phone
@@ -412,6 +423,19 @@ export async function GET(request: NextRequest) {
                             addRecipients(splitConfiguredRecipients(recipientConfig.custom_phones))
                         }
 
+                        if (channel === 'sms') {
+                            addRecipients([
+                                payload.customer_phone,
+                                payload.contact_phone,
+                                payload.phone,
+                                payload.phone_number,
+                            ])
+                            if (Array.isArray(recipientConfig.manual_whatsapp_numbers)) {
+                                const { normalizeAndDedupeManualPhones } = await import('@/lib/notifications/manualPhoneNumbers')
+                                addRecipients(normalizeAndDedupeManualPhones(recipientConfig.manual_whatsapp_numbers))
+                            }
+                        }
+
                         // Manual WhatsApp numbers (digits-only normalized form, no plus sign)
                         if (channel === 'whatsapp' && Array.isArray(recipientConfig.manual_whatsapp_numbers)) {
                             // Re-validate & dedupe server-side as a safety net
@@ -454,6 +478,10 @@ export async function GET(request: NextRequest) {
                     }
                 }
 
+                if (channel === 'sms' && !recipientPhone) {
+                    recipientPhone = payloadPhone(payload)
+                }
+
                 if ((recipientPhone || recipientEmail) && (recipientPhone !== to_phone || recipientEmail !== to_email)) {
                     const recipientUpdate: Record<string, string | null> = {}
 
@@ -487,7 +515,9 @@ export async function GET(request: NextRequest) {
                         p_status: 'failed',
                         p_error_message: isFallbackEmail
                             ? 'Fallback Email required, but the recipient has no email address. Ask the admin or user to update the email first.'
-                            : 'No recipient found — check notification settings recipients'
+                            : channel === 'sms'
+                                ? 'No SMS recipient found. Add a phone on the order customer, or in Notification Types → Details → custom phones.'
+                                : 'No recipient found — check notification settings recipients'
                     })
                     failed++
                     continue
@@ -545,13 +575,39 @@ export async function GET(request: NextRequest) {
                         failed++
                     }
                 } else if (channel === 'sms') {
-                    // SMS sending placeholder
-                    await supabase.rpc('log_notification_attempt', {
-                        p_outbox_id: id,
-                        p_status: 'failed',
-                        p_error_message: 'SMS provider not yet configured'
+                    if (!recipientPhone) {
+                        await recordSmsDelivery(supabase, {
+                            orgId: org_id,
+                            outboxId: id,
+                            to: '',
+                            eventCode: event_code,
+                            result: { success: false, error: 'No phone number found for SMS delivery' },
+                        })
+                        failed++
+                        continue
+                    }
+
+                    if (!editedSmsBody && messageBody) {
+                        await supabase.from('notifications_outbox').update({
+                            payload_json: { ...payload, _sms_body: messageBody },
+                        }).eq('id', id)
+                    }
+
+                    const smsResult = await sendSmsWithActiveProvider(
+                        supabase,
+                        org_id,
+                        recipientPhone,
+                        messageBody
+                    )
+                    await recordSmsDelivery(supabase, {
+                        orgId: org_id,
+                        outboxId: id,
+                        to: recipientPhone,
+                        eventCode: event_code,
+                        result: smsResult,
                     })
-                    failed++
+                    if (smsResult.success) sent++
+                    else failed++
                 } else if (channel === 'email') {
                     const emailSubject = event_code === 'roadtour_qr_delivery'
                         ? `RoadTour QR — ${String(payload.campaign_name || 'Campaign')}`

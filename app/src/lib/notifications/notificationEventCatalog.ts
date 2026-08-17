@@ -1,6 +1,14 @@
 import { STOCK_COUNT_EVENT_CODE } from '@/lib/inventory/stock-count-verification-errors'
 
+export const SYSTEM_SMS_CHECK_EVENT = 'system_sms_check'
+export const SYSTEM_SMS_CHECK_MESSAGE = 'Serapod2U SMS check. If you received this, Local Malaysian SMS is working.'
+
 export const REQUIRED_NOTIFICATION_TYPES = [
+    {
+        category: 'system', event_code: SYSTEM_SMS_CHECK_EVENT, event_name: 'SMS Delivery Check',
+        event_description: 'Manual system event to send a test SMS through the Local Malaysian provider and the SMS monitor.',
+        default_enabled: true, available_channels: ['sms'], is_system: true, sort_order: 1,
+    },
     {
         category: 'user', event_code: 'user_created_shop', event_name: 'User Create New Shop',
         event_description: 'Sent when a user successfully creates a new shop from the QR profile flow.',

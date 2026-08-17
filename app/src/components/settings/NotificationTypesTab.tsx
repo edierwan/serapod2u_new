@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
 import { DEFAULT_NOTIFICATION_ADMIN_ROLE } from '@/lib/notifications/recipientRoleCodes'
+import { SYSTEM_SMS_CHECK_EVENT } from '@/lib/notifications/notificationEventCatalog'
 import {
   AlertTriangle,
   ArrowRight,
@@ -106,6 +107,7 @@ const PRESETS: Array<{
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
+  system: 'System Check',
   order: 'Order Status',
   document: 'Order Document',
   inventory: 'Inventory & Stock',
@@ -113,7 +115,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['system', 'order', 'document', 'inventory', 'qr', 'return', 'user']
+const FORCED_PRESET: Record<string, RoutingPreset> = {
+  stock_count_posting_verification: 'email_only',
+  [SYSTEM_SMS_CHECK_EVENT]: 'sms_only',
+}
 
 function normalizeRecipientConfig(
   recipientConfig: NotificationSetting['recipient_config'] | null | undefined,
@@ -166,6 +172,7 @@ function CategoryIcon({ category }: { category: string }) {
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
   if (category === 'qr') return <QrCode className={`${classes} text-emerald-600`} />
   if (category === 'return') return <RotateCcw className={`${classes} text-rose-600`} />
+  if (category === 'system') return <MessageSquare className={`${classes} text-orange-500`} />
   return <UserCheck className={`${classes} text-indigo-600`} />
 }
 
@@ -262,9 +269,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     return acc
   }, {}), [notificationTypes])
 
-  const effectivePreset = (type: NotificationType) => type.event_code === 'stock_count_posting_verification'
-    ? 'email_only'
-    : eventPresets[type.event_code] || categoryPresets[type.category] || defaultPreset
+  const effectivePreset = (type: NotificationType) => FORCED_PRESET[type.event_code]
+    || eventPresets[type.event_code]
+    || categoryPresets[type.category]
+    || defaultPreset
   const presetAvailable = (preset: RoutingPreset) => PRESETS.find((item) => item.id === preset)!.required.every((channel) => providerStatus[channel])
 
   const toggleNotification = (eventCode: string, enabled: boolean) => {
@@ -280,9 +288,9 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
     const type = notificationTypes.find((item) => item.event_code === setting.event_code)!
     const eventPreset = eventPresets[setting.event_code]
     const categoryPreset = categoryPresets[type.category] || null
-    const verificationOnly = setting.event_code === 'stock_count_posting_verification'
-    const preset = verificationOnly ? 'email_only' : eventPreset || categoryPreset || defaultPreset
-    const source: RoutingSource = verificationOnly || eventPreset ? 'event' : categoryPreset ? 'category' : 'default'
+    const forcedPreset = FORCED_PRESET[setting.event_code]
+    const preset = forcedPreset || eventPreset || categoryPreset || defaultPreset
+    const source: RoutingSource = forcedPreset || eventPreset ? 'event' : categoryPreset ? 'category' : 'default'
     const recipientConfig = normalizeRecipientConfig(setting.recipient_config)
     return {
       id: setting.id || crypto.randomUUID(),
@@ -418,7 +426,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                       return <div key={type.event_code} className="my-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[auto_minmax(0,1fr)_210px_auto] sm:items-center">
                         <Switch checked={setting.enabled} onCheckedChange={(checked) => toggleNotification(type.event_code, checked)} aria-label={`Enable ${type.event_name}`} />
                         <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p></div>
-                        <select aria-label={`${type.event_name} routing`} disabled={!setting.enabled || type.event_code === 'stock_count_posting_verification'} value={type.event_code === 'stock_count_posting_verification' ? 'email_only' : eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
+                        <select aria-label={`${type.event_name} routing`} disabled={!setting.enabled || Boolean(FORCED_PRESET[type.event_code])} value={FORCED_PRESET[type.event_code] || eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
                           <option value="inherit">Use {categoryPreset ? 'category' : 'default'}</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id} disabled={!presetAvailable(preset.id)}>{preset.title}</option>)}
                         </select>
                         <Button variant="ghost" size="sm" disabled={!setting.enabled} onClick={() => setEditingSetting(type.event_code)} className="gap-1 text-violet-700"><Settings className="h-4 w-4" /> Details</Button>

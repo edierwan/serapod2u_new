@@ -32,6 +32,7 @@ export type NotificationKey =
     | 'payment_received'
     | 'balance_payment_received'
     | 'receipt_issued'
+    | 'system_sms_check'
     | 'generic';
 
 export interface Template {
@@ -1042,6 +1043,20 @@ export const notificationTemplates: Record<string, Template[]> = {
             channel: 'email',
             subject: 'Serapod2U Stock Count Posting Verification Code',
             body: `STOCK COUNT VERIFICATION\n\nVerify Stock Count Posting\n\nA request was made to post a Stock Count that will update inventory balances. Review the adjustment details before providing the verification code.\n\nYour verification code: {{verification_code}}\nValid for 15 minutes and single use only.\n\nIMPACT SUMMARY\nTotal variants counted: {{total_variants_counted}}\nVariance items: {{variance_items}}\nNet quantity adjustment: {{net_quantity_adjustment}}\nEstimated adjustment value: {{estimated_adjustment_value}}\n\nSTOCK COUNT DETAILS\nWarehouse: {{warehouse_name}}\nOrganization: {{organization_name}}\nCount date: {{count_date}}\nCount type: {{count_type}}\nReference / batch: {{reference_name}}\nRequested by: {{requested_by}}\nRequest date and time: {{stock_count_requested_at}}\n\nPOSTING NOTE\n{{posting_note}}\n\nOnly provide this code after you have reviewed and approved the Stock Count details above. Do not share it if you do not recognize this request.\n\nSerapod2U\nAutomated Inventory Security Notification`
+        }
+    ],
+
+    // ══════════════════════════════════════════════════════════
+    // SYSTEM CHECK
+    // ══════════════════════════════════════════════════════════
+
+    'system_sms_check': [
+        {
+            id: 'sms_check_1',
+            name: 'SMS Delivery Check',
+            description: 'Short test SMS to confirm the Local Malaysian gateway is working',
+            channel: 'sms',
+            body: `Serapod2U SMS check. If you received this, Local Malaysian SMS is working.`
         }
     ],
 

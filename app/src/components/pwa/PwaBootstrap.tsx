@@ -1,9 +1,10 @@
+import Script from 'next/script'
+
 /** Site-wide PWA bootstrap — runs before React so install prompt is not missed. */
 export default function PwaBootstrap() {
   return (
-    <script
-      dangerouslySetInnerHTML={{
-        __html: `(function(){try{
+    <Script id="pwa-bootstrap" strategy="beforeInteractive">
+      {`(function(){try{
 window.__pwaInstall=window.__pwaInstall||{prompt:null};
 window.__serappInstall=window.__pwaInstall;
 window.addEventListener('beforeinstallprompt',function(e){
@@ -29,8 +30,7 @@ if('serviceWorker' in navigator){
       .then(function(r){return r.update()}).catch(function(){});
   });
 }
-}catch(e){}})();`,
-      }}
-    />
+}catch(e){}})();`}
+    </Script>
   )
 }
