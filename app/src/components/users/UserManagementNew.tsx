@@ -1151,7 +1151,7 @@ export default function UserManagementNew({
   const [deleteOtpCode, setDeleteOtpCode] = useState('');
   const [deleteOtpCodeId, setDeleteOtpCodeId] = useState('');
   const [deleteOtpMaskedRecipient, setDeleteOtpMaskedRecipient] = useState('');
-  const [deleteOtpChannel, setDeleteOtpChannel] = useState<'whatsapp' | 'email' | null>(null);
+  const [deleteOtpChannel, setDeleteOtpChannel] = useState<'whatsapp' | 'sms' | 'email' | null>(null);
   const [deleteOtpError, setDeleteOtpError] = useState('');
   const [deleteOtpSending, setDeleteOtpSending] = useState(false);
   const [deleteOtpRemovalMode, setDeleteOtpRemovalMode] = useState<'delete' | 'archive' | null>(null);
@@ -1190,7 +1190,9 @@ export default function UserManagementNew({
       if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
       setDeleteOtpCodeId(data.codeId);
       setDeleteOtpMaskedRecipient(data.maskedRecipient || data.maskedEmail || data.maskedPhone || '');
-      setDeleteOtpChannel(data.channel === 'email' ? 'email' : 'whatsapp');
+      setDeleteOtpChannel(
+        data.channel === 'email' ? 'email' : data.channel === 'sms' ? 'sms' : 'whatsapp',
+      );
       setDeleteOtpRemovalMode(data.removalMode === 'archive' ? 'archive' : 'delete');
       setDeleteOtpStep('otp');
     } catch (err: any) {
@@ -2341,11 +2343,11 @@ export default function UserManagementNew({
             </DialogTitle>
             <DialogDescription>
               {deleteOtpStep === 'confirm' && (
-                <>A verification code will be sent to the organization&apos;s WhatsApp phone first. If WhatsApp fails, it will automatically fall back to the organization contact email before removing <strong>{deleteTargetUser?.name}</strong>.</>
+                <>A verification code will be sent to the organization&apos;s WhatsApp phone first. If WhatsApp fails, SMS is tried next, then the organization contact email, before removing <strong>{deleteTargetUser?.name}</strong>.</>
               )}
               {deleteOtpStep === 'otp' && (
                 <>
-                  A 4-digit code was sent via {deleteOtpChannel === 'email' ? 'email' : 'WhatsApp'} to <strong>{deleteOtpMaskedRecipient}</strong>. Enter it below to confirm.
+                  A 4-digit code was sent via {deleteOtpChannel === 'email' ? 'email' : deleteOtpChannel === 'sms' ? 'SMS' : 'WhatsApp'} to <strong>{deleteOtpMaskedRecipient}</strong>. Enter it below to confirm.
                   {deleteOtpRemovalMode === 'archive' && ' This account has business history, so it will be archived and its original email and phone will be released for reuse.'}
                 </>
               )}
