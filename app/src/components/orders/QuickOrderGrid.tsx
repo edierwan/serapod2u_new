@@ -24,6 +24,7 @@ interface QuickVariant {
   distributor_price: number
   available_qty: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
 }
 
 interface QuickItem {
@@ -47,6 +48,7 @@ interface QuickOrderGridProps {
 const STATUS = {
   available: { label: 'Available', className: 'text-green-600', Icon: CheckCircle2 },
   unclassified: { label: 'Unclassified', className: 'text-amber-700', Icon: AlertTriangle },
+  priceNotSet: { label: 'Price Not Set', className: 'text-amber-700', Icon: AlertTriangle },
   noStock: { label: 'No stock', className: 'text-red-600', Icon: XCircle },
   insufficient: { label: 'Insufficient', className: 'text-red-600', Icon: AlertTriangle },
   // Paste-review-only outcomes: no variant was resolved yet, so they have no
@@ -73,6 +75,7 @@ const pasteResultDisplay = (result: PasteMatchResult, variants: QuickVariant[]):
   if (!result.selectedVariantId && result.candidates.length === 1) return STATUS.reviewMatch
   const selected = variants.find(variant => variant.id === result.selectedVariantId)
   const outcome = resolvePasteInventoryOutcome(result.quantity, selected)
+  if (outcome === 'price_not_set') return STATUS.priceNotSet
   if (outcome === 'inventory_unclassified') return STATUS.unclassified
   if (outcome === 'no_available_stock') return STATUS.noStock
   if (outcome === 'insufficient_stock') return STATUS.insufficient
@@ -142,6 +145,7 @@ const ProductCell = ({ variant, productLabel }: { variant: QuickVariant; product
 
 /** Catalog-row outcome, drawn from the same {@link STATUS} vocabulary. */
 const rowStatus = (variant: QuickVariant, quantity: number): StatusDescriptor => {
+  if (variant.pricing_status === 'price_missing') return STATUS.priceNotSet
   if (variant.inventory_classification === 'unclassified') return STATUS.unclassified
   if (variant.available_qty === 0) return STATUS.noStock
   if (quantity > variant.available_qty) return STATUS.insufficient
@@ -164,6 +168,9 @@ const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?
     <>
       <VariantIdentity variant={variant} withProduct />
       <span className="block text-[var(--sera-muted)]">{variant.available_qty.toLocaleString()} available</span>
+      {variant.pricing_status === 'price_missing' && (
+        <span className="block text-amber-700">Distributor Price not set in Product Management</span>
+      )}
     </>
   )
   return onSelect ? (
@@ -277,6 +284,9 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
   }
 
   const handleQuantity = (variant: QuickVariant, rawValue: string) => {
+    // An unpriced variant would price the line at RM 0; the D2H preflight
+    // rejects it anyway, so the quantity never becomes enterable here.
+    if (variant.pricing_status === 'price_missing') return
     const quantity = rawValue === '' ? 0 : Math.max(0, Math.trunc(Number(rawValue) || 0))
     onQuantityChange(variant.id, quantity)
   }
@@ -324,18 +334,19 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
             {visibleVariants.map((variant, index) => {
               const quantity = quantities.get(variant.id) || 0
               const status = rowStatus(variant, quantity)
+              const unpriced = variant.pricing_status === 'price_missing'
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
                   <td className="px-3 py-2"><ProductCell variant={variant} productLabel={productShortNames.get(variant.product_name) || variant.product_name} /></td>
                   <td className="px-3 py-2 text-right tabular-nums">{variant.available_qty.toLocaleString()}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-20" aria-label={`Order quantity in cases for ${variant.variant_name}`} />
+                      <Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} disabled={unpriced} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-20" aria-label={`Order quantity in cases for ${variant.variant_name}`} />
                       <span className="text-xs text-[var(--sera-muted)]">cases</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">RM {formatCurrency(variant.distributor_price)}</td>
-                  <td className="px-3 py-2 text-right font-medium tabular-nums">RM {formatCurrency(quantity * variant.distributor_price)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{unpriced ? 'Not set' : `RM ${formatCurrency(variant.distributor_price)}`}</td>
+                  <td className="px-3 py-2 text-right font-medium tabular-nums">{unpriced ? '—' : `RM ${formatCurrency(quantity * variant.distributor_price)}`}</td>
                   <td className="px-3 py-2"><StatusMark status={status} /></td>
                 </tr>
               )

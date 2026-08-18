@@ -294,4 +294,36 @@ describe('Paste review presentation and WhatsApp reply', () => {
       vi.useRealTimers()
     }
   })
+
+  // Production regression (2026-08-18): "Deluxe Cellera Cartridge [Orange]" was
+  // active with 3,259 sellable cases but no Distributor Price, and the paste
+  // review answered "Product Not Found" — the operator had no way to tell an
+  // unknown flavour from one whose price field was simply empty.
+  it('names a missing Distributor Price instead of reporting the variant as not found', async () => {
+    const user = userEvent.setup()
+    const unpriced = [{
+      id: 'orange', product_id: 'product-8', product_name: 'Cellera Hero', product_code: 'CELVA9464',
+      variant_product_code: 'OR', alternative_name: 'OREN', group_name: 'Cartridge',
+      variant_name: 'Deluxe Cellera Cartridge [Orange]', distributor_price: 0, available_qty: 3259,
+      inventory_classification: 'classified' as const, pricing_status: 'price_missing' as const,
+    }]
+    render(<QuickOrderGrid variants={unpriced} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    // The catalog row states the reason and refuses a quantity rather than
+    // pricing the line at RM 0.
+    expect(screen.getAllByText('Price Not Set').length).toBe(1)
+    expect(screen.getByText('Not set')).not.toBeNull()
+    expect((screen.getByLabelText('Order quantity in cases for Deluxe Cellera Cartridge [Orange]') as HTMLInputElement).disabled).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'Orange - 50')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    expect(within(dialog).queryByText('Product Not Found')).toBeNull()
+    expect(within(dialog).getByText('Price Not Set')).not.toBeNull()
+    expect(within(dialog).getByText('Cellera Hero - [ Orange ] - OR')).not.toBeNull()
+    expect(within(dialog).getByText('Distributor Price not set in Product Management')).not.toBeNull()
+    expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
+  })
 })

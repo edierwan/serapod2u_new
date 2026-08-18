@@ -19,7 +19,15 @@ export interface QuickOrderCatalogVariant {
   distributor_price: number
   available_qty: number
   inventory_classification: 'classified' | 'unclassified'
+  /**
+   * Whether master data carries a Distributor Price for the variant. A variant
+   * without one stays in the catalog so it can be found and named, but it can
+   * never be ordered — see {@link filterQuickOrderCatalogRows}.
+   */
+  pricing_status: QuickOrderPricingStatus
 }
+
+export type QuickOrderPricingStatus = 'priced' | 'price_missing'
 
 export interface QuickOrderCatalogRequestItem {
   variantId: string
@@ -28,6 +36,9 @@ export interface QuickOrderCatalogRequestItem {
 
 export const UNCLASSIFIED_INVENTORY_ORDER_MESSAGE =
   'Product matched, but its inventory configuration is still unclassified. Please classify the stock before submitting the order.'
+
+export const MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE =
+  'Product matched, but no Distributor Price is maintained for it. Set the Distributor Price in Product Management > Variants before ordering.'
 
 export function validateQuickOrderCatalogItems(
   items: QuickOrderCatalogRequestItem[],
@@ -41,6 +52,9 @@ export function validateQuickOrderCatalogItems(
 
   return items.map(item => {
     const variant = catalogByVariant.get(item.variantId)!
+    if (variant.pricing_status === 'price_missing') {
+      throw new Error(MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE)
+    }
     if (variant.inventory_classification === 'unclassified') {
       throw new Error(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)
     }
@@ -147,6 +161,17 @@ const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArr
  * The current Quick Order catalog policy. This is intentionally isolated so a
  * future Distributor -> Program -> Assigned Products resolver can replace it
  * without changing the Quick Order UI or paste workflow.
+ *
+ * A missing Distributor Price does NOT remove the variant from the catalog.
+ * Dropping it made an active, in-stock flavour indistinguishable from one that
+ * does not exist: pasting "Orange - 50" answered "Product Not Found" while
+ * Product Management showed the variant right there, because Master Data >
+ * Variants never displays the Distributor Price and nothing pointed at the
+ * empty field. The variant is now carried with `pricing_status:
+ * 'price_missing'` so it can be found and named, and every ordering path — the
+ * catalog row, the paste review, and {@link validateQuickOrderCatalogItems} —
+ * blocks it with the reason. Order submission stays closed either way: the D2H
+ * preflight independently rejects any line whose distributor price is <= 0.
  */
 export function filterQuickOrderCatalogRows(
   rows: QuickOrderCatalogRow[],
@@ -166,7 +191,6 @@ export function filterQuickOrderCatalogRows(
       || product?.is_discontinued === true
       || category?.is_active === false
       || category?.is_vape !== true
-      || distributorPrice <= 0
     ) return []
 
     return [{
@@ -184,6 +208,7 @@ export function filterQuickOrderCatalogRows(
       distributor_price: distributorPrice,
       available_qty: availableQty,
       inventory_classification: unclassifiedVariantIds.has(row.id) ? 'unclassified' : 'classified',
+      pricing_status: distributorPrice > 0 ? 'priced' : 'price_missing',
     }]
   })
 }

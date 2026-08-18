@@ -12,13 +12,14 @@ export interface MatchableVariant {
   manufacturer_sku?: string | null
   available_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
 }
 
 export type PasteMatchStatus = 'matched' | 'alternative_match' | 'smart_match' | 'suggestion' | 'ambiguous' | 'not_found' | 'invalid_quantity' | 'duplicate'
 
 export type PasteMatchMethod = 'code_or_sku' | 'exact_name' | 'bracket_flavour' | 'alternative_name' | 'keyword' | 'fuzzy'
 
-export type PasteInventoryOutcome = 'matched' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
+export type PasteInventoryOutcome = 'matched' | 'price_not_set' | 'inventory_unclassified' | 'no_available_stock' | 'insufficient_stock'
 
 export interface PasteMatchResult {
   /** Running 1-based index across every parsed entry (a physical line may hold several). */
@@ -366,6 +367,9 @@ export function resolvePasteInventoryOutcome(
   variant?: MatchableVariant,
 ): PasteInventoryOutcome | undefined {
   if (!variant || quantity === null || quantity <= 0) return undefined
+  // Checked before stock: an unpriced variant cannot be ordered however much of
+  // it the warehouse holds, and the empty price field is the thing to fix.
+  if (variant.pricing_status === 'price_missing') return 'price_not_set'
   if (variant.inventory_classification === 'unclassified') return 'inventory_unclassified'
   if (variant.available_qty === undefined) return 'matched'
   if (variant.available_qty <= 0) return 'no_available_stock'

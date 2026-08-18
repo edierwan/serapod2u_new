@@ -64,6 +64,7 @@ interface ProductVariant {
   distributor_price: number
   available_qty: number
   inventory_classification?: 'classified' | 'unclassified'
+  pricing_status?: 'priced' | 'price_missing'
 }
 
 interface OrderItem {
@@ -489,6 +490,14 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (!variant) return
 
     const newQty = Math.max(0, Math.trunc(requestedQty))
+    if (variant.pricing_status === 'price_missing') {
+      toast({
+        title: 'Distributor Price Not Set',
+        description: `${variant.variant_name} has no Distributor Price. Set it in Product Management > Variants before ordering.`,
+        variant: 'destructive'
+      })
+      return
+    }
     if (variant.inventory_classification !== 'unclassified' && newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
@@ -531,7 +540,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     const quickVariantsById = new Map(quickOrderVariants.map(variant => [variant.id, variant]))
     const itemsOutsideQuickCatalog = orderItems.filter(item => {
       const variant = quickVariantsById.get(item.variant_id)
-      return !variant || item.qty > variant.available_qty
+      return !variant || variant.pricing_status === 'price_missing' || item.qty > variant.available_qty
     })
     if (itemsOutsideQuickCatalog.length > 0) {
       const shouldClear = window.confirm(
@@ -541,7 +550,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     }
     setOrderItems(items => items.flatMap(item => {
       const variant = quickVariantsById.get(item.variant_id)
-      if (!variant || item.qty > variant.available_qty) return []
+      if (!variant || variant.pricing_status === 'price_missing' || item.qty > variant.available_qty) return []
       return [{ ...item, unit_price: variant.distributor_price, line_total: item.qty * variant.distributor_price }]
     }))
     setOrderMode('quick')

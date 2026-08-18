@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   filterQuickOrderCatalogRows,
+  MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE,
   resolveSellableAvailability,
   resolveUnclassifiedVariantIds,
   UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
@@ -49,20 +50,43 @@ describe('D2H Quick Order Vape catalog', () => {
   const catalog = filterQuickOrderCatalogRows(rows, stock)
 
   it('includes active Product Master variants even when no sellable stock is available', () => {
-    expect(catalog.map(item => item.product_name)).toEqual(['Cellera Hero', 'Cellera Zero', 'S.Box', 'S.Line', 'No Stock'])
+    expect(catalog.map(item => item.product_name)).toEqual(['Cellera Hero', 'Cellera Zero', 'S.Box', 'S.Line', 'No Price', 'No Stock'])
     expect(catalog.find(item => item.id === 'no-stock')).toMatchObject({
       available_qty: 0,
       inventory_classification: 'classified',
+      pricing_status: 'priced',
     })
   })
 
-  it('excludes non-Vape, inactive, discontinued, and unpriced products', () => {
-    expect(catalog.map(item => item.id)).toEqual(['hero', 'zero', 'sbox', 'sline', 'no-stock'])
+  it('excludes non-Vape, inactive, and discontinued products', () => {
+    expect(catalog.map(item => item.id)).toEqual(['hero', 'zero', 'sbox', 'sline', 'no-price', 'no-stock'])
   })
 
   it('derives only Vape catalog groups and counts', () => {
     const counts = catalog.reduce<Record<string, number>>((result, item) => ({ ...result, [item.group_name]: (result[item.group_name] || 0) + 1 }), {})
-    expect(counts).toEqual({ Cartridge: 3, Device: 2 })
+    expect(counts).toEqual({ Cartridge: 3, Device: 3 })
+  })
+
+  // Production regression (2026-08-18): the active "Deluxe Cellera Cartridge
+  // [Orange]" variant at Serapod Warehouse Balakong carried 3,259 sellable
+  // cases but an empty Distributor Price. Dropping unpriced rows from the
+  // catalog made "Orange - 50" report "Product Not Found" — a flavour visible
+  // in Product Management reading as though it did not exist, with nothing
+  // naming the empty field. Staging had a price, so localhost never showed it.
+  it('keeps an unpriced variant findable and names the missing Distributor Price', () => {
+    const orange = filterQuickOrderCatalogRows(
+      [{ ...row('orange', 'Cellera Hero', 'Cartridge', { alternative_name: 'OREN' }), variant_name: 'Deluxe Cellera Cartridge [Orange]', distributor_price: null }],
+      new Map([['orange', 3259]]),
+    )
+
+    expect(orange[0]).toMatchObject({ pricing_status: 'price_missing', distributor_price: 0, available_qty: 3259 })
+    expect(matchPastedOrder('Orange - 50', orange)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'orange',
+      inventoryOutcome: 'price_not_set',
+    })
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'orange', quantity: 50 }], orange))
+      .toThrow(MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE)
   })
 
   it('includes Alternative Name in the authorized catalog used by paste matching', () => {

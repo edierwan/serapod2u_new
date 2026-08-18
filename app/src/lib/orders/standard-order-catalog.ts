@@ -31,6 +31,7 @@ export function filterStandardOrderCatalogRows(
     if (!isCategoryAllowed(categoryRule, category)) return []
 
     const group = asSingle<any>(product?.product_groups)
+    const distributorPrice = Number(row.distributor_price || 0)
     return [{
       id: row.id,
       product_id: row.product_id,
@@ -43,9 +44,12 @@ export function filterStandardOrderCatalogRows(
       attributes: row.attributes || {},
       barcode: row.barcode || null,
       manufacturer_sku: row.manufacturer_sku || null,
-      distributor_price: Number(row.distributor_price || 0),
+      distributor_price: distributorPrice,
       available_qty: availableByVariant.get(row.id) || 0,
       inventory_classification: unclassifiedVariantIds.has(row.id) ? 'unclassified' as const : 'classified' as const,
+      // Standard Order already refuses an unpriced variant when it is added to
+      // the cart; the flag keeps the shared catalog shape honest.
+      pricing_status: distributorPrice > 0 ? 'priced' as const : 'price_missing' as const,
     }]
   })
 }
