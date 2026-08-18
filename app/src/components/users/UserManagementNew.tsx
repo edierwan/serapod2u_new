@@ -2343,7 +2343,7 @@ export default function UserManagementNew({
             </DialogTitle>
             <DialogDescription>
               {deleteOtpStep === 'confirm' && (
-                <>A verification code will be sent to the organization&apos;s WhatsApp phone first. If WhatsApp fails, SMS is tried next, then the organization contact email, before removing <strong>{deleteTargetUser?.name}</strong>.</>
+                <>A verification code will be sent to the organization contact using the <strong>User Deletion OTP</strong> routing in Notifications → Types before removing <strong>{deleteTargetUser?.name}</strong>.</>
               )}
               {deleteOtpStep === 'otp' && (
                 <>

@@ -23,6 +23,7 @@ export type NotificationKey =
     | 'password_changed'
     | 'password_reset_request'
     | 'password_reset_otp'
+    | 'delete_user_otp'
     | 'login_suspicious'
     | 'po_created'
     | 'po_acknowledged'
@@ -692,6 +693,29 @@ export const notificationTemplates: Record<string, Template[]> = {
             channel: 'email',
             subject: 'Your Serapod2U password reset code',
             body: `PASSWORD RESET\n\nYour verification code: {{verification_code}}\nValid for {{otp_expiry_minutes}} minutes. Single use only.\n\nIf you did not request this, ignore this email.\n\nSerapod2U`
+        }
+    ],
+
+    'delete_user_otp': [
+        {
+            id: 'delete_user_otp_wa_1',
+            name: 'User Deletion OTP — WhatsApp',
+            description: 'HQ user removal verification code to organization contact',
+            channel: 'whatsapp',
+            body: `⚠️ *DELETION VERIFICATION*\n\nCode: *{{verification_code}}*\n\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes. Only enter this code if you authorize this deletion.`
+        },
+        {
+            id: 'delete_user_otp_sms_1',
+            name: 'User Deletion OTP — SMS',
+            channel: 'sms',
+            body: `DELETION VERIFICATION\nCode: {{verification_code}}\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\nExpires in {{otp_expiry_minutes}} minutes.`
+        },
+        {
+            id: 'delete_user_otp_email_1',
+            name: 'User Deletion OTP — Email',
+            channel: 'email',
+            subject: 'Serapod2U deletion verification code',
+            body: `DELETION VERIFICATION\n\nCode: {{verification_code}}\nUser: {{target_user_name}}\nRequested by: {{requester_email}}\n\nThis code expires in {{otp_expiry_minutes}} minutes.\nOnly enter this code if you authorize this deletion.`
         }
     ],
 

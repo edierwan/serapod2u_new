@@ -1139,6 +1139,9 @@ export default function NotificationFlowDrawer({
                                                 inventory_url: `${typeof window !== 'undefined' ? window.location.origin : 'https://app.serapod.com'}/inventory`,
                                                 // Stock Count verification variables (safe fixture only)
                                                 verification_code: '12345678',
+                                                target_user_name: 'Allam Salameh',
+                                                requester_email: 'admin@serapod2u.com',
+                                                otp_expiry_minutes: '5',
                                                 total_variants_counted: '4',
                                                 variance_items: '4',
                                                 net_quantity_adjustment: '-5,595',
