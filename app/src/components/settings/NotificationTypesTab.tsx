@@ -7,7 +7,8 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import NotificationFlowDrawer from './NotificationFlowDrawer'
 import { DEFAULT_NOTIFICATION_ADMIN_ROLE } from '@/lib/notifications/recipientRoleCodes'
-import { SYSTEM_SMS_CHECK_EVENT } from '@/lib/notifications/notificationEventCatalog'
+import { DELETE_USER_OTP_EVENT, SYSTEM_SMS_CHECK_EVENT } from '@/lib/notifications/notificationEventCatalog'
+import type { NotificationRoutingPreset } from '@/lib/notifications/routing'
 import {
   AlertTriangle,
   ArrowRight,
@@ -26,6 +27,7 @@ import {
   RotateCcw,
   Save,
   Settings,
+  Shield,
   ShoppingCart,
   UserCheck,
   XCircle,
@@ -33,7 +35,7 @@ import {
 import { SeraLoadingState } from '@/components/ui/SeraLoader'
 
 type Channel = 'whatsapp' | 'email' | 'sms'
-type RoutingPreset = 'whatsapp_only' | 'email_only' | 'sms_only' | 'whatsapp_email_fallback'
+type RoutingPreset = NotificationRoutingPreset
 type RoutingSource = 'default' | 'category' | 'event'
 
 interface NotificationType {
@@ -93,6 +95,9 @@ interface NotificationTypesTabProps {
 
 const DEFAULT_PRESET: RoutingPreset = 'whatsapp_email_fallback'
 const DEFAULT_RECIPIENT_TARGETS = { roles: true, dynamic_org: false, users: false, consumer: false }
+const DEFAULT_EVENT_PRESET: Partial<Record<string, RoutingPreset>> = {
+  [DELETE_USER_OTP_EVENT]: 'whatsapp_sms_email_fallback',
+}
 
 const PRESETS: Array<{
   id: RoutingPreset
@@ -104,10 +109,12 @@ const PRESETS: Array<{
   { id: 'email_only', title: 'Email Only', description: 'Send all notifications via Email.', required: ['email'] },
   { id: 'sms_only', title: 'SMS Only', description: 'Send all notifications via SMS.', required: ['sms'] },
   { id: 'whatsapp_email_fallback', title: 'WhatsApp → Email', description: 'Try WhatsApp first, then Email only if it fails.', required: ['whatsapp', 'email'] },
+  { id: 'whatsapp_sms_email_fallback', title: 'WhatsApp → SMS → Email', description: 'Try WhatsApp, then SMS, then Email if earlier channels fail.', required: ['whatsapp', 'sms', 'email'] },
 ]
 
 const CATEGORY_LABELS: Record<string, string> = {
   system: 'System Check',
+  security: 'Security & OTP',
   order: 'Order Status',
   document: 'Order Document',
   inventory: 'Inventory & Stock',
@@ -115,7 +122,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   return: 'Return Product',
   user: 'User Account',
 }
-const CATEGORY_ORDER = ['system', 'order', 'document', 'inventory', 'qr', 'return', 'user']
+const CATEGORY_ORDER = ['system', 'security', 'order', 'document', 'inventory', 'qr', 'return', 'user']
 const FORCED_PRESET: Record<string, RoutingPreset> = {
   stock_count_posting_verification: 'email_only',
   [SYSTEM_SMS_CHECK_EVENT]: 'sms_only',
@@ -150,15 +157,30 @@ function presetFromChannels(channels: string[]): RoutingPreset {
 }
 
 function channelsForPreset(preset: RoutingPreset): string[] {
-  // Fallback queues WhatsApp only. The worker queues Email only after a failed WhatsApp attempt.
+  // Fallback presets queue WhatsApp first. Later channels are attempted after failure (worker or sync OTP router).
   if (preset === 'email_only') return ['email']
   if (preset === 'sms_only') return ['sms']
   return ['whatsapp']
 }
 
+function initialPresetForEvent(eventCode: string): RoutingPreset {
+  return DEFAULT_EVENT_PRESET[eventCode] || DEFAULT_PRESET
+}
+
 function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; className?: string }) {
   if (preset === 'email_only') return <Mail className={`${className} text-violet-600`} />
   if (preset === 'sms_only') return <MessageSquare className={`${className} text-orange-500`} />
+  if (preset === 'whatsapp_sms_email_fallback') {
+    return (
+      <div className="flex items-center gap-1">
+        <MessageCircle className={`${className} text-emerald-600`} />
+        <ArrowRight className="h-4 w-4 text-orange-500" />
+        <MessageSquare className={`${className} text-orange-500`} />
+        <ArrowRight className="h-4 w-4 text-violet-600" />
+        <Mail className={`${className} text-violet-600`} />
+      </div>
+    )
+  }
   if (preset === 'whatsapp_email_fallback') {
     return <div className="flex items-center gap-2"><MessageCircle className={`${className} text-emerald-600`} /><ArrowRight className="h-5 w-5 text-violet-600" /><Mail className={`${className} text-violet-600`} /></div>
   }
@@ -167,6 +189,7 @@ function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; 
 
 function CategoryIcon({ category }: { category: string }) {
   const classes = 'h-5 w-5'
+  if (category === 'security') return <Shield className={`${classes} text-rose-600`} />
   if (category === 'order') return <ShoppingCart className={`${classes} text-[var(--sera-orange)]`} />
   if (category === 'document') return <FileText className={`${classes} text-violet-600`} />
   if (category === 'inventory') return <Package className={`${classes} text-orange-500`} />
@@ -210,15 +233,22 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
 
       const loadedTypes = (types || []) as NotificationType[]
       const settingsMap = new Map<string, NotificationSetting>()
-      loadedTypes.forEach((type) => settingsMap.set(type.event_code, {
+      loadedTypes.forEach((type) => {
+        const seedPreset = initialPresetForEvent(type.event_code)
+        settingsMap.set(type.event_code, {
         org_id: userProfile.organizations.id,
         event_code: type.event_code,
         enabled: type.default_enabled,
-        channels_enabled: type.default_enabled ? channelsForPreset(DEFAULT_PRESET) : [],
-        priority: 'normal',
+        channels_enabled: type.default_enabled ? channelsForPreset(seedPreset) : [],
+        priority: type.event_code === DELETE_USER_OTP_EVENT ? 'critical' : 'normal',
         templates: {},
-        recipient_config: normalizeRecipientConfig(undefined),
-      }))
+        recipient_config: normalizeRecipientConfig(
+          type.event_code === DELETE_USER_OTP_EVENT
+            ? { dynamic_target: 'org_contact', recipient_targets: { roles: false, dynamic_org: true, users: false, consumer: false } }
+            : undefined,
+        ),
+      })
+      })
 
       let loadedDefault = DEFAULT_PRESET
       const loadedCategories: Record<string, RoutingPreset | null> = {}
@@ -245,6 +275,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           recipient_config: recipientConfig,
         })
       })
+
+      if (loadedTypes.some((type) => type.event_code === DELETE_USER_OTP_EVENT) && loadedEvents[DELETE_USER_OTP_EVENT] == null) {
+        loadedEvents[DELETE_USER_OTP_EVENT] = initialPresetForEvent(DELETE_USER_OTP_EVENT)
+      }
 
       setNotificationTypes(loadedTypes)
       setSettings(settingsMap)
@@ -296,7 +330,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       id: setting.id || crypto.randomUUID(),
       org_id: setting.org_id,
       event_code: setting.event_code,
-      enabled: setting.enabled,
+      enabled: setting.event_code === DELETE_USER_OTP_EVENT ? true : setting.enabled,
       channels_enabled: setting.enabled ? channelsForPreset(preset) : [],
       priority: setting.priority,
       recipient_roles: recipientConfig.roles || null,
@@ -423,13 +457,14 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                       const setting = settings.get(type.event_code)
                       if (!setting) return null
                       const eventPreset = eventPresets[type.event_code] || null
+                      const lockedOn = type.event_code === DELETE_USER_OTP_EVENT
                       return <div key={type.event_code} className="my-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[auto_minmax(0,1fr)_210px_auto] sm:items-center">
-                        <Switch checked={setting.enabled} onCheckedChange={(checked) => toggleNotification(type.event_code, checked)} aria-label={`Enable ${type.event_name}`} />
-                        <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p></div>
-                        <select aria-label={`${type.event_name} routing`} disabled={!setting.enabled || Boolean(FORCED_PRESET[type.event_code])} value={FORCED_PRESET[type.event_code] || eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
+                        <Switch checked={lockedOn ? true : setting.enabled} onCheckedChange={(checked) => toggleNotification(type.event_code, checked)} disabled={lockedOn} aria-label={`Enable ${type.event_name}`} />
+                        <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p>{lockedOn && <p className="mt-1 text-[11px] text-slate-500">Always on. Recipient is the organization contact. Choose SMS only, Email only, WhatsApp only, or a fallback mix. Custom templates in Details are used when sending.</p>}</div>
+                        <select aria-label={`${type.event_name} routing`} disabled={(!setting.enabled && !lockedOn) || Boolean(FORCED_PRESET[type.event_code])} value={FORCED_PRESET[type.event_code] || eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
                           <option value="inherit">Use {categoryPreset ? 'category' : 'default'}</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id} disabled={!presetAvailable(preset.id)}>{preset.title}</option>)}
                         </select>
-                        <Button variant="ghost" size="sm" disabled={!setting.enabled} onClick={() => setEditingSetting(type.event_code)} className="gap-1 text-violet-700"><Settings className="h-4 w-4" /> Details</Button>
+                        <Button variant="ghost" size="sm" disabled={!setting.enabled && !lockedOn} onClick={() => setEditingSetting(type.event_code)} className="gap-1 text-violet-700"><Settings className="h-4 w-4" /> Details</Button>
                       </div>
                     })}
                   </div>}
@@ -444,6 +479,10 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
           <div className="mt-6 space-y-5">
             <div className="flex gap-3"><PresetIcon preset={selectedPreset.id} className="h-6 w-6" /><div><p className="font-semibold text-slate-900">{selectedPreset.id === 'whatsapp_email_fallback' ? 'Primary: WhatsApp' : selectedPreset.title}</p><p className="text-xs text-slate-500">{selectedPreset.id === 'whatsapp_email_fallback' ? 'First attempt for default-routed events' : 'Default route for events'}</p></div></div>
             {defaultPreset === 'whatsapp_email_fallback' && <div className="flex gap-3"><Mail className="h-6 w-6 text-violet-600" /><div><p className="font-semibold text-slate-900">Fallback: Email</p><p className="text-xs text-slate-500">Only used when WhatsApp fails</p></div></div>}
+            {defaultPreset === 'whatsapp_sms_email_fallback' && <>
+              <div className="flex gap-3"><MessageSquare className="h-6 w-6 text-orange-500" /><div><p className="font-semibold text-slate-900">Fallback: SMS</p><p className="text-xs text-slate-500">Used when WhatsApp fails</p></div></div>
+              <div className="flex gap-3"><Mail className="h-6 w-6 text-violet-600" /><div><p className="font-semibold text-slate-900">Fallback: Email</p><p className="text-xs text-slate-500">Used when WhatsApp and SMS fail</p></div></div>
+            </>}
             {(['whatsapp', 'email', 'sms'] as Channel[]).filter((channel) => !providerStatus[channel]).map((channel) => <div key={channel} className="flex gap-3"><AlertTriangle className="h-6 w-6 text-amber-500" /><div><p className="font-semibold capitalize text-slate-900">{channel === 'sms' ? 'SMS' : channel} unavailable</p><p className="text-xs text-slate-500">Configure a provider to enable</p></div></div>)}
           </div>
           <div className="mt-6 border-t pt-5 text-xs leading-5 text-slate-500">Category routes inherit this default. Event routes inherit their category unless explicitly overridden.</div>
