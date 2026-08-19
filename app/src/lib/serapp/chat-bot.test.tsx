@@ -3,6 +3,7 @@ import {
   detectChatIntent,
   looksLikeOrderList,
   quickRepliesForPhase,
+  shouldRouteToSerappAi,
 } from '@/lib/serapp/chat-bot'
 
 describe('looksLikeOrderList', () => {
@@ -63,6 +64,13 @@ describe('detectChatIntent', () => {
   it('treats intent-only words as incomplete_intent', () => {
     expect(detectChatIntent('بدي')).toEqual({ type: 'incomplete_intent' })
     expect(detectChatIntent('nak')).toEqual({ type: 'incomplete_intent' })
+  })
+
+  it('keeps sample paste lists on the fast rules path', () => {
+    const sample = 'HERO\nBANANA VANILLA - 100\nGUAVA - 200\n\nZERO\nALMOND - 100\nTEA - 200'
+    const intent = detectChatIntent(sample)
+    expect(intent.type).toBe('order_list')
+    expect(shouldRouteToSerappAi(intent)).toBe(false)
   })
 })
 

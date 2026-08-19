@@ -18,6 +18,11 @@ export type SerappChatIntent =
   | { type: 'cancel_hold' }
   | { type: 'unknown'; text: string }
 
+/** Free-text only — structured paste/commands stay on the fast rules path. */
+export function shouldRouteToSerappAi(intent: SerappChatIntent): boolean {
+  return intent.type === 'unknown' || intent.type === 'incomplete_intent'
+}
+
 const LINE_QTY =
   /^.+?\s*[-–—xX×]\s*\d+(\.\d+)?\s*$/m
 const SECTION = /^(HERO|ZERO|CLASSIC|ICE|SERIES)\s*$/im

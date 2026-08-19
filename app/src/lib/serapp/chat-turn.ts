@@ -6,10 +6,12 @@ import {
   helpBotText,
   incompleteIntentBotText,
   quickRepliesForPhase,
+  shouldRouteToSerappAi,
   unknownBotText,
   welcomeBotText,
 } from '@/lib/serapp/chat-bot'
 import { searchSerappCatalog } from '@/lib/serapp/catalog-search'
+import { runSerappStockCheck } from '@/lib/serapp/assistant-actions'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -235,7 +237,10 @@ async function assistantTurn(input: {
   orgId?: string | null
   conversationId?: string | null
 }): Promise<ChatTurnBotReply> {
-  if (input.userId && input.orgId) {
+  const intent = detectChatIntent(input.text)
+  let session = { ...input.session }
+
+  if (input.userId && input.orgId && shouldRouteToSerappAi(intent)) {
     const aiReply = await trySerappAiTurn({
       request: input.request,
       text: input.text,
@@ -248,9 +253,6 @@ async function assistantTurn(input: {
     })
     if (aiReply) return aiReply
   }
-
-  const intent = detectChatIntent(input.text)
-  let session = { ...input.session }
 
   if (intent.type === 'greeting') {
     return {
@@ -302,51 +304,36 @@ async function assistantTurn(input: {
       ? (session.lineResolutions || [])
       : []
 
-    const { ok, data } = await postJson<{
-      summary?: SerappChatCheckPayload['summary']
-      results?: SerappChatCheckPayload['results']
-      estimatedOrderValue?: number
-      fulfillmentWarehouse?: { id: string; name: string | null }
-      distributor?: { id: string; org_name: string }
-      error?: string
-    }>(input.request, '/api/serapp/paste-check', {
-      pasteText,
-      distributorId: input.distributorId || session.distributorId || undefined,
-      lineResolutions,
-    })
+    try {
+      const check = await runSerappStockCheck({
+        pasteText,
+        distributorId: input.distributorId || session.distributorId || undefined,
+        lineResolutions,
+      })
 
-    if (!ok || !data.summary || !data.results) {
+      session = {
+        phase: 'checked',
+        pendingPasteText: pasteText,
+        lastCheck: check,
+        lastConfirm: null,
+        distributorId: input.distributorId || session.distributorId,
+        lineResolutions,
+      }
+
       return {
-        text: data.error || 'Stock check failed.',
-        card: { kind: 'error', error: data.error || 'Stock check failed.' },
+        text: formatCheckIntro(check.summary, check.warehouseName),
+        card: { kind: 'check_summary', check },
+        quickReplies: quickRepliesForPhase('checked', check.summary.bucket),
+        session,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Stock check failed.'
+      return {
+        text: message,
+        card: { kind: 'error', error: message },
         quickReplies: quickRepliesForPhase('awaiting_list'),
         session: { ...session, phase: 'awaiting_list' },
       }
-    }
-
-    const check: SerappChatCheckPayload = {
-      summary: data.summary,
-      results: data.results,
-      estimatedOrderValue: data.estimatedOrderValue || 0,
-      warehouseName: data.fulfillmentWarehouse?.name,
-      distributorName: data.distributor?.org_name,
-      pasteText,
-    }
-
-    session = {
-      phase: 'checked',
-      pendingPasteText: pasteText,
-      lastCheck: check,
-      lastConfirm: null,
-      distributorId: input.distributorId || session.distributorId,
-      lineResolutions,
-    }
-
-    return {
-      text: formatCheckIntro(check.summary, check.warehouseName),
-      card: { kind: 'check_summary', check },
-      quickReplies: quickRepliesForPhase('checked', check.summary.bucket),
-      session,
     }
   }
 
