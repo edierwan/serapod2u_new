@@ -79,7 +79,7 @@ For pure conversation with no server action, omit the SERAPP_ACTION line.
 Write your friendly reply first, then the optional SERAPP_ACTION line last.`
 }
 
-function buildSessionContext(conversationId?: string | null) {
+async function loadConversationHistory(conversationId?: string | null) {
   if (!conversationId) return []
   const admin = createAdminClient()
   const rows = await listMessages(admin, conversationId, 12)
