@@ -156,7 +156,10 @@ export async function trySerappAiTurn(input: {
     messagePreview: input.text,
   })
 
-  if (aiResponse.error && !aiResponse.message) return null
+  if (aiResponse.error && !aiResponse.message) {
+    console.warn('[serapp/ai-turn] AI unavailable, using rules fallback:', aiResponse.error)
+    return null
+  }
 
   const { reply, action } = parseSerappAiAction(aiResponse.message || '')
   let session = { ...input.session }
