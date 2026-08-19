@@ -95,9 +95,7 @@ interface NotificationTypesTabProps {
 
 const DEFAULT_PRESET: RoutingPreset = 'whatsapp_email_fallback'
 const DEFAULT_RECIPIENT_TARGETS = { roles: true, dynamic_org: false, users: false, consumer: false }
-const DEFAULT_EVENT_PRESET: Partial<Record<string, RoutingPreset>> = {
-  [DELETE_USER_OTP_EVENT]: 'whatsapp_sms_email_fallback',
-}
+const EXCLUSIVE_PRESETS: RoutingPreset[] = ['sms_only', 'email_only', 'whatsapp_only']
 
 const PRESETS: Array<{
   id: RoutingPreset
@@ -161,10 +159,6 @@ function channelsForPreset(preset: RoutingPreset): string[] {
   if (preset === 'email_only') return ['email']
   if (preset === 'sms_only') return ['sms']
   return ['whatsapp']
-}
-
-function initialPresetForEvent(eventCode: string): RoutingPreset {
-  return DEFAULT_EVENT_PRESET[eventCode] || DEFAULT_PRESET
 }
 
 function PresetIcon({ preset, className = 'h-7 w-7' }: { preset: RoutingPreset; className?: string }) {
@@ -234,7 +228,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       const loadedTypes = (types || []) as NotificationType[]
       const settingsMap = new Map<string, NotificationSetting>()
       loadedTypes.forEach((type) => {
-        const seedPreset = initialPresetForEvent(type.event_code)
+        const seedPreset = DEFAULT_PRESET
         settingsMap.set(type.event_code, {
         org_id: userProfile.organizations.id,
         event_code: type.event_code,
@@ -276,8 +270,15 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
         })
       })
 
-      if (loadedTypes.some((type) => type.event_code === DELETE_USER_OTP_EVENT) && loadedEvents[DELETE_USER_OTP_EVENT] == null) {
-        loadedEvents[DELETE_USER_OTP_EVENT] = initialPresetForEvent(DELETE_USER_OTP_EVENT)
+      // A leftover catalog 3-step on User Deletion OTP must not hide Security & OTP SMS Only.
+      if (loadedEvents[DELETE_USER_OTP_EVENT] === 'whatsapp_sms_email_fallback') {
+        const securityPreset = loadedCategories.security
+        if (
+          (securityPreset && EXCLUSIVE_PRESETS.includes(securityPreset))
+          || (!securityPreset && EXCLUSIVE_PRESETS.includes(loadedDefault))
+        ) {
+          loadedEvents[DELETE_USER_OTP_EVENT] = null
+        }
       }
 
       setNotificationTypes(loadedTypes)
@@ -331,7 +332,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
       org_id: setting.org_id,
       event_code: setting.event_code,
       enabled: setting.event_code === DELETE_USER_OTP_EVENT ? true : setting.enabled,
-      channels_enabled: setting.enabled ? channelsForPreset(preset) : [],
+      channels_enabled: (setting.event_code === DELETE_USER_OTP_EVENT || setting.enabled) ? channelsForPreset(preset) : [],
       priority: setting.priority,
       recipient_roles: recipientConfig.roles || null,
       recipient_users: null,
@@ -460,7 +461,7 @@ export default function NotificationTypesTab({ userProfile }: NotificationTypesT
                       const lockedOn = type.event_code === DELETE_USER_OTP_EVENT
                       return <div key={type.event_code} className="my-2 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[auto_minmax(0,1fr)_210px_auto] sm:items-center">
                         <Switch checked={lockedOn ? true : setting.enabled} onCheckedChange={(checked) => toggleNotification(type.event_code, checked)} disabled={lockedOn} aria-label={`Enable ${type.event_name}`} />
-                        <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p>{lockedOn && <p className="mt-1 text-[11px] text-slate-500">Always on. Recipient is the organization contact. Choose SMS only, Email only, WhatsApp only, or a fallback mix. Custom templates in Details are used when sending.</p>}</div>
+                        <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-900">{type.event_name}</span>{type.is_system && <Badge variant="secondary" className="text-[10px]">System</Badge>}</div><p className="mt-0.5 truncate text-xs text-slate-500">{type.event_description}</p>{lockedOn && <p className="mt-1 text-[11px] text-slate-500">Always on. Recipient is the organization contact. Set this row to SMS Only (or inherit Default if Default is SMS Only), then Save Routing Settings. Custom templates in Details are used when sending.</p>}</div>
                         <select aria-label={`${type.event_name} routing`} disabled={(!setting.enabled && !lockedOn) || Boolean(FORCED_PRESET[type.event_code])} value={FORCED_PRESET[type.event_code] || eventPreset || 'inherit'} onChange={(event) => setEventPresets((current) => ({ ...current, [type.event_code]: event.target.value === 'inherit' ? null : event.target.value as RoutingPreset }))} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 disabled:bg-slate-100 disabled:text-slate-400">
                           <option value="inherit">Use {categoryPreset ? 'category' : 'default'}</option>{PRESETS.map((preset) => <option key={preset.id} value={preset.id} disabled={!presetAvailable(preset.id)}>{preset.title}</option>)}
                         </select>

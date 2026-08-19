@@ -30,13 +30,50 @@ export function deliveryChainForPreset(preset: NotificationRoutingPreset): Notif
     return ['whatsapp', 'sms', 'email']
 }
 
+const EXCLUSIVE_PRESETS: NotificationRoutingPreset[] = ['sms_only', 'email_only', 'whatsapp_only']
+
 /**
  * Destructive OTP routing. Prefer an explicit saved preset.
  * Do not infer from channels_enabled — the Types UI stores only the first hop there.
+ *
+ * Effective order matches Notification Types: event override, then category
+ * (e.g. Security & OTP = SMS Only), then Default Delivery.
+ * A leftover catalog 3-step event override must not hide an exclusive category.
  */
 export function resolveDeleteUserOtpPreset(setting: unknown): NotificationRoutingPreset {
-    const routing = (setting as { recipient_config?: { routing?: { preset?: unknown } } } | null)?.recipient_config?.routing
-    if (isNotificationRoutingPreset(routing?.preset)) return routing.preset
+    const routing = (setting as {
+        recipient_config?: {
+            routing?: {
+                preset?: unknown
+                source?: unknown
+                default_preset?: unknown
+                category_preset?: unknown
+            }
+        }
+    } | null)?.recipient_config?.routing
+
+    const eventPreset = isNotificationRoutingPreset(routing?.preset) ? routing.preset : null
+    const defaultPreset = isNotificationRoutingPreset(routing?.default_preset) ? routing.default_preset : null
+    const categoryPreset = isNotificationRoutingPreset(routing?.category_preset) ? routing.category_preset : null
+    const source = routing?.source
+
+    if (source === 'event' && eventPreset && EXCLUSIVE_PRESETS.includes(eventPreset)) {
+        return eventPreset
+    }
+    if (
+        eventPreset === DELETE_USER_OTP_DEFAULT_PRESET
+        && categoryPreset
+        && EXCLUSIVE_PRESETS.includes(categoryPreset)
+    ) {
+        return categoryPreset
+    }
+    if (source === 'event' && eventPreset) {
+        if (defaultPreset && EXCLUSIVE_PRESETS.includes(defaultPreset)) return defaultPreset
+        return eventPreset
+    }
+    if (categoryPreset) return categoryPreset
+    if (defaultPreset) return defaultPreset
+    if (eventPreset) return eventPreset
     return DELETE_USER_OTP_DEFAULT_PRESET
 }
 
