@@ -1479,7 +1479,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('allocated')}
                 >
                   <div className="flex items-center">
-                    Allocated
+                    Reserved
                     {renderSortIcon('allocated')}
                   </div>
                 </TableHead>
@@ -1488,7 +1488,7 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('available')}
                 >
                   <div className="flex items-center">
-                    Available
+                    Available to Order
                     {renderSortIcon('available')}
                   </div>
                 </TableHead>
@@ -1506,11 +1506,16 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                   onClick={() => handleSort('position')}
                 >
                   <div className="flex items-center">
-                    Position
+                    Projected Position
                     {renderSortIcon('position')}
                   </div>
                 </TableHead>
-                <TableHead>Stock Level</TableHead>
+                {/* Names what the badge actually measures: available-to-order against
+                    the reorder point, i.e. a replenishment signal. Headed "Stock Level"
+                    it was read as a verdict on how much could be sold, so a flavour with
+                    54 orderable cases and a reorder point of 10 read "Healthy" while
+                    Quick Order refused the line. */}
+                <TableHead>Reorder Status</TableHead>
                 {canViewTotalValue() && (
                   <TableHead
                     className="cursor-pointer hover:bg-[var(--sera-ink)]/[0.04] select-none text-right"
@@ -1677,13 +1682,19 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                                 <th className="px-4 py-2 text-right">On Hand</th>
                                 {/* An order sells from ONE configuration, so the split that decides
                                     whether a line can be placed is the per-configuration one — the
-                                    flavour-level Allocated/Available above cannot answer it. Without
-                                    these two columns, a configuration showing 10,514 On Hand and a
-                                    Quick Order quoting 54 available looked like a contradiction. */}
-                                <th className="px-4 py-2 text-right">Allocated</th>
-                                <th className="px-4 py-2 text-right">Available</th>
+                                    flavour-level totals above cannot answer it. Without these two
+                                    columns, a configuration showing 10,514 On Hand and a Quick Order
+                                    quoting 54 available looked like a contradiction.
+
+                                    The wording is deliberate and matches the flavour row: only
+                                    "Available to Order" is orderable. "Projected Position" adds
+                                    Incoming, which is stock still on its way and NOT sellable until
+                                    it is received and posted — reading it as orderable is what made
+                                    a correct refusal look like a fault. */}
+                                <th className="px-4 py-2 text-right">Reserved</th>
+                                <th className="px-4 py-2 text-right">Available to Order</th>
                                 <th className="px-4 py-2 text-right">Incoming</th>
-                                <th className="px-4 py-2 text-right">Position</th>
+                                <th className="px-4 py-2 text-right">Projected Position</th>
                                 {canViewTotalValue() && <th className="px-4 py-2 text-right">Value</th>}
                                 {canEditSettings() && <th className="px-4 py-2 text-center">Actions</th>}
                               </tr>
