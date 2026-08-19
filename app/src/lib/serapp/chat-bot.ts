@@ -110,6 +110,7 @@ export function helpBotText(): string {
     'ALMOND - 100',
     '',
     '• I reply with Available / Partial / Out of Stock / Needs Review',
+    '• If a line is unmatched, pick the real catalog item in the card',
     '• *Confirm* allocates stock and starts the 1-hour warehouse window',
     '• Delivery Order (DO) is issued automatically after warehouse acceptance — open Warehouse chat for the PDF',
     '• Ask free-text questions anytime — I use smart reply from your latest check/hold context',
@@ -142,7 +143,7 @@ export function quickRepliesForPhase(
       ]
     }
     return [
-      { id: 'new', label: 'Fix & paste again', sendText: 'new order' },
+      { id: 'new', label: 'Paste a new list', sendText: 'new order' },
       { id: 'help', label: 'Help', sendText: 'help' },
     ]
   }
@@ -166,7 +167,7 @@ export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName
     '',
     summary.bucket === 'available' || summary.bucket === 'partially_available'
       ? 'Reply *confirm* to send this to the warehouse hold window.'
-      : 'Fix the lines that need review / are out of stock, then paste again.',
+      : 'Tap a real product on unmatched lines below, or paste a corrected list.',
   ].join('\n')
 }
 

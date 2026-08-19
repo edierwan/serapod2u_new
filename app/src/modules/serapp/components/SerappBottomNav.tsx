@@ -23,6 +23,8 @@ const tabs = [
 export default function SerappBottomNav() {
   const pathname = usePathname()
   const { totalUnread } = useSerapp()
+  const isThread = Boolean(pathname?.match(/^\/serapp\/conversation\/[^/]+$/))
+  if (isThread) return null
 
   return (
     <nav

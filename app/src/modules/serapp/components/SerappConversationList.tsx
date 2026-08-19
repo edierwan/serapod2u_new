@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones, Trash2 } from 'lucide-react'
+import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones, Trash2, Search } from 'lucide-react'
 import type { SerappConversationRow } from '@/lib/serapp/conversation-types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -47,6 +47,7 @@ export default function SerappConversationList() {
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SerappConversationRow | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [query, setQuery] = useState('')
   const supabaseRef = useRef(createClient())
 
   const load = useCallback(async () => {
@@ -130,19 +131,28 @@ export default function SerappConversationList() {
   return (
     <div className="serapp-wa flex h-full min-h-0 flex-col bg-[var(--sera-surface)]">
       <div className="serapp-wa-header flex items-center justify-between px-4 py-3">
-        <div>
-          <p className="text-base font-semibold text-white">Chats</p>
-          <p className="text-[11px] text-white/70">WhatsApp-style · each thread is separate</p>
-        </div>
+        <p className="text-[21px] font-semibold text-white">Chats</p>
         <button
           type="button"
           disabled={creating || loading}
           onClick={() => void createChat()}
-          className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-2 text-xs font-semibold text-white hover:bg-white/25 disabled:opacity-50"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-50"
+          aria-label="New chat"
         >
-          {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCirclePlus className="h-3.5 w-3.5" />}
-          New chat
+          {creating ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageCirclePlus className="h-5 w-5" />}
         </button>
+      </div>
+
+      <div className="bg-white px-3 py-2">
+        <label className="flex items-center gap-2 rounded-lg bg-[#f0f2f5] px-3 py-2">
+          <Search className="h-4 w-4 text-[#54656f]" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search"
+            className="w-full bg-transparent text-sm text-[var(--sera-ink)] outline-none placeholder:text-[#667781]"
+          />
+        </label>
       </div>
 
       {error && (
@@ -165,29 +175,42 @@ export default function SerappConversationList() {
           </div>
         )}
 
-        <ul className="divide-y divide-[var(--sera-line)]">
-          {conversations.map((chat) => (
+        <ul className="divide-y divide-[#e9edef] bg-white">
+          {conversations
+            .filter((chat) => {
+              const needle = query.trim().toLowerCase()
+              if (!needle) return true
+              return [chat.title, chat.subtitle, chat.last_message_preview]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase()
+                .includes(needle)
+            })
+            .map((chat) => (
             <li key={chat.id} className="flex items-stretch">
               <Link
                 href={`/serapp/conversation/${chat.id}`}
-                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--sera-paper)]"
+                className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-[#f5f6f6]"
               >
                 <Avatar avatarKey={chat.avatar_key} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-[var(--sera-ink)]">
+                    <p className="truncate text-[16px] font-medium text-[#111b21]">
                       {chat.title}
                     </p>
-                    <span className="shrink-0 text-[10px] text-[var(--sera-muted)]">
+                    <span className={cn(
+                      'shrink-0 text-[12px]',
+                      chat.unread_count > 0 ? 'font-semibold text-[#25d366]' : 'text-[#667781]',
+                    )}>
                       {formatListTime(chat.last_message_at)}
                     </span>
                   </div>
                   <div className="mt-0.5 flex items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate text-xs text-[var(--sera-muted)]">
+                    <p className="min-w-0 flex-1 truncate text-[14px] text-[#667781]">
                       {chat.last_message_preview || chat.subtitle || '—'}
                     </p>
                     {chat.unread_count > 0 && (
-                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--sera-orange)] px-1.5 text-[10px] font-bold text-white">
+                      <span className="serapp-wa-unread inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white">
                         {chat.unread_count}
                       </span>
                     )}
@@ -208,10 +231,6 @@ export default function SerappConversationList() {
           ))}
         </ul>
       </div>
-
-      <p className={cn('px-4 py-2 text-center text-[10px] text-[var(--sera-muted)]')}>
-        Assistant · Warehouse · News are different conversations with separate history
-      </p>
 
       {pendingDelete && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 px-4 pb-8 sm:items-center">

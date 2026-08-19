@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
 import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { summarizeSerappPasteCheck } from '@/lib/serapp/paste-check-summary'
+import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
   buildSerappConfirmItems,
@@ -41,8 +40,9 @@ export async function POST(request: Request) {
     })
 
     const catalog = await loadSerappCatalog(ctx)
-    const results = matchPastedOrder(pasteText, catalog.variants)
-    const summary = summarizeSerappPasteCheck(results)
+    const resolutions = parseSerappLineResolutions(body?.lineResolutions)
+    const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions)
+    const { results, summary } = checked
 
     if (summary.bucket === 'unmatched_or_review' || summary.bucket === 'out_of_stock') {
       return NextResponse.json({

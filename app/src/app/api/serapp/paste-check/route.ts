@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
-import { summarizeSerappPasteCheck } from '@/lib/serapp/paste-check-summary'
+import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
 import { loadSerappCatalog, resolveSerappDistributorContext } from '@/lib/serapp/order-context'
 
 /**
@@ -23,8 +22,8 @@ export async function POST(request: Request) {
     })
 
     const catalog = await loadSerappCatalog(ctx)
-    const results = matchPastedOrder(pasteText, catalog.variants)
-    const summary = summarizeSerappPasteCheck(results)
+    const resolutions = parseSerappLineResolutions(body?.lineResolutions)
+    const checked = runSerappPasteCheck(pasteText, catalog.variants, resolutions)
 
     return NextResponse.json({
       sideEffects: 'none',
@@ -37,15 +36,9 @@ export async function POST(request: Request) {
         id: catalog.inventoryOrganizationId,
         name: catalog.fulfillmentWarehouseName,
       },
-      summary,
-      results,
-      estimatedOrderValue: results.reduce((sum, result) => {
-        if (!result.selectedVariantId || !result.quantity || result.quantity <= 0) return sum
-        if (result.status !== 'matched' && result.status !== 'alternative_match') return sum
-        if (result.inventoryOutcome && result.inventoryOutcome !== 'matched') return sum
-        const variant = catalog.variants.find(item => item.id === result.selectedVariantId)
-        return sum + (result.quantity * (variant?.distributor_price || 0))
-      }, 0),
+      summary: checked.summary,
+      results: checked.results,
+      estimatedOrderValue: checked.estimatedOrderValue,
     })
   } catch (error) {
     const status = typeof (error as { status?: number })?.status === 'number'

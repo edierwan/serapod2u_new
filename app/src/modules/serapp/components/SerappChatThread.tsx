@@ -30,6 +30,7 @@ import type {
 import type { SerappAttachment, SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
 import { createClient } from '@/lib/supabase/client'
 import { useSerapp } from './SerappContext'
+import SerappReviewLinePicker from './SerappReviewLinePicker'
 import { cn } from '@/lib/utils'
 
 interface DistributorOption {
@@ -59,6 +60,24 @@ function formatClock(iso: string) {
   } catch {
     return ''
   }
+}
+
+function formatDayLabel(iso: string) {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  const today = new Date()
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const startThat = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const diffDays = Math.round((startToday - startThat) / 86400000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function dayKey(iso: string) {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
 function mapRow(msg: SerappMessageRow) {
@@ -105,6 +124,7 @@ export default function SerappChatThread() {
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
   const [pendingDelete, setPendingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [resolvingLine, setResolvingLine] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -365,6 +385,30 @@ export default function SerappChatThread() {
   const canDelete =
     conversation?.kind !== 'warehouse' && conversation?.kind !== 'news'
 
+  const applyChatLinePick = async (line: number, variantId: string) => {
+    if (!conversationId || resolvingLine) return
+    setResolvingLine(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/serapp/conversations/${conversationId}/resolve-line`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          line,
+          variantId,
+          distributorId: selectedDistributorId || undefined,
+        }),
+      })
+      const payload = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(payload?.error || 'Could not map that product.')
+      if (payload?.session) setSession(payload.session)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not map that product.')
+    } finally {
+      setResolvingLine(false)
+    }
+  }
+
   const confirmDelete = async () => {
     if (!conversationId || !canDelete) return
     setDeleting(true)
@@ -430,7 +474,10 @@ export default function SerappChatThread() {
 
   return (
     <div className="serapp-wa flex h-full min-h-0 flex-col">
-      <div className="serapp-wa-header flex items-center gap-2 px-2 py-2.5">
+      <div
+        className="serapp-wa-header flex items-center gap-1 px-1 py-2"
+        style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))' }}
+      >
         <button
           type="button"
           onClick={() => router.push('/serapp/conversation')}
@@ -459,98 +506,6 @@ export default function SerappChatThread() {
           </button>
         )}
       </div>
-
-      {conversation.kind === 'warehouse' && (
-        <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
-            Quick actions
-          </p>
-          <div className="mt-1.5 flex gap-2 overflow-x-auto">
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('my holds')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              My holds
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('pending accept')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Pending accept
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('do status')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Latest DO
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('help')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Help
-            </button>
-          </div>
-        </div>
-      )}
-
-      {conversation.kind === 'assistant' && (
-        <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
-            Quick actions
-          </p>
-          <div className="mt-1.5 flex gap-2 overflow-x-auto">
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('HERO\nBANANA VANILLA - 100\nGUAVA - 200\n\nZERO\nALMOND - 100\nTEA - 200')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Paste sample
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('check again')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Check again
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('confirm')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Confirm
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('new order')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              New order
-            </button>
-            <button
-              type="button"
-              disabled={sending || uploading}
-              onClick={() => void sendText('help')}
-              className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
-            >
-              Help
-            </button>
-          </div>
-        </div>
-      )}
 
       {isHqSupport && conversation.kind === 'assistant' && (
         <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
@@ -587,15 +542,23 @@ export default function SerappChatThread() {
         </div>
       )}
 
-      <div ref={listRef} className="serapp-wa-thread min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        {messages.map((msg) => (
+      <div ref={listRef} className="serapp-wa-thread min-h-0 flex-1 space-y-1 overflow-y-auto px-2 py-3">
+        {messages.map((msg, index) => {
+          const prev = messages[index - 1]
+          const showDay = !prev || dayKey(prev.createdAt) !== dayKey(msg.createdAt)
+          return (
+          <div key={msg.id}>
+            {showDay && (
+              <div className="mb-2 mt-1 flex justify-center">
+                <span className="serapp-wa-date">{formatDayLabel(msg.createdAt)}</span>
+              </div>
+            )}
           <div
-            key={msg.id}
             className={cn('serapp-wa-row flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
           >
             <div
               className={cn(
-                'serapp-wa-bubble max-w-[88%] px-3 py-2 text-sm leading-5 shadow-sm',
+                'serapp-wa-bubble max-w-[85%] px-2 pt-1.5 pb-1 text-[14.2px] leading-[19px]',
                 msg.role === 'user' ? 'serapp-wa-bubble--out' : 'serapp-wa-bubble--in',
               )}
             >
@@ -605,7 +568,17 @@ export default function SerappChatThread() {
               )}
 
               {msg.card?.kind === 'check_summary' && msg.card.check && (
-                <CheckSummaryCard check={msg.card.check} />
+                <CheckSummaryCard
+                  check={
+                    session?.lastCheck?.pasteText === msg.card.check.pasteText
+                      ? session.lastCheck
+                      : msg.card.check
+                  }
+                  interactive={session?.lastCheck?.pasteText === msg.card.check.pasteText}
+                  distributorId={selectedDistributorId || session?.distributorId || undefined}
+                  disabled={sending || resolvingLine}
+                  onPick={applyChatLinePick}
+                />
               )}
               {msg.card?.kind === 'order_confirmed' && msg.card.confirm && (
                 <ConfirmCard confirm={msg.card.confirm} />
@@ -614,30 +587,27 @@ export default function SerappChatThread() {
                 <DoStoriesCard stories={msg.card.doStories as SerappDoStoryItem[]} />
               )}
 
-              <p
-                className={cn(
-                  'mt-1 text-right text-[10px]',
-                  msg.role === 'user' ? 'text-black/45' : 'text-[var(--sera-muted)]',
-                )}
-              >
+              <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] leading-none text-[#667781]">
                 {formatClock(msg.createdAt)}
                 {msg.role === 'user' && (
-                  <span className="ml-1 inline-flex align-middle">
+                  <span className="inline-flex">
                     {sending && msg.id.startsWith('temp-') ? (
-                      <Check className="h-3 w-3 text-black/45" />
+                      <Check className="h-3.5 w-3.5 text-[#667781]" />
                     ) : msg.seenAt ? (
-                      <CheckCheck className="h-3 w-3 text-sky-500" />
+                      <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
                     ) : msg.deliveredAt ? (
-                      <CheckCheck className="h-3 w-3 text-black/45" />
+                      <CheckCheck className="h-3.5 w-3.5 text-[#667781]" />
                     ) : (
-                      <Check className="h-3 w-3 text-black/45" />
+                      <Check className="h-3.5 w-3.5 text-[#667781]" />
                     )}
                   </span>
                 )}
               </p>
             </div>
           </div>
-        ))}
+          </div>
+          )
+        })}
 
         {typing && (
           <div className="serapp-wa-row flex justify-start">
@@ -666,7 +636,10 @@ export default function SerappChatThread() {
         </div>
       )}
 
-      <div className="serapp-wa-composer flex items-end gap-2 border-t border-[var(--sera-line)] px-2 py-2">
+      <div
+        className="serapp-wa-composer flex items-end gap-1.5 px-2 py-2"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}
+      >
         <input
           ref={fileRef}
           type="file"
@@ -678,7 +651,7 @@ export default function SerappChatThread() {
           type="button"
           disabled={sending || uploading}
           onClick={() => fileRef.current?.click()}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--sera-line)] bg-white text-[var(--sera-ink-soft)] disabled:opacity-40"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] disabled:opacity-40"
           aria-label="Attach file"
         >
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
@@ -688,7 +661,7 @@ export default function SerappChatThread() {
           value={draft}
           disabled={sending}
           rows={1}
-          placeholder="Type a message…"
+          placeholder="Message"
           onChange={(e) => {
             setDraft(e.target.value)
             const el = e.target
@@ -696,13 +669,13 @@ export default function SerappChatThread() {
             el.style.height = `${Math.min(el.scrollHeight, 140)}px`
           }}
           onKeyDown={onKeyDown}
-          className="max-h-[140px] min-h-[42px] flex-1 resize-none rounded-2xl border border-[var(--sera-line)] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[var(--sera-orange)]"
+          className="max-h-[140px] min-h-[42px] flex-1 resize-none rounded-[21px] border-0 bg-white px-4 py-2.5 text-[15px] outline-none"
         />
         <button
           type="button"
           disabled={sending || uploading || (!draft.trim() && !pendingAttachment)}
           onClick={() => void sendText(draft)}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--sera-orange)] text-white disabled:opacity-40"
+          className="serapp-wa-send inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white disabled:opacity-40"
           aria-label="Send"
         >
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -791,8 +764,21 @@ function AttachmentBubble({ attachment, mine }: { attachment: SerappAttachment; 
   )
 }
 
-function CheckSummaryCard({ check }: { check: SerappChatCheckPayload }) {
-  const productLines = check.results.filter((r) => r.status !== 'section_header').slice(0, 8)
+function CheckSummaryCard({
+  check,
+  interactive,
+  distributorId,
+  disabled,
+  onPick,
+}: {
+  check: SerappChatCheckPayload
+  interactive?: boolean
+  distributorId?: string
+  disabled?: boolean
+  onPick?: (line: number, variantId: string) => void
+}) {
+  const productLines = check.results.filter((r) => r.status !== 'section_header')
+  const visible = productLines.slice(0, 12)
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -803,16 +789,26 @@ function CheckSummaryCard({ check }: { check: SerappChatCheckPayload }) {
           Est. {formatMoney(check.estimatedOrderValue)}
         </span>
       </div>
-      <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[11px] text-[var(--sera-ink-soft)]">
-        {productLines.map((line, idx) => (
+      <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto text-[11px] text-[var(--sera-ink-soft)]">
+        {visible.map((line, idx) => (
           <li
-            key={`${line.raw}-${idx}`}
-            className="flex justify-between gap-2 border-b border-[var(--sera-line)]/50 py-1 last:border-0"
+            key={`${line.line}-${line.raw}-${idx}`}
+            className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
           >
-            <span className="min-w-0 truncate">{line.name || line.raw}</span>
-            <span className="shrink-0 tabular-nums text-[var(--sera-muted)]">
-              {line.quantity ?? '—'} · {lineStatusShort(line)}
-            </span>
+            <div className="flex justify-between gap-2">
+              <span className="min-w-0 truncate">{line.name || line.raw}</span>
+              <span className="shrink-0 tabular-nums text-[var(--sera-muted)]">
+                {line.quantity ?? '—'} · {lineStatusShort(line)}
+              </span>
+            </div>
+            {interactive && onPick && (
+              <SerappReviewLinePicker
+                result={line}
+                disabled={disabled}
+                distributorId={distributorId}
+                onPick={onPick}
+              />
+            )}
           </li>
         ))}
       </ul>

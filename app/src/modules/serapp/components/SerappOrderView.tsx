@@ -7,6 +7,8 @@ import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 import { createClient } from '@/lib/supabase/client'
 import { useSerapp } from './SerappContext'
+import SerappReviewLinePicker from './SerappReviewLinePicker'
+import type { SerappLineResolution } from '@/lib/serapp/line-resolutions'
 
 interface PasteCheckResponse {
   sideEffects: string
@@ -79,6 +81,7 @@ export default function SerappOrderView() {
   const [error, setError] = useState<string | null>(null)
   const [response, setResponse] = useState<PasteCheckResponse | null>(null)
   const [confirmed, setConfirmed] = useState<ConfirmResponse | null>(null)
+  const [lineResolutions, setLineResolutions] = useState<SerappLineResolution[]>([])
   const [distributors, setDistributors] = useState<DistributorOption[]>([])
   const [distributorsLoading, setDistributorsLoading] = useState(false)
   const [selectedDistributorId, setSelectedDistributorId] = useState('')
@@ -128,7 +131,7 @@ export default function SerappOrderView() {
     return response.summary.bucket === 'available' || response.summary.bucket === 'partially_available'
   }, [response, confirmed, hasDistributor])
 
-  const runCheck = async () => {
+  const runCheck = async (resolutions = lineResolutions) => {
     if (!hasDistributor) {
       setError('Select a distributor first (HQ Support mode).')
       return
@@ -144,6 +147,7 @@ export default function SerappOrderView() {
         body: JSON.stringify({
           pasteText,
           distributorId: selectedDistributorId || undefined,
+          lineResolutions: resolutions,
         }),
       })
       const payload = await res.json().catch(() => null)
@@ -157,6 +161,12 @@ export default function SerappOrderView() {
     } finally {
       setBusy(null)
     }
+  }
+
+  const applyLinePick = (line: number, variantId: string) => {
+    const next = [...lineResolutions.filter((item) => item.line !== line), { line, variantId }]
+    setLineResolutions(next)
+    void runCheck(next)
   }
 
   const runConfirm = async () => {
@@ -179,6 +189,7 @@ export default function SerappOrderView() {
           idempotencyKey: idempotencyRef.current,
           distributorId: selectedDistributorId || undefined,
           fulfillmentWarehouseId: response?.fulfillmentWarehouse?.id || undefined,
+          lineResolutions,
         }),
       })
       const payload = await res.json().catch(() => null)
@@ -230,16 +241,8 @@ export default function SerappOrderView() {
           <p className="mt-1 text-[var(--sera-muted)]">
             Power-user fallback. Prefer <Link href="/serapp/conversation" className="font-semibold text-[var(--sera-orange)]">Chat</Link> for the WhatsApp-style Assistant.
             Check is read-only; Confirm allocates stock and starts the 1-hour warehouse hold.
+            Unmatched lines can be mapped to a real catalog item before Confirm.
           </p>
-          {!isHqSupport && (
-            <p className="mt-2 text-xs text-[var(--sera-muted)]">
-              Official channel:{' '}
-              <Link href="/serapp/telegram" className="font-semibold text-[var(--sera-orange)]">
-                Link Telegram (@SerapodOrdersBot)
-              </Link>
-              . Use this Order page only as emergency fallback.
-            </p>
-          )}
         </div>
 
         {isHqSupport && (
@@ -258,6 +261,7 @@ export default function SerappOrderView() {
                 setSelectedDistributorId(event.target.value)
                 setResponse(null)
                 setConfirmed(null)
+                setLineResolutions([])
                 setError(null)
                 idempotencyRef.current = null
               }}
@@ -377,6 +381,13 @@ export default function SerappOrderView() {
             {result.quantity != null && (
               <p className="mt-1 text-xs text-[var(--sera-muted)]">Qty: {result.quantity}</p>
             )}
+            <SerappReviewLinePicker
+              result={result}
+              disabled={busy !== null}
+              distributorId={selectedDistributorId || undefined}
+              fulfillmentWarehouseId={response.fulfillmentWarehouse?.id}
+              onPick={applyLinePick}
+            />
           </div>
         ))}
 
@@ -394,6 +405,7 @@ export default function SerappOrderView() {
             setPasteText(event.target.value)
             setConfirmed(null)
             setResponse(null)
+            setLineResolutions([])
             idempotencyRef.current = null
           }}
           rows={5}

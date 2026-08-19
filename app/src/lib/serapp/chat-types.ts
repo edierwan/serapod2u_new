@@ -76,4 +76,5 @@ export interface SerappChatSessionState {
   lastCheck: SerappChatCheckPayload | null
   lastConfirm: SerappChatConfirmPayload | null
   distributorId: string | null
+  lineResolutions: Array<{ line: number; variantId: string }>
 }

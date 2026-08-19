@@ -295,6 +295,10 @@ async function assistantTurn(input: {
       }
     }
 
+    const lineResolutions = intent.type === 'check_again'
+      ? (session.lineResolutions || [])
+      : []
+
     const { ok, data } = await postJson<{
       summary?: SerappChatCheckPayload['summary']
       results?: SerappChatCheckPayload['results']
@@ -305,6 +309,7 @@ async function assistantTurn(input: {
     }>(input.request, '/api/serapp/paste-check', {
       pasteText,
       distributorId: input.distributorId || session.distributorId || undefined,
+      lineResolutions,
     })
 
     if (!ok || !data.summary || !data.results) {
@@ -331,6 +336,7 @@ async function assistantTurn(input: {
       lastCheck: check,
       lastConfirm: null,
       distributorId: input.distributorId || session.distributorId,
+      lineResolutions,
     }
 
     return {
@@ -354,7 +360,7 @@ async function assistantTurn(input: {
     const bucket = session.lastCheck.summary.bucket
     if (bucket !== 'available' && bucket !== 'partially_available') {
       return {
-        text: `Cannot confirm while status is *${session.lastCheck.summary.label}*. Fix the list and paste again.`,
+        text: `Cannot confirm while status is *${session.lastCheck.summary.label}*. Pick the real product on unmatched lines, or paste a corrected list.`,
         quickReplies: quickRepliesForPhase('checked', bucket),
         session,
       }
@@ -379,6 +385,7 @@ async function assistantTurn(input: {
       acceptAvailableOnly: true,
       idempotencyKey,
       distributorId: input.distributorId || session.distributorId || undefined,
+      lineResolutions: session.lineResolutions || [],
     })
 
     if (!ok || !data.order) {

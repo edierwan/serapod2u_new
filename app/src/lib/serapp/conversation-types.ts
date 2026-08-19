@@ -1,4 +1,5 @@
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
+import { parseSerappLineResolutions } from '@/lib/serapp/line-resolutions'
 
 export type SerappConversationKind = 'assistant' | 'warehouse' | 'news' | 'support'
 
@@ -58,6 +59,7 @@ export const DEFAULT_SESSION: SerappChatSessionState = {
   lastCheck: null,
   lastConfirm: null,
   distributorId: null,
+  lineResolutions: [],
 }
 
 export function parseSession(raw: unknown): SerappChatSessionState {
@@ -69,6 +71,7 @@ export function parseSession(raw: unknown): SerappChatSessionState {
     lastCheck: s.lastCheck ?? null,
     lastConfirm: s.lastConfirm ?? null,
     distributorId: s.distributorId ?? null,
+    lineResolutions: parseSerappLineResolutions(s.lineResolutions),
   }
 }
 

@@ -63,7 +63,7 @@ export async function archiveConversation(
 
 export async function ensureSeedConversations(
   admin: Admin,
-  input: { userId: string; orgId: string },
+  input: { userId: string; orgId: string; orgName?: string | null },
 ): Promise<SerappConversationRow[]> {
   // Include archived so deleting a seed does not recreate duplicates forever.
   const { data: existingKinds, error: kindsError } = await admin
@@ -85,7 +85,7 @@ export async function ensureSeedConversations(
         owner_user_id: input.userId,
         owner_org_id: input.orgId,
         kind: seed.kind,
-        title: seed.title,
+        title: seed.kind === 'assistant' && input.orgName ? input.orgName : seed.title,
         subtitle: seed.subtitle,
         avatar_key: seed.avatar_key,
         last_message_preview: previewFromBody(seed.welcome),
@@ -129,6 +129,7 @@ export async function createConversation(
     orgId: string
     kind?: SerappConversationKind
     title?: string
+    orgName?: string | null
     distributorOrgId?: string | null
   },
 ): Promise<{ conversation: SerappConversationRow; welcomeMessage: SerappMessageRow }> {
@@ -137,7 +138,7 @@ export async function createConversation(
   const title =
     input.title?.trim() ||
     (kind === 'assistant'
-      ? `Order chat · ${new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+      ? (input.orgName?.trim() || 'Distributor')
       : seed.title)
 
   const session: SerappChatSessionState = {

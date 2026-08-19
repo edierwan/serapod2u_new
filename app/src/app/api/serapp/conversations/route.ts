@@ -13,9 +13,10 @@ export async function GET() {
     if (!actor.ok) return actor.error
 
     const admin = createAdminClient()
-    let conversations = await ensureSeedConversations(admin, {
+    let     conversations = await ensureSeedConversations(admin, {
       userId: actor.userId,
       orgId: actor.orgId,
+      orgName: actor.orgName,
     })
 
     // Re-list sorted after seed
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     const { conversation, welcomeMessage } = await createConversation(admin, {
       userId: actor.userId,
       orgId: actor.orgId,
+      orgName: actor.orgName,
       kind: typeof body?.kind === 'string' ? body.kind : 'assistant',
       title: typeof body?.title === 'string' ? body.title : undefined,
       distributorOrgId: typeof body?.distributorId === 'string' ? body.distributorId : null,

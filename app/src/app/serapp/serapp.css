@@ -60,36 +60,54 @@
   animation: serapp-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* ── WhatsApp-like chat (Serapp brand colors) ───────────────────── */
+/* ── WhatsApp-like chat chrome ───────────────────────────────────── */
 
 .sera-serapp .serapp-wa-header {
-  background: linear-gradient(135deg, #1a1614 0%, #2c241c 55%, #3d2a18 100%);
+  background: #075e54;
 }
 
 .sera-serapp .serapp-wa-thread {
-  background-color: #ebe6df;
+  background-color: #ece5dd;
   background-image:
-    radial-gradient(rgba(20, 18, 16, 0.04) 1px, transparent 1px),
-    radial-gradient(rgba(232, 93, 4, 0.04) 1px, transparent 1px);
-  background-size: 18px 18px, 28px 28px;
-  background-position: 0 0, 9px 14px;
+    radial-gradient(rgba(17, 27, 33, 0.035) 1.2px, transparent 1.2px);
+  background-size: 14px 14px;
 }
 
 .sera-serapp .serapp-wa-bubble {
-  border-radius: 10px;
+  border-radius: 7.5px;
   position: relative;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
 }
 
 .sera-serapp .serapp-wa-bubble--in {
   background: #ffffff;
-  border-top-left-radius: 2px;
-  color: var(--sera-ink);
+  border-top-left-radius: 0;
+  color: #111b21;
 }
 
 .sera-serapp .serapp-wa-bubble--out {
-  background: #dcf8c6;
-  border-top-right-radius: 2px;
-  color: #111;
+  background: #d9fdd3;
+  border-top-right-radius: 0;
+  color: #111b21;
+}
+
+.sera-serapp .serapp-wa-date {
+  display: inline-flex;
+  border-radius: 8px;
+  background: #e1f2fa;
+  padding: 0.28rem 0.7rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: #54656f;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+
+.sera-serapp .serapp-wa-send {
+  background: #25d366;
+}
+
+.sera-serapp .serapp-wa-unread {
+  background: #25d366;
 }
 
 .sera-serapp .serapp-wa-card {
@@ -138,7 +156,7 @@
 }
 
 .sera-serapp .serapp-wa-composer {
-  background: var(--sera-surface);
+  background: #f0f2f5;
 }
 
 .sera-serapp .serapp-wa-dot {

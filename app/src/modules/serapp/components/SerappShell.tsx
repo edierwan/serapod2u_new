@@ -32,6 +32,7 @@ export default function SerappShell({
   const pathname = usePathname()
   const isChat =
     pathname === '/serapp/conversation' || pathname?.startsWith('/serapp/conversation/')
+  const isThread = Boolean(pathname?.match(/^\/serapp\/conversation\/[^/]+$/))
 
   const displayName = userProfile.full_name || userProfile.email
   const orgLabel = userProfile.organizations.org_name
@@ -43,6 +44,7 @@ export default function SerappShell({
       isHqSupport={isHqSupport}
     >
       <div className="sera-serapp flex h-[100dvh] flex-col text-[var(--sera-ink)]">
+        {!isThread && (
         <header className="sticky top-0 z-40 border-b border-[var(--sera-line)] bg-[var(--sera-paper)]/92 backdrop-blur-md">
           <div
             className="h-[2px] w-full bg-gradient-to-r from-[var(--sera-orange)] via-[var(--sera-orange-deep)] to-transparent"
@@ -81,18 +83,19 @@ export default function SerappShell({
             </button>
           </div>
         </header>
+        )}
 
         <main
           className={cn(
-            'mx-auto w-full max-w-lg flex-1 overscroll-y-contain pb-20',
-            isChat ? 'overflow-hidden pt-0' : 'overflow-y-auto pt-3',
+            'mx-auto w-full max-w-lg flex-1 overscroll-y-contain',
+            isThread ? 'overflow-hidden pt-0 pb-0' : isChat ? 'overflow-hidden pt-0 pb-20' : 'overflow-y-auto pt-3 pb-20',
           )}
         >
           {children}
         </main>
 
         <SerappMessageNotifier />
-        <SerappBottomNav />
+        {!isThread && <SerappBottomNav />}
       </div>
     </SerappProvider>
   )
