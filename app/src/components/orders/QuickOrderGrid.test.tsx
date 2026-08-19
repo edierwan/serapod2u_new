@@ -326,4 +326,37 @@ describe('Paste review presentation and WhatsApp reply', () => {
     expect(within(dialog).getByText('Distributor Price not set in Product Management')).not.toBeNull()
     expect((within(dialog).getByRole('button', { name: 'Apply reviewed quantities' }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  // Production 2026-08-19: Strawberry Corn showed 10,514 On Hand in View
+  // Inventory while the paste review refused 100 cases with a bare
+  // "Insufficient / 54 available". Both numbers were right — twelve submitted
+  // D2H orders held 10,460 cases — but nothing on screen said so, so a correct
+  // reservation was reported as a bug.
+  it('names the reservation when submitted orders hold the difference', async () => {
+    const user = userEvent.setup()
+    const reserved = [{
+      id: 'strawberry-corn', product_id: 'product-9', product_name: 'Cellera Hero', product_code: 'CELVA9464',
+      variant_product_code: 'SC', alternative_name: 'Strawberry Cheese Cake', group_name: 'Cartridge',
+      variant_name: 'Deluxe Cellera Cartridge [ Strawberry Corn ]', distributor_price: 32,
+      available_qty: 54, on_hand_qty: 10514, reserved_qty: 10460,
+      inventory_classification: 'classified' as const, pricing_status: 'priced' as const,
+    }]
+    render(<QuickOrderGrid variants={reserved} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+
+    expect(screen.getByText('10,514 on hand · 10,460 reserved by submitted orders')).not.toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Paste list' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByRole('textbox'), 'SC - 100')
+    await user.click(within(dialog).getByRole('button', { name: 'Review matches' }))
+
+    expect(within(dialog).getByText('Insufficient')).not.toBeNull()
+    expect(within(dialog).getByText('54 available')).not.toBeNull()
+    expect(within(dialog).getByText('10,514 on hand · 10,460 reserved by submitted orders')).not.toBeNull()
+  })
+
+  it('says nothing about reservations when none are held', async () => {
+    render(<QuickOrderGrid variants={variants} items={[]} formatCurrency={amount => amount.toFixed(2)} onQuantityChange={vi.fn()} onClear={vi.fn()} />)
+    expect(screen.queryByText(/reserved by submitted orders/)).toBeNull()
+  })
 })

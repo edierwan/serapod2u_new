@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   filterQuickOrderCatalogRows,
   MISSING_DISTRIBUTOR_PRICE_ORDER_MESSAGE,
-  resolveSellableAvailability,
+  resolveSellableStock,
   resolveUnclassifiedVariantIds,
   UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
   validateQuickOrderCatalogItems,
 } from './quick-order-catalog'
 import { matchPastedOrder } from '@/components/orders/quick-order-matcher'
+
+/** A sellable balance nothing is holding — the ordinary case in these tests. */
+const unreserved = (available: number) => ({ available, onHand: available, reserved: 0 })
 
 const row = (id: string, productName: string, groupName: string, options: Record<string, unknown> = {}) => ({
   id,
@@ -45,8 +48,8 @@ describe('D2H Quick Order Vape catalog', () => {
     { ...row('no-price', 'No Price', 'Device'), distributor_price: 0 },
     row('no-stock', 'No Stock', 'Cartridge'),
   ]
-  const stock = new Map(rows.map(item => [item.id, item.id === 'sline' ? 25 : 10]))
-  stock.set('no-stock', 0)
+  const stock = new Map(rows.map(item => [item.id, unreserved(item.id === 'sline' ? 25 : 10)]))
+  stock.set('no-stock', unreserved(0))
   const catalog = filterQuickOrderCatalogRows(rows, stock)
 
   it('includes active Product Master variants even when no sellable stock is available', () => {
@@ -76,7 +79,7 @@ describe('D2H Quick Order Vape catalog', () => {
   it('keeps an unpriced variant findable and names the missing Distributor Price', () => {
     const orange = filterQuickOrderCatalogRows(
       [{ ...row('orange', 'Cellera Hero', 'Cartridge', { alternative_name: 'OREN' }), variant_name: 'Deluxe Cellera Cartridge [Orange]', distributor_price: null }],
-      new Map([['orange', 3259]]),
+      new Map([['orange', unreserved(3259)]]),
     )
 
     expect(orange[0]).toMatchObject({ pricing_status: 'price_missing', distributor_price: 0, available_qty: 3259 })
@@ -91,7 +94,7 @@ describe('D2H Quick Order Vape catalog', () => {
 
   it('includes Alternative Name in the authorized catalog used by paste matching', () => {
     const alternativeRows = [row('banana', 'Banana Milk', 'Cartridge', { alternative_name: 'Banana Vanilla' })]
-    const alternativeCatalog = filterQuickOrderCatalogRows(alternativeRows, new Map([['banana', 10]]))
+    const alternativeCatalog = filterQuickOrderCatalogRows(alternativeRows, new Map([['banana', unreserved(10)]]))
 
     expect(alternativeCatalog[0].alternative_name).toBe('Banana Vanilla')
     expect(matchPastedOrder('BANANA VANILLA - 100', alternativeCatalog)[0])
@@ -119,7 +122,7 @@ describe('D2H Quick Order Vape catalog', () => {
   it('keeps an unclassified variant matchable but blocks D2H submission', () => {
     const unclassifiedCatalog = filterQuickOrderCatalogRows(
       [row('guava', 'Cellera Hero', 'Cartridge')],
-      new Map([['guava', 0]]),
+      new Map([['guava', unreserved(0)]]),
       new Set(['guava']),
     )
 
@@ -161,9 +164,9 @@ describe('D2H Quick Order Vape catalog', () => {
       { variant_id: 'stranded', stock_config_id: '20nb', quantity_on_hand: 0, quantity_available: 0 },
       { variant_id: 'stranded', stock_config_id: 'legacy', quantity_on_hand: 500, quantity_available: 500 },
     ]
-    const sellable = resolveSellableAvailability(inventory, configurations, false)
+    const sellable = resolveSellableStock(inventory, configurations, false)
 
-    expect(sellable.get('strawberry-corn')).toBe(10514)
+    expect(sellable.get('strawberry-corn')?.available).toBe(10514)
     expect([...resolveUnclassifiedVariantIds(inventory, configurations, sellable)]).toEqual(['stranded'])
 
     const catalog = filterQuickOrderCatalogRows(
@@ -173,6 +176,48 @@ describe('D2H Quick Order Vape catalog', () => {
     )
     expect(catalog[0].inventory_classification).toBe('classified')
     expect(() => validateQuickOrderCatalogItems([{ variantId: 'strawberry-corn', quantity: 50 }], catalog)).not.toThrow()
+  })
+
+  // Production 2026-08-19: Strawberry Corn at Serapod Warehouse Balakong held
+  // 10,514 units in 20NB with 10,460 of them reserved by twelve submitted D2H
+  // orders, so a 100-case paste line was correctly refused — but the review
+  // said only "Insufficient / 54 available" beside a View Inventory screen
+  // reading 10,514 On Hand, which read as a system fault. The catalog now
+  // carries the split that explains it.
+  it('reports how much of a sellable balance submitted orders already hold', () => {
+    const configurations = [
+      { id: '20nb', config_code: '20NB', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+    ]
+    const inventory = [
+      { variant_id: 'strawberry-corn', stock_config_id: '20nb', quantity_on_hand: 10514, quantity_allocated: 10460, quantity_available: 54 },
+    ]
+    const stockByVariant = resolveSellableStock(inventory, configurations, false)
+
+    expect(stockByVariant.get('strawberry-corn')).toEqual({ available: 54, onHand: 10514, reserved: 10460 })
+
+    const catalog = filterQuickOrderCatalogRows(
+      [row('strawberry-corn', 'Cellera Hero', 'Cartridge')],
+      stockByVariant,
+    )
+    expect(catalog[0]).toMatchObject({ available_qty: 54, on_hand_qty: 10514, reserved_qty: 10460 })
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'strawberry-corn', quantity: 100 }], catalog, 'Serapod Warehouse Balakong'))
+      .toThrow('54 of 10,514 cases are free — 10,460 are reserved by submitted orders awaiting approval.')
+    expect(() => validateQuickOrderCatalogItems([{ variantId: 'strawberry-corn', quantity: 54 }], catalog, 'Serapod Warehouse Balakong'))
+      .not.toThrow()
+  })
+
+  // A row without an explicit allocated column still has to describe itself,
+  // because product_inventory.quantity_available is generated from the two.
+  it('infers the reserved portion when only on-hand and available are known', () => {
+    const configurations = [
+      { id: '20nb', config_code: '20NB', volume_ml: 20, packaging: 'new_box', status: 'active', allow_so: true, requires_repacking_before_sale: false },
+    ]
+    const stockByVariant = resolveSellableStock(
+      [{ variant_id: 'hero', stock_config_id: '20nb', quantity_on_hand: 300, quantity_available: 120 }],
+      configurations,
+      false,
+    )
+    expect(stockByVariant.get('hero')).toEqual({ available: 120, onHand: 300, reserved: 180 })
   })
 
   it('uses one eligible configuration per line and never exposes old-box stock', () => {
@@ -187,7 +232,7 @@ describe('D2H Quick Order Vape catalog', () => {
       { id: '50ob', volume_ml: 50, packaging: 'old_box', status: 'active', allow_so: false, requires_repacking_before_sale: true },
     ]
 
-    expect(resolveSellableAvailability(inventory, configurations, false).get('hero')).toBe(8)
-    expect(resolveSellableAvailability(inventory, configurations, true).get('hero')).toBe(12)
+    expect(resolveSellableStock(inventory, configurations, false).get('hero')?.available).toBe(8)
+    expect(resolveSellableStock(inventory, configurations, true).get('hero')?.available).toBe(12)
   })
 })

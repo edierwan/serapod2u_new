@@ -23,6 +23,8 @@ interface QuickVariant {
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  on_hand_qty?: number
+  reserved_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
   pricing_status?: 'priced' | 'price_missing'
 }
@@ -152,6 +154,26 @@ const rowStatus = (variant: QuickVariant, quantity: number): StatusDescriptor =>
   return STATUS.available
 }
 
+/**
+ * Why availability is lower than the stock View Inventory shows.
+ *
+ * Submitted D2H/S2D orders hold their quantity against the warehouse until
+ * they are approved or cancelled, so a flavour can sit on 10,514 cases and
+ * still offer only 54. Stating the shortfall as a bare "54 available" read as
+ * a system fault; naming the reserved part points at the queue of submitted
+ * orders that actually holds it. Nothing is rendered when nothing is reserved.
+ */
+const ReservedNote = ({ variant, className = '' }: { variant: QuickVariant; className?: string }) => {
+  const reserved = variant.reserved_qty || 0
+  if (reserved <= 0) return null
+  const onHand = variant.on_hand_qty ?? variant.available_qty + reserved
+  return (
+    <span className={`block text-[var(--sera-muted)] ${className}`}>
+      {onHand.toLocaleString()} on hand · {reserved.toLocaleString()} reserved by submitted orders
+    </span>
+  )
+}
+
 /** Filter toggle rendered as a pressable chip so the filters read as one row. */
 const FilterToggle = ({ label, icon: Icon, pressed, onToggle }: { label: string; icon: typeof CheckSquare; pressed: boolean; onToggle: () => void }) => (
   <button type="button" aria-pressed={pressed} onClick={onToggle}
@@ -168,6 +190,7 @@ const CandidateCard = ({ variant, onSelect }: { variant: QuickVariant; onSelect?
     <>
       <VariantIdentity variant={variant} withProduct />
       <span className="block text-[var(--sera-muted)]">{variant.available_qty.toLocaleString()} available</span>
+      <ReservedNote variant={variant} />
       {variant.pricing_status === 'price_missing' && (
         <span className="block text-amber-700">Distributor Price not set in Product Management</span>
       )}
@@ -338,7 +361,10 @@ export default function QuickOrderGrid({ variants, items, formatCurrency, onQuan
               return (
                 <tr key={variant.id} className={quantity > 0 ? 'border-t bg-orange-50/50' : 'border-t'}>
                   <td className="px-3 py-2"><ProductCell variant={variant} productLabel={productShortNames.get(variant.product_name) || variant.product_name} /></td>
-                  <td className="px-3 py-2 text-right tabular-nums">{variant.available_qty.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {variant.available_qty.toLocaleString()}
+                    <ReservedNote variant={variant} className="text-[11px] font-normal" />
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Input data-quick-qty={index} type="number" inputMode="numeric" min={0} max={variant.available_qty} disabled={unpriced} value={quantity || ''} onChange={event => handleQuantity(variant, event.target.value)} onKeyDown={event => { if (event.key === 'Enter' || event.key === 'ArrowDown') { event.preventDefault(); document.querySelector<HTMLInputElement>(`[data-quick-qty=\"${index + 1}\"]`)?.focus() } }} className="w-20" aria-label={`Order quantity in cases for ${variant.variant_name}`} />

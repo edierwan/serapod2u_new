@@ -1675,6 +1675,13 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                                 <th className="px-4 py-2 text-left">Volume / Packaging</th>
                                 <th className="px-4 py-2 text-left">Lifecycle</th>
                                 <th className="px-4 py-2 text-right">On Hand</th>
+                                {/* An order sells from ONE configuration, so the split that decides
+                                    whether a line can be placed is the per-configuration one — the
+                                    flavour-level Allocated/Available above cannot answer it. Without
+                                    these two columns, a configuration showing 10,514 On Hand and a
+                                    Quick Order quoting 54 available looked like a contradiction. */}
+                                <th className="px-4 py-2 text-right">Allocated</th>
+                                <th className="px-4 py-2 text-right">Available</th>
                                 <th className="px-4 py-2 text-right">Incoming</th>
                                 <th className="px-4 py-2 text-right">Position</th>
                                 {canViewTotalValue() && <th className="px-4 py-2 text-right">Value</th>}
@@ -1698,6 +1705,8 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
                                     <Badge variant="outline">{config.lifecycleStatus || 'active'}</Badge>
                                   </td>
                                   <td className="px-4 py-2 text-right font-medium">{formatNumber(config.onHand)}</td>
+                                  <td className="px-4 py-2 text-right">{config.allocated > 0 ? formatNumber(config.allocated) : <span className="text-gray-400">0</span>}</td>
+                                  <td className="px-4 py-2 text-right font-medium">{formatNumber(config.available)}</td>
                                   <td className="px-4 py-2 text-right">{config.incoming > 0 ? formatNumber(config.incoming) : <span className="text-gray-400">0</span>}</td>
                                   <td className="px-4 py-2 text-right">{formatNumber(config.position)}</td>
                                   {canViewTotalValue() && (

@@ -63,8 +63,23 @@ interface ProductVariant {
   manufacturer_sku?: string | null
   distributor_price: number
   available_qty: number
+  /** Split of available_qty — see QuickOrderCatalogVariant.on_hand_qty. */
+  on_hand_qty?: number
+  reserved_qty?: number
   inventory_classification?: 'classified' | 'unclassified'
   pricing_status?: 'priced' | 'price_missing'
+}
+
+/**
+ * The "… reserved by submitted orders" tail on a shortfall message. Submitted
+ * D2H/S2D orders hold stock until they are approved or cancelled, so quoting
+ * only the available figure makes a well-stocked flavour look broken.
+ */
+const reservedStockNote = (variant: { available_qty: number; on_hand_qty?: number; reserved_qty?: number }): string => {
+  const reserved = variant.reserved_qty || 0
+  if (reserved <= 0) return ''
+  const onHand = variant.on_hand_qty ?? variant.available_qty + reserved
+  return ` (${onHand.toLocaleString()} on hand, ${reserved.toLocaleString()} reserved by submitted orders awaiting approval)`
 }
 
 interface OrderItem {
@@ -468,7 +483,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} cases available in inventory`,
+        description: `Only ${variant.available_qty} cases available in inventory${reservedStockNote(variant)}`,
         variant: 'destructive'
       })
       return
@@ -501,7 +516,7 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
     if (variant.inventory_classification !== 'unclassified' && newQty > variant.available_qty) {
       toast({
         title: 'Insufficient Stock',
-        description: `Only ${variant.available_qty} cases of ${variant.variant_name} are available`,
+        description: `Only ${variant.available_qty} cases of ${variant.variant_name} are available${reservedStockNote(variant)}`,
         variant: 'destructive'
       })
       return
@@ -1040,7 +1055,15 @@ export default function DistributorOrderView({ userProfile, onViewChange }: Dist
                                   <p className="text-xs text-[var(--sera-muted)] mt-1">SKU: {item.manufacturer_sku}</p>
                                 )}
                                 {variant && (
-                                  <p className="text-xs text-[var(--sera-orange)] mt-1">Available: {variant.available_qty} cases</p>
+                                  <p className="text-xs text-[var(--sera-orange)] mt-1">
+                                    Available: {variant.available_qty} cases
+                                    {(variant.reserved_qty || 0) > 0 && (
+                                      <span className="text-[var(--sera-muted)]">
+                                        {' '}({(variant.on_hand_qty ?? variant.available_qty + (variant.reserved_qty || 0)).toLocaleString()} on hand,{' '}
+                                        {(variant.reserved_qty || 0).toLocaleString()} reserved by submitted orders)
+                                      </span>
+                                    )}
+                                  </p>
                                 )}
                               </div>
                               <Button

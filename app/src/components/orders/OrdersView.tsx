@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { formatNumber } from '@/lib/utils/formatters'
 import { usePermissions } from '@/hooks/usePermissions'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
+import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
 import {
   FileText,
   Plus,
@@ -69,6 +70,22 @@ interface OrdersViewProps {
   userProfile: UserProfile
   onViewChange?: (view: string) => void
 }
+
+/**
+ * How many orders one load pulls back.
+ *
+ * The Order Type / Seller / Status choices used to be applied to whatever this
+ * limit happened to return, so a company with 161 orders across H2M, D2H and
+ * S2D loaded only the 50 most recent and then showed the 11 of them that were
+ * H2M — everything older than that window simply vanished from the list. The
+ * Order Type and Status choices are now pushed into the query itself, so the
+ * window is per type instead of across all of them, and the limit is high
+ * enough that a normal company's full history for one type comes back in one
+ * page. Seller stays client-side on purpose: the Seller dropdown is built from
+ * the loaded rows, so filtering it server-side would leave the dropdown with
+ * only the seller already chosen.
+ */
+const ORDER_FETCH_LIMIT = 1000
 
 type OrderActor = {
   id: string
@@ -790,7 +807,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, searchQuery])
+  }, [statusFilter, searchQuery, typeFilter])
 
   const handleCreateOrder = async () => {
     // Check if user has digital signature
@@ -927,6 +944,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
           approved_by_user:users!orders_approved_by_fkey(id, email, full_name, roles:role_code(role_level))
         `)
 
+      // Order Type has to be part of the query, not a post-filter over the
+      // fetched window — see ORDER_FETCH_LIMIT.
+      if (typeFilter !== 'all') {
+        query = query.eq('order_type', typeFilter)
+      }
+
       // Filter based on organization type
       if (orgType === 'MFG' || orgType === 'MANU') {
         // Manufacturers see orders where they are the seller
@@ -942,7 +965,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         query = query.eq('company_id', companyId)
       }
 
-      query = query.order('created_at', { ascending: false }).limit(50)
+      query = query.order('created_at', { ascending: false }).limit(ORDER_FETCH_LIMIT)
 
       // Apply status filter
       if (statusFilter !== 'all') {
@@ -969,37 +992,41 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       if (hydratedOrdersData.length > 0) {
         const orderIds = hydratedOrdersData.map(o => o.id)
 
+        // Each of these is keyed by the loaded order ids, so they run in
+        // batches — a full order history would otherwise put thousands of
+        // UUIDs in one request URL. See queryByIdChunks.
+
         // 1. Fetch Order Items
-        const { data: itemsData, error: itemsError } = await supabase
+        const { data: itemsData, error: itemsError } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('order_items')
           .select(`
             *,
             product:products(id, product_name, product_code),
             variant:product_variants(id, variant_name)
           `)
-          .in('order_id', orderIds)
+          .in('order_id', chunk))
 
         // 2. Fetch PO Documents to check acknowledgement status (for Unpaid status logic)
-        const { data: poData } = await supabase
+        const { data: poData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status')
-          .in('order_id', orderIds)
-          .eq('doc_type', 'PO')
+          .in('order_id', chunk)
+          .eq('doc_type', 'PO'))
 
         // 3. Fetch acknowledged PAYMENT documents to calculate paid amounts
-        const { data: paymentData } = await supabase
+        const { data: paymentData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status, payment_percentage, payload')
-          .in('order_id', orderIds)
+          .in('order_id', chunk)
           .eq('doc_type', 'PAYMENT')
-          .eq('status', 'acknowledged')
+          .eq('status', 'acknowledged'))
 
         // 4. Fetch RECEIPT documents for D2H orders (customer receipts)
-        const { data: receiptData } = await supabase
+        const { data: receiptData } = await queryByIdChunks<any>(orderIds, chunk => supabase
           .from('documents')
           .select('order_id, status, payment_percentage, payload')
-          .in('order_id', orderIds)
-          .eq('doc_type', 'RECEIPT')
+          .in('order_id', chunk)
+          .eq('doc_type', 'RECEIPT'))
 
         console.log('Order items query result:', itemsData?.length || 0, 'items')
         console.log('Acknowledged payments found:', paymentData?.length || 0)

@@ -6,9 +6,10 @@ import {
   type ProgramCategoryRule,
 } from '@/lib/orders/d2h-program-category-policy'
 import {
-  resolveSellableAvailability,
+  resolveSellableStock,
   resolveUnclassifiedVariantIds,
   type QuickOrderCatalogVariant,
+  type SellableStock,
 } from '@/lib/orders/quick-order-catalog'
 import { resolveSellerHqId } from '@/lib/orders/hq-fulfillment-warehouses'
 
@@ -21,7 +22,7 @@ const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArr
  */
 export function filterStandardOrderCatalogRows(
   rows: any[],
-  availableByVariant: Map<string, number>,
+  stockByVariant: Map<string, SellableStock>,
   unclassifiedVariantIds: Set<string>,
   categoryRule: ProgramCategoryRule | null,
 ): QuickOrderCatalogVariant[] {
@@ -45,7 +46,9 @@ export function filterStandardOrderCatalogRows(
       barcode: row.barcode || null,
       manufacturer_sku: row.manufacturer_sku || null,
       distributor_price: distributorPrice,
-      available_qty: availableByVariant.get(row.id) || 0,
+      available_qty: stockByVariant.get(row.id)?.available || 0,
+      on_hand_qty: stockByVariant.get(row.id)?.onHand ?? 0,
+      reserved_qty: stockByVariant.get(row.id)?.reserved ?? 0,
       inventory_classification: unclassifiedVariantIds.has(row.id) ? 'unclassified' as const : 'classified' as const,
       // Standard Order already refuses an unpriced variant when it is added to
       // the cart; the flag keeps the shared catalog shape honest.
@@ -152,7 +155,7 @@ export async function resolveStandardOrderCatalog(
   }
 
   const [{ data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
-    supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
+    supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated, quantity_available')
       .eq('organization_id', fulfillmentWarehouse.id).in('variant_id', variantIds),
     supabase.from('inventory_stock_configurations')
       .select('id, config_code, volume_ml, packaging, status, allow_so, requires_repacking_before_sale').in('variant_id', variantIds),
@@ -161,16 +164,16 @@ export async function resolveStandardOrderCatalog(
   ])
   if (inventoryError || configurationsError) throw new Error('Unable to load current Standard Order inventory.')
 
-  const availableByVariant = resolveSellableAvailability(
+  const stockByVariant = resolveSellableStock(
     inventory || [],
     configurations || [],
     eligibility?.allow_50ml_new_box === true,
   )
-  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], availableByVariant)
+  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], stockByVariant)
 
   const variants = filterStandardOrderCatalogRows(
     rows || [],
-    availableByVariant,
+    stockByVariant,
     unclassifiedVariantIds,
     categoryRule,
   )

@@ -8,7 +8,7 @@ import {
 } from '@/lib/orders/d2h-program-category-policy'
 import {
   resolveQuickOrderCatalog,
-  resolveSellableAvailability,
+  resolveSellableStock,
   resolveUnclassifiedVariantIds,
   UNCLASSIFIED_INVENTORY_ORDER_MESSAGE,
   validateQuickOrderCatalogItems,
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
     const variantsById = new Map<string, { id: string; distributor_price: number | null }>(
       (variants || []).map((variant: { id: string; distributor_price: number | null }) => [variant.id, variant]),
     )
-    const stockByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
+    const stockByVariant = resolveSellableStock(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
     const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], stockByVariant)
     if (items.some(item => unclassifiedVariantIds.has(item.variantId))) {
       return NextResponse.json({ error: UNCLASSIFIED_INVENTORY_ORDER_MESSAGE }, { status: 409 })
@@ -204,7 +204,7 @@ export async function POST(request: Request) {
       return {
         variantId: item.variantId,
         quantity: item.quantity,
-        availableQuantity: stockByVariant.get(item.variantId) || 0,
+        availableQuantity: stockByVariant.get(item.variantId)?.available || 0,
         distributorPrice: Number(variant.distributor_price || 0),
       }
     })
@@ -212,7 +212,10 @@ export async function POST(request: Request) {
     if (priceMissing) return NextResponse.json({ error: 'Distributor price is not maintained for one or more selected variants.' }, { status: 409 })
     const insufficient = validated.find(item => item.quantity > item.availableQuantity)
     if (insufficient) {
-      return NextResponse.json({ error: insufficientStockAtWarehouseMessage(warehouseName) }, { status: 409 })
+      return NextResponse.json(
+        { error: insufficientStockAtWarehouseMessage(warehouseName, stockByVariant.get(insufficient.variantId)) },
+        { status: 409 },
+      )
     }
 
     return NextResponse.json({

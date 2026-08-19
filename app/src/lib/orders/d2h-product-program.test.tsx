@@ -96,9 +96,10 @@ describe('D2H Standard Order catalog category policy', () => {
       products: { product_name: 'Dog Kibble', product_code: 'KIBBLE', is_active: true, category_id: 'cat-petfood', product_categories: petFoodCategory, product_groups: { group_name: 'Pet Food' } },
     },
   ]
+  const unreserved = (available: number) => ({ available, onHand: available, reserved: 0 })
   const availability = new Map([
-    ['pod-variant', 5], ['device-box-variant', 7], ['device-line-variant', 9],
-    ['chair-variant', 3], ['kibble-variant', 4],
+    ['pod-variant', unreserved(5)], ['device-box-variant', unreserved(7)], ['device-line-variant', unreserved(9)],
+    ['chair-variant', unreserved(3)], ['kibble-variant', unreserved(4)],
   ])
   const celleraRule = programCategoryRuleForCodes(['cellera'])
 

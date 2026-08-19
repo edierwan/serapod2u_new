@@ -1,3 +1,5 @@
+import { insufficientStockAtWarehouseMessage } from '@/lib/orders/hq-fulfillment-warehouses'
+
 export interface QuickOrderCatalogVariant {
   id: string
   product_id: string
@@ -18,6 +20,21 @@ export interface QuickOrderCatalogVariant {
   manufacturer_sku: string | null
   distributor_price: number
   available_qty: number
+  /**
+   * The sellable balance behind {@link available_qty}, split so the operator
+   * can see why the two differ. Quick Order sells from ONE configuration, so
+   * these describe that configuration alone, not the flavour's warehouse-wide
+   * total: on_hand_qty is its physical stock and reserved_qty the part already
+   * committed to D2H/S2D orders that are submitted but not yet approved
+   * (available = on hand - reserved, as product_inventory computes it).
+   *
+   * Without this split, a warehouse holding 10,514 cases with 10,460 reserved
+   * by twelve submitted orders answered a 100-case line with a bare
+   * "Insufficient - 54 available", and the only way to reconcile that against
+   * View Inventory's 10,514 On Hand was to read the database.
+   */
+  on_hand_qty: number
+  reserved_qty: number
   inventory_classification: 'classified' | 'unclassified'
   /**
    * Whether master data carries a Distributor Price for the variant. A variant
@@ -59,10 +76,11 @@ export function validateQuickOrderCatalogItems(
       throw new Error(UNCLASSIFIED_INVENTORY_ORDER_MESSAGE)
     }
     if (item.quantity > variant.available_qty) {
-      const location = warehouseName || 'the selected warehouse'
-      throw new Error(
-        `Insufficient available stock at ${location}. Select another fulfillment warehouse or adjust the order quantity.`,
-      )
+      throw new Error(insufficientStockAtWarehouseMessage(warehouseName || 'the selected warehouse', {
+        available: variant.available_qty,
+        onHand: variant.on_hand_qty,
+        reserved: variant.reserved_qty,
+      }))
     }
     return {
       variantId: item.variantId,
@@ -91,7 +109,15 @@ interface SellableInventoryRow {
   variant_id: string
   stock_config_id: string | null
   quantity_on_hand?: number | null
+  quantity_allocated?: number | null
   quantity_available: number | null
+}
+
+/** The sellable configuration a Quick Order line would be fulfilled from. */
+export interface SellableStock {
+  available: number
+  onHand: number
+  reserved: number
 }
 
 interface SellableConfigurationRow {
@@ -106,13 +132,15 @@ interface SellableConfigurationRow {
 
 // A sales-order line is fulfilled from one configuration. Availability is
 // therefore the largest eligible single balance, never the sum of 20NB+50NB.
-export function resolveSellableAvailability(
+// The winning configuration's on-hand and reserved balances come back with it
+// so the UI can explain a shortfall instead of only asserting one.
+export function resolveSellableStock(
   inventory: SellableInventoryRow[],
   configurations: SellableConfigurationRow[],
   allow50mlNewBox: boolean,
-): Map<string, number> {
+): Map<string, SellableStock> {
   const configs = new Map(configurations.map(config => [config.id, config]))
-  const result = new Map<string, number>()
+  const result = new Map<string, SellableStock>()
 
   for (const stock of inventory) {
     if (!stock.stock_config_id) continue
@@ -122,7 +150,15 @@ export function resolveSellableAvailability(
     const is20nb = config.volume_ml === 20 && config.packaging === 'new_box'
     const is50nb = config.volume_ml === 50 && config.packaging === 'new_box' && allow50mlNewBox
     if (!isGeneric && !is20nb && !is50nb) continue
-    result.set(stock.variant_id, Math.max(result.get(stock.variant_id) || 0, Number(stock.quantity_available || 0)))
+
+    const available = Number(stock.quantity_available || 0)
+    const current = result.get(stock.variant_id)
+    if (current && current.available >= available) continue
+    const onHand = Number(stock.quantity_on_hand ?? available)
+    const reserved = stock.quantity_allocated == null
+      ? Math.max(0, onHand - available)
+      : Number(stock.quantity_allocated)
+    result.set(stock.variant_id, { available, onHand, reserved })
   }
 
   return result
@@ -143,13 +179,13 @@ export function resolveSellableAvailability(
 export function resolveUnclassifiedVariantIds(
   inventory: SellableInventoryRow[],
   configurations: SellableConfigurationRow[],
-  sellableByVariant: Map<string, number> = new Map(),
+  sellableByVariant: Map<string, SellableStock> = new Map(),
 ): Set<string> {
   const configs = new Map(configurations.map(config => [config.id, config]))
   return new Set(inventory.flatMap(stock => {
     const balance = Number(stock.quantity_on_hand ?? stock.quantity_available ?? 0)
     if (balance <= 0) return []
-    if ((sellableByVariant.get(stock.variant_id) || 0) > 0) return []
+    if ((sellableByVariant.get(stock.variant_id)?.available || 0) > 0) return []
     const configCode = stock.stock_config_id ? configs.get(stock.stock_config_id)?.config_code || '' : 'UNCLASSIFIED'
     return /UNCLASSIFIED|LEGACY/i.test(configCode) ? [stock.variant_id] : []
   }))
@@ -175,14 +211,15 @@ const asSingle = <T>(value: T | T[] | null | undefined): T | null => Array.isArr
  */
 export function filterQuickOrderCatalogRows(
   rows: QuickOrderCatalogRow[],
-  availableByVariant: Map<string, number>,
+  stockByVariant: Map<string, SellableStock>,
   unclassifiedVariantIds: Set<string> = new Set(),
 ): QuickOrderCatalogVariant[] {
   return rows.flatMap(row => {
     const product = asSingle<any>(row.products)
     const category = asSingle<any>(product?.product_categories)
     const group = asSingle<any>(product?.product_groups)
-    const availableQty = availableByVariant.get(row.id) || 0
+    const stock = stockByVariant.get(row.id)
+    const availableQty = stock?.available || 0
     const distributorPrice = Number(row.distributor_price || 0)
 
     if (
@@ -207,6 +244,8 @@ export function filterQuickOrderCatalogRows(
       manufacturer_sku: row.manufacturer_sku || null,
       distributor_price: distributorPrice,
       available_qty: availableQty,
+      on_hand_qty: stock?.onHand ?? 0,
+      reserved_qty: stock?.reserved ?? 0,
       inventory_classification: unclassifiedVariantIds.has(row.id) ? 'unclassified' : 'classified',
       pricing_status: distributorPrice > 0 ? 'priced' : 'price_missing',
     }]
@@ -301,7 +340,7 @@ export async function resolveQuickOrderCatalog(
   }
 
   const [{ data: inventory, error: inventoryError }, { data: configurations, error: configurationsError }, { data: eligibility }] = await Promise.all([
-    supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_available')
+    supabase.from('product_inventory').select('variant_id, stock_config_id, quantity_on_hand, quantity_allocated, quantity_available')
       .eq('organization_id', inventoryOrganizationId).in('variant_id', variantIds),
     supabase.from('inventory_stock_configurations')
       .select('id, config_code, volume_ml, packaging, status, allow_so, requires_repacking_before_sale').in('variant_id', variantIds),
@@ -310,10 +349,10 @@ export async function resolveQuickOrderCatalog(
   ])
   if (inventoryError || configurationsError) throw new Error('Unable to load current Quick Order inventory.')
 
-  const availableByVariant = resolveSellableAvailability(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
-  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], availableByVariant)
+  const stockByVariant = resolveSellableStock(inventory || [], configurations || [], eligibility?.allow_50ml_new_box === true)
+  const unclassifiedVariantIds = resolveUnclassifiedVariantIds(inventory || [], configurations || [], stockByVariant)
   return {
-    variants: filterQuickOrderCatalogRows(rows || [], availableByVariant, unclassifiedVariantIds),
+    variants: filterQuickOrderCatalogRows(rows || [], stockByVariant, unclassifiedVariantIds),
     inventoryOrganizationId,
     fulfillmentWarehouseName,
   }

@@ -69,4 +69,20 @@ describe('seller HQ resolution and insufficient-stock copy', () => {
       'Insufficient available stock at Serapod Warehouse Alma. Select another fulfillment warehouse or adjust the order quantity.',
     )
   })
+
+  it('names the reservation when stock is held by submitted orders', () => {
+    expect(
+      insufficientStockAtWarehouseMessage('Serapod Warehouse Balakong', { available: 54, onHand: 10514, reserved: 10460 }),
+    ).toBe(
+      'Insufficient available stock at Serapod Warehouse Balakong. 54 of 10,514 cases are free — 10,460 are reserved by submitted orders awaiting approval. Select another fulfillment warehouse or adjust the order quantity.',
+    )
+  })
+
+  it('keeps the plain message when nothing is reserved', () => {
+    expect(
+      insufficientStockAtWarehouseMessage('Serapod Warehouse Alma', { available: 0, onHand: 0, reserved: 0 }),
+    ).toBe(
+      'Insufficient available stock at Serapod Warehouse Alma. Select another fulfillment warehouse or adjust the order quantity.',
+    )
+  })
 })

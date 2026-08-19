@@ -7,8 +7,24 @@ export const DEFAULT_FULFILLMENT_WAREHOUSE_COLUMN = 'default_warehouse_org_id'
 export const MISSING_DEFAULT_FULFILLMENT_WAREHOUSE_MESSAGE =
   'No default fulfillment warehouse is configured. Select a warehouse before submitting this order.'
 
-export function insufficientStockAtWarehouseMessage(warehouseName: string) {
-  return `Insufficient available stock at ${warehouseName}. Select another fulfillment warehouse or adjust the order quantity.`
+/**
+ * Why a line cannot be fulfilled from the chosen warehouse.
+ *
+ * When the shortfall is caused by reservations rather than by empty shelves,
+ * the message says so: submitted D2H/S2D orders hold their quantity until they
+ * are approved or cancelled, so a flavour with 10,514 cases on hand can still
+ * refuse a 100-case line. Quoting only the available figure made that read as
+ * a system fault. `stock` is optional — callers that cannot resolve the split
+ * still get the original copy.
+ */
+export function insufficientStockAtWarehouseMessage(
+  warehouseName: string,
+  stock?: { available: number; onHand: number; reserved: number },
+) {
+  const reserved = stock && stock.reserved > 0
+    ? ` ${stock.available.toLocaleString()} of ${stock.onHand.toLocaleString()} cases are free — ${stock.reserved.toLocaleString()} are reserved by submitted orders awaiting approval.`
+    : ''
+  return `Insufficient available stock at ${warehouseName}.${reserved} Select another fulfillment warehouse or adjust the order quantity.`
 }
 
 export interface HqFulfillmentWarehouse {
