@@ -2,6 +2,7 @@ import {
   detectChatIntent,
   formatCheckIntro,
   formatConfirmIntro,
+  formatProductInquiryReply,
   helpBotText,
   quickRepliesForPhase,
   unknownBotText,
@@ -419,6 +420,42 @@ async function assistantTurn(input: {
       text: formatConfirmIntro(confirm.orderNo, confirm.holdExpiresAt),
       card: { kind: 'order_confirmed', confirm },
       quickReplies: quickRepliesForPhase('confirmed'),
+      session,
+    }
+  }
+
+  if (intent.type === 'product_inquiry') {
+    const { ok, data } = await postJson<{
+      variants?: Array<{
+        product_name: string
+        variant_name: string
+        product_code: string
+        available_qty?: number
+        inventory_classification?: string
+      }>
+      error?: string
+    }>(input.request, '/api/serapp/catalog-search', {
+      query: intent.query,
+      distributorId: input.distributorId || session.distributorId || undefined,
+    })
+
+    if (!ok) {
+      return {
+        text: data.error || 'Catalog lookup failed.',
+        quickReplies: quickRepliesForPhase(
+          session.phase === 'idle' ? 'awaiting_list' : session.phase,
+          session.lastCheck?.summary.bucket,
+        ),
+        session,
+      }
+    }
+
+    return {
+      text: formatProductInquiryReply(intent.query, data.variants || []),
+      quickReplies: quickRepliesForPhase(
+        session.phase === 'idle' ? 'awaiting_list' : session.phase,
+        session.lastCheck?.summary.bucket,
+      ),
       session,
     }
   }

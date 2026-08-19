@@ -1,10 +1,15 @@
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
+import {
+  extractProductInquiry,
+  resolveNaturalOrderPasteText,
+} from '@/lib/serapp/natural-order-text'
 
 export type SerappChatIntent =
   | { type: 'greeting' }
   | { type: 'help' }
   | { type: 'order_list'; pasteText: string }
+  | { type: 'product_inquiry'; query: string }
   | { type: 'confirm' }
   | { type: 'check_again' }
   | { type: 'new_order' }
@@ -36,6 +41,11 @@ export function detectChatIntent(raw: string): SerappChatIntent {
 
   if (looksLikeOrderList(text)) {
     return { type: 'order_list', pasteText: text }
+  }
+
+  const naturalPaste = resolveNaturalOrderPasteText(text)
+  if (naturalPaste) {
+    return { type: 'order_list', pasteText: naturalPaste }
   }
 
   const normalized = text.toLowerCase().replace(/[!?.]+$/g, '').trim()
@@ -82,6 +92,11 @@ export function detectChatIntent(raw: string): SerappChatIntent {
     return { type: 'cancel_hold' }
   }
 
+  const inquiry = extractProductInquiry(text)
+  if (inquiry) {
+    return { type: 'product_inquiry', query: inquiry.name }
+  }
+
   return { type: 'unknown', text }
 }
 
@@ -91,7 +106,7 @@ export function welcomeBotText(distributorName: string, warehouseHint?: string |
     `Hi — I'm *Serapp Assistant* for *${distributorName}*.${wh}`,
     '',
     'Chat with me like WhatsApp:',
-    '1) Paste your product list (HERO / ZERO sections ok)',
+    '1) Paste a list *or* type naturally — e.g. *banana 100*, *100 guava*, *ada stok mango?*',
     '2) I check live warehouse stock',
     '3) You confirm → order goes to Current Order Module with a 1-hour warehouse hold',
     '',
@@ -113,6 +128,7 @@ export function helpBotText(): string {
     '• If a line is unmatched, pick the real catalog item in the card',
     '• *Confirm* allocates stock and starts the 1-hour warehouse window',
     '• Delivery Order (DO) is issued automatically after warehouse acceptance — open Warehouse chat for the PDF',
+    '• Or chat naturally: *banana 100*, *100 guava*, *ada stok mango?*, *do you have almond*',
     '• Ask free-text questions anytime — I use smart reply from your latest check/hold context',
     '',
     'Commands: *confirm* · *new order* · *help*',
@@ -185,10 +201,48 @@ export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): 
   ].join('\n')
 }
 
+export function formatProductInquiryReply(
+  query: string,
+  variants: Array<{
+    product_name: string
+    variant_name: string
+    product_code: string
+    available_qty?: number
+    inventory_classification?: string
+  }>,
+): string {
+  if (variants.length === 0) {
+    return [
+      `No catalog match for *${query}*.`,
+      'Try a clearer name (e.g. BANANA VANILLA), paste a full list, or pick from suggestions when checking stock.',
+    ].join('\n')
+  }
+
+  const lines = variants.slice(0, 5).map((variant, index) => {
+    const label = `${variant.product_name} — ${variant.variant_name} (${variant.product_code})`
+    const qty = typeof variant.available_qty === 'number' ? variant.available_qty : null
+    const stock = qty === null
+      ? 'stock unknown'
+      : qty > 0
+        ? `*${qty}* available`
+        : 'out of stock'
+    const unclassified = variant.inventory_classification === 'unclassified' ? ' · unclassified' : ''
+    return `${index + 1}) ${label} · ${stock}${unclassified}`
+  })
+
+  return [
+    `Matches for *${query}*:`,
+    '',
+    ...lines,
+    '',
+    'Reply with a quantity to check & hold, e.g. *banana vanilla 100*.',
+  ].join('\n')
+}
+
 export function unknownBotText(): string {
   return [
     "I didn't catch that.",
-    'Paste a product list, or try: *help* · *confirm* · *new order*',
+    'Try: *banana 100* · *100 guava* · paste a list · *help*',
   ].join('\n')
 }
 
