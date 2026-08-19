@@ -27,10 +27,27 @@ const STRIP_SUFFIX = new RegExp(
 
 const SECTION_ONLY = /^(HERO|ZERO|CLASSIC|ICE|SERIES)$/i
 
+const INTENT_ONLY = new RegExp(
+  String.raw`^(?:please|pls|`
+  + String.raw`i need|i want|need|want|order|get me|give me|`
+  + String.raw`nak|mahu|hendak|boleh|`
+  + String.raw`أريد|اريد|بدي|ابغى|ابغي|عايز|محتاج|`
+  + String.raw`do you have|have you got|is there|any|check|cek|`
+  + String.raw`stock|stok|available|availability|`
+  + String.raw`help|menu|confirm|cancel|new|reset|hello|hi|hey|salam|thanks|ok|okay|yes|no)$`,
+  'iu',
+)
+
+export function looksLikeIncompleteIntent(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return true
+  return INTENT_ONLY.test(trimmed)
+}
+
 /** Conversational availability question without a usable quantity. */
 export function extractProductInquiry(text: string): { name: string } | null {
   const cleaned = cleanChatText(text)
-  if (!cleaned || looksLikeCommandOnly(cleaned)) return null
+  if (!cleaned || looksLikeCommandOnly(cleaned) || looksLikeIncompleteIntent(cleaned)) return null
 
   const inquiryPatterns = [
     new RegExp(

@@ -4,37 +4,25 @@ import {
   formatConfirmIntro,
   formatProductInquiryReply,
   helpBotText,
+  incompleteIntentBotText,
   quickRepliesForPhase,
   unknownBotText,
   welcomeBotText,
 } from '@/lib/serapp/chat-bot'
+import { searchSerappCatalog } from '@/lib/serapp/catalog-search'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
   SerappDoStoryItem,
   SerappChatQuickReply,
   SerappChatSessionState,
+  ChatTurnBotReply,
 } from '@/lib/serapp/chat-types'
 import { DEFAULT_SESSION } from '@/lib/serapp/conversation-types'
 import type { SerappConversationKind } from '@/lib/serapp/conversation-types'
-import { serappSmartReply } from '@/lib/serapp/smart-reply'
+import { trySerappAiTurn } from '@/lib/serapp/serapp-ai-turn'
 
-export interface ChatTurnBotReply {
-  text: string
-  quickReplies?: SerappChatQuickReply[]
-  card?: {
-    kind: 'check_summary' | 'order_confirmed' | 'do_stories' | 'error'
-    check?: SerappChatCheckPayload
-    confirm?: SerappChatConfirmPayload
-    doStories?: SerappDoStoryItem[]
-    error?: string
-  }
-  session: SerappChatSessionState
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+export type { ChatTurnBotReply } from '@/lib/serapp/chat-types'
 
 async function postJson<T>(
   request: Request,
@@ -78,10 +66,8 @@ export async function processSerappChatTurn(input: {
   distributorId?: string | null
   userId?: string | null
   orgId?: string | null
+  conversationId?: string | null
 }): Promise<ChatTurnBotReply> {
-  // Natural WhatsApp-like pause before the bot "types" a reply
-  await sleep(700 + Math.floor(Math.random() * 500))
-
   const { kind, text, session, distributorName, distributorId, request } = input
 
   if (kind === 'warehouse') {
@@ -106,6 +92,7 @@ export async function processSerappChatTurn(input: {
     distributorId,
     userId: input.userId,
     orgId: input.orgId,
+    conversationId: input.conversationId,
   })
 }
 
@@ -246,7 +233,22 @@ async function assistantTurn(input: {
   distributorId?: string | null
   userId?: string | null
   orgId?: string | null
+  conversationId?: string | null
 }): Promise<ChatTurnBotReply> {
+  if (input.userId && input.orgId) {
+    const aiReply = await trySerappAiTurn({
+      request: input.request,
+      text: input.text,
+      session: input.session,
+      distributorName: input.distributorName,
+      distributorId: input.distributorId,
+      userId: input.userId,
+      orgId: input.orgId,
+      conversationId: input.conversationId,
+    })
+    if (aiReply) return aiReply
+  }
+
   const intent = detectChatIntent(input.text)
   let session = { ...input.session }
 
@@ -424,39 +426,41 @@ async function assistantTurn(input: {
     }
   }
 
-  if (intent.type === 'product_inquiry') {
-    const { ok, data } = await postJson<{
-      variants?: Array<{
-        product_name: string
-        variant_name: string
-        product_code: string
-        available_qty?: number
-        inventory_classification?: string
-      }>
-      error?: string
-    }>(input.request, '/api/serapp/catalog-search', {
-      query: intent.query,
-      distributorId: input.distributorId || session.distributorId || undefined,
-    })
+  if (intent.type === 'incomplete_intent') {
+    return {
+      text: incompleteIntentBotText(),
+      quickReplies: quickRepliesForPhase(
+        session.phase === 'idle' ? 'awaiting_list' : session.phase,
+        session.lastCheck?.summary.bucket,
+      ),
+      session,
+    }
+  }
 
-    if (!ok) {
+  if (intent.type === 'product_inquiry') {
+    try {
+      const { variants } = await searchSerappCatalog({
+        query: intent.query,
+        distributorId: input.distributorId || session.distributorId || undefined,
+      })
+
       return {
-        text: data.error || 'Catalog lookup failed.',
+        text: formatProductInquiryReply(intent.query, variants),
         quickReplies: quickRepliesForPhase(
           session.phase === 'idle' ? 'awaiting_list' : session.phase,
           session.lastCheck?.summary.bucket,
         ),
         session,
       }
-    }
-
-    return {
-      text: formatProductInquiryReply(intent.query, data.variants || []),
-      quickReplies: quickRepliesForPhase(
-        session.phase === 'idle' ? 'awaiting_list' : session.phase,
-        session.lastCheck?.summary.bucket,
-      ),
-      session,
+    } catch (error) {
+      return {
+        text: error instanceof Error ? error.message : 'Catalog lookup failed.',
+        quickReplies: quickRepliesForPhase(
+          session.phase === 'idle' ? 'awaiting_list' : session.phase,
+          session.lastCheck?.summary.bucket,
+        ),
+        session,
+      }
     }
   }
 
@@ -498,25 +502,7 @@ async function assistantTurn(input: {
     }
   }
 
-  // Free-text: grounded AI Smart Reply when provider is enabled; else rule fallback.
-  if (input.userId && input.orgId) {
-    const smart = await serappSmartReply({
-      text: input.text,
-      session,
-      distributorName: input.distributorName,
-      userId: input.userId,
-      orgId: input.orgId,
-    })
-    return {
-      text: smart.text,
-      quickReplies: quickRepliesForPhase(
-        session.phase === 'idle' ? 'awaiting_list' : session.phase,
-        session.lastCheck?.summary.bucket,
-      ),
-      session,
-    }
-  }
-
+  // AI disabled or unavailable — rule-based fallback below.
   return {
     text: unknownBotText(),
     quickReplies: quickRepliesForPhase(

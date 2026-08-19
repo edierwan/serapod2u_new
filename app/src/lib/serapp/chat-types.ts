@@ -78,3 +78,16 @@ export interface SerappChatSessionState {
   distributorId: string | null
   lineResolutions: Array<{ line: number; variantId: string }>
 }
+
+export interface ChatTurnBotReply {
+  text: string
+  quickReplies?: SerappChatQuickReply[]
+  card?: {
+    kind: SerappChatCardKind
+    check?: SerappChatCheckPayload
+    confirm?: SerappChatConfirmPayload
+    doStories?: SerappDoStoryItem[]
+    error?: string
+  }
+  session: SerappChatSessionState
+}

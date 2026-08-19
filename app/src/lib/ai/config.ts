@@ -30,6 +30,18 @@ export function getMoltbotConfig(): AiProviderConfig {
   }
 }
 
+export function getOpenaiConfig(): AiProviderConfig {
+  const token = env('OPENAI_API_KEY')
+  const model = env('OPENAI_MODEL') || 'gpt-4o-mini'
+  return {
+    provider: 'openai',
+    baseUrl: 'https://api.openai.com',
+    token,
+    enabled: !!token,
+    model,
+  }
+}
+
 export function getOllamaConfig(): AiProviderConfig {
   const baseUrl = env('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434'
   const model = env('OLLAMA_MODEL') || 'qwen2.5:3b'
@@ -51,7 +63,10 @@ export function getOllamaConfig(): AiProviderConfig {
  */
 export function getDefaultProvider(): AiProvider {
   const explicit = env('AI_DEFAULT_PROVIDER') as AiProvider
-  if (explicit === 'moltbot' || explicit === 'ollama') return explicit
+  if (explicit === 'moltbot' || explicit === 'ollama' || explicit === 'openai') return explicit
+
+  const openai = getOpenaiConfig()
+  if (openai.enabled) return 'openai'
 
   const ol = getOllamaConfig()
   if (ol.enabled) return 'ollama'
@@ -65,9 +80,10 @@ export function getDefaultProvider(): AiProvider {
 export function getProviderConfig(provider?: AiProvider): AiProviderConfig {
   const p = provider ?? getDefaultProvider()
   if (p === 'moltbot') return getMoltbotConfig()
+  if (p === 'openai') return getOpenaiConfig()
   return getOllamaConfig()
 }
 
 export function isAnyProviderAvailable(): boolean {
-  return getMoltbotConfig().enabled || getOllamaConfig().enabled
+  return getMoltbotConfig().enabled || getOllamaConfig().enabled || getOpenaiConfig().enabled
 }

@@ -343,6 +343,7 @@ export default function SerappChatThread() {
       setPendingAttachment(null)
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id))
+      setDraft(text)
       setError(err instanceof Error ? err.message : 'Send failed.')
     } finally {
       setTyping(false)

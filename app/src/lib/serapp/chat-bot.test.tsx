@@ -59,6 +59,11 @@ describe('detectChatIntent', () => {
       query: 'mango',
     })
   })
+
+  it('treats intent-only words as incomplete_intent', () => {
+    expect(detectChatIntent('بدي')).toEqual({ type: 'incomplete_intent' })
+    expect(detectChatIntent('nak')).toEqual({ type: 'incomplete_intent' })
+  })
 })
 
 describe('quickRepliesForPhase', () => {

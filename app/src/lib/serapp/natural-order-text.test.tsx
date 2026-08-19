@@ -57,8 +57,10 @@ describe('extractProductInquiry', () => {
     expect(extractProductInquiry('mango hero available?')).toEqual({ name: 'mango hero' })
   })
 
-  it('does not treat qty lines as inquiry-only', () => {
+  it('does not treat qty lines or intent-only words as inquiry-only', () => {
     expect(extractProductInquiry('banana 100')).toBeNull()
+    expect(extractProductInquiry('بدي')).toBeNull()
+    expect(extractProductInquiry('nak')).toBeNull()
   })
 })
 

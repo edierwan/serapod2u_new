@@ -76,6 +76,7 @@ export async function POST(
         distributorId: distributorId || session.distributorId,
         userId: actor.userId,
         orgId: actor.orgId,
+        conversationId: id,
       })
       updatedSession = reply.session
       await updateConversationSession(admin, id, reply.session, {
