@@ -84,6 +84,31 @@ describe('delete_user_otp transactional router (phase 2)', () => {
     expect(result.errors.whatsapp).toContain('allowed list')
   })
 
+  it('honors exclusive Default Delivery when the event still has the catalog fallback', () => {
+    expect(resolveDeleteUserOtpPreset({
+      recipient_config: {
+        routing: {
+          source: 'event',
+          preset: 'whatsapp_sms_email_fallback',
+          default_preset: 'sms_only',
+        },
+      },
+    })).toBe('sms_only')
+  })
+
+  it('honors Security & OTP category SMS Only over leftover catalog fallback', () => {
+    expect(resolveDeleteUserOtpPreset({
+      recipient_config: {
+        routing: {
+          source: 'event',
+          preset: 'whatsapp_sms_email_fallback',
+          default_preset: 'whatsapp_sms_email_fallback',
+          category_preset: 'sms_only',
+        },
+      },
+    })).toBe('sms_only')
+  })
+
   it('sends SMS only when the saved preset is sms_only', async () => {
     const attempted: string[] = []
     const result = await sendTransactionalOtp({
