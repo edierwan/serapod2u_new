@@ -27,6 +27,13 @@ const STRIP_SUFFIX = new RegExp(
 
 const SECTION_ONLY = /^(HERO|ZERO|CLASSIC|ICE|SERIES)$/i
 
+const GENERIC_QUESTION_ONLY = new RegExp(
+  String.raw`^(?:what|what\?|what\s+is|what\s+can\s+you|how|why|which|who|where|`
+  + String.raw`apa|macam\s+mana|kenapa|bagaimana|`
+  + String.raw`شو|شو\?|ايش|ايش\?|ماذا|ليش|كيف|كيفك|مرحبا|اهلا|هلا|hi|hello)$`,
+  'iu',
+)
+
 const INTENT_ONLY = new RegExp(
   String.raw`^(?:please|pls|`
   + String.raw`i need|i want|need|want|order|get me|give me|`
@@ -48,6 +55,7 @@ export function looksLikeIncompleteIntent(text: string): boolean {
 export function extractProductInquiry(text: string): { name: string } | null {
   const cleaned = cleanChatText(text)
   if (!cleaned || looksLikeCommandOnly(cleaned) || looksLikeIncompleteIntent(cleaned)) return null
+  if (GENERIC_QUESTION_ONLY.test(cleaned)) return null
 
   const inquiryPatterns = [
     new RegExp(
@@ -67,8 +75,10 @@ export function extractProductInquiry(text: string): { name: string } | null {
     }
   }
 
-  // Name only, no digits — treat as stock lookup (e.g. "banana vanilla", "mango hero")
+  // Name only, no digits — treat as stock lookup (e.g. "banana vanilla", "mango hero").
+  // But skip short generic question words like "apa" / "what" / "شو".
   if (!/\d/.test(cleaned) && cleaned.length >= 3 && !SECTION_ONLY.test(cleaned)) {
+    if (GENERIC_QUESTION_ONLY.test(cleaned)) return null
     return { name: stripSectionHint(cleaned) }
   }
 
