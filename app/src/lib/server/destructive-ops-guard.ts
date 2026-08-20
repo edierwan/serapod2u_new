@@ -2,9 +2,10 @@
  * Centralized server-side guard for destructive database operations.
  *
  * Defense-in-depth:
- * 1. Environment gate – ALLOW_DESTRUCTIVE_DB_OPS must be "true" (opt-in).
- *    In addition, NODE_ENV must NOT be 'production' unless the env var is
- *    explicitly set. This means production is blocked by default.
+ * 1. Environment gate – in production, only the per-record operations listed
+ *    in PRODUCTION_ALLOWED_OPERATIONS run by default; everything else (bulk
+ *    wipes, schema/RLS changes) needs ALLOW_DESTRUCTIVE_DB_OPS="true".
+ *    Outside production every operation is allowed.
  * 2. Super-Admin role check – caller must have role_level === 1.
  * 3. Audit log – every attempt (allowed or blocked) is logged to the
  *    `destructive_ops_audit_log` table **and** to stdout so it shows in
@@ -50,12 +51,23 @@ interface AuditEntry {
 // Environment helpers
 // ---------------------------------------------------------------------------
 
-function isDestructiveOpsEnvAllowed(): boolean {
-  // Explicit opt-in via env var
+/**
+ * Operations that stay available in production without the env opt-in.
+ * These act on a single record that a Super Admin removes as part of normal
+ * day-to-day work, and they still have to clear the authentication and
+ * role_level === 1 gates below. Bulk deletions, data resets and schema/RLS
+ * changes are deliberately absent: those need ALLOW_DESTRUCTIVE_DB_OPS=true.
+ */
+const PRODUCTION_ALLOWED_OPERATIONS = new Set<string>(['hard-delete-order'])
+
+function isDestructiveOpsEnvAllowed(operation: string): boolean {
+  // Explicit opt-in via env var unlocks every operation
   if (process.env.ALLOW_DESTRUCTIVE_DB_OPS === 'true') return true
 
-  // In production, destructive ops are blocked unless explicitly enabled
-  if (process.env.NODE_ENV === 'production') return false
+  // In production, only the per-record operations above are allowed
+  if (process.env.NODE_ENV === 'production') {
+    return PRODUCTION_ALLOWED_OPERATIONS.has(operation)
+  }
 
   // In development / test, allow by default so local dev isn't hindered
   return true
@@ -105,13 +117,13 @@ export async function assertDestructiveOpsAllowed(
   const userAgent = request.headers.get('user-agent') ?? null
 
   // --- Gate 1: environment check ---
-  if (!isDestructiveOpsEnvAllowed()) {
+  if (!isDestructiveOpsEnvAllowed(operation)) {
     const entry: AuditEntry = {
       operation,
       user_id: null,
       user_email: null,
       allowed: false,
-      reason: 'Environment blocked (production without ALLOW_DESTRUCTIVE_DB_OPS=true)',
+      reason: `Environment blocked (production, '${operation}' needs ALLOW_DESTRUCTIVE_DB_OPS=true)`,
       ip,
       user_agent: userAgent,
     }
