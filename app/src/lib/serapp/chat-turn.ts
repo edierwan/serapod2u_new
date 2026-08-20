@@ -11,7 +11,7 @@ import {
   welcomeBotText,
 } from '@/lib/serapp/chat-bot'
 import { searchSerappCatalog } from '@/lib/serapp/catalog-search'
-import { runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
+import { runSerappCancelHold, runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -25,24 +25,6 @@ import type { SerappConversationKind } from '@/lib/serapp/conversation-types'
 import { trySerappAiTurn } from '@/lib/serapp/serapp-ai-turn'
 
 export type { ChatTurnBotReply } from '@/lib/serapp/chat-types'
-
-async function postJson<T>(
-  request: Request,
-  path: string,
-  body: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number; data: T & { error?: string } }> {
-  const url = new URL(path, request.url)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      cookie: request.headers.get('cookie') || '',
-    },
-    body: JSON.stringify(body),
-  })
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-  return { ok: res.ok, status: res.status, data }
-}
 
 async function getJson<T>(
   request: Request,
@@ -476,13 +458,9 @@ async function assistantTurn(input: {
       }
     }
 
-    const { ok, data } = await postJson<{ error?: string }>(
-      input.request,
-      '/api/serapp/cancel-hold',
-      { orderId },
-    )
+    const data = await runSerappCancelHold({ orderId })
 
-    if (!ok) {
+    if (!data.ok) {
       return {
         text: data.error || '❗ **Cancel failed**',
         quickReplies: quickRepliesForPhase('confirmed'),

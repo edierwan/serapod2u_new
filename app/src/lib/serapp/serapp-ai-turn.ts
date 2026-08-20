@@ -1,6 +1,6 @@
 import { sendToAi } from '@/lib/ai/aiGateway'
 import { logAiUsage } from '@/lib/server/ai/usageLogger'
-import { runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
+import { runSerappCancelHold, runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
 import {
   formatCheckIntro,
   formatConfirmIntro,
@@ -90,24 +90,6 @@ async function loadConversationHistory(conversationId?: string | null) {
       role: row.role === 'bot' ? 'assistant' as const : 'user' as const,
       content: row.body,
     }))
-}
-
-async function postJson<T>(
-  request: Request,
-  path: string,
-  body: Record<string, unknown>,
-): Promise<{ ok: boolean; data: T & { error?: string } }> {
-  const url = new URL(path, request.url)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      cookie: request.headers.get('cookie') || '',
-    },
-    body: JSON.stringify(body),
-  })
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
-  return { ok: res.ok, status: res.status, data }
 }
 
 /**
@@ -329,12 +311,8 @@ export async function trySerappAiTurn(input: {
         session,
       }
     }
-    const { ok, data } = await postJson<{ error?: string }>(
-      input.request,
-      '/api/serapp/cancel-hold',
-      { orderId },
-    )
-    if (!ok) {
+    const data = await runSerappCancelHold({ orderId })
+    if (!data.ok) {
       return {
         text: reply || data.error || 'Cancel failed.',
         quickReplies: quickRepliesForPhase('confirmed'),

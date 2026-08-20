@@ -1,7 +1,9 @@
 import { validateQuickOrderCatalogItems } from '@/lib/orders/quick-order-catalog'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { getSerappAccessDecision } from '@/lib/serapp/access'
 import { parseSerappLineResolutions, runSerappPasteCheck } from '@/lib/serapp/line-resolutions'
-import { registerSerappOrderHold } from '@/lib/serapp/hold-service'
+import { cancelSerappOrderHoldByDistributor, registerSerappOrderHold } from '@/lib/serapp/hold-service'
 import {
   buildSerappConfirmItems,
   buildSerappOrderNotes,
@@ -270,5 +272,105 @@ export async function runSerappConfirmOrder(input: {
       name: catalog.fulfillmentWarehouseName,
     },
     note: 'Order created via Current Order Module and allocated on submit. Warehouse must accept within 1 hour or the Serapp hold expires and stock is released.',
+  }
+}
+
+export type SerappCancelHoldResult = {
+  ok: true
+  hold: { id: string; order_id: string }
+  note: string
+} | {
+  ok: false
+  error: string
+  status: number
+}
+
+/**
+ * Cancel Serapp hold in-process (no HTTP self-fetch).
+ * Same contract as /api/serapp/cancel-hold.
+ */
+export async function runSerappCancelHold(input: {
+  orderId: string
+}): Promise<SerappCancelHoldResult> {
+  const orderId = input.orderId.trim()
+  if (!orderId) {
+    return { ok: false, error: 'orderId is required.', status: 400 }
+  }
+
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return { ok: false, error: 'Unauthorized', status: 401 }
+  }
+
+  const { data: requester, error: requesterError } = await supabase
+    .from('users')
+    .select(`
+      id,
+      organization_id,
+      account_scope,
+      organizations:organization_id ( id, org_type_code )
+    `)
+    .eq('id', user.id)
+    .single()
+
+  if (requesterError || !requester?.organization_id) {
+    return { ok: false, error: 'User organization not found.', status: 403 }
+  }
+
+  const organization = Array.isArray(requester.organizations)
+    ? requester.organizations[0]
+    : requester.organizations
+
+  const access = getSerappAccessDecision({
+    accountScope: requester.account_scope,
+    orgTypeCode: organization?.org_type_code,
+    organizationId: requester.organization_id,
+    roleLevel: null,
+  })
+
+  if (!access.isDistributor && !access.isHqSupport) {
+    return { ok: false, error: 'Not allowed to cancel Serapp holds.', status: 403 }
+  }
+
+  const admin = createAdminClient()
+  const { data: hold, error: holdError } = await admin
+    .from('serapp_order_holds')
+    .select('id, order_id, buyer_org_id, status')
+    .eq('order_id', orderId)
+    .maybeSingle()
+
+  if (holdError) {
+    console.error('[serapp/cancel-hold] hold lookup failed', holdError)
+    return { ok: false, error: holdError.message || 'Cancel failed.', status: 500 }
+  }
+  if (!hold) {
+    return { ok: false, error: 'Serapp hold not found.', status: 404 }
+  }
+
+  if (access.isDistributor && hold.buyer_org_id !== requester.organization_id) {
+    return { ok: false, error: 'You can only cancel your own Serapp orders.', status: 403 }
+  }
+
+  try {
+    const cancelled = await cancelSerappOrderHoldByDistributor(admin, {
+      orderId,
+      cancelledBy: user.id,
+    })
+
+    return {
+      ok: true,
+      hold: cancelled,
+      note: 'Serapp hold cancelled and stock released.',
+    }
+  } catch (error) {
+    const status = typeof (error as { status?: number })?.status === 'number'
+      ? (error as { status: number }).status
+      : 500
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Cancel failed.',
+      status,
+    }
   }
 }
