@@ -1,6 +1,6 @@
 import { sendToAi } from '@/lib/ai/aiGateway'
 import { logAiUsage } from '@/lib/server/ai/usageLogger'
-import { runSerappStockCheck } from '@/lib/serapp/assistant-actions'
+import { runSerappConfirmOrder, runSerappStockCheck } from '@/lib/serapp/assistant-actions'
 import {
   formatCheckIntro,
   formatConfirmIntro,
@@ -281,27 +281,19 @@ export async function trySerappAiTurn(input: {
         ? crypto.randomUUID()
         : `serapp-chat-${Date.now()}`
 
-    const { ok, data } = await postJson<{
-      order?: { id: string; order_no: string; status: string }
-      hold?: { expires_at: string } | null
-      confirmedLines?: number
-      skippedLines?: number
-      estimatedOrderValue?: number
-      fulfillmentWarehouse?: { name: string | null }
-      note?: string
-      error?: string
-    }>(input.request, '/api/serapp/confirm-order', {
+    const data = await runSerappConfirmOrder({
       pasteText,
       acceptAvailableOnly: true,
       idempotencyKey,
       distributorId: input.distributorId || session.distributorId || undefined,
       lineResolutions: session.lineResolutions || [],
+      request: input.request,
     })
 
-    if (!ok || !data.order) {
+    if (!data.ok || !data.order) {
       return {
-        text: reply || data.error || 'Confirm failed.',
-        card: { kind: 'error', error: data.error || 'Confirm failed.' },
+        text: reply || (!data.ok && data.error) || 'Confirm failed.',
+        card: { kind: 'error', error: (!data.ok && data.error) || 'Confirm failed.' },
         quickReplies: quickRepliesForPhase('checked', bucket),
         session,
       }
