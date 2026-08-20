@@ -159,6 +159,11 @@
   background: #f0f2f5;
 }
 
+.sera-serapp .serapp-wa-suggest {
+  max-height: min(52vh, 320px);
+  overflow-y: auto;
+}
+
 .sera-serapp .serapp-wa-dot {
   width: 6px;
   height: 6px;

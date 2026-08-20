@@ -4,7 +4,7 @@ import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
 import { processSerappChatTurn } from '@/lib/serapp/chat-turn'
 import {
   appendMessage,
-  getConversationForOwner,
+  getAccessibleConversation,
   parseSession,
   updateConversationSession,
 } from '@/lib/serapp/conversation-service'
@@ -38,7 +38,11 @@ export async function POST(
       typeof body?.distributorId === 'string' ? body.distributorId : null
 
     const admin = createAdminClient()
-    const conversation = await getConversationForOwner(admin, id, actor.userId)
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
     }
@@ -54,6 +58,9 @@ export async function POST(
       body: text || (attachment ? `📎 ${attachment.name}` : ''),
       attachment,
       clientMessageId,
+      senderUserId: actor.userId,
+      senderDisplayName: actor.fullName,
+      senderKind: actor.access.isHqSupport ? 'hq' : 'distributor',
     })
 
     const deliveredAtIso = new Date().toISOString()
@@ -66,14 +73,27 @@ export async function POST(
     let updatedSession = session
     // For pure attachment messages we skip AI interpretation and keep UX concise.
     if (text) {
-      const distributorName = actor.orgName
+      let distributorName = actor.orgName
+      const distOrgId =
+        conversation.distributor_org_id
+        || (!actor.access.isHqSupport ? conversation.owner_org_id : null)
+        || distributorId
+        || session.distributorId
+      if (distOrgId && distOrgId !== actor.orgId) {
+        const { data: distOrg } = await admin
+          .from('organizations')
+          .select('org_name')
+          .eq('id', distOrgId)
+          .maybeSingle()
+        if (distOrg?.org_name) distributorName = distOrg.org_name
+      }
       const reply = await processSerappChatTurn({
         request,
         kind: conversation.kind as SerappConversationKind,
         text,
         session,
         distributorName,
-        distributorId: distributorId || session.distributorId,
+        distributorId: distributorId || session.distributorId || conversation.distributor_org_id,
         userId: actor.userId,
         orgId: actor.orgId,
         conversationId: id,

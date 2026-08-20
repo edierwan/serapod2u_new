@@ -88,7 +88,7 @@ export default function SerappShell({
         <main
           className={cn(
             'mx-auto w-full max-w-lg flex-1 overscroll-y-contain',
-            isThread ? 'overflow-hidden pt-0 pb-0' : isChat ? 'overflow-hidden pt-0 pb-20' : 'overflow-y-auto pt-3 pb-20',
+            isThread ? 'overflow-hidden pt-0 pb-0' : isChat ? 'overflow-hidden pt-0 pb-20' : 'overflow-y-auto pt-0 pb-20',
           )}
         >
           {children}

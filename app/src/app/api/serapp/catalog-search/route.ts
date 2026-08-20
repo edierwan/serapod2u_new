@@ -9,7 +9,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null)
     const query = typeof body?.query === 'string' ? body.query.trim() : ''
-    if (query.length < 2) {
+    if (query.length < 1) {
       return NextResponse.json({ variants: [] })
     }
 
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
         ? body.fulfillmentWarehouseId
         : null,
       sectionProductLine: typeof body?.sectionProductLine === 'string' ? body.sectionProductLine : null,
+      limit: typeof body?.limit === 'number' ? body.limit : undefined,
     })
 
     return NextResponse.json(result)

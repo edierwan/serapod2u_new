@@ -4,7 +4,8 @@ import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
 import {
   createConversation,
   ensureSeedConversations,
-  listConversationsForUser,
+  findOrCreateOrgAssistant,
+  listConversationsForActor,
 } from '@/lib/serapp/conversation-service'
 
 export async function GET() {
@@ -13,14 +14,18 @@ export async function GET() {
     if (!actor.ok) return actor.error
 
     const admin = createAdminClient()
-    let     conversations = await ensureSeedConversations(admin, {
+    let conversations = await ensureSeedConversations(admin, {
       userId: actor.userId,
       orgId: actor.orgId,
       orgName: actor.orgName,
+      isHqSupport: actor.access.isHqSupport,
     })
 
-    // Re-list sorted after seed
-    conversations = await listConversationsForUser(admin, actor.userId)
+    conversations = await listConversationsForActor(admin, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
 
     return NextResponse.json({ conversations })
   } catch (error) {
@@ -44,14 +49,52 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}))
     const admin = createAdminClient()
+    const kind = typeof body?.kind === 'string' ? body.kind : 'assistant'
+    let distributorOrgId = typeof body?.distributorId === 'string' ? body.distributorId : null
+    let title = typeof body?.title === 'string' ? body.title : undefined
+    let orgName = actor.orgName
+
+    if (actor.access.isHqSupport && kind === 'assistant') {
+      if (!distributorOrgId) {
+        return NextResponse.json(
+          { error: 'Select a distributor under this organization first.' },
+          { status: 400 },
+        )
+      }
+      const { data: distributor, error: distError } = await admin
+        .from('organizations')
+        .select('id, org_name, org_type_code, parent_org_id, is_active')
+        .eq('id', distributorOrgId)
+        .maybeSingle()
+      if (
+        distError
+        || !distributor
+        || distributor.org_type_code !== 'DIST'
+        || distributor.parent_org_id !== actor.orgId
+        || distributor.is_active !== true
+      ) {
+        return NextResponse.json(
+          { error: 'That distributor is not under this HQ organization.' },
+          { status: 400 },
+        )
+      }
+      orgName = distributor.org_name
+      title = title || distributor.org_name
+      const conversation = await findOrCreateOrgAssistant(admin, {
+        userId: actor.userId,
+        distributorOrgId,
+        distributorName: orgName,
+      })
+      return NextResponse.json({ conversation })
+    }
 
     const { conversation, welcomeMessage } = await createConversation(admin, {
       userId: actor.userId,
       orgId: actor.orgId,
-      orgName: actor.orgName,
-      kind: typeof body?.kind === 'string' ? body.kind : 'assistant',
-      title: typeof body?.title === 'string' ? body.title : undefined,
-      distributorOrgId: typeof body?.distributorId === 'string' ? body.distributorId : null,
+      orgName,
+      kind,
+      title,
+      distributorOrgId: distributorOrgId || (kind === 'assistant' ? actor.orgId : null),
     })
 
     return NextResponse.json({ conversation, welcomeMessage })

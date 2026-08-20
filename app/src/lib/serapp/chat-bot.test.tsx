@@ -3,6 +3,7 @@ import {
   detectChatIntent,
   looksLikeOrderList,
   quickRepliesForPhase,
+  SERAPP_SAMPLE_LIST,
   shouldRouteToSerappAi,
 } from '@/lib/serapp/chat-bot'
 
@@ -31,6 +32,7 @@ describe('detectChatIntent', () => {
     expect(detectChatIntent('confirm').type).toBe('confirm')
     expect(detectChatIntent('help').type).toBe('help')
     expect(detectChatIntent('new order').type).toBe('new_order')
+    expect(detectChatIntent('repeat').type).toBe('repeat_last')
     expect(detectChatIntent('cancel hold').type).toBe('cancel_hold')
   })
 
@@ -67,7 +69,7 @@ describe('detectChatIntent', () => {
   })
 
   it('keeps sample paste lists on the fast rules path', () => {
-    const sample = 'HERO\nBANANA VANILLA - 100\nGUAVA - 200\n\nZERO\nALMOND - 100\nTEA - 200'
+    const sample = SERAPP_SAMPLE_LIST
     const intent = detectChatIntent(sample)
     expect(intent.type).toBe('order_list')
     expect(shouldRouteToSerappAi(intent)).toBe(false)

@@ -9,24 +9,116 @@ import {
   type SerappMessageRow,
   type SerappAttachment,
 } from '@/lib/serapp/conversation-types'
+import { canAccessSerappConversation } from '@/lib/serapp/conversation-access'
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
 import { quickRepliesForPhase } from '@/lib/serapp/chat-bot'
 
 type Admin = ReturnType<typeof createAdminClient>
 
+async function loadChildDistributorIds(admin: Admin, hqOrgId: string): Promise<string[]> {
+  const { data, error } = await admin
+    .from('organizations')
+    .select('id')
+    .eq('parent_org_id', hqOrgId)
+    .eq('org_type_code', 'DIST')
+    .eq('is_active', true)
+    .limit(200)
+  if (error) throw error
+  return (data || []).map((row) => row.id)
+}
+
+function mergeConversations(rows: SerappConversationRow[]): SerappConversationRow[] {
+  const byId = new Map<string, SerappConversationRow>()
+  for (const row of rows) byId.set(row.id, row)
+  return Array.from(byId.values()).sort((left, right) => {
+    const a = left.last_message_at || left.created_at
+    const b = right.last_message_at || right.created_at
+    return b.localeCompare(a)
+  })
+}
+
 export async function listConversationsForUser(
   admin: Admin,
   userId: string,
 ): Promise<SerappConversationRow[]> {
-  const { data, error } = await admin
+  return listConversationsForActor(admin, {
+    userId,
+    orgId: '',
+    isHqSupport: false,
+  })
+}
+
+export async function listConversationsForActor(
+  admin: Admin,
+  actor: { userId: string; orgId: string; isHqSupport: boolean },
+): Promise<SerappConversationRow[]> {
+  const { data: own, error: ownError } = await admin
     .from('serapp_conversations')
     .select('*')
-    .eq('owner_user_id', userId)
+    .eq('owner_user_id', actor.userId)
     .eq('is_archived', false)
     .order('last_message_at', { ascending: false, nullsFirst: false })
+  if (ownError) throw ownError
 
-  if (error) throw error
-  return (data || []) as SerappConversationRow[]
+  const rows = [...((own || []) as SerappConversationRow[])]
+
+  if (actor.orgId && !actor.isHqSupport) {
+    const { data: orgGroups, error: orgError } = await admin
+      .from('serapp_conversations')
+      .select('*')
+      .eq('owner_org_id', actor.orgId)
+      .eq('kind', 'assistant')
+      .eq('is_archived', false)
+    if (orgError) throw orgError
+    rows.push(...((orgGroups || []) as SerappConversationRow[]))
+  }
+
+  if (actor.isHqSupport && actor.orgId) {
+    const childIds = await loadChildDistributorIds(admin, actor.orgId)
+    if (childIds.length > 0) {
+      const { data: hqGroups, error: hqError } = await admin
+        .from('serapp_conversations')
+        .select('*')
+        .eq('kind', 'assistant')
+        .eq('is_archived', false)
+        .in('owner_org_id', childIds)
+      if (hqError) throw hqError
+      rows.push(...((hqGroups || []) as SerappConversationRow[]))
+    }
+  }
+
+  return mergeConversations(rows)
+}
+
+export async function findOrCreateOrgAssistant(
+  admin: Admin,
+  input: {
+    userId: string
+    distributorOrgId: string
+    distributorName: string
+  },
+): Promise<SerappConversationRow> {
+  const { data: existingRows, error: existingError } = await admin
+    .from('serapp_conversations')
+    .select('*')
+    .eq('owner_org_id', input.distributorOrgId)
+    .eq('kind', 'assistant')
+    .eq('is_archived', false)
+    .order('created_at', { ascending: true })
+    .limit(1)
+  if (existingError) throw existingError
+  const existing = existingRows?.[0]
+  if (existing) return existing as SerappConversationRow
+
+  const created = await createConversation(admin, {
+    userId: input.userId,
+    orgId: input.distributorOrgId,
+    orgName: input.distributorName,
+    kind: 'assistant',
+    title: input.distributorName,
+    distributorOrgId: input.distributorOrgId,
+  })
+  return created.conversation
 }
 
 /** Soft-delete a conversation. Warehouse/News system desks cannot be deleted. */
@@ -63,9 +155,8 @@ export async function archiveConversation(
 
 export async function ensureSeedConversations(
   admin: Admin,
-  input: { userId: string; orgId: string; orgName?: string | null },
+  input: { userId: string; orgId: string; orgName?: string | null; isHqSupport?: boolean },
 ): Promise<SerappConversationRow[]> {
-  // Include archived so deleting a seed does not recreate duplicates forever.
   const { data: existingKinds, error: kindsError } = await admin
     .from('serapp_conversations')
     .select('kind')
@@ -74,6 +165,20 @@ export async function ensureSeedConversations(
   if (kindsError) throw kindsError
 
   const present = new Set((existingKinds || []).map((row) => row.kind as SerappConversationKind))
+  if (!input.isHqSupport) {
+    const { data: orgAssistant } = await admin
+      .from('serapp_conversations')
+      .select('id')
+      .eq('owner_org_id', input.orgId)
+      .eq('kind', 'assistant')
+      .eq('is_archived', false)
+      .limit(1)
+      .maybeSingle()
+    if (orgAssistant?.id) present.add('assistant')
+  } else {
+    present.add('assistant')
+  }
+
   const now = new Date().toISOString()
 
   for (const seed of SEED_CHATS) {
@@ -84,13 +189,17 @@ export async function ensureSeedConversations(
       .insert({
         owner_user_id: input.userId,
         owner_org_id: input.orgId,
+        distributor_org_id: seed.kind === 'assistant' ? input.orgId : null,
         kind: seed.kind,
         title: seed.kind === 'assistant' && input.orgName ? input.orgName : seed.title,
-        subtitle: seed.subtitle,
+        subtitle: seed.kind === 'assistant' ? 'Group · distributor + HQ' : seed.subtitle,
         avatar_key: seed.avatar_key,
         last_message_preview: previewFromBody(seed.welcome),
         last_message_at: now,
-        session_json: DEFAULT_SESSION,
+        session_json: {
+          ...DEFAULT_SESSION,
+          distributorId: seed.kind === 'assistant' ? input.orgId : null,
+        },
       })
       .select('*')
       .single()
@@ -119,7 +228,11 @@ export async function ensureSeedConversations(
     })
   }
 
-  return listConversationsForUser(admin, input.userId)
+  return listConversationsForActor(admin, {
+    userId: input.userId,
+    orgId: input.orgId,
+    isHqSupport: Boolean(input.isHqSupport),
+  })
 }
 
 export async function createConversation(
@@ -160,7 +273,7 @@ export async function createConversation(
       distributor_org_id: input.distributorOrgId || null,
       kind,
       title,
-      subtitle: seed.subtitle,
+      subtitle: seed.kind === 'assistant' ? 'Group · distributor + HQ' : seed.subtitle,
       avatar_key: seed.avatar_key,
       last_message_preview: previewFromBody(welcome),
       last_message_at: now,
@@ -198,15 +311,40 @@ export async function getConversationForOwner(
   conversationId: string,
   userId: string,
 ): Promise<SerappConversationRow | null> {
+  return getAccessibleConversation(admin, conversationId, {
+    userId,
+    orgId: '',
+    isHqSupport: false,
+  })
+}
+
+export async function getAccessibleConversation(
+  admin: Admin,
+  conversationId: string,
+  actor: { userId: string; orgId: string; isHqSupport: boolean },
+): Promise<SerappConversationRow | null> {
   const { data, error } = await admin
     .from('serapp_conversations')
     .select('*')
     .eq('id', conversationId)
-    .eq('owner_user_id', userId)
     .maybeSingle()
-
   if (error) throw error
-  return data as SerappConversationRow | null
+  if (!data) return null
+
+  const childDistributorIds = actor.isHqSupport && actor.orgId
+    ? await loadChildDistributorIds(admin, actor.orgId)
+    : []
+
+  if (!canAccessSerappConversation(data as SerappConversationRow, {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    isHqSupport: actor.isHqSupport,
+    childDistributorIds,
+  })) {
+    return null
+  }
+
+  return data as SerappConversationRow
 }
 
 export async function listMessages(
@@ -235,23 +373,41 @@ export async function appendMessage(
     quickReplies?: SerappChatQuickReply[] | null
     attachment?: SerappAttachment | null
     clientMessageId?: string | null
+    senderUserId?: string | null
+    senderDisplayName?: string | null
+    senderKind?: 'distributor' | 'hq' | null
   },
 ): Promise<SerappMessageRow> {
-  const { data, error } = await admin
+  const payload: Record<string, unknown> = {
+    conversation_id: input.conversationId,
+    role: input.role,
+    body: input.body,
+    card_json: input.card || null,
+    quick_replies_json: input.quickReplies || null,
+    attachment_json: input.attachment || null,
+    client_message_id: input.clientMessageId || null,
+  }
+  if (input.senderUserId) payload.sender_user_id = input.senderUserId
+  if (input.senderDisplayName) payload.sender_display_name = input.senderDisplayName
+  if (input.senderKind) payload.sender_kind = input.senderKind
+
+  let { data, error } = await admin
     .from('serapp_messages')
-    .insert({
-      conversation_id: input.conversationId,
-      role: input.role,
-      body: input.body,
-      card_json: input.card || null,
-      quick_replies_json: input.quickReplies || null,
-      attachment_json: input.attachment || null,
-      client_message_id: input.clientMessageId || null,
-    })
+    .insert(payload)
     .select('*')
     .single()
 
+  if (error && /sender_/i.test(error.message || '')) {
+    delete payload.sender_user_id
+    delete payload.sender_display_name
+    delete payload.sender_kind
+    const retry = await admin.from('serapp_messages').insert(payload).select('*').single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error) throw error
+  if (!data) throw new Error('Failed to save message.')
 
   const preview = previewFromBody(
     input.body || (input.attachment ? `Attachment: ${input.attachment.name}` : ''),
@@ -307,7 +463,7 @@ export async function updateConversationSession(
   admin: Admin,
   conversationId: string,
   session: SerappChatSessionState,
-  extra?: { distributorOrgId?: string | null },
+  extra?: { distributorOrgId?: string | null; title?: string },
 ): Promise<void> {
   const patch: Record<string, unknown> = {
     session_json: session,
@@ -315,6 +471,9 @@ export async function updateConversationSession(
   }
   if (extra && 'distributorOrgId' in extra) {
     patch.distributor_org_id = extra.distributorOrgId
+  }
+  if (extra?.title?.trim()) {
+    patch.title = extra.title.trim()
   }
   const { error } = await admin
     .from('serapp_conversations')

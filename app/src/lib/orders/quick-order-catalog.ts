@@ -56,6 +56,7 @@ interface QuickOrderCatalogRow {
   id: string
   product_id: string
   variant_name: string
+  product_code?: string | null
   alternative_name?: string | null
   attributes?: Record<string, unknown> | null
   barcode?: string | null
@@ -63,6 +64,13 @@ interface QuickOrderCatalogRow {
   distributor_price?: number | null
   is_active?: boolean | null
   products: any
+}
+
+/** Paste matching uses the variant Product Code (CV, GU) before the parent product code. */
+function pasteMatchProductCode(row: QuickOrderCatalogRow, product: { product_code?: string | null } | null) {
+  const variantCode = typeof row.product_code === 'string' ? row.product_code.trim() : ''
+  if (variantCode) return variantCode
+  return typeof product?.product_code === 'string' ? product.product_code.trim() : ''
 }
 
 interface SellableInventoryRow {
@@ -151,7 +159,7 @@ export function filterQuickOrderCatalogRows(
       id: row.id,
       product_id: row.product_id,
       product_name: product.product_name || '',
-      product_code: product.product_code || '',
+      product_code: pasteMatchProductCode(row, product),
       group_name: group?.group_name || 'Other',
       variant_name: row.variant_name,
       alternative_name: row.alternative_name || null,
@@ -224,6 +232,7 @@ export async function resolveQuickOrderCatalog(
       id,
       product_id,
       variant_name,
+      product_code,
       alternative_name,
       attributes,
       barcode,

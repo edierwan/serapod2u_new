@@ -5,21 +5,18 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft,
-  Bot,
   CheckCircle2,
   FileText,
-  Headphones,
   ImageIcon,
   Loader2,
-  Megaphone,
   Paperclip,
   Send,
   Trash2,
-  Warehouse,
   Check,
   CheckCheck,
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
+import { describePasteMatchResult } from '@/lib/orders/paste-result-display'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -29,15 +26,12 @@ import type {
 } from '@/lib/serapp/chat-types'
 import type { SerappAttachment, SerappConversationRow, SerappMessageRow } from '@/lib/serapp/conversation-types'
 import { createClient } from '@/lib/supabase/client'
+import { isMineSerappMessage } from '@/lib/serapp/conversation-access'
 import { useSerapp } from './SerappContext'
 import SerappReviewLinePicker from './SerappReviewLinePicker'
+import SerappConversationAvatar from './SerappConversationAvatar'
+import { SerappHqDistributorPicker, useSerappHqDistributors } from './SerappHqDistributorPicker'
 import { cn } from '@/lib/utils'
-
-interface DistributorOption {
-  id: string
-  org_name: string
-  org_code: string | null
-}
 
 const bucketTone: Record<string, string> = {
   available: 'serapp-wa-badge--ok',
@@ -80,6 +74,41 @@ function dayKey(iso: string) {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 }
 
+function renderInlineMessage(text: string) {
+  const nodes: React.ReactNode[] = []
+  const token = /(\*\*[^*]+\*\*|\*[^*]+\*)/g
+  let cursor = 0
+  let match: RegExpExecArray | null
+  while ((match = token.exec(text)) !== null) {
+    if (match.index > cursor) nodes.push(text.slice(cursor, match.index))
+    const raw = match[0]
+    if (raw.startsWith('**') && raw.endsWith('**')) {
+      nodes.push(<strong key={`b-${match.index}`}>{raw.slice(2, -2)}</strong>)
+    } else if (raw.startsWith('*') && raw.endsWith('*')) {
+      nodes.push(<em key={`i-${match.index}`}>{raw.slice(1, -1)}</em>)
+    } else {
+      nodes.push(raw)
+    }
+    cursor = token.lastIndex
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor))
+  return nodes
+}
+
+function renderMessageBody(text: string) {
+  const lines = text.split('\n')
+  return (
+    <p className="break-words">
+      {lines.map((line, index) => (
+        <span key={`${index}-${line}`}>
+          {renderInlineMessage(line)}
+          {index < lines.length - 1 && <br />}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 function mapRow(msg: SerappMessageRow) {
   return {
     id: msg.id,
@@ -89,6 +118,9 @@ function mapRow(msg: SerappMessageRow) {
     deliveredAt: msg.delivered_at,
     seenAt: msg.seen_at,
     seenByOwner: msg.seen_by_owner,
+    senderUserId: msg.sender_user_id || null,
+    senderDisplayName: msg.sender_display_name || null,
+    senderKind: msg.sender_kind || null,
     attachment: msg.attachment_json,
     quickReplies: (msg.quick_replies_json || undefined) as SerappChatQuickReply[] | undefined,
     card: msg.card_json as {
@@ -104,7 +136,8 @@ export default function SerappChatThread() {
   const params = useParams()
   const router = useRouter()
   const conversationId = String(params?.id || '')
-  const { userProfile, isHqSupport } = useSerapp()
+  const { isHqSupport, userProfile } = useSerapp()
+  const hq = useSerappHqDistributors()
 
   const [conversation, setConversation] = useState<SerappConversationRow | null>(null)
   const [messages, setMessages] = useState<ReturnType<typeof mapRow>[]>([])
@@ -120,8 +153,6 @@ export default function SerappChatThread() {
     is_online: true,
     last_seen_at: null,
   })
-  const [distributors, setDistributors] = useState<DistributorOption[]>([])
-  const [selectedDistributorId, setSelectedDistributorId] = useState('')
   const [pendingDelete, setPendingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [resolvingLine, setResolvingLine] = useState(false)
@@ -142,11 +173,11 @@ export default function SerappChatThread() {
       setSession(payload.session)
       setMessages((payload.messages || []).map(mapRow))
       if (payload.presence) setPresence(payload.presence)
-      if (payload.session?.distributorId) {
-        setSelectedDistributorId(payload.session.distributorId)
-      } else if (payload.conversation?.distributor_org_id) {
-        setSelectedDistributorId(payload.conversation.distributor_org_id)
-      }
+      const linkedDistributor =
+        payload.session?.distributorId
+        || payload.conversation?.distributor_org_id
+        || ''
+      if (linkedDistributor) hq.selectDistributor(linkedDistributor)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load chat.')
     } finally {
@@ -157,30 +188,6 @@ export default function SerappChatThread() {
   useEffect(() => {
     void load()
   }, [load])
-
-  useEffect(() => {
-    if (!isHqSupport) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const supabase = createClient()
-        const { data } = await supabase
-          .from('organizations')
-          .select('id, org_name, org_code')
-          .eq('parent_org_id', userProfile.organization_id)
-          .eq('org_type_code', 'DIST')
-          .eq('is_active', true)
-          .order('org_name')
-          .limit(100)
-        if (!cancelled) setDistributors((data || []) as DistributorOption[])
-      } catch {
-        /* ignore */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isHqSupport, userProfile.organization_id])
 
   useEffect(() => {
     const el = listRef.current
@@ -288,7 +295,7 @@ export default function SerappChatThread() {
     const text = raw.trim()
     if ((!text && !pendingAttachment) || sending || !conversationId) return
 
-    if (isHqSupport && conversation?.kind === 'assistant' && !selectedDistributorId) {
+    if (isHqSupport && conversation?.kind === 'assistant' && !hq.selectedId) {
       setError('Select a distributor first (HQ Support).')
       return
     }
@@ -307,6 +314,9 @@ export default function SerappChatThread() {
       deliveredAt: null,
       seenAt: null,
       seenByOwner: false,
+      senderUserId: userProfile.id,
+      senderDisplayName: userProfile.full_name || userProfile.email || 'You',
+      senderKind: isHqSupport ? 'hq' as const : 'distributor' as const,
       attachment: pendingAttachment,
       quickReplies: undefined,
       card: null,
@@ -326,7 +336,7 @@ export default function SerappChatThread() {
           text,
           clientMessageId,
           attachment: pendingAttachment,
-          distributorId: selectedDistributorId || undefined,
+          distributorId: hq.selectedId || conversation?.distributor_org_id || undefined,
         }),
       })
       const payload = await res.json().catch(() => null)
@@ -397,7 +407,7 @@ export default function SerappChatThread() {
         body: JSON.stringify({
           line,
           variantId,
-          distributorId: selectedDistributorId || undefined,
+          distributorId: hq.selectedId || conversation?.distributor_org_id || undefined,
         }),
       })
       const payload = await res.json().catch(() => null)
@@ -431,15 +441,6 @@ export default function SerappChatThread() {
   const latestQuickReplies =
     [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||
     []
-
-  const HeaderIcon =
-    conversation?.avatar_key === 'warehouse'
-      ? Warehouse
-      : conversation?.avatar_key === 'news'
-        ? Megaphone
-        : conversation?.avatar_key === 'support'
-          ? Headphones
-          : Bot
 
   const presenceLabel = typing
     ? 'typing…'
@@ -487,9 +488,11 @@ export default function SerappChatThread() {
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white">
-          <HeaderIcon className="h-5 w-5" />
-        </div>
+        <SerappConversationAvatar
+          avatarKey={conversation.avatar_key}
+          size="sm"
+          onDark
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{conversation.title}</p>
           <p className="truncate text-[11px] text-white/75">
@@ -509,32 +512,20 @@ export default function SerappChatThread() {
       </div>
 
       {isHqSupport && conversation.kind === 'assistant' && (
-        <div className="border-b border-[var(--sera-line)] bg-[var(--sera-surface)] px-3 py-2">
-          <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--sera-muted)]">
-            Distributor (HQ Support)
-          </label>
-          <select
-            value={selectedDistributorId}
-            disabled={sending}
-            onChange={(e) => {
-              setSelectedDistributorId(e.target.value)
-              void fetch(`/api/serapp/conversations/${conversationId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ distributorId: e.target.value || null }),
-              })
-            }}
-            className="mt-1 w-full rounded-lg border border-[var(--sera-line)] bg-white px-2.5 py-1.5 text-sm outline-none focus:border-[var(--sera-orange)]"
-          >
-            <option value="">Select distributor…</option>
-            {distributors.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.org_name}
-                {d.org_code ? ` (${d.org_code})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SerappHqDistributorPicker
+          selectedId={hq.selectedId}
+          distributors={hq.distributors}
+          loading={hq.loading}
+          disabled={sending}
+          onChange={(id) => {
+            hq.selectDistributor(id)
+            void fetch(`/api/serapp/conversations/${conversationId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ distributorId: id || null }),
+            })
+          }}
+        />
       )}
 
       {error && (
@@ -555,17 +546,50 @@ export default function SerappChatThread() {
               </div>
             )}
           <div
-            className={cn('serapp-wa-row flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+            className={cn(
+              'serapp-wa-row flex',
+              isMineSerappMessage({
+                role: msg.role,
+                senderUserId: msg.senderUserId,
+                viewerUserId: userProfile.id,
+                viewerIsHq: isHqSupport,
+              }) ? 'justify-end' : 'justify-start',
+            )}
           >
             <div
               className={cn(
                 'serapp-wa-bubble max-w-[85%] px-2 pt-1.5 pb-1 text-[14.2px] leading-[19px]',
-                msg.role === 'user' ? 'serapp-wa-bubble--out' : 'serapp-wa-bubble--in',
+                isMineSerappMessage({
+                  role: msg.role,
+                  senderUserId: msg.senderUserId,
+                  viewerUserId: userProfile.id,
+                  viewerIsHq: isHqSupport,
+                }) ? 'serapp-wa-bubble--out' : 'serapp-wa-bubble--in',
               )}
             >
-              <p className="whitespace-pre-wrap break-words">{msg.text.replace(/\*/g, '')}</p>
+              {msg.role === 'user' && !isMineSerappMessage({
+                role: msg.role,
+                senderUserId: msg.senderUserId,
+                viewerUserId: userProfile.id,
+                viewerIsHq: isHqSupport,
+              }) && (
+                <p className="mb-0.5 text-[11px] font-semibold text-[var(--sera-orange)]">
+                  {msg.senderKind === 'hq'
+                    ? `HQ · ${msg.senderDisplayName || 'Support'}`
+                    : (msg.senderDisplayName || 'Distributor')}
+                </p>
+              )}
+              {renderMessageBody(msg.text)}
               {msg.attachment && (
-                <AttachmentBubble attachment={msg.attachment} mine={msg.role === 'user'} />
+                <AttachmentBubble
+                  attachment={msg.attachment}
+                  mine={isMineSerappMessage({
+                    role: msg.role,
+                    senderUserId: msg.senderUserId,
+                    viewerUserId: userProfile.id,
+                    viewerIsHq: isHqSupport,
+                  })}
+                />
               )}
 
               {msg.card?.kind === 'check_summary' && msg.card.check && (
@@ -576,7 +600,6 @@ export default function SerappChatThread() {
                       : msg.card.check
                   }
                   interactive={session?.lastCheck?.pasteText === msg.card.check.pasteText}
-                  distributorId={selectedDistributorId || session?.distributorId || undefined}
                   disabled={sending || resolvingLine}
                   onPick={applyChatLinePick}
                 />
@@ -768,13 +791,11 @@ function AttachmentBubble({ attachment, mine }: { attachment: SerappAttachment; 
 function CheckSummaryCard({
   check,
   interactive,
-  distributorId,
   disabled,
   onPick,
 }: {
   check: SerappChatCheckPayload
   interactive?: boolean
-  distributorId?: string
   disabled?: boolean
   onPick?: (line: number, variantId: string) => void
 }) {
@@ -806,7 +827,6 @@ function CheckSummaryCard({
               <SerappReviewLinePicker
                 result={line}
                 disabled={disabled}
-                distributorId={distributorId}
                 onPick={onPick}
               />
             )}
@@ -841,17 +861,7 @@ function ConfirmCard({ confirm }: { confirm: SerappChatConfirmPayload }) {
 }
 
 function lineStatusShort(result: PasteMatchResult): string {
-  if (
-    result.status === 'requires_review' ||
-    result.status === 'not_found' ||
-    result.status === 'ambiguous'
-  ) {
-    return 'Review'
-  }
-  if (result.inventoryOutcome === 'insufficient_stock') return 'Partial'
-  if (result.inventoryOutcome === 'no_available_stock') return 'OOS'
-  if (result.status === 'matched' || result.status === 'alternative_match') return 'OK'
-  return result.status
+  return describePasteMatchResult(result)
 }
 
 function DoStoriesCard({ stories }: { stories: SerappDoStoryItem[] }) {

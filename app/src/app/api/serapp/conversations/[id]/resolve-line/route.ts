@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
 import {
-  getConversationForOwner,
+  getAccessibleConversation,
   parseSession,
   updateConversationSession,
 } from '@/lib/serapp/conversation-service'
@@ -31,7 +31,11 @@ export async function POST(
     }
 
     const admin = createAdminClient()
-    const conversation = await getConversationForOwner(admin, id, actor.userId)
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
     }

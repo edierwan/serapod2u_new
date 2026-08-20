@@ -20,11 +20,16 @@ const tabs = [
   { href: '/serapp/reports', label: 'Reports', icon: BarChart3, badgeKey: null },
 ] as const
 
+const distributorTabs = tabs.filter(
+  (tab) => tab.href === '/serapp/conversation' || tab.href === '/serapp/order' || tab.href === '/serapp/history',
+)
+
 export default function SerappBottomNav() {
   const pathname = usePathname()
-  const { totalUnread } = useSerapp()
+  const { totalUnread, isDistributor } = useSerapp()
   const isThread = Boolean(pathname?.match(/^\/serapp\/conversation\/[^/]+$/))
   if (isThread) return null
+  const visibleTabs = isDistributor ? distributorTabs : tabs
 
   return (
     <nav
@@ -33,7 +38,7 @@ export default function SerappBottomNav() {
       aria-label="Serapp primary"
     >
       <div className="mx-auto flex h-16 max-w-lg items-center justify-around">
-        {tabs.map(({ href, label, icon: Icon, badgeKey }) => {
+        {visibleTabs.map(({ href, label, icon: Icon, badgeKey }) => {
           const active = pathname === href || pathname?.startsWith(`${href}/`)
           const showBadge = badgeKey === 'chat' && totalUnread > 0
           return (

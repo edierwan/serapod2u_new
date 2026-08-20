@@ -33,6 +33,9 @@ export interface SerappMessageRow {
   delivered_at: string | null
   seen_at: string | null
   seen_by_owner: boolean
+  sender_user_id?: string | null
+  sender_display_name?: string | null
+  sender_kind?: 'distributor' | 'hq' | null
   created_at: string
 }
 
@@ -88,7 +91,7 @@ export const SEED_CHATS: Array<{
     subtitle: 'Order · stock check · confirm',
     avatar_key: 'bot',
     welcome:
-      "Hi — I'm *Serapp Assistant*.\n\nPaste your product list here (HERO / ZERO ok). I'll check warehouse stock, then you can confirm.\n\nEach chat is separate — open Warehouse Desk or News for other topics.",
+      "Hi — I'm *Serapp Assistant*.\n\nPaste a list like *CV - 50* or *GU - 100*. I'll check warehouse stock, then you can confirm.\n\nEach chat is separate — open Warehouse Desk or News for other topics.",
   },
   {
     kind: 'warehouse',

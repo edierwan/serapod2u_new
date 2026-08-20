@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireSerappActor } from '@/lib/serapp/chat-auth'
-import { getConversationForOwner } from '@/lib/serapp/conversation-service'
+import { getAccessibleConversation } from '@/lib/serapp/conversation-service'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const ALLOWED_MIME_PREFIXES = ['image/', 'application/pdf']
@@ -22,7 +22,11 @@ export async function POST(
 
     const { id } = await context.params
     const admin = createAdminClient()
-    const conversation = await getConversationForOwner(admin, id, actor.userId)
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
     }

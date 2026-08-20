@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Loader2, MessageCirclePlus, Bot, Warehouse, Megaphone, Headphones, Trash2, Search } from 'lucide-react'
+import { Loader2, MessageCirclePlus, Trash2, Search } from 'lucide-react'
 import type { SerappConversationRow } from '@/lib/serapp/conversation-types'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useSerapp } from './SerappContext'
+import SerappConversationAvatar from './SerappConversationAvatar'
+import { SerappHqDistributorPicker, useSerappHqDistributors } from './SerappHqDistributorPicker'
 
 function formatListTime(iso: string | null) {
   if (!iso) return ''
@@ -22,25 +24,11 @@ function canDeleteConversation(kind: string) {
   return kind !== 'warehouse' && kind !== 'news'
 }
 
-function Avatar({ avatarKey }: { avatarKey: string }) {
-  const Icon =
-    avatarKey === 'warehouse'
-      ? Warehouse
-      : avatarKey === 'news'
-        ? Megaphone
-        : avatarKey === 'support'
-          ? Headphones
-          : Bot
-  return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--sera-ink)] text-white">
-      <Icon className="h-5 w-5" />
-    </div>
-  )
-}
 
 export default function SerappConversationList() {
   const router = useRouter()
-  const { setTotalUnread } = useSerapp()
+  const { setTotalUnread, isHqSupport } = useSerapp()
+  const hq = useSerappHqDistributors()
   const [conversations, setConversations] = useState<SerappConversationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -92,13 +80,21 @@ export default function SerappConversationList() {
   }, [load])
 
   const createChat = async () => {
+    if (isHqSupport && !hq.selectedId) {
+      setError('Select a distributor first to order under that organization.')
+      return
+    }
     setCreating(true)
     setError(null)
     try {
       const res = await fetch('/api/serapp/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'assistant' }),
+        body: JSON.stringify({
+          kind: 'assistant',
+          distributorId: hq.selectedId || undefined,
+          title: hq.selected?.org_name || undefined,
+        }),
       })
       const payload = await res.json().catch(() => null)
       if (!res.ok) throw new Error(payload?.error || 'Could not create chat.')
@@ -134,7 +130,7 @@ export default function SerappConversationList() {
         <p className="text-[21px] font-semibold text-white">Chats</p>
         <button
           type="button"
-          disabled={creating || loading}
+          disabled={creating || loading || (isHqSupport && !hq.selectedId)}
           onClick={() => void createChat()}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-50"
           aria-label="New chat"
@@ -142,6 +138,16 @@ export default function SerappConversationList() {
           {creating ? <Loader2 className="h-5 w-5 animate-spin" /> : <MessageCirclePlus className="h-5 w-5" />}
         </button>
       </div>
+
+      {isHqSupport && (
+        <SerappHqDistributorPicker
+          selectedId={hq.selectedId}
+          distributors={hq.distributors}
+          loading={hq.loading}
+          disabled={creating}
+          onChange={hq.selectDistributor}
+        />
+      )}
 
       <div className="bg-white px-3 py-2">
         <label className="flex items-center gap-2 rounded-lg bg-[#f0f2f5] px-3 py-2">
@@ -179,6 +185,10 @@ export default function SerappConversationList() {
           {conversations
             .filter((chat) => {
               const needle = query.trim().toLowerCase()
+              if (isHqSupport && hq.selectedId && chat.kind === 'assistant') {
+                const orgId = chat.distributor_org_id || chat.owner_org_id
+                if (orgId !== hq.selectedId) return false
+              }
               if (!needle) return true
               return [chat.title, chat.subtitle, chat.last_message_preview]
                 .filter(Boolean)
@@ -192,7 +202,7 @@ export default function SerappConversationList() {
                 href={`/serapp/conversation/${chat.id}`}
                 className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-[#f5f6f6]"
               >
-                <Avatar avatarKey={chat.avatar_key} />
+                <SerappConversationAvatar avatarKey={chat.avatar_key} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="truncate text-[16px] font-medium text-[#111b21]">
@@ -207,7 +217,9 @@ export default function SerappConversationList() {
                   </div>
                   <div className="mt-0.5 flex items-center gap-2">
                     <p className="min-w-0 flex-1 truncate text-[14px] text-[#667781]">
-                      {chat.last_message_preview || chat.subtitle || '—'}
+                      {chat.kind === 'assistant'
+                        ? (chat.last_message_preview || 'Group · distributor + HQ')
+                        : (chat.last_message_preview || chat.subtitle || '—')}
                     </p>
                     {chat.unread_count > 0 && (
                       <span className="serapp-wa-unread inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold text-white">

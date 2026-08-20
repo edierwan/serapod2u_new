@@ -12,6 +12,7 @@ const row = (id: string, productName: string, groupName: string, options: Record
   id,
   product_id: `product-${id}`,
   variant_name: `${productName} Flavour`,
+  product_code: options.variant_product_code as string | undefined,
   alternative_name: options.alternative_name as string | undefined,
   attributes: {},
   barcode: null,
@@ -63,6 +64,22 @@ describe('D2H Quick Order Vape catalog', () => {
   it('derives only Vape catalog groups and counts', () => {
     const counts = catalog.reduce<Record<string, number>>((result, item) => ({ ...result, [item.group_name]: (result[item.group_name] || 0) + 1 }), {})
     expect(counts).toEqual({ Cartridge: 3, Device: 2 })
+  })
+
+  it('matches distributor shorthand against the variant Product Code, not the parent product code', () => {
+    const cvRows = [row('cv', 'Cellera Hero', 'Cartridge', {
+      variant_product_code: 'CV',
+      product_code: 'CELVA9464',
+    })]
+    cvRows[0].variant_name = 'Deluxe Cellera Cartridge [ Corn Vanilla ]'
+    const catalog = filterQuickOrderCatalogRows(cvRows, new Map([['cv', 2000]]))
+
+    expect(catalog[0].product_code).toBe('CV')
+    expect(matchPastedOrder('CV - 500', catalog)[0]).toMatchObject({
+      status: 'matched',
+      matchMethod: 'code_or_sku',
+      selectedVariantId: 'cv',
+    })
   })
 
   it('includes Alternative Name in the authorized catalog used by paste matching', () => {

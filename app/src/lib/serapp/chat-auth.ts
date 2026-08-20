@@ -6,8 +6,9 @@ type SerappActorOk = {
   ok: true
   userId: string
   orgId: string
-  orgName: string
-  access: ReturnType<typeof getSerappAccessDecision>
+    orgName: string
+    fullName: string
+    access: ReturnType<typeof getSerappAccessDecision>
   supabase: Awaited<ReturnType<typeof createClient>>
 }
 
@@ -59,6 +60,7 @@ export async function requireSerappActor(): Promise<SerappActorOk | SerappActorE
     userId: user.id,
     orgId: requester.organization_id as string,
     orgName: (organization as { org_name?: string } | null)?.org_name || 'Distributor',
+    fullName: String(requester.full_name || '').trim() || (organization as { org_name?: string } | null)?.org_name || 'User',
     access,
     supabase,
   }

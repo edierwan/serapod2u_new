@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
 import {
-  getConversationForOwner,
+  getAccessibleConversation,
   listMessages,
   parseSession,
   updateConversationSession,
@@ -19,7 +19,11 @@ export async function GET(
 
     const { id } = await context.params
     const admin = createAdminClient()
-    const conversation = await getConversationForOwner(admin, id, actor.userId)
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
     }
@@ -99,7 +103,11 @@ export async function PATCH(
     const { id } = await context.params
     const body = await request.json().catch(() => ({}))
     const admin = createAdminClient()
-    const conversation = await getConversationForOwner(admin, id, actor.userId)
+    const conversation = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 })
     }
@@ -107,9 +115,31 @@ export async function PATCH(
     const session = parseSession(conversation.session_json)
     if (typeof body?.distributorId === 'string' || body?.distributorId === null) {
       session.distributorId = body.distributorId
-      await updateConversationSession(admin, id, session, {
+      const extras: { distributorOrgId: string | null; title?: string } = {
         distributorOrgId: body.distributorId,
-      })
+      }
+      if (typeof body.distributorId === 'string' && body.distributorId) {
+        const { data: distributor } = await admin
+          .from('organizations')
+          .select('org_name, org_type_code, parent_org_id, is_active')
+          .eq('id', body.distributorId)
+          .maybeSingle()
+        if (actor.access.isHqSupport) {
+          if (
+            !distributor
+            || distributor.org_type_code !== 'DIST'
+            || distributor.parent_org_id !== actor.orgId
+            || distributor.is_active !== true
+          ) {
+            return NextResponse.json(
+              { error: 'That distributor is not under this HQ organization.' },
+              { status: 400 },
+            )
+          }
+          extras.title = distributor.org_name
+        }
+      }
+      await updateConversationSession(admin, id, session, extras)
     }
 
     if (typeof body?.title === 'string' && body.title.trim()) {
@@ -119,7 +149,11 @@ export async function PATCH(
         .eq('id', id)
     }
 
-    const refreshed = await getConversationForOwner(admin, id, actor.userId)
+    const refreshed = await getAccessibleConversation(admin, id, {
+      userId: actor.userId,
+      orgId: actor.orgId,
+      isHqSupport: actor.access.isHqSupport,
+    })
     return NextResponse.json({
       conversation: refreshed,
       session: parseSession(refreshed?.session_json),

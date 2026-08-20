@@ -80,7 +80,14 @@ export async function processSerappChatTurn(input: {
   }
   if (kind === 'support') {
     return {
-      text: 'Support chat — for ordering use *Serapp Assistant*. Say *help* anytime.',
+      text: [
+        '🧩 **HQ / Accounts Support**',
+        '',
+        `Use **Serapp Assistant** for orders.`,
+        `Select distributor under your organization first.`,
+        `Shorthand works from **Master Data**.`,
+        `Example: **CV - 50**`,
+      ].join('\n'),
       quickReplies: [{ id: 'help', label: 'Help', sendText: 'help' }],
       session,
     }
@@ -113,14 +120,12 @@ async function warehouseTurn(
   if (n === 'help' || n.includes('how')) {
     return {
       text: [
-        '*Warehouse Desk*',
+        '🏭 **Warehouse Desk**',
         '',
-        '• Active Serapp orders have a *1-hour* acceptance hold',
-        '• HQ / warehouse accepts from History',
-        '• After accept, Delivery Order (DO) is issued automatically',
-        '• Next step: approve in *Current Orders* (Dashboard) for SO + Invoice, then warehouse ship',
-        '',
-        'Place new orders in *Serapp Assistant* — this chat stays for warehouse questions.',
+        `**Hold:** 1 hour`,
+        `**Accept:** from History`,
+        `**After accept:** DO auto-issued`,
+        `**Next:** approve in Current Orders`,
       ].join('\n'),
       quickReplies: replies,
       session,
@@ -130,11 +135,14 @@ async function warehouseTurn(
   if (n.includes('hold') || n === 'my holds' || n.includes('accept')) {
     return {
       text: [
-        'Open *History* in the bottom nav to see holds for this distributor.',
-        'Active = waiting for warehouse accept. Accepted = DO issued; next approve the order in Current Orders (Dashboard).',
+        `📦 **Holds**`,
+        `Open **History** to view holds.`,
+        `**Active:** waiting accept`,
+        `**Accepted:** DO issued`,
+        `**Next:** approve in Current Orders`,
         session.lastConfirm
-          ? `\nLast order in a linked Assistant chat: *${session.lastConfirm.orderNo}* (${session.lastConfirm.status}).`
-          : '\nNo confirm recorded in this Warehouse thread — check Assistant chats or History.',
+          ? `\n**Last order:** ${session.lastConfirm.orderNo} (${session.lastConfirm.status})`
+          : '\n**Last order:** none in this thread',
       ].join('\n'),
       quickReplies: replies,
       session,
@@ -149,7 +157,7 @@ async function warehouseTurn(
 
     if (!ok) {
       return {
-        text: data.error || 'Unable to load DO status right now.',
+        text: data.error || '❗ **Cannot load DO status now**',
         quickReplies: replies,
         session,
       }
@@ -159,8 +167,9 @@ async function warehouseTurn(
     if (stories.length === 0) {
       return {
         text: [
-          'No recent Serapp DO updates yet.',
-          'Once warehouse accepts a hold, DO is issued automatically and appears here with an Open DO PDF link.',
+          `📄 **DO status**`,
+          `No recent updates.`,
+          `After warehouse accepts, DO appears here.`,
         ].join('\n'),
         quickReplies: replies,
         session,
@@ -175,11 +184,9 @@ async function warehouseTurn(
 
     return {
       text: [
-        '*DO Stories (latest)*',
+        '📄 **DO status (latest)**',
         '',
         ...lines,
-        '',
-        'Tip: open History to accept pending holds faster.',
       ].join('\n'),
       card: {
         kind: 'do_stories',
@@ -191,7 +198,7 @@ async function warehouseTurn(
   }
 
   return {
-    text: "Warehouse Desk here. Try *my holds*, *do status*, or *help*.",
+    text: '🏭 **Warehouse Desk**\nTry: **my holds** · **do status** · **help**',
     quickReplies: replies,
     session,
   }
@@ -207,13 +214,11 @@ function newsTurn(text: string, session: SerappChatSessionState): ChatTurnBotRep
   if (n === 'latest' || n.includes('news') || n.includes('update')) {
     return {
       text: [
-        '*Latest*',
+        '📢 **Latest news**',
         '',
-        '• Serapp Chat is live — order via Assistant like WhatsApp',
-        '• 1-hour warehouse acceptance hold on confirm',
-        '• Paste HERO / ZERO lists supported',
-        '',
-        'More HQ announcements will appear in this thread.',
+        'Serapp chat is live.',
+        'Confirm starts 1-hour hold.',
+        'More updates will appear here.',
       ].join('\n'),
       quickReplies: replies,
       session,
@@ -221,7 +226,7 @@ function newsTurn(text: string, session: SerappChatSessionState): ChatTurnBotRep
   }
 
   return {
-    text: 'This is the News thread. Tap *Latest news* or open the News tab.',
+    text: '📢 **News thread**\nTap **Latest news**',
     quickReplies: replies,
     session,
   }
@@ -277,16 +282,34 @@ async function assistantTurn(input: {
   }
 
   if (intent.type === 'new_order') {
+    const lastPaste = session.lastCheck?.pasteText || session.pendingPasteText
     session = {
       ...DEFAULT_SESSION,
       phase: 'awaiting_list',
       distributorId: input.distributorId || session.distributorId,
+      pendingPasteText: lastPaste,
     }
     return {
-      text: 'Ready for a new list in *this* chat — paste whenever you like.',
+      text: '🆕 **New order**\nPaste your list now.\nOr reply **repeat**.',
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }
+  }
+
+  if (intent.type === 'repeat_last') {
+    const pasteText = session.lastCheck?.pasteText || session.pendingPasteText
+    if (!pasteText) {
+      return {
+        text: '❗ **No previous list**\nPaste one first.\nExample: **CV - 50**',
+        quickReplies: quickRepliesForPhase('awaiting_list'),
+        session: { ...session, phase: 'awaiting_list' },
+      }
+    }
+    return assistantTurn({
+      ...input,
+      text: pasteText,
+      session,
+    })
   }
 
   if (intent.type === 'order_list' || intent.type === 'check_again') {
@@ -294,7 +317,7 @@ async function assistantTurn(input: {
       intent.type === 'order_list' ? intent.pasteText : session.pendingPasteText
     if (!pasteText) {
       return {
-        text: 'Paste a list first, then I can check again.',
+        text: '❗ **No list found**\nPaste list first.',
         quickReplies: quickRepliesForPhase('awaiting_list'),
         session: { ...session, phase: 'awaiting_list' },
       }
@@ -350,7 +373,7 @@ async function assistantTurn(input: {
     const bucket = session.lastCheck.summary.bucket
     if (bucket !== 'available' && bucket !== 'partially_available') {
       return {
-        text: `Cannot confirm while status is *${session.lastCheck.summary.label}*. Pick the real product on unmatched lines, or paste a corrected list.`,
+        text: `❗ **Cannot confirm**\n**Status:** ${session.lastCheck.summary.label}\n**Next:** Pick match or paste fix`,
         quickReplies: quickRepliesForPhase('checked', bucket),
         session,
       }
@@ -380,7 +403,7 @@ async function assistantTurn(input: {
 
     if (!ok || !data.order) {
       return {
-        text: data.error || 'Confirm failed.',
+        text: data.error || '❗ **Confirm failed**',
         card: { kind: 'error', error: data.error || 'Confirm failed.' },
         quickReplies: quickRepliesForPhase('checked', bucket),
         session,
@@ -441,7 +464,7 @@ async function assistantTurn(input: {
       }
     } catch (error) {
       return {
-        text: error instanceof Error ? error.message : 'Catalog lookup failed.',
+        text: error instanceof Error ? error.message : '❗ **Catalog lookup failed**',
         quickReplies: quickRepliesForPhase(
           session.phase === 'idle' ? 'awaiting_list' : session.phase,
           session.lastCheck?.summary.bucket,
@@ -455,7 +478,7 @@ async function assistantTurn(input: {
     const orderId = session.lastConfirm?.orderId
     if (!orderId) {
       return {
-        text: 'No active Serapp hold in *this* chat to cancel.',
+        text: '❗ **No active hold** in this chat.',
         quickReplies: quickRepliesForPhase(session.phase, session.lastCheck?.summary.bucket),
         session,
       }
@@ -469,7 +492,7 @@ async function assistantTurn(input: {
 
     if (!ok) {
       return {
-        text: data.error || 'Cancel failed.',
+        text: data.error || '❗ **Cancel failed**',
         quickReplies: quickRepliesForPhase('confirmed'),
         session,
       }
@@ -483,7 +506,7 @@ async function assistantTurn(input: {
     }
 
     return {
-      text: `Hold cancelled for *${orderNo}*. Stock released. This chat is ready for a new list.`,
+      text: `✅ **Hold cancelled**\n**Order:** ${orderNo}\nStock released.\nPaste a new list.`,
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }
