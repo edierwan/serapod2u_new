@@ -264,7 +264,7 @@ export function formatProductInquiryReply(
 ): string {
   if (variants.length === 0) {
     return [
-      `🔎 **No match found**`,
+      `🔎 **No items found**`,
       `**Search:** ${query}`,
       ``,
       `Try a clearer name.`,
@@ -290,7 +290,7 @@ export function formatProductInquiryReply(
   })
 
   return [
-    `✅ **Match found**`,
+    `✅ **Items available**`,
     `**Search:** ${query}`,
     '',
     ...lines,
