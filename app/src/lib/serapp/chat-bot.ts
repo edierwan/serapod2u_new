@@ -186,15 +186,28 @@ export function welcomeBotText(distributorName: string, warehouseHint?: string |
   return [
     `👋 Hi **${distributorName}**`,
     `Warehouse: ${wh}`,
-    `Send **CV - 50** then **confirm**`,
+    ``,
+    `Order with **code + qty**. Examples:`,
+    `**CV - 50**`,
+    `**GU - 100**`,
+    `**banana vanilla - 20**`,
+    ``,
+    `Or send a code only (e.g. **CV**) to check stock, then add qty.`,
+    `When ready: **confirm**`,
   ].join('\n')
 }
 
 export function helpBotText(): string {
   return [
-    `Paste codes + qty, then **confirm**.`,
-    `Example: **CV - 50**`,
-    `Hold: **1 hour** · Commands: **new order** · **cancel hold**`,
+    `How to order:`,
+    `1) Send **code + qty** (or a list)`,
+    `   **CV - 50**`,
+    `   **GU - 100**`,
+    `   **banana vanilla - 20**`,
+    `2) Or send **CV** alone → I show stock, then you add qty`,
+    `3) Reply **confirm** (hold 1 hour)`,
+    ``,
+    `Also: **new order** · **cancel hold**`,
   ].join('\n')
 }
 
@@ -282,7 +295,12 @@ export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): 
 }
 
 export function incompleteIntentBotText(): string {
-  return `Need item + qty. Example: **CV - 50**`
+  return [
+    `Need **item + qty**. Examples:`,
+    `**CV - 50**`,
+    `**GU - 100**`,
+    `Or send **CV** first to check stock.`,
+  ].join('\n')
 }
 
 export function formatProductInquiryReply(
@@ -298,7 +316,9 @@ export function formatProductInquiryReply(
   if (variants.length === 0) {
     return [
       `🔎 No items for **${query}**`,
-      `Try code or fuller name · Example: **BV - 100**`,
+      `Try another code/name, or order like:`,
+      `**CV - 50**`,
+      `**GU - 100**`,
     ].join('\n')
   }
 
@@ -311,19 +331,22 @@ export function formatProductInquiryReply(
     return `**${variant.product_code}** · ${flavour} · ${stock}`
   })
 
-  const bestCode = top[0]?.product_code || 'CV'
+  const bestCode = top[0]?.product_code || query.toUpperCase()
   return [
-    `✅ Items available`,
+    `✅ Found for **${query}**`,
     ...lines,
-    `Send: **${bestCode} - 100**`,
+    ``,
+    `To order, add qty:`,
+    `**${bestCode} - 50**`,
   ].join('\n')
 }
 
 export function unknownBotText(): string {
   return [
-    `❗ **Not clear**`,
-    `Try: **CV - 50**`,
-    `Or type: **help**`,
+    `❗ Not clear. Try:`,
+    `**CV - 50**`,
+    `**GU - 100**`,
+    `Or **CV** to check stock · **help** for more`,
   ].join('\n')
 }
 

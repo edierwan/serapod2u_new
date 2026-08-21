@@ -55,6 +55,9 @@ describe('extractProductInquiry', () => {
     expect(extractProductInquiry('do you have banana vanilla')).toEqual({ name: 'banana vanilla' })
     expect(extractProductInquiry('ada stok mango tak')).toEqual({ name: 'mango' })
     expect(extractProductInquiry('mango hero available?')).toEqual({ name: 'mango hero' })
+    expect(extractProductInquiry('CV')).toEqual({ name: 'CV' })
+    expect(extractProductInquiry('cv')).toEqual({ name: 'cv' })
+    expect(extractProductInquiry('GU')).toEqual({ name: 'GU' })
   })
 
   it('does not treat qty lines, intent words, or generic questions as inquiry-only', () => {

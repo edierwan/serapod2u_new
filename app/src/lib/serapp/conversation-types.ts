@@ -93,7 +93,7 @@ export const SEED_CHATS: Array<{
     subtitle: 'Order · stock check · confirm',
     avatar_key: 'bot',
     welcome:
-      "Hi — I'm *Serapp Assistant*.\n\nPaste a list like *CV - 50* or *GU - 100*. I'll check warehouse stock, then you can confirm.\n\nEach chat is separate — open Warehouse Desk or News for other topics.",
+      "Hi — I'm *Serapp Assistant*.\n\nOrder with code + qty, for example:\n*CV - 50*\n*GU - 100*\n*banana vanilla - 20*\n\nOr send a code only (e.g. *CV*) to check stock, then add qty.\nWhen ready: *confirm*.",
   },
   {
     kind: 'warehouse',

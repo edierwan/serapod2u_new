@@ -68,7 +68,9 @@ export async function processSerappChatTurn(input: {
         `Use **Serapp Assistant** for orders.`,
         `Select distributor under your organization first.`,
         `Shorthand works from **Master Data**.`,
-        `Example: **CV - 50**`,
+        `Example:`,
+        `**CV - 50**`,
+        `**GU - 100**`,
       ].join('\n'),
       quickReplies: [{ id: 'help', label: 'Help', sendText: 'help' }],
       session,
@@ -283,7 +285,7 @@ async function assistantTurn(input: {
     const pasteText = session.lastCheck?.pasteText || session.pendingPasteText
     if (!pasteText) {
       return {
-        text: '❗ **No previous list**\nPaste one first.\nExample: **CV - 50**',
+        text: '❗ **No previous list**\nPaste one first, e.g.\n**CV - 50**\n**GU - 100**',
         quickReplies: quickRepliesForPhase('awaiting_list'),
         session: { ...session, phase: 'awaiting_list' },
       }

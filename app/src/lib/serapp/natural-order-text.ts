@@ -94,11 +94,19 @@ export function extractProductInquiry(text: string): { name: string } | null {
     }
   }
 
-  // Name only, no digits — treat as stock lookup (e.g. "banana vanilla", "mango hero").
-  // But skip short generic question words like "apa" / "what" / "شو".
-  if (!/\d/.test(cleaned) && cleaned.length >= 3 && !SECTION_ONLY.test(cleaned)) {
+  // Name/code only, no digits — stock lookup (e.g. "CV", "banana vanilla").
+  // Allow 2-char product codes; skip generic words like "apa" / "what" / "شو".
+  if (!/\d/.test(cleaned) && cleaned.length >= 2 && !SECTION_ONLY.test(cleaned)) {
     if (GENERIC_QUESTION_ONLY.test(cleaned)) return null
     if (looksLikeCasualChat(cleaned)) return null
+    // Very short tokens must look like a product code, not chat filler (hi/ok/no).
+    if (
+      cleaned.length <= 2
+      && /^(hi|ok|no|ya|ye|un|um|eh|ah|oh|we|me|my|to|of|in|on|at|is|it|or|an|as|be|do|if|so|up|us)$/i.test(cleaned)
+    ) {
+      return null
+    }
+    if (cleaned.length === 2 && !/^[A-Za-z]{2}$/u.test(cleaned)) return null
     return { name: stripSectionHint(cleaned) }
   }
 

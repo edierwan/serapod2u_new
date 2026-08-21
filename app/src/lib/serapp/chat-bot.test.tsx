@@ -63,6 +63,10 @@ describe('detectChatIntent', () => {
       type: 'product_inquiry',
       query: 'mango',
     })
+    expect(detectChatIntent('CV')).toEqual({
+      type: 'product_inquiry',
+      query: 'CV',
+    })
   })
 
   it('treats intent-only words as incomplete_intent', () => {
