@@ -180,6 +180,8 @@ export interface ReportKpis {
     avgValue: number
     /** Cases currently exceeding the SLA overdue rule. */
     overdue: number
+    /** Cases still in flight — neither completed nor cancelled. */
+    open: number
     /** Cases from the period that reached Return Completed. */
     completed: number
     /** completed / totalReturns × 100, 0 when there are no cases. */
@@ -188,7 +190,7 @@ export interface ReportKpis {
 
 export const EMPTY_KPIS: ReportKpis = {
     totalReturns: 0, totalQty: 0, totalValue: 0, avgValue: 0,
-    overdue: 0, completed: 0, completionRate: 0,
+    overdue: 0, open: 0, completed: 0, completionRate: 0,
 }
 
 /**
@@ -201,12 +203,14 @@ export function computeKpis(rows: ReturnCase[]): ReportKpis {
     let totalQty = 0
     let totalValue = 0
     let overdue = 0
+    let open = 0
     let completed = 0
     for (const r of rows) {
         totalQty += Number(r.total_qty || 0)
         totalValue += Number(r.total_value || 0)
         if (r.is_overdue) overdue += 1
         if (r.status === 'return_completed') completed += 1
+        else if (r.status !== 'return_cancelled') open += 1
     }
     return {
         totalReturns,
@@ -214,6 +218,7 @@ export function computeKpis(rows: ReturnCase[]): ReportKpis {
         totalValue,
         avgValue: totalReturns > 0 ? totalValue / totalReturns : 0,
         overdue,
+        open,
         completed,
         completionRate: totalReturns > 0 ? (completed / totalReturns) * 100 : 0,
     }
@@ -352,6 +357,39 @@ export function aggregateByReason(rows: ReturnCase[], reasonLabels: Record<strin
     return slices
 }
 
+/** Reason code that already means "everything else" in the stored data. */
+export const OTHER_REASON_CODE = 'other'
+
+/**
+ * Display grouping for the Overview ranking bar. Stored reason codes are left
+ * untouched — this only decides how they are *shown*: the strongest reasons by
+ * value keep their own row and the tail is folded into a single "Other" group,
+ * so the bar always reads as a complete breakdown of the period.
+ */
+export function groupReasonsForDisplay(slices: ReasonSlice[], limit = 4): ReasonSlice[] {
+    if (limit < 1 || slices.length === 0) return []
+
+    const named = slices.filter((s) => s.reason !== OTHER_REASON_CODE)
+    const stored = slices.filter((s) => s.reason === OTHER_REASON_CODE)
+
+    const fold = (parts: ReasonSlice[]): ReasonSlice => ({
+        reason: OTHER_REASON_CODE,
+        label: 'Other',
+        cases: parts.reduce((n, p) => n + p.cases, 0),
+        qty: parts.reduce((n, p) => n + p.qty, 0),
+        value: parts.reduce((n, p) => n + p.value, 0),
+        pct: parts.reduce((n, p) => n + p.pct, 0),
+    })
+
+    // Everything already fits: keep each reason on its own row, "Other" last.
+    if (named.length + (stored.length > 0 ? 1 : 0) <= limit) {
+        return stored.length > 0 ? [...named, fold(stored)] : named
+    }
+
+    const top = named.slice(0, limit - 1)
+    return [...top, fold([...named.slice(limit - 1), ...stored])]
+}
+
 /** Per-source (Shop / Distributor) breakdown; pct is by case share. */
 export function aggregateBySource(rows: ReturnCase[]): SourceSlice[] {
     const map = new Map<string, SourceSlice>()
@@ -459,9 +497,13 @@ export interface ReportCaseRow {
     id: string
     return_no: string
     return_source_type: ReturnSourceType
+    source_id: string | null
     source_name: string | null
     source_code: string | null
+    warehouse_id: string | null
     warehouse_name: string | null
+    /** Distinct item-level reason codes, so the detailed table can filter by reason without a round trip. */
+    reason_codes: string[]
     status: ReturnStatus
     total_qty: number
     total_value: number
@@ -477,9 +519,12 @@ export function toReportCaseRow(r: ReturnCase): ReportCaseRow {
         id: r.id,
         return_no: r.return_no,
         return_source_type: normalizeReturnSourceType(r.return_source_type),
+        source_id: r.return_source_organization_id || r.shop_org_id || null,
         source_name: org?.org_name || null,
         source_code: org?.org_code || null,
+        warehouse_id: r.return_warehouse_id || null,
         warehouse_name: r.warehouse?.org_name || null,
+        reason_codes: Array.from(new Set((r.items || []).map((it) => it.reason).filter((c): c is string => Boolean(c)))),
         status: r.status,
         total_qty: Number(r.total_qty || 0),
         total_value: Number(r.total_value || 0),
@@ -529,6 +574,16 @@ export function formatRM(value: number): string {
 
 export function formatCount(value: number): string {
     return Number(value || 0).toLocaleString('en-MY')
+}
+
+/** "153,785.00" — an amount without the prefix, for columns already headed "Value (RM)". */
+export function formatAmount(value: number): string {
+    return Number(value || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** "RM 153,785" — whole-ringgit form, for KPI cards and rankings that must read at a glance. */
+export function formatRMWhole(value: number): string {
+    return `RM ${Math.round(Number(value || 0)).toLocaleString('en-MY')}`
 }
 
 // ── Key insights ───────────────────────────────────────────────────────────
@@ -595,4 +650,35 @@ export function buildInsights(summary: {
     }
 
     return insights
+}
+
+/**
+ * The single management insight shown on the Overview — a deterministic
+ * statement about where the period's return value is concentrated. Returns null
+ * when the period has too little data for the statement to mean anything, so
+ * the caller can simply omit the line rather than pad it with commentary.
+ *
+ * `periodNoun` is the bare period name used mid-sentence, e.g. "August".
+ */
+export function buildKeyInsight(
+    kpis: ReportKpis,
+    reasonGroups: ReasonSlice[],
+    periodNoun: string,
+): string | null {
+    if (kpis.totalReturns === 0 || kpis.totalValue <= 0) return null
+
+    const named = reasonGroups.filter((g) => g.reason !== OTHER_REASON_CODE && g.value > 0)
+    const [first, second] = named
+    if (!first) return null
+
+    if (second) {
+        const combined = first.pct + second.pct
+        if (combined >= 50) {
+            return `${first.label} and ${second.label} account for ${Math.round(combined)}% of ${periodNoun} return value.`
+        }
+    }
+    if (first.pct >= 40) {
+        return `${first.label} accounts for ${Math.round(first.pct)}% of ${periodNoun} return value.`
+    }
+    return null
 }
