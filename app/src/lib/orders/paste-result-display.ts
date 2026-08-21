@@ -36,3 +36,48 @@ export function describePasteMatchResult(
   if (outcome === 'matched') return 'Matched'
   return 'Product Not Found'
 }
+
+/**
+ * Distributor-friendly SerApp labels (avoid technical "Matched").
+ * Example: "50 available", "Only 20 available", "Out of stock".
+ */
+export function describeSerappLineAvailability(
+  result: PasteMatchResult,
+  selectedVariant?: MatchableVariant | null,
+): string {
+  if (result.status === 'section_header') {
+    return `Section: ${result.sectionProductLine || result.name}`
+  }
+  if (result.status === 'requires_review') return 'Needs review'
+  if (result.status === 'invalid_quantity') return 'Invalid quantity'
+  if (result.status === 'duplicate') return 'Duplicate line'
+  if (!result.selectedVariantId && result.candidates.length > 1) {
+    return 'Pick a product'
+  }
+  if (!result.selectedVariantId && result.candidates.length === 1) {
+    return 'Needs review'
+  }
+  if (!result.selectedVariantId) return 'Not found'
+
+  const variant = selectedVariant
+    ?? (result.selectedVariantId
+      ? result.candidates.find(candidate => candidate.id === result.selectedVariantId)
+      : undefined)
+
+  const qty = result.quantity
+  const outcome = result.inventoryOutcome ?? resolvePasteInventoryOutcome(qty, variant)
+
+  if (outcome === 'no_available_stock') return 'Out of stock'
+  if (outcome === 'insufficient_stock') {
+    const available = variant?.available_qty
+    if (typeof available === 'number') return `Only ${available} available`
+    return 'Not enough stock'
+  }
+  if (outcome === 'inventory_unclassified') {
+    return qty != null ? `${qty} · stock unclear` : 'Stock unclear'
+  }
+  if (outcome === 'matched') {
+    return qty != null ? `${qty} available` : 'Available'
+  }
+  return 'Not found'
+}

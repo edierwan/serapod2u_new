@@ -86,4 +86,11 @@ describe('quickRepliesForPhase', () => {
     const replies = quickRepliesForPhase('checked', 'unmatched_or_review')
     expect(replies.some((r) => r.id === 'confirm')).toBe(false)
   })
+
+  it('does not offer Repeat last list', () => {
+    for (const phase of ['idle', 'awaiting_list', 'checked', 'confirmed'] as const) {
+      const replies = quickRepliesForPhase(phase, 'available')
+      expect(replies.some((r) => r.id === 'repeat')).toBe(false)
+    }
+  })
 })

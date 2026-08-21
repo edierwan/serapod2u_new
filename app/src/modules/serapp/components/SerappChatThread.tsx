@@ -16,7 +16,7 @@ import {
   CheckCheck,
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
-import { describePasteMatchResult } from '@/lib/orders/paste-result-display'
+import { describeSerappLineAvailability } from '@/lib/orders/paste-result-display'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -820,7 +820,7 @@ function CheckSummaryCard({
             <div className="flex justify-between gap-2">
               <span className="min-w-0 truncate">{line.name || line.raw}</span>
               <span className="shrink-0 tabular-nums text-[var(--sera-muted)]">
-                {line.quantity ?? '—'} · {lineStatusShort(line)}
+                {lineStatusShort(line)}
               </span>
             </div>
             {interactive && onPick && (
@@ -861,7 +861,7 @@ function ConfirmCard({ confirm }: { confirm: SerappChatConfirmPayload }) {
 }
 
 function lineStatusShort(result: PasteMatchResult): string {
-  return describePasteMatchResult(result)
+  return describeSerappLineAvailability(result)
 }
 
 function DoStoriesCard({ stories }: { stories: SerappDoStoryItem[] }) {

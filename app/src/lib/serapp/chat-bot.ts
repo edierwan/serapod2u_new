@@ -147,7 +147,7 @@ export function helpBotText(): string {
     `3) Reply **confirm**`,
     `   Hold window: **1 hour**`,
     '',
-    `Commands: **confirm** · **repeat** · **new order** · **help**`,
+    `Commands: **confirm** · **new order** · **help**`,
   ].join('\n')
 }
 
@@ -159,7 +159,6 @@ export function quickRepliesForPhase(
     return [
       { id: 'help', label: 'Help', sendText: 'help' },
       { id: 'sample', label: 'Sample list', sendText: SERAPP_SAMPLE_LIST },
-      { id: 'repeat', label: 'Repeat last list', sendText: 'repeat' },
     ]
   }
 
@@ -177,14 +176,12 @@ export function quickRepliesForPhase(
     }
     return [
       { id: 'new', label: 'Paste a new list', sendText: 'new order' },
-      { id: 'repeat', label: 'Repeat last list', sendText: 'repeat' },
       { id: 'help', label: 'Help', sendText: 'help' },
     ]
   }
 
   if (phase === 'confirmed') {
     return [
-      { id: 'repeat', label: 'Repeat last list', sendText: 'repeat' },
       { id: 'new', label: 'New order', sendText: 'new order' },
       { id: 'cancel', label: 'Cancel hold', sendText: 'cancel hold' },
     ]

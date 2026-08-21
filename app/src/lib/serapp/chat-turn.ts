@@ -272,7 +272,7 @@ async function assistantTurn(input: {
       pendingPasteText: lastPaste,
     }
     return {
-      text: '🆕 **New order**\nPaste your list now.\nOr reply **repeat**.',
+      text: '🆕 **New order**\nPaste your list now.',
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }
