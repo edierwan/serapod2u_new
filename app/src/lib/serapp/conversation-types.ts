@@ -63,6 +63,7 @@ export const DEFAULT_SESSION: SerappChatSessionState = {
   lastConfirm: null,
   distributorId: null,
   lineResolutions: [],
+  humanHandoff: false,
 }
 
 export function parseSession(raw: unknown): SerappChatSessionState {
@@ -75,6 +76,7 @@ export function parseSession(raw: unknown): SerappChatSessionState {
     lastConfirm: s.lastConfirm ?? null,
     distributorId: s.distributorId ?? null,
     lineResolutions: parseSerappLineResolutions(s.lineResolutions),
+    humanHandoff: Boolean(s.humanHandoff),
   }
 }
 

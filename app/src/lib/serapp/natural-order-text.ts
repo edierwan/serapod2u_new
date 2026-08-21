@@ -51,11 +51,30 @@ export function looksLikeIncompleteIntent(text: string): boolean {
   return INTENT_ONLY.test(trimmed)
 }
 
+/** Human chat that must not be treated as a product name search. */
+export function looksLikeCasualChat(text: string): boolean {
+  const cleaned = text.trim().toLowerCase().replace(/[!?.]+$/g, '')
+  if (!cleaned) return true
+  if (
+    /^(yes|yeah|yep|yup|no|nope|nah|ok|okay|sure|alright|right|noted|thanks|thank you|thx|cool|got it|i see|betul|baik|ok lah|terima kasih)\b/.test(
+      cleaned,
+    )
+    && cleaned.split(/\s+/).length >= 2
+  ) {
+    return true
+  }
+  if (/\b(it is|it's|that is|that's|you are|you're|i think|i see|no problem|all good)\b/.test(cleaned)) {
+    return true
+  }
+  return false
+}
+
 /** Conversational availability question without a usable quantity. */
 export function extractProductInquiry(text: string): { name: string } | null {
   const cleaned = cleanChatText(text)
   if (!cleaned || looksLikeCommandOnly(cleaned) || looksLikeIncompleteIntent(cleaned)) return null
   if (GENERIC_QUESTION_ONLY.test(cleaned)) return null
+  if (looksLikeCasualChat(cleaned)) return null
 
   const inquiryPatterns = [
     new RegExp(
@@ -70,7 +89,7 @@ export function extractProductInquiry(text: string): { name: string } | null {
   for (const pattern of inquiryPatterns) {
     const match = cleaned.match(pattern)
     const name = (match?.[1] || '').trim()
-    if (name.length >= 2 && !SECTION_ONLY.test(name)) {
+    if (name.length >= 2 && !SECTION_ONLY.test(name) && !looksLikeCasualChat(name)) {
       return { name: stripSectionHint(name) }
     }
   }
@@ -79,6 +98,7 @@ export function extractProductInquiry(text: string): { name: string } | null {
   // But skip short generic question words like "apa" / "what" / "شو".
   if (!/\d/.test(cleaned) && cleaned.length >= 3 && !SECTION_ONLY.test(cleaned)) {
     if (GENERIC_QUESTION_ONLY.test(cleaned)) return null
+    if (looksLikeCasualChat(cleaned)) return null
     return { name: stripSectionHint(cleaned) }
   }
 

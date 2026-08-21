@@ -43,40 +43,62 @@ function buildSessionContext(session: SerappChatSessionState, distributorName: s
   return lines.join('\n')
 }
 
-function buildSerappAiSystemPrompt(session: SerappChatSessionState, distributorName: string): string {
-  return `You are Serapp Assistant — a smart WhatsApp-style ordering bot for Serapod2U distributors.
+function formatCatalogGrounding(
+  variants: Array<{
+    product_code: string
+    product_name: string
+    variant_name: string
+    available_qty?: number | null
+  }>,
+): string {
+  if (variants.length === 0) return 'No catalog hits for this message yet.'
+  return variants.slice(0, 8).map((variant, index) => {
+    const qty = typeof variant.available_qty === 'number' ? variant.available_qty : '?'
+    return `${index + 1}. code=${variant.product_code} | ${variant.variant_name} | stock=${qty}`
+  }).join('\n')
+}
 
-Capabilities (the server executes these for real):
-- check_stock: live warehouse stock check from a product list
-- search_catalog: look up product names / availability
-- confirm: submit the last checked order (1-hour warehouse hold)
-- cancel_hold: cancel the last confirmed hold in this chat
-- new_order: clear this chat order state
-- help: explain how ordering works
-- chat: normal conversation only
+function buildSerappAiSystemPrompt(
+  session: SerappChatSessionState,
+  distributorName: string,
+  catalogGrounding: string,
+): string {
+  return `You are Serapp Assistant for Serapod2U distributors in Malaysia.
 
-Session:
+Goal: help them order fast with almost no words.
+
+You understand English and simple Bahasa Malaysia (nak, ada stok, boleh, berapa, order baru, batal, sah).
+Reply in English by default. Use short BM only if the user writes mainly in BM.
+
+System facts:
+- Ordering uses product codes + qty, e.g. CV - 50
+- Flow: paste/check → confirm → 1-hour warehouse hold → DO
+- Never invent stock, prices, or order IDs. Use SESSION + LIVE CATALOG only.
+
+SESSION:
 ${buildSessionContext(session, distributorName)}
 
-Rules:
-- Match the user's language (English / Malay / Arabic / mixed).
-- Be warm, concise, WhatsApp-like (1–5 short lines).
-- Never invent stock numbers, prices, or order IDs — only use session context or let the server run checks.
-- When the user wants stock checked, convert their request to paste lines like "BANANA VANILLA - 100" (one per line, HERO/ZERO sections allowed).
-- When they ask "do you have X" without qty → search_catalog.
-- When they say confirm / yes / ok / تأكيد / confirm order and phase is checked → confirm.
-- If they only say "I want" / "بدي" / "nak" without a product → ask what product & qty (chat action only).
+LIVE CATALOG HITS (for this message):
+${catalogGrounding}
 
-If a server action is needed, end your message with exactly one line:
-SERAPP_ACTION:{"action":"check_stock","pasteText":"BANANA VANILLA - 100\\nGUAVA - 50"}
-or SERAPP_ACTION:{"action":"search_catalog","query":"mango hero"}
-or SERAPP_ACTION:{"action":"confirm"}
-or SERAPP_ACTION:{"action":"cancel_hold"}
-or SERAPP_ACTION:{"action":"new_order"}
-or SERAPP_ACTION:{"action":"help"}
-For pure conversation with no server action, omit the SERAPP_ACTION line.
+Style:
+- Max 2 short lines when possible (never more than 4).
+- Prefer product codes over long names.
+- If stock question → search_catalog (or use catalog hits below).
+- If they give product + qty → check_stock with paste lines like "BANANA VANILLA - 100".
+- If ready to submit and phase is checked → confirm.
+- If unclear → ask for code/name + qty in one short line.
 
-Write your friendly reply first, then the optional SERAPP_ACTION line last.`
+Actions (server executes). End with exactly one line when needed:
+SERAPP_ACTION:{"action":"check_stock","pasteText":"CV - 50"}
+SERAPP_ACTION:{"action":"search_catalog","query":"banana"}
+SERAPP_ACTION:{"action":"confirm"}
+SERAPP_ACTION:{"action":"cancel_hold"}
+SERAPP_ACTION:{"action":"new_order"}
+SERAPP_ACTION:{"action":"help"}
+For chat-only, omit SERAPP_ACTION.
+
+Write the short reply first, then optional SERAPP_ACTION last.`
 }
 
 async function loadConversationHistory(conversationId?: string | null) {
@@ -90,6 +112,29 @@ async function loadConversationHistory(conversationId?: string | null) {
       role: row.role === 'bot' ? 'assistant' as const : 'user' as const,
       content: row.body,
     }))
+}
+
+async function prefetchCatalogForMessage(input: {
+  text: string
+  distributorId?: string | null
+  sessionDistributorId?: string | null
+}) {
+  const query = input.text.trim().slice(0, 80)
+  if (query.length < 2) return []
+  // Skip pure commands — no need to hit catalog.
+  if (/^(help|confirm|cancel|new order|hi|hello|hey|salam|ok|okay|yes|no|thanks|terima kasih)$/i.test(query)) {
+    return []
+  }
+  try {
+    const { variants } = await searchSerappCatalog({
+      query,
+      distributorId: input.distributorId || input.sessionDistributorId || undefined,
+      limit: 8,
+    })
+    return variants
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -109,12 +154,21 @@ export async function trySerappAiTurn(input: {
   if (!aiConfig.enabled) return null
 
   const history = await loadConversationHistory(input.conversationId)
+  const catalogHits = await prefetchCatalogForMessage({
+    text: input.text,
+    distributorId: input.distributorId,
+    sessionDistributorId: input.session.distributorId,
+  })
   const started = Date.now()
 
   const aiResponse = await sendToAi(
     {
       message: input.text,
-      systemInstruction: buildSerappAiSystemPrompt(input.session, input.distributorName),
+      systemInstruction: buildSerappAiSystemPrompt(
+        input.session,
+        input.distributorName,
+        formatCatalogGrounding(catalogHits),
+      ),
       conversationHistory: history,
       context: { page: 'serapp_assistant', orgId: input.orgId },
       provider: aiConfig.provider,
@@ -147,6 +201,17 @@ export async function trySerappAiTurn(input: {
   let session = { ...input.session }
 
   if (!action || action.action === 'chat') {
+    // If AI chatted but we already have catalog hits for a product-ish message, prefer short stock card.
+    if (catalogHits.length > 0 && /[a-zA-Z\u0600-\u06FF]{2,}/.test(input.text) && !/\d/.test(input.text)) {
+      return {
+        text: formatProductInquiryReply(input.text.trim(), catalogHits),
+        quickReplies: quickRepliesForPhase(
+          session.phase === 'idle' ? 'awaiting_list' : session.phase,
+          session.lastCheck?.summary.bucket,
+        ),
+        session,
+      }
+    }
     return {
       text: reply || aiResponse.message || '…',
       quickReplies: quickRepliesForPhase(
@@ -159,7 +224,7 @@ export async function trySerappAiTurn(input: {
 
   if (action.action === 'help') {
     return {
-      text: reply ? `${reply}\n\n${helpBotText()}` : helpBotText(),
+      text: helpBotText(),
       quickReplies: quickRepliesForPhase(
         session.phase === 'idle' ? 'awaiting_list' : session.phase,
         session.lastCheck?.summary.bucket,
@@ -173,9 +238,10 @@ export async function trySerappAiTurn(input: {
       ...DEFAULT_SESSION,
       phase: 'awaiting_list',
       distributorId: input.distributorId || session.distributorId,
+      humanHandoff: session.humanHandoff,
     }
     return {
-      text: reply || 'Ready for a new order — tell me what you need.',
+      text: reply || '🆕 Paste your list now.',
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }
@@ -187,9 +253,8 @@ export async function trySerappAiTurn(input: {
         query: action.query,
         distributorId: input.distributorId || session.distributorId || undefined,
       })
-      const catalogReply = formatProductInquiryReply(action.query, variants)
       return {
-        text: reply ? `${reply}\n\n${catalogReply}` : catalogReply,
+        text: formatProductInquiryReply(action.query, variants),
         quickReplies: quickRepliesForPhase(
           session.phase === 'idle' ? 'awaiting_list' : session.phase,
           session.lastCheck?.summary.bucket,
@@ -222,10 +287,11 @@ export async function trySerappAiTurn(input: {
         lastConfirm: null,
         distributorId: input.distributorId || session.distributorId,
         lineResolutions: session.lineResolutions || [],
+        humanHandoff: session.humanHandoff,
       }
       const intro = formatCheckIntro(check.summary, check.warehouseName)
       return {
-        text: reply ? `${reply}\n\n${intro}` : intro,
+        text: intro,
         card: { kind: 'check_summary', check },
         quickReplies: quickRepliesForPhase('checked', check.summary.bucket),
         session,
@@ -324,6 +390,7 @@ export async function trySerappAiTurn(input: {
       ...DEFAULT_SESSION,
       phase: 'awaiting_list',
       distributorId: input.distributorId || session.distributorId,
+      humanHandoff: session.humanHandoff,
     }
     return {
       text: reply || `Hold cancelled for *${orderNo}*. Ready for a new order.`,

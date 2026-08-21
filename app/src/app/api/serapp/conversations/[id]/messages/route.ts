@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isMissingChatTable, requireSerappActor } from '@/lib/serapp/chat-auth'
+import { shouldRunSerappBot } from '@/lib/serapp/chat-bot'
 import { processSerappChatTurn } from '@/lib/serapp/chat-turn'
 import {
   appendMessage,
@@ -12,6 +13,8 @@ import type { SerappAttachment, SerappConversationKind } from '@/lib/serapp/conv
 
 /**
  * Send a user message, wait for bot processing (with typing delay), persist both.
+ * HQ/admin messages are human handoff only — no bot reply.
+ * After handoff, distributor still gets bot replies for clear order commands.
  */
 export async function POST(
   request: Request,
@@ -73,42 +76,54 @@ export async function POST(
     let updatedSession = session
     // For pure attachment messages we skip AI interpretation and keep UX concise.
     if (text) {
-      let distributorName = actor.orgName
-      const distOrgId =
-        conversation.distributor_org_id
-        || (!actor.access.isHqSupport ? conversation.owner_org_id : null)
-        || distributorId
-        || session.distributorId
-      if (distOrgId && distOrgId !== actor.orgId) {
-        const { data: distOrg } = await admin
-          .from('organizations')
-          .select('org_name')
-          .eq('id', distOrgId)
-          .maybeSingle()
-        if (distOrg?.org_name) distributorName = distOrg.org_name
-      }
-      const reply = await processSerappChatTurn({
-        request,
-        kind: conversation.kind as SerappConversationKind,
+      const botGate = shouldRunSerappBot({
+        isHqSender: actor.access.isHqSupport,
         text,
         session,
-        distributorName,
-        distributorId: distributorId || session.distributorId || conversation.distributor_org_id,
-        userId: actor.userId,
-        orgId: actor.orgId,
-        conversationId: id,
       })
-      updatedSession = reply.session
-      await updateConversationSession(admin, id, reply.session, {
-        distributorOrgId: reply.session.distributorId,
-      })
+      updatedSession = botGate.session
 
-      botMessage = await appendMessage(admin, {
-        conversationId: id,
-        role: 'bot',
-        body: reply.text,
-        card: reply.card || null,
-        quickReplies: reply.quickReplies || null,
+      if (botGate.run) {
+        let distributorName = actor.orgName
+        const distOrgId =
+          conversation.distributor_org_id
+          || (!actor.access.isHqSupport ? conversation.owner_org_id : null)
+          || distributorId
+          || session.distributorId
+        if (distOrgId && distOrgId !== actor.orgId) {
+          const { data: distOrg } = await admin
+            .from('organizations')
+            .select('org_name')
+            .eq('id', distOrgId)
+            .maybeSingle()
+          if (distOrg?.org_name) distributorName = distOrg.org_name
+        }
+        const reply = await processSerappChatTurn({
+          request,
+          kind: conversation.kind as SerappConversationKind,
+          text,
+          session: botGate.session,
+          distributorName,
+          distributorId: distributorId || session.distributorId || conversation.distributor_org_id,
+          userId: actor.userId,
+          orgId: actor.orgId,
+          conversationId: id,
+        })
+        updatedSession = {
+          ...reply.session,
+          humanHandoff: botGate.session.humanHandoff || Boolean(reply.session.humanHandoff),
+        }
+        botMessage = await appendMessage(admin, {
+          conversationId: id,
+          role: 'bot',
+          body: reply.text,
+          card: reply.card || null,
+          quickReplies: reply.quickReplies || null,
+        })
+      }
+
+      await updateConversationSession(admin, id, updatedSession, {
+        distributorOrgId: updatedSession.distributorId,
       })
     }
 
@@ -123,7 +138,7 @@ export async function POST(
       userMessage,
       botMessage,
       session: updatedSession,
-      typingMs: 700,
+      typingMs: botMessage ? 700 : 0,
     })
   } catch (error) {
     if (isMissingChatTable(error)) {

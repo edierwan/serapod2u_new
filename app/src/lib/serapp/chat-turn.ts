@@ -270,6 +270,7 @@ async function assistantTurn(input: {
       phase: 'awaiting_list',
       distributorId: input.distributorId || session.distributorId,
       pendingPasteText: lastPaste,
+      humanHandoff: session.humanHandoff,
     }
     return {
       text: '🆕 **New order**\nPaste your list now.',
@@ -473,6 +474,7 @@ async function assistantTurn(input: {
       ...DEFAULT_SESSION,
       phase: 'awaiting_list',
       distributorId: input.distributorId || session.distributorId,
+      humanHandoff: session.humanHandoff,
     }
 
     return {

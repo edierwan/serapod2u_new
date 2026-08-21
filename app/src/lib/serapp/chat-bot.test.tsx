@@ -5,7 +5,9 @@ import {
   quickRepliesForPhase,
   SERAPP_SAMPLE_LIST,
   shouldRouteToSerappAi,
+  shouldRunSerappBot,
 } from '@/lib/serapp/chat-bot'
+import { DEFAULT_SESSION } from '@/lib/serapp/conversation-types'
 
 describe('looksLikeOrderList', () => {
   it('detects HERO/ZERO paste lists', () => {
@@ -74,6 +76,11 @@ describe('detectChatIntent', () => {
     expect(intent.type).toBe('order_list')
     expect(shouldRouteToSerappAi(intent)).toBe(false)
   })
+
+  it('routes product questions to AI when enabled', () => {
+    expect(shouldRouteToSerappAi(detectChatIntent('banana'))).toBe(true)
+    expect(shouldRouteToSerappAi(detectChatIntent('ada stok mango tak'))).toBe(true)
+  })
 })
 
 describe('quickRepliesForPhase', () => {
@@ -92,5 +99,63 @@ describe('quickRepliesForPhase', () => {
       const replies = quickRepliesForPhase(phase, 'available')
       expect(replies.some((r) => r.id === 'repeat')).toBe(false)
     }
+  })
+})
+
+describe('shouldRunSerappBot', () => {
+  it('skips bot for HQ and opens human handoff', () => {
+    const result = shouldRunSerappBot({
+      isHqSender: true,
+      text: 'Yes, it is right',
+      session: { ...DEFAULT_SESSION },
+    })
+    expect(result.run).toBe(false)
+    expect(result.session.humanHandoff).toBe(true)
+  })
+
+  it('stays silent for casual chat after handoff', () => {
+    const result = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'Yes, it is right',
+      session: { ...DEFAULT_SESSION, humanHandoff: true },
+    })
+    expect(result.run).toBe(false)
+  })
+
+  it('still answers order commands after handoff', () => {
+    const help = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'help',
+      session: { ...DEFAULT_SESSION, humanHandoff: true },
+    })
+    expect(help.run).toBe(true)
+
+    const paste = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'CV - 50',
+      session: { ...DEFAULT_SESSION, humanHandoff: true },
+    })
+    expect(paste.run).toBe(true)
+
+    const stockAsk = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'ada stok mango',
+      session: { ...DEFAULT_SESSION, humanHandoff: true },
+    })
+    expect(stockAsk.run).toBe(true)
+
+    const confirmReady = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'confirm',
+      session: { ...DEFAULT_SESSION, humanHandoff: true, phase: 'checked' },
+    })
+    expect(confirmReady.run).toBe(true)
+
+    const confirmTooEarly = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'yes',
+      session: { ...DEFAULT_SESSION, humanHandoff: true, phase: 'awaiting_list' },
+    })
+    expect(confirmTooEarly.run).toBe(false)
   })
 })

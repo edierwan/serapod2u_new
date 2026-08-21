@@ -64,6 +64,8 @@ describe('extractProductInquiry', () => {
     expect(extractProductInquiry('apa')).toBeNull()
     expect(extractProductInquiry('what')).toBeNull()
     expect(extractProductInquiry('شو')).toBeNull()
+    expect(extractProductInquiry('Yes, it is right')).toBeNull()
+    expect(extractProductInquiry('ok noted')).toBeNull()
   })
 })
 

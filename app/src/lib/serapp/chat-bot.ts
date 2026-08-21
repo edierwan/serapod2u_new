@@ -22,9 +22,69 @@ export type SerappChatIntent =
 /** Shorthand sample matching production paste (variant Product Codes). */
 export const SERAPP_SAMPLE_LIST = 'CV - 50\nGU - 100\nLB - 200'
 
-/** Free-text only — structured paste/commands stay on the fast rules path. */
+/** Free-text and product questions go to AI when enabled — paste/commands stay on rules. */
 export function shouldRouteToSerappAi(intent: SerappChatIntent): boolean {
-  return intent.type === 'unknown' || intent.type === 'incomplete_intent'
+  return (
+    intent.type === 'unknown'
+    || intent.type === 'incomplete_intent'
+    || intent.type === 'product_inquiry'
+    || intent.type === 'greeting'
+  )
+}
+
+/**
+ * After HQ/admin joins, bot stays quiet for casual chat, but still answers
+ * clear order/stock intents (paste, confirm, cancel, help, product lookup).
+ */
+export function isAllowedDuringHumanHandoff(
+  intent: SerappChatIntent,
+  session: SerappChatSessionState,
+): boolean {
+  switch (intent.type) {
+    case 'help':
+    case 'new_order':
+    case 'order_list':
+    case 'product_inquiry':
+      return true
+    case 'confirm':
+      return session.phase === 'checked'
+    case 'cancel_hold':
+      return Boolean(session.lastConfirm?.orderId)
+    case 'check_again':
+      return Boolean(session.pendingPasteText || session.lastCheck?.pasteText)
+    case 'repeat_last':
+      return Boolean(session.lastCheck?.pasteText || session.pendingPasteText)
+    default:
+      return false
+  }
+}
+
+/**
+ * Decide whether SerApp bot should reply to this sender/message.
+ * HQ messages never get a bot reply; they open human handoff mode.
+ */
+export function shouldRunSerappBot(input: {
+  isHqSender: boolean
+  text: string
+  session: SerappChatSessionState
+}): { run: boolean; session: SerappChatSessionState } {
+  if (input.isHqSender) {
+    return {
+      run: false,
+      session: { ...input.session, humanHandoff: true },
+    }
+  }
+
+  if (!input.session.humanHandoff) {
+    return { run: true, session: input.session }
+  }
+
+  const intent = detectChatIntent(input.text)
+  if (isAllowedDuringHumanHandoff(intent, input.session)) {
+    return { run: true, session: input.session }
+  }
+
+  return { run: false, session: input.session }
 }
 
 const LINE_QTY =
@@ -78,7 +138,7 @@ export function detectChatIntent(raw: string): SerappChatIntent {
   }
 
   if (
-    /^(confirm|confirm order|yes|ok|okay|send|submit|تأكيد|ارسل|أرسل|موافق)$/i.test(normalized) ||
+    /^(confirm|confirm order|yes|ok|okay|send|submit|sah|sahkan|confirm kan|تأكيد|ارسل|أرسل|موافق)$/i.test(normalized) ||
     normalized === 'confirm available only' ||
     normalized === 'confirm available'
   ) {
@@ -86,25 +146,25 @@ export function detectChatIntent(raw: string): SerappChatIntent {
   }
 
   if (
-    /^(check|check again|recheck|تحقق|افحص)$/i.test(normalized)
+    /^(check|check again|recheck|cek|cek semula|تحقق|افحص)$/i.test(normalized)
   ) {
     return { type: 'check_again' }
   }
 
   if (
-    /^(new|new order|reset|clear|طلب جديد|جديد)$/i.test(normalized)
+    /^(new|new order|reset|clear|order baru|pesanan baru|طلب جديد|جديد)$/i.test(normalized)
   ) {
     return { type: 'new_order' }
   }
 
   if (
-    /^(repeat|again|same|repeat last|repeat last list|كرر|نفس الطلب|نفس القائمة)$/i.test(normalized)
+    /^(repeat|again|same|repeat last|repeat last list|ulang|كرر|نفس الطلب|نفس القائمة)$/i.test(normalized)
   ) {
     return { type: 'repeat_last' }
   }
 
   if (
-    /^(cancel|cancel hold|cancel order|الغاء|إلغاء)$/i.test(normalized)
+    /^(cancel|cancel hold|cancel order|batal|batal hold|الغاء|إلغاء)$/i.test(normalized)
   ) {
     return { type: 'cancel_hold' }
   }
@@ -122,32 +182,19 @@ export function detectChatIntent(raw: string): SerappChatIntent {
 }
 
 export function welcomeBotText(distributorName: string, warehouseHint?: string | null): string {
-  const wh = warehouseHint || 'Selected warehouse'
+  const wh = warehouseHint || 'your warehouse'
   return [
-    `👋 **Serapp Assistant**`,
-    `**Distributor:** ${distributorName}`,
-    `**Warehouse:** ${wh}`,
-    '',
-    `Send list like: **CV - 50**`,
-    `Then reply: **confirm**`,
+    `👋 Hi **${distributorName}**`,
+    `Warehouse: ${wh}`,
+    `Send **CV - 50** then **confirm**`,
   ].join('\n')
 }
 
 export function helpBotText(): string {
   return [
-    '🧭 **How to order**',
-    '',
-    `1) Paste list`,
-    `   Example: **CV - 50**`,
-    `   Example: **GU - 100**`,
-    '',
-    `2) Review result`,
-    `   If needed: pick match or paste fix`,
-    '',
-    `3) Reply **confirm**`,
-    `   Hold window: **1 hour**`,
-    '',
-    `Commands: **confirm** · **new order** · **help**`,
+    `Paste codes + qty, then **confirm**.`,
+    `Example: **CV - 50**`,
+    `Hold: **1 hour** · Commands: **new order** · **cancel hold**`,
   ].join('\n')
 }
 
@@ -191,14 +238,12 @@ export function quickRepliesForPhase(
 }
 
 export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName?: string | null): string {
-  const wh = warehouseName || 'Selected warehouse'
+  const wh = warehouseName || 'Warehouse'
   if (summary.bucket === 'available') {
     return [
       `✅ **Ready to confirm**`,
       `**Warehouse:** ${wh}`,
-      ``,
-      `All items are available.`,
-      `**Next:** Reply **confirm**`,
+      `**Next:** **confirm**`,
     ].join('\n')
   }
 
@@ -206,9 +251,7 @@ export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName
     return [
       `🟡 **Partially available**`,
       `**Warehouse:** ${wh}`,
-      ``,
-      `Some items are available, some are not.`,
-      `**Next:** Reply **confirm** for available items only`,
+      `**Next:** **confirm** (available only)`,
     ].join('\n')
   }
 
@@ -216,8 +259,6 @@ export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName
     return [
       `🔴 **Out of stock**`,
       `**Warehouse:** ${wh}`,
-      ``,
-      `No items are currently available.`,
       `**Next:** Paste a new list`,
     ].join('\n')
   }
@@ -225,31 +266,23 @@ export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName
   return [
     `🟠 **Needs review**`,
     `**Warehouse:** ${wh}`,
-    ``,
-    `Some item names need correction.`,
-    `**Next:** Pick match or paste corrected list`,
+    `**Next:** Pick match or fix list`,
   ].join('\n')
 }
 
 export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): string {
   const holdLine = expiresAt
     ? new Date(expiresAt).toLocaleString()
-    : '1-hour hold active'
+    : '1-hour hold'
   return [
-    `✅ **Submitted**`,
-    `**Order:** ${orderNo}`,
-    `**Hold:** ${holdLine}`,
-    `**Next:** Warehouse accept`,
-    `**Then:** DO auto-issued`,
+    `✅ **Submitted** · **${orderNo}**`,
+    `Hold until: ${holdLine}`,
+    `Next: warehouse accept → DO`,
   ].join('\n')
 }
 
 export function incompleteIntentBotText(): string {
-  return [
-    `❗ **Need item + qty**`,
-    `Example: **CV - 50**`,
-    `Example: **banana vanilla - 100**`,
-  ].join('\n')
+  return `Need item + qty. Example: **CV - 50**`
 }
 
 export function formatProductInquiryReply(
@@ -264,39 +297,25 @@ export function formatProductInquiryReply(
 ): string {
   if (variants.length === 0) {
     return [
-      `🔎 **No items found**`,
-      `**Search:** ${query}`,
-      ``,
-      `Try a clearer name.`,
-      `Example: **BANANA VANILLA**`,
-      `**Next:** Paste item + qty`,
+      `🔎 No items for **${query}**`,
+      `Try code or fuller name · Example: **BV - 100**`,
     ].join('\n')
   }
 
-  const lines = variants.slice(0, 5).map((variant, index) => {
-    const label = `${variant.product_name} — ${variant.variant_name}`
+  const top = variants.slice(0, 3)
+  const lines = top.map((variant) => {
     const qty = typeof variant.available_qty === 'number' ? variant.available_qty : null
-    const stock = qty === null
-      ? 'Stock unknown'
-      : qty > 0
-        ? `${qty} available`
-        : 'Out of stock'
-    const unclassified = variant.inventory_classification === 'unclassified' ? ' · Unclassified' : ''
-    return [
-      `${index + 1}) **${label}**`,
-      `   **Code:** ${variant.product_code}`,
-      `   **Stock:** ${stock}${unclassified}`,
-    ].join('\n')
+    const stock = qty === null ? 'stock ?' : qty > 0 ? `${qty} available` : 'out of stock'
+    const flavour = variant.variant_name.replace(/^Deluxe Cellera Cartridge\s*/i, '').trim()
+      || variant.variant_name
+    return `**${variant.product_code}** · ${flavour} · ${stock}`
   })
 
+  const bestCode = top[0]?.product_code || 'CV'
   return [
-    `✅ **Items available**`,
-    `**Search:** ${query}`,
-    '',
+    `✅ Items available`,
     ...lines,
-    '',
-    `**Next:** Send item + qty`,
-    `Example: **BANANA VANILLA - 100**`,
+    `Send: **${bestCode} - 100**`,
   ].join('\n')
 }
 

@@ -1,9 +1,10 @@
 /**
  * Serapod2U — site-wide Service Worker
- * Network-first for pages; cache static assets only. Never cache API/auth data.
+ * Network-first for pages and Next bundles; cache icons/images only.
+ * Never cache API/auth data.
  */
 
-const CACHE_NAME = 'serapod-site-v1'
+const CACHE_NAME = 'serapod-site-v2'
 const PRECACHE = [
   '/manifest.json',
   '/icons/serapp-homescreen-192.png',
@@ -64,8 +65,22 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // Next.js CSS/JS hashes change every build — always prefer network to avoid black/unstyled UI.
+  if (url.pathname.startsWith('/_next/static')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (!response.ok) return response
+          const copy = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {})
+          return response
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error())),
+    )
+    return
+  }
+
   if (
-    url.pathname.startsWith('/_next/static') ||
     url.pathname.startsWith('/icons') ||
     url.pathname.startsWith('/images') ||
     url.pathname.startsWith('/brand')
