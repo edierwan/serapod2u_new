@@ -1,3 +1,13 @@
+// Visit Log display helpers.
+//
+// Participant identity resolution is shared with RoadTour Reporting so the same
+// person reads the same way in the Visit Log, the shop drill-down and the export.
+
+import {
+    NO_CONTEXT_PLACEHOLDER,
+    resolveParticipantDisplay,
+} from '@/modules/roadtour/lib/reporting/shopDisplay'
+
 export interface VisitParticipantDisplay {
     primary: string
     secondary: string | null
@@ -8,38 +18,11 @@ export function resolveVisitParticipantDisplay(
     participantName?: string | null,
     participantPhone?: string | null,
 ): VisitParticipantDisplay {
-    const name = typeof participantName === 'string' ? participantName.trim() : ''
-    const phone = typeof participantPhone === 'string' ? participantPhone.trim() : ''
-
-    if (name && phone) {
-        return {
-            primary: name,
-            secondary: phone,
-            isPlaceholder: false,
-        }
-    }
-
-    if (name) {
-        return {
-            primary: name,
-            secondary: null,
-            isPlaceholder: false,
-        }
-    }
-
-    if (phone) {
-        return {
-            primary: phone,
-            secondary: null,
-            isPlaceholder: false,
-        }
-    }
-
-    return {
-        primary: '-',
-        secondary: null,
-        isPlaceholder: true,
-    }
+    return resolveParticipantDisplay({
+        participantCount: 1,
+        latestParticipantName: participantName,
+        latestParticipantPhone: participantPhone,
+    })
 }
 
 export function formatVisitParticipantCsvValue(
@@ -48,10 +31,8 @@ export function formatVisitParticipantCsvValue(
 ): string {
     const display = resolveVisitParticipantDisplay(participantName, participantPhone)
 
-    if (display.secondary) {
-        return `${display.primary} (${display.secondary})`
-    }
-
+    if (display.isPlaceholder) return NO_CONTEXT_PLACEHOLDER
+    if (display.secondary) return `${display.primary} (${display.secondary})`
     return display.primary
 }
 

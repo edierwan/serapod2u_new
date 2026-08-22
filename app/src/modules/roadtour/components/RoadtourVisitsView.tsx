@@ -10,21 +10,28 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { getRoadtourLocationStatusLabel, type RoadtourLocationStatus } from '@/lib/roadtour/location-shared'
-import { buildVisitRegionDataset, getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
+import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
 import {
-    AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight,
+    AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight,
     Clock, Download, Eye, Footprints, Loader2, MapPin, RefreshCw, Route, Search, SlidersHorizontal,
-    Store, Users, XCircle
+    Store, X, XCircle
 } from 'lucide-react'
 import { SeraLoadingState } from '@/components/ui/SeraLoader'
-import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell
-} from 'recharts'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import { formatVisitDateTime, formatVisitParticipantCsvValue, resolveVisitParticipantDisplay } from '@/modules/roadtour/lib/visit-tracking'
+import {
+    MONTH_TO_DATE_LABEL,
+    canSelectNextMonth,
+    monthCoverageLabel,
+    normalizeMonthKey,
+    reportingCutoffDate,
+    resolveReportingMonth,
+    shiftMonthKey,
+} from '@/modules/roadtour/lib/reporting/month'
+import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
 import { RoadtourStateFlag } from './RoadtourStateFlag'
 
 interface RoadtourVisitsViewProps {
@@ -93,14 +100,20 @@ interface ScanEvent {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
-const REGION_COLORS = ['#e85d04', '#f59e0b', '#10b981', '#2a2622', '#e85d04', '#ef4444', '#84cc16', '#f97316']
+/** Shared with RoadTour Reporting so the selected month follows the manager here too. */
+const SHARED_REPORTING_MONTH_KEY = 'roadtour-reporting-month'
 
-function formatLocalIsoDate(date: Date): string {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+function readSharedReportingMonth(): string | null {
+    if (typeof window === 'undefined') return null
+    const fromUrl = new URLSearchParams(window.location.search).get('month')
+    if (fromUrl) return fromUrl
+    try {
+        return window.sessionStorage.getItem(SHARED_REPORTING_MONTH_KEY)
+    } catch {
+        return null
+    }
 }
+
 
 // Haversine distance in km between two lat/lng points.
 function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -114,31 +127,9 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-function todayIsoDate(): string {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return formatLocalIsoDate(d)
-}
 
-function isoDateAddDays(iso: string, days: number): string {
-    const d = new Date(iso + 'T12:00:00')
-    d.setDate(d.getDate() + days)
-    return formatLocalIsoDate(d)
-}
 
-function formatTrendPct(curr: number, prev: number): { sign: '+' | '-'; value: string } | null {
-    if (prev <= 0) return curr > 0 ? { sign: '+', value: '100%' } : null
-    const pct = ((curr - prev) / prev) * 100
-    if (!isFinite(pct) || Math.abs(pct) < 0.05) return null
-    return { sign: pct >= 0 ? '+' : '-', value: `${Math.abs(pct).toFixed(0)}%` }
-}
 
-function formatShortDate(iso: string): string {
-    try {
-        const d = new Date(iso + 'T00:00:00')
-        return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
-    } catch { return iso }
-}
 
 const initialsFor = (name: string | undefined | null) =>
     (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() || '').join('') || '?'
@@ -277,11 +268,25 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [referenceFilter, setReferenceFilter] = useState('all')
     const [statusFilter, setStatusFilter] = useState('all')
     const [searchTerm, setSearchTerm] = useState('')
-    const [dateFrom, setDateFrom] = useState(isoDateAddDays(todayIsoDate(), -29))
-    const [dateTo, setDateTo] = useState(todayIsoDate())
+    const [filtersOpen, setFiltersOpen] = useState(false)
 
-    // Visits Over Time toggle
-    const [trendView, setTrendView] = useState<'day' | 'week'>('day')
+    // The Visit Log follows the same month selection as the rest of RoadTour Reporting.
+    const [monthKey, setMonthKey] = useState<string>(() => normalizeMonthKey(readSharedReportingMonth()))
+    const month = useMemo(() => resolveReportingMonth(monthKey), [monthKey])
+    const dateFrom = month.startDate
+    const dateTo = reportingCutoffDate(month)
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        try {
+            window.sessionStorage.setItem(SHARED_REPORTING_MONTH_KEY, monthKey)
+        } catch {
+            // Session storage is unavailable in some privacy modes; the month still applies here.
+        }
+    }, [monthKey])
+
+    const activeFilterCount = [runFilter, campaignFilter, referenceFilter, statusFilter]
+        .filter((value) => value !== 'all').length
 
     // Pagination
     const [pageSize, setPageSize] = useState(25)
@@ -421,85 +426,11 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             }
         }
 
-        // Previous window comparison (same length, immediately preceding)
-        const fromIso = dateFrom || todayIsoDate()
-        const toIso = dateTo || todayIsoDate()
-        const fromDate = new Date(fromIso + 'T00:00:00')
-        const toDate = new Date(toIso + 'T00:00:00')
-        const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1)
-        const prevTo = new Date(fromDate); prevTo.setDate(prevTo.getDate() - 1)
-        const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (days - 1))
-        const prevFromIso = formatLocalIsoDate(prevFrom)
-        const prevToIso = formatLocalIsoDate(prevTo)
-        const inPrev = (v: OfficialVisit) => v.visit_date >= prevFromIso && v.visit_date <= prevToIso
-        // Note: prev window may not be in current `visits` list because the load filter limits to selected window.
-        // Trend remains best-effort and may show nothing when prev data is unavailable.
-        const prevList = visits.filter(inPrev)
-        const trendVisits = formatTrendPct(total, prevList.length)
-        const trendShops = formatTrendPct(uniqueShops, new Set(prevList.map((v) => v.shop_id)).size)
-
-        const prevLabel = `${formatShortDate(prevFromIso)} – ${formatShortDate(prevToIso)}`
-
         return {
             total, uniqueShops, completed, completedPct,
             locationIssues, locationIssuePct,
             totalKm,
-            trendVisits, trendShops, prevLabel,
         }
-    }, [filtered, visits, dateFrom, dateTo])
-
-    // Visits Over Time
-    const visitsOverTime = useMemo(() => {
-        if (trendView === 'day') {
-            const counts = new Map<string, number>()
-            for (const v of filtered) counts.set(v.visit_date, (counts.get(v.visit_date) || 0) + 1)
-            const fromIso = dateFrom || todayIsoDate()
-            const toIso = dateTo || todayIsoDate()
-            const points: { label: string; value: number }[] = []
-            const fromDate = new Date(fromIso + 'T00:00:00')
-            const toDate = new Date(toIso + 'T00:00:00')
-            for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
-                const iso = formatLocalIsoDate(d)
-                points.push({ label: formatShortDate(iso), value: counts.get(iso) || 0 })
-            }
-            return points
-        }
-        // Week bucketing
-        const counts = new Map<string, number>()
-        for (const v of filtered) {
-            const d = new Date(v.visit_date + 'T00:00:00')
-            const dayOfWeek = d.getDay()
-            // Monday-start week
-            const diffToMon = (dayOfWeek + 6) % 7
-            d.setDate(d.getDate() - diffToMon)
-            const key = formatLocalIsoDate(d)
-            counts.set(key, (counts.get(key) || 0) + 1)
-        }
-        return Array.from(counts.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([k, v]) => ({ label: `Wk ${formatShortDate(k)}`, value: v }))
-    }, [filtered, dateFrom, dateTo, trendView])
-
-    // Visits by Region (donut) — uses captured visit geolocation state/address
-    const visitsByRegion = useMemo(() => {
-        return buildVisitRegionDataset(filtered.map((visit) => ({
-            capturedState: visit.visit_geo_state,
-            capturedAddress: visit.visit_geo_full_address,
-            capturedLabel: visit.visit_geo_label,
-        })))
-    }, [filtered])
-
-    // Top References list
-    const topReferences = useMemo(() => {
-        const counts = new Map<string, { id: string; name: string; count: number }>()
-        for (const v of filtered) {
-            const id = v.account_manager_user_id
-            const name = v.user_name || '—'
-            const cur = counts.get(id) || { id, name, count: 0 }
-            cur.count += 1
-            counts.set(id, cur)
-        }
-        return Array.from(counts.values()).sort((a, b) => b.count - a.count).slice(0, 5)
     }, [filtered])
 
     // Distance between consecutive visits per same reference (chronological)
@@ -573,7 +504,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     }
 
     const handleExport = () => {
-        const headers = ['Date', 'Time', 'Reference', 'Shop', 'User', 'Campaign', 'Location', 'Distance (km)', 'Status']
+        const headers = ['Date', 'Time', 'Account Manager', 'Participant', 'Shop', 'Campaign', 'Location', 'Distance (km)', 'Visit Status']
         const rows = filtered.map((v) => {
             const dist = distanceByVisitId.get(v.id)
             const status = visitOutcomeForRow(v)
@@ -582,9 +513,9 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             return [
                 dateTime.dateLabel,
                 dateTime.timeLabel,
-                v.user_name || '',
-                `${v.shop_name}${v.shop_branch ? ' - ' + v.shop_branch : ''}`,
+                v.account_manager_user_id && v.user_name && v.user_name !== '—' ? v.user_name : UNASSIGNED_AM_LABEL,
                 formatVisitParticipantCsvValue(v.participant_name, v.participant_phone),
+                `${v.shop_name}${v.shop_branch ? ' - ' + v.shop_branch : ''}`,
                 v.campaign_name || '',
                 [locationDisplay.title, locationDisplay.accuracyBadge.label, ...locationDisplay.metaParts].filter(Boolean).join(' · '),
                 dist ? dist.km.toFixed(1) : '',
@@ -596,7 +527,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `roadtour-visits-${dateFrom}_${dateTo}.csv`
+        a.download = `roadtour-visit-log-${monthKey}.csv`
         a.click()
         URL.revokeObjectURL(url)
     }
@@ -647,15 +578,18 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     return (
         <div className="sera-sc-page space-y-5">
             {/* Header */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <div className="sera-sc-header__bar mb-3 h-1 w-12 rounded-sm bg-[var(--sera-orange)]" />
-                    <h3 className="font-display flex items-center gap-2 text-lg font-semibold tracking-tight text-[var(--sera-ink)] sm:text-xl">
+                    <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--sera-muted)]">
+                        RoadTour Reporting
+                    </p>
+                    <h1 className="font-display flex items-center gap-2 text-2xl font-semibold tracking-tight text-[var(--sera-ink)] sm:text-3xl">
                         <MapPin className="h-5 w-5 text-[var(--sera-orange)]" />
-                        Visit Tracking
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Track official visits by references across campaigns. View visit activity, location data, and estimated route distance.
+                        Visit Log
+                    </h1>
+                    <p className="mt-1.5 text-sm text-muted-foreground">
+                        Operational record of every official visit in the selected month, with location evidence and full visit detail.
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -673,82 +607,136 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-3 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search by reference, shop, campaign, or user..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={runFilter} onValueChange={(v) => { setRunFilter(v); setCampaignFilter('all') }}>
-                        <SelectTrigger><SelectValue placeholder="All Events" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Events</SelectItem>
-                            {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-                        <SelectTrigger><SelectValue placeholder="All Campaigns" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Campaigns</SelectItem>
-                            {campaigns
-                                .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
-                                .map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-2">
-                    <Select value={referenceFilter} onValueChange={setReferenceFilter}>
-                        <SelectTrigger><SelectValue placeholder="All References" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All References</SelectItem>
-                            {references.map((r) => <SelectItem key={r.id} value={r.id}>{r.full_name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-1">
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="official">Completed</SelectItem>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="md:col-span-3 flex items-center gap-2">
-                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="flex-1" />
-                    <span className="text-muted-foreground">–</span>
-                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="flex-1" />
-                </div>
-                <div className="md:col-span-1">
-                    <Button variant="outline" size="sm" className="w-full gap-1" onClick={handleRefresh}>
-                        <SlidersHorizontal className="h-4 w-4" />
-                        More
+            {/* Month selector, one search field, everything else under More Filters */}
+            <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1 rounded-lg border border-[var(--sera-line)] bg-white px-1 py-1">
+                    <Button
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                        aria-label="Previous month"
+                        onClick={() => setMonthKey((current) => shiftMonthKey(current, -1))}
+                    >
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="min-w-[9.5rem] text-center font-display text-sm font-semibold text-[var(--sera-ink)]">
+                        {month.label}
+                    </span>
+                    <Button
+                        type="button" variant="ghost" size="sm" className="h-8 w-8 p-0"
+                        aria-label="Next month"
+                        disabled={!canSelectNextMonth(monthKey)}
+                        title={canSelectNextMonth(monthKey) ? undefined : 'Future months are not available'}
+                        onClick={() => setMonthKey((current) => (canSelectNextMonth(current) ? shiftMonthKey(current, 1) : current))}
+                    >
+                        <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
+
+                {month.isCurrentMonth && (
+                    <span className="inline-flex items-center rounded-full border border-[var(--sera-orange)]/25 bg-[var(--sera-orange)]/10 px-2.5 py-1 text-xs font-medium text-[var(--sera-orange-deep)]">
+                        {MONTH_TO_DATE_LABEL}
+                    </span>
+                )}
+
+                <span className="text-xs text-[var(--sera-muted)]">{monthCoverageLabel(month)}</span>
+
+                <div className="relative min-w-[16rem] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        placeholder="Search account manager, participant, shop or campaign"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9"
+                    />
+                </div>
+
+                <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+                    <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" size="sm">
+                            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                            More Filters
+                            {activeFilterCount > 0 && (
+                                <span className="ml-1.5 rounded-full bg-[var(--sera-orange)]/15 px-1.5 text-[11px] font-semibold text-[var(--sera-orange-deep)]">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80 space-y-3">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">RoadTour Event</label>
+                            <Select value={runFilter} onValueChange={(v) => { setRunFilter(v); setCampaignFilter('all') }}>
+                                <SelectTrigger><SelectValue placeholder="All Events" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Events</SelectItem>
+                                    {runs.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Campaign</label>
+                            <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Campaigns" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Campaigns</SelectItem>
+                                    {campaigns
+                                        .filter((c) => runFilter === 'all' || c.roadtour_run_id === runFilter)
+                                        .map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Account Manager</label>
+                            <Select value={referenceFilter} onValueChange={setReferenceFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Account Managers" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Account Managers</SelectItem>
+                                    {references.map((r) => <SelectItem key={r.id} value={r.id}>{r.full_name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Visit Status</label>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="official">Completed</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="rejected">Rejected</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {activeFilterCount > 0 && (
+                            <Button
+                                type="button" variant="ghost" size="sm" className="w-full"
+                                onClick={() => {
+                                    setRunFilter('all'); setCampaignFilter('all')
+                                    setReferenceFilter('all'); setStatusFilter('all')
+                                    setFiltersOpen(false)
+                                }}
+                            >
+                                <X className="mr-1.5 h-3.5 w-3.5" />Clear filters
+                            </Button>
+                        )}
+                    </PopoverContent>
+                </Popover>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+            {/* KPI Cards — four primary metrics; route distance lives in the detail and export. */}
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <KpiCard
                     icon={<Footprints className="h-5 w-5 text-[var(--sera-orange)]" />}
                     iconBg="bg-[var(--sera-orange)]/10"
                     label="Total Visits"
                     value={metrics.total.toString()}
-                    trend={metrics.trendVisits}
-                    trendLabel={`vs ${metrics.prevLabel}`}
+                    sub={monthCoverageLabel(month)}
                 />
                 <KpiCard
                     icon={<Store className="h-5 w-5 text-emerald-600" />}
                     iconBg="bg-emerald-100"
-                    label="Unique Shops Visited"
+                    label="Unique Shops"
                     value={metrics.uniqueShops.toString()}
-                    trend={metrics.trendShops}
-                    trendLabel={`vs ${metrics.prevLabel}`}
+                    sub="distinct shops visited"
                 />
                 <KpiCard
                     icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
@@ -764,96 +752,12 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     value={metrics.locationIssues.toString()}
                     sub={`${metrics.locationIssuePct.toFixed(1)}% of total visits`}
                 />
-                <KpiCard
-                    icon={<Route className="h-5 w-5 text-[var(--sera-ink-soft)]" />}
-                    iconBg="bg-[var(--sera-mist)]"
-                    label="Estimated Distance"
-                    value={`${metrics.totalKm.toFixed(1)} km`}
-                    sub="Total route distance"
-                />
             </div>
 
-            {/* Charts row */}
-            <div className="grid gap-4 lg:grid-cols-3">
-                <Card className="lg:col-span-1">
-                    <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-base">Visits Over Time</CardTitle>
-                            <div className="flex rounded-md border bg-muted p-0.5 text-xs">
-                                <button onClick={() => setTrendView('day')} className={`px-2 py-1 rounded ${trendView === 'day' ? 'bg-white shadow-sm' : 'text-muted-foreground'}`}>Day</button>
-                                <button onClick={() => setTrendView('week')} className={`px-2 py-1 rounded ${trendView === 'week' ? 'bg-white shadow-sm' : 'text-muted-foreground'}`}>Week</button>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="h-[220px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={visitsOverTime} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-                                <CartesianGrid stroke="#f1f5f9" vertical={false} />
-                                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="value" stroke="#e85d04" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-base">Visits by Region</CardTitle></CardHeader>
-                    <CardContent className="h-[220px]">
-                        {visitsByRegion.length === 0 ? (
-                            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No region data</div>
-                        ) : (
-                            <div className="flex h-full items-center gap-4">
-                                <div className="h-full min-w-0 flex-1">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie data={visitsByRegion} dataKey="visitCount" nameKey="regionName" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                                                {visitsByRegion.map((_, i) => <Cell key={i} fill={REGION_COLORS[i % REGION_COLORS.length]} />)}
-                                            </Pie>
-                                            <Tooltip formatter={(value: number) => [`${value} visits`, 'Visits']} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <div className="w-36 space-y-2 text-xs">
-                                    {visitsByRegion.map((entry) => (
-                                        <div key={entry.regionName} className="flex items-center justify-between gap-2">
-                                            <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                                                <RoadtourStateFlag stateName={entry.regionName} fallback="placeholder" />
-                                                <span className="truncate">{entry.regionName}</span>
-                                            </span>
-                                            <span className="shrink-0 font-medium text-foreground">= {entry.visitCount}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                        <CardTitle className="text-base">Top References</CardTitle>
-                        <button className="text-xs text-[var(--sera-orange)] hover:underline hover:text-[var(--sera-orange-deep)]">View all</button>
-                    </CardHeader>
-                    <CardContent>
-                        {topReferences.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No references in this period.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {topReferences.map((ref, idx) => (
-                                    <div key={ref.id} className="flex items-center gap-3">
-                                        <span className="w-4 text-xs font-semibold text-muted-foreground">{idx + 1}</span>
-                                        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${colorFor(ref.id)}`}>{initialsFor(ref.name)}</div>
-                                        <span className="flex-1 text-sm font-medium truncate">{ref.name}</span>
-                                        <span className="text-xs text-muted-foreground">{ref.count} visits</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Route className="h-3.5 w-3.5" />
+                Estimated route distance this month: {metrics.totalKm.toFixed(1)} km — per-visit distance is in the visit detail and the export.
+            </p>
 
             {/* Visit Activity Table */}
             <Card>
@@ -874,33 +778,29 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>Date / Time</TableHead>
-                                <TableHead>Reference</TableHead>
+                                <TableHead>Visit Date / Time</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Participant</TableHead>
                                 <TableHead>Shop</TableHead>
-                                <TableHead>User</TableHead>
                                 <TableHead>Campaign</TableHead>
-                                <TableHead>Location</TableHead>
-                                <TableHead>Distance from Previous</TableHead>
-                                <TableHead>Status</TableHead>
+                                <TableHead>Location Status</TableHead>
+                                <TableHead>Visit Status</TableHead>
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {pageItems.length === 0 && (
-                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No visits found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No visits found in {month.label}.</TableCell></TableRow>
                             )}
                             {pageItems.map((v) => {
-                                const dist = distanceByVisitId.get(v.id)
                                 const status = visitOutcomeForRow(v)
                                 const locationDisplay = formatVisitLocationDisplay(v)
                                 const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
                                 const participantDisplay = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+                                const hasAccountManager = Boolean(v.account_manager_user_id) && Boolean(v.user_name) && v.user_name !== '—'
+                                const accountManagerLabel = hasAccountManager ? (v.user_name as string) : UNASSIGNED_AM_LABEL
                                 const locColor = v.visit_location_status === 'resolved' ? 'text-emerald-600'
                                     : v.visit_location_status ? 'text-amber-600' : 'text-muted-foreground'
-                                const distColor = !dist ? 'text-muted-foreground'
-                                    : dist.level === 'high' ? 'text-amber-700'
-                                        : dist.level === 'medium' ? 'text-amber-600'
-                                            : 'text-muted-foreground'
                                 const statusBadge = status.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
                                     : status.tone === 'amber' ? 'bg-amber-100 text-amber-700'
                                         : status.tone === 'red' ? 'bg-red-100 text-red-700'
@@ -913,16 +813,8 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id)}`}>{initialsFor(v.user_name)}</div>
-                                                <span className="text-sm font-medium">{v.user_name}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div>
-                                                <p className="text-sm font-medium">{v.shop_name}</p>
-                                                {(v.shop_branch || v.shop_state) && (
-                                                    <p className="text-xs text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
-                                                )}
+                                                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id || 'unassigned')}`}>{initialsFor(accountManagerLabel)}</div>
+                                                <span className={`text-sm font-medium ${hasAccountManager ? '' : 'text-amber-700'}`}>{accountManagerLabel}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -930,6 +822,14 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                                 <p className={`text-sm font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</p>
                                                 {participantDisplay.secondary && (
                                                     <p className="text-xs text-muted-foreground">{participantDisplay.secondary}</p>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="min-w-[9rem]">
+                                                <p className="text-sm font-medium">{v.shop_name}</p>
+                                                {(v.shop_branch || v.shop_state) && (
+                                                    <p className="text-xs text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
                                                 )}
                                             </div>
                                         </TableCell>
@@ -951,9 +851,6 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                                     </div>
                                                 </div>
                                             </div>
-                                        </TableCell>
-                                        <TableCell className={`text-sm ${distColor}`}>
-                                            {dist ? `${dist.km.toFixed(1)} km` : '—'}
                                         </TableCell>
                                         <TableCell>
                                             <Badge className={statusBadge}>{status.label}</Badge>
@@ -1112,13 +1009,11 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     )
 }
 
-function KpiCard({ icon, iconBg, label, value, trend, trendLabel, sub }: {
+function KpiCard({ icon, iconBg, label, value, sub }: {
     icon: React.ReactNode
     iconBg: string
     label: string
     value: string
-    trend?: { sign: '+' | '-'; value: string } | null
-    trendLabel?: string
     sub?: string
 }) {
     return (
@@ -1128,14 +1023,7 @@ function KpiCard({ icon, iconBg, label, value, trend, trendLabel, sub }: {
                     <div>
                         <p className="text-xs text-muted-foreground">{label}</p>
                         <p className="mt-1 text-2xl font-bold">{value}</p>
-                        {trend && (
-                            <p className={`mt-1 inline-flex items-center gap-1 text-xs ${trend.sign === '+' ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {trend.sign === '+' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                                {trend.sign}{trend.value}
-                                {trendLabel && <span className="text-muted-foreground font-normal">{trendLabel}</span>}
-                            </p>
-                        )}
-                        {!trend && sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+                        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
                     </div>
                     <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}>{icon}</div>
                 </div>
