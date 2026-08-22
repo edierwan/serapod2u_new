@@ -46,7 +46,7 @@ export const customerGrowthLandingAccents: Record<string, LandingAccent> = {
 /** RoadTour hub cards */
 export const roadtourLandingAccents: Record<string, LandingAccent> = {
   'rt-campaigns': landingAccents.orange,
-  'rt-analytics': landingAccents.sky,
+  'rt-reporting': landingAccents.sky,
   'rt-settings': landingAccents.slate,
 }
 

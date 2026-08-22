@@ -1,5 +1,6 @@
-﻿import { RoadtourAdminView } from '../../_RoadtourAdminView'
+import { redirect } from 'next/navigation'
 
+/** Legacy "Account Manager Impact" — replaced by AM Performance. */
 export default function Page() {
-  return <RoadtourAdminView view="roadtour-am-impact" />
+  redirect('/roadtour/reporting/am-performance')
 }

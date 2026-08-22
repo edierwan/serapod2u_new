@@ -154,18 +154,17 @@ import { RoadtourCampaignsView } from '@/modules/roadtour/components/RoadtourCam
 import { RoadtourQrManagementView } from '@/modules/roadtour/components/RoadtourQrManagementView'
 import { RoadtourSurveyHubView } from '@/modules/roadtour/components/RoadtourSurveyHubView'
 import { RoadtourVisitsView } from '@/modules/roadtour/components/RoadtourVisitsView'
-import { RoadtourAnalyticsView } from '@/modules/roadtour/components/RoadtourAnalyticsView'
 import { RoadtourSettingsView } from '@/modules/roadtour/components/RoadtourSettingsView'
 import { RoadtourWhatsAppMonitoringView } from '@/modules/roadtour/components/RoadtourWhatsAppMonitoringView'
-import { PostVisitImpactReportView } from '@/modules/roadtour/components/analytics/PostVisitImpactReportView'
-import { ShopImpactDetailView } from '@/modules/roadtour/components/analytics/ShopImpactDetailView'
-import { AccountManagerImpactPerformanceView } from '@/modules/roadtour/components/analytics/AccountManagerImpactPerformanceView'
-import { FollowUpPriorityQueueView } from '@/modules/roadtour/components/analytics/FollowUpPriorityQueueView'
+import { MonthlyOverviewView } from '@/modules/roadtour/components/reporting/MonthlyOverviewView'
+import { AmPerformanceView } from '@/modules/roadtour/components/reporting/AmPerformanceView'
+import { ShopFollowUpView } from '@/modules/roadtour/components/reporting/ShopFollowUpView'
+import { ShopDrilldownView } from '@/modules/roadtour/components/reporting/ShopDrilldownView'
 import { MonthlyKpiPerformanceReportView } from '@/modules/roadtour/components/analytics/MonthlyKpiPerformanceReportView'
 import { RoadtourKpiSettingsView } from '@/modules/roadtour/components/RoadtourKpiSettingsView'
 import RoadtourTopNav from '@/modules/roadtour/components/RoadtourTopNav'
 import GlobalPageChrome from '@/components/layout/GlobalPageChrome'
-import { isRoadtourViewId, roadtourHrefForView } from '@/modules/roadtour/roadtourNav'
+import { isRoadtourViewId, resolveRoadtourViewId, roadtourHrefForView } from '@/modules/roadtour/roadtourNav'
 import UserProfileWrapper from '@/components/users/UserProfileWrapper'
 import MarketingPage from '@/app/loyalty/marketing/page'
 import { AdminSupportInboxV2 } from '@/components/support/AdminSupportInboxV2'
@@ -489,7 +488,9 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
       )
     }
 
-    switch (currentView) {
+    // Legacy RoadTour Analytics view ids still resolve to the report that
+    // replaced them, so old deep links never render a blank page.
+    switch (isRoadtourViewId(currentView) ? resolveRoadtourViewId(currentView) : currentView) {
       case 'products':
         return <ProductsView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'view-product':
@@ -597,16 +598,14 @@ export default function DashboardContent({ userProfile, initialView, initialOrde
         return <RoadtourSurveyHubView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-visits':
         return <RoadtourVisitsView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'roadtour-analytics':
-        return <RoadtourAnalyticsView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'roadtour-post-visit-impact':
-        return <PostVisitImpactReportView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'roadtour-shop-impact':
-        return <ShopImpactDetailView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'roadtour-am-impact':
-        return <AccountManagerImpactPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
-      case 'roadtour-follow-up-priority':
-        return <FollowUpPriorityQueueView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-monthly-overview':
+        return <MonthlyOverviewView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-am-performance':
+        return <AmPerformanceView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-shop-follow-up':
+        return <ShopFollowUpView userProfile={userProfile} onViewChange={handleViewChange} />
+      case 'roadtour-shop-drilldown':
+        return <ShopDrilldownView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-monthly-kpi-report':
         return <MonthlyKpiPerformanceReportView userProfile={userProfile} onViewChange={handleViewChange} />
       case 'roadtour-whatsapp':

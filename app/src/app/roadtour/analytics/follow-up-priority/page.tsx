@@ -1,5 +1,6 @@
-﻿import { RoadtourAdminView } from '../../_RoadtourAdminView'
+import { redirect } from 'next/navigation'
 
+/** Legacy "Follow-Up Priority Queue" — replaced by Shop Follow-Up. */
 export default function Page() {
-  return <RoadtourAdminView view="roadtour-follow-up-priority" />
+  redirect('/roadtour/reporting/follow-up')
 }

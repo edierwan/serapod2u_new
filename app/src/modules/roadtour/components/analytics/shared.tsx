@@ -2,7 +2,6 @@
 
 import { Card } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
-import type { ImpactStatus, FollowUpPriority } from '@/modules/roadtour/types/analytics'
 
 export function KpiCard({ label, value, sub, icon: Icon, accent, onClick }: {
     label: string
@@ -69,55 +68,6 @@ export function EmptyBlock({ title, description }: { title: string; description?
             {description && <p className="mx-auto mt-1 max-w-md text-sm">{description}</p>}
         </div>
     )
-}
-
-const STATUS_STYLE: Record<ImpactStatus, string> = {
-    improved: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-    maintained: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)] border border-[var(--sera-line)]',
-    dropped: 'bg-rose-100 text-rose-700 border border-rose-200',
-    newly_activated: 'bg-[var(--sera-orange)]/10 text-[var(--sera-orange-deep)] border border-[var(--sera-orange)]/25',
-    no_response: 'bg-amber-100 text-amber-800 border border-amber-200',
-}
-
-const STATUS_LABEL: Record<ImpactStatus, string> = {
-    improved: 'Improved',
-    maintained: 'Maintained',
-    dropped: 'Dropped',
-    newly_activated: 'Newly Activated',
-    no_response: 'No Response',
-}
-
-export function StatusPill({ status }: { status: ImpactStatus }) {
-    return (
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[status]}`}>
-            {STATUS_LABEL[status]}
-        </span>
-    )
-}
-
-const PRIORITY_STYLE: Record<FollowUpPriority, string> = {
-    high: 'bg-rose-100 text-rose-700 border border-rose-200',
-    medium: 'bg-amber-100 text-amber-700 border border-amber-200',
-    low: 'bg-[var(--sera-mist)] text-[var(--sera-ink-soft)] border border-[var(--sera-line)]',
-    healthy: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-}
-
-const PRIORITY_LABEL: Record<FollowUpPriority, string> = {
-    high: 'High', medium: 'Medium', low: 'Low', healthy: 'Healthy',
-}
-
-export function PriorityPill({ priority }: { priority: FollowUpPriority }) {
-    return (
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${PRIORITY_STYLE[priority]}`}>
-            {PRIORITY_LABEL[priority]}
-        </span>
-    )
-}
-
-export function formatLiftPercent(v: number | null): string {
-    if (v === null || !Number.isFinite(v)) return '—'
-    const sign = v > 0 ? '+' : ''
-    return `${sign}${v.toFixed(1)}%`
 }
 
 export function formatNumber(v: number | null | undefined): string {

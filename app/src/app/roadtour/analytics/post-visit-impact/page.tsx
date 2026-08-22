@@ -1,5 +1,6 @@
-﻿import { RoadtourAdminView } from '../../_RoadtourAdminView'
+import { redirect } from 'next/navigation'
 
+/** Legacy "Post-Visit Impact Report" — consolidated into Monthly Overview. */
 export default function Page() {
-  return <RoadtourAdminView view="roadtour-post-visit-impact" />
+  redirect('/roadtour/reporting')
 }
