@@ -125,7 +125,7 @@ export function ShopFollowUpView({ userProfile }: Props) {
                                 <div>
                                     <CardTitle className="text-base">Follow-Up Queue</CardTitle>
                                     <p className="text-xs text-[var(--sera-muted)]">
-                                        {queue.length} shops · {IMPACT_METHOD_NOTE}
+                                        {queue.length} {queue.length === 1 ? 'shop' : 'shops'} · {IMPACT_METHOD_NOTE}
                                     </p>
                                 </div>
                                 <div className="flex flex-1 items-center gap-2 sm:max-w-md">

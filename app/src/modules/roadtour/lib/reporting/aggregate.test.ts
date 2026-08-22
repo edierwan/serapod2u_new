@@ -292,11 +292,19 @@ describe('monthly overview summary', () => {
         expect(pendingSummary.visitToScanConversion).toBeNull()
     })
 
+    it('agrees in number for a single shop', () => {
+        const single = [row({ visit_id: 'single', shop_id: 'only', visit_at: '2026-08-03T02:00:00.000Z', before_scans: 2, after_scans: 0 })]
+        const singleEntries = buildShopEntries(single, NOW)
+        const singleSummary = buildOverviewSummary(singleEntries, single)
+        expect(buildManagementInsights(singleEntries, singleSummary, buildAmPerformance(singleEntries, single))[0])
+            .toBe('1 shop requires follow-up; 1 is assigned to Fitri.')
+    })
+
     it('derives at most two insights, all from the calculations', () => {
         const insights = buildManagementInsights(entries, summary, buildAmPerformance(entries, rows))
         expect(insights).toHaveLength(2)
         expect(insights[0]).toBe('3 shops require follow-up; 3 are assigned to Fitri.')
-        expect(insights[1]).toBe('1 recent visits are still pending the full 7-day observation window.')
+        expect(insights[1]).toBe('1 visit is still pending the full 7-day observation window.')
     })
 })
 

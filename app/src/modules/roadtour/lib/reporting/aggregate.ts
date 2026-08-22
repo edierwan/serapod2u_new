@@ -329,6 +329,8 @@ export function buildManagementInsights(
     amPerformance: AmPerformanceResult,
 ): string[] {
     const insights: string[] = []
+    const shops = (count: number) => `${count} ${count === 1 ? 'shop' : 'shops'}`
+    const visits = (count: number) => `${count} ${count === 1 ? 'visit' : 'visits'}`
 
     if (summary.shopsRequiringFollowUp > 0) {
         const needsFollowUp = entries.filter((entry) => (
@@ -341,17 +343,18 @@ export function buildManagementInsights(
             byAm.set(entry.ownerAmName, (byAm.get(entry.ownerAmName) || 0) + 1)
         }
         const top = Array.from(byAm.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]
+        const requires = summary.shopsRequiringFollowUp === 1 ? 'requires' : 'require'
         insights.push(top
-            ? `${summary.shopsRequiringFollowUp} shops require follow-up; ${top[1]} are assigned to ${top[0]}.`
-            : `${summary.shopsRequiringFollowUp} shops require follow-up.`)
+            ? `${shops(summary.shopsRequiringFollowUp)} ${requires} follow-up; ${top[1]} ${top[1] === 1 ? 'is' : 'are'} assigned to ${top[0]}.`
+            : `${shops(summary.shopsRequiringFollowUp)} ${requires} follow-up.`)
     }
 
     if (summary.pendingObservationVisits > 0) {
-        insights.push(`${summary.pendingObservationVisits} recent visits are still pending the full 7-day observation window.`)
+        insights.push(`${visits(summary.pendingObservationVisits)} ${summary.pendingObservationVisits === 1 ? 'is' : 'are'} still pending the full 7-day observation window.`)
     }
 
     if (insights.length < 2 && amPerformance.unassignedVisits > 0) {
-        insights.push(`${amPerformance.unassignedVisits} visits have no resolvable account manager and are excluded from the leaderboard.`)
+        insights.push(`${visits(amPerformance.unassignedVisits)} ${amPerformance.unassignedVisits === 1 ? 'has' : 'have'} no resolvable account manager and ${amPerformance.unassignedVisits === 1 ? 'is' : 'are'} excluded from the leaderboard.`)
     }
 
     return insights.slice(0, 2)
