@@ -1,5 +1,4 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
 
 // Create admin client with service role key for database setup operations
 export const createAdminClient = (timeoutMs: number = 10_000) => {
@@ -15,7 +14,9 @@ export const createAdminClient = (timeoutMs: number = 10_000) => {
     )
   }
 
-  return createSupabaseClient<Database>(
+  // Do not bind the generated Database generic here: newer tables (e.g. serapp_*)
+  // are missing from it and typed clients have caused opaque empty reads in routes.
+  return createSupabaseClient(
     supabaseUrl,
     supabaseServiceKey,
     {

@@ -20,13 +20,21 @@ export function canAccessSerappConversation(
   conversation: SerappConversationAccessRow,
   actor: SerappConversationActor,
 ): boolean {
-  if (conversation.owner_user_id === actor.userId) return true
-  if (conversation.owner_org_id === actor.orgId) return true
+  const userId = String(actor.userId || '').trim().toLowerCase()
+  const orgId = String(actor.orgId || '').trim().toLowerCase()
+  const ownerUserId = String(conversation.owner_user_id || '').trim().toLowerCase()
+  const ownerOrgId = String(conversation.owner_org_id || '').trim().toLowerCase()
+  const distributorOrgId = String(conversation.distributor_org_id || '').trim().toLowerCase()
+
+  if (ownerUserId && ownerUserId === userId) return true
+  if (ownerOrgId && ownerOrgId === orgId) return true
 
   if (actor.isHqSupport) {
-    const childIds = new Set(actor.childDistributorIds || [])
-    if (childIds.has(conversation.owner_org_id)) return true
-    if (conversation.distributor_org_id && childIds.has(conversation.distributor_org_id)) return true
+    const childIds = new Set(
+      (actor.childDistributorIds || []).map((id) => String(id || '').trim().toLowerCase()),
+    )
+    if (ownerOrgId && childIds.has(ownerOrgId)) return true
+    if (distributorOrgId && childIds.has(distributorOrgId)) return true
   }
 
   return false

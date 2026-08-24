@@ -323,28 +323,72 @@ export async function getAccessibleConversation(
   conversationId: string,
   actor: { userId: string; orgId: string; isHqSupport: boolean },
 ): Promise<SerappConversationRow | null> {
-  const { data, error } = await admin
+  const id = String(conversationId || '').trim()
+  if (!id) {
+    console.warn('[serapp] getAccessibleConversation: empty conversation id')
+    return null
+  }
+
+  // Untyped from() — serapp_* tables are not in generated Database types yet.
+  const { data, error } = await (admin as any)
     .from('serapp_conversations')
     .select('*')
-    .eq('id', conversationId)
+    .eq('id', id)
     .maybeSingle()
   if (error) throw error
-  if (!data) return null
+  if (!data) {
+    console.warn('[serapp] getAccessibleConversation: row missing', {
+      id,
+      userId: actor.userId,
+      orgId: actor.orgId,
+    })
+    return null
+  }
 
+  const row = data as SerappConversationRow
   const childDistributorIds = actor.isHqSupport && actor.orgId
     ? await loadChildDistributorIds(admin, actor.orgId)
     : []
 
-  if (!canAccessSerappConversation(data as SerappConversationRow, {
+  if (canAccessSerappConversation(row, {
     userId: actor.userId,
     orgId: actor.orgId,
     isHqSupport: actor.isHqSupport,
     childDistributorIds,
   })) {
-    return null
+    return row
   }
 
-  return data as SerappConversationRow
+  // Fallback for HQ: verify parent_org_id directly (avoids child-list gaps / stale cache).
+  if (actor.isHqSupport && actor.orgId) {
+    const ownerOrgId = row.owner_org_id || row.distributor_org_id
+    if (ownerOrgId) {
+      const { data: ownerOrg } = await (admin as any)
+        .from('organizations')
+        .select('id, parent_org_id, org_type_code')
+        .eq('id', ownerOrgId)
+        .maybeSingle()
+      if (
+        ownerOrg
+        && ownerOrg.org_type_code === 'DIST'
+        && ownerOrg.parent_org_id === actor.orgId
+      ) {
+        return row
+      }
+    }
+  }
+
+  console.warn('[serapp] getAccessibleConversation: access denied', {
+    id,
+    actorUserId: actor.userId,
+    actorOrgId: actor.orgId,
+    isHqSupport: actor.isHqSupport,
+    ownerUserId: row.owner_user_id,
+    ownerOrgId: row.owner_org_id,
+    distributorOrgId: row.distributor_org_id,
+    childCount: childDistributorIds.length,
+  })
+  return null
 }
 
 export async function listMessages(

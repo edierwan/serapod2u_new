@@ -168,7 +168,12 @@ export default function SerappChatThread() {
     try {
       const res = await fetch(`/api/serapp/conversations/${conversationId}`)
       const payload = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(payload?.error || 'Failed to load chat.')
+      if (!res.ok) {
+        const detail = payload?.detail
+          ? ` (${payload.detail.rowFound === false ? 'missing' : payload.detail.rowFound ? 'denied' : 'unknown'})`
+          : ''
+        throw new Error((payload?.error || 'Failed to load chat.') + detail)
+      }
       setConversation(payload.conversation)
       setSession(payload.session)
       setMessages((payload.messages || []).map(mapRow))
