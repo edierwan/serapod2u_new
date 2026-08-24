@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { SeraLoadingState } from '@/components/ui/SeraLoader'
 import { toast } from '@/components/ui/use-toast'
 import { fetchRoadtourRuns, type RoadtourRun } from '@/lib/roadtour/events'
 import { formatVisitDateTime, formatVisitParticipantCsvValue, resolveVisitParticipantDisplay } from '@/modules/roadtour/lib/visit-tracking'
+import { mergeVisitParticipants, type VisitParticipantMap } from '@/modules/roadtour/lib/visit-participants'
 import {
     MONTH_TO_DATE_LABEL,
     canSelectNextMonth,
@@ -298,7 +299,45 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const [scans, setScans] = useState<ScanEvent[]>([])
     const [scansLoading, setScansLoading] = useState(false)
 
+    // Participant names arrive in a second round trip, so a slower earlier load
+    // must not overwrite the rows a newer one has already put on screen.
+    const loadSequenceRef = useRef(0)
+
+    /**
+     * Resolve participants on the server.
+     *
+     * `users` is RLS-scoped to the viewer's own organization and a participant is
+     * a shop or consumer account outside HQ, so the browser cannot read the user
+     * a scan is linked to — it saw an empty embed and rendered a correctly linked
+     * participant as "Unregistered Participant". The API route re-applies the same
+     * organization scope and resolves the names with the service role, exactly as
+     * RoadTour Reporting does.
+     */
+    const hydrateParticipants = useCallback(async (rows: OfficialVisit[], requestId: number) => {
+        const visitIds = rows.filter((v) => v.official_scan_event_id).map((v) => v.id)
+        if (visitIds.length === 0) return
+
+        try {
+            const response = await fetch('/api/roadtour/visits/participants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ org_id: companyId, visit_ids: visitIds }),
+            })
+            const payload = await response.json().catch(() => null)
+            if (!response.ok || !payload?.success) {
+                throw new Error(payload?.error || `Participant lookup failed (${response.status})`)
+            }
+            if (requestId !== loadSequenceRef.current) return
+            setVisits((current) => mergeVisitParticipants(current, payload.data as VisitParticipantMap))
+        } catch (err) {
+            // The rows already carry whatever the browser itself could read, so the
+            // log stays usable and only the registered names are missing.
+            console.warn('[RoadtourVisits] participant resolution skipped', err)
+        }
+    }, [companyId])
+
     const loadVisits = useCallback(async () => {
+        const requestId = ++loadSequenceRef.current
         try {
             const isInitial = !refreshing
             if (isInitial) setLoading(true)
@@ -347,6 +386,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             }))
             setVisits(normalized)
             setLastUpdated(new Date())
+            void hydrateParticipants(normalized, requestId)
 
             const { data: cData } = await (supabase as any)
                 .from('roadtour_campaigns')
@@ -375,7 +415,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
             setLoading(false)
             setRefreshing(false)
         }
-    }, [companyId, supabase, runFilter, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing])
+    }, [companyId, supabase, runFilter, campaignFilter, referenceFilter, dateFrom, dateTo, refreshing, hydrateParticipants])
 
     useEffect(() => { loadVisits() }, [loadVisits])
 
