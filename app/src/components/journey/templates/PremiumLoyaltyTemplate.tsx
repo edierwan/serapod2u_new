@@ -8757,8 +8757,12 @@ export default function PremiumLoyaltyTemplate({
 
             {/* Redeem Confirmation Modal */}
             {showRedeemConfirm && selectedReward && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+                <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/50 p-4 sm:items-center">
+                    <div
+                        className="my-auto flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white"
+                        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+                    >
+                        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-6">
                         <div className="text-center">
                             {/* Animated Gift Icon */}
                             <div className="relative w-20 h-20 mx-auto mb-4">
@@ -8896,28 +8900,31 @@ export default function PremiumLoyaltyTemplate({
                                 <p className="text-sm text-red-600 text-center">{redeemError}</p>
                             </div>
                         )}
+                        </div>
 
-                        <div className="flex gap-3">
+                        <div className="flex shrink-0 gap-3 border-t border-gray-100 bg-white p-4">
                             <button
+                                type="button"
                                 onClick={() => {
                                     setShowRedeemConfirm(false)
                                     setSelectedReward(null)
                                     setRedeemError('')
                                 }}
                                 disabled={redeeming}
-                                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                             >
                                 Cancel
                             </button>
                             <button
+                                type="button"
                                 onClick={confirmRedemption}
                                 disabled={redeeming}
-                                className="flex-1 px-4 py-3 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                className="flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold text-white transition-colors disabled:opacity-50"
                                 style={{ backgroundColor: (selectedReward as any).category === 'point' ? '#10B981' : config.button_color }}
                             >
                                 {redeeming ? (
                                     <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <Loader2 className="h-4 w-4 animate-spin" />
                                         Processing...
                                     </>
                                 ) : (selectedReward as any).category === 'point' ? (
@@ -9176,9 +9183,9 @@ export default function PremiumLoyaltyTemplate({
                     )}
                 </DialogContent>
             </Dialog>
-            {/* Reward Detail Modal */}
+            {/* Reward Detail Modal — sticky actions so Collect stays visible on short phones */}
             <Dialog open={showRewardDetailModal} onOpenChange={setShowRewardDetailModal}>
-                <DialogContent className="max-w-[90vw] w-full rounded-2xl p-0 overflow-hidden bg-white">
+                <DialogContent className="flex max-h-[min(92dvh,92vh)] w-full max-w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl bg-white p-0">
                     <DialogTitle className="sr-only">
                         {selectedRewardForDetail?.item_name || 'Reward Details'}
                     </DialogTitle>
@@ -9196,12 +9203,13 @@ export default function PremiumLoyaltyTemplate({
                         images.forEach(img => mediaItems.push({ type: 'image', url: img }))
 
                         return (
-                            <div className="relative h-64 w-full bg-white overflow-hidden">
+                            <div className="relative h-[min(11rem,26dvh)] w-full shrink-0 overflow-hidden bg-white sm:h-56">
                                 <button
+                                    type="button"
                                     onClick={() => setShowRewardDetailModal(false)}
-                                    className="absolute top-4 right-4 z-20 p-2 bg-black/10 hover:bg-black/20 rounded-full transition-colors"
+                                    className="absolute top-4 right-4 z-20 rounded-full bg-black/10 p-2 transition-colors hover:bg-black/20"
                                 >
-                                    <X className="w-5 h-5 text-gray-600" />
+                                    <X className="h-5 w-5 text-gray-600" />
                                 </button>
 
                                 {mediaItems.length > 0 ? (
@@ -9232,7 +9240,7 @@ export default function PremiumLoyaltyTemplate({
                                                 {media.type === 'video' ? (
                                                     <video
                                                         src={getStorageUrl(media.url) || media.url}
-                                                        className="w-full h-full object-contain p-4"
+                                                        className="h-full w-full object-contain p-4"
                                                         controls
                                                         autoPlay
                                                         loop
@@ -9252,8 +9260,8 @@ export default function PremiumLoyaltyTemplate({
                                         ))}
                                     </motion.div>
                                 ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <Gift className="w-20 h-20 text-gray-300" />
+                                    <div className="flex h-full w-full items-center justify-center">
+                                        <Gift className="h-20 w-20 text-gray-300" />
                                     </div>
                                 )}
 
@@ -9263,8 +9271,9 @@ export default function PremiumLoyaltyTemplate({
                                         {mediaItems.map((_, idx) => (
                                             <button
                                                 key={idx}
+                                                type="button"
                                                 onClick={() => setCurrentRewardImageIndex(idx)}
-                                                className={`w-2 h-2 rounded-full transition-colors ${idx === currentRewardImageIndex
+                                                className={`h-2 w-2 rounded-full transition-colors ${idx === currentRewardImageIndex
                                                     ? 'bg-gray-800'
                                                     : 'bg-gray-300'
                                                     }`}
@@ -9276,20 +9285,20 @@ export default function PremiumLoyaltyTemplate({
                         )
                     })()}
 
-                    <div className="p-6 space-y-4">
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-4">
                         <div>
                             <h3 className="text-xl font-bold text-gray-900">{selectedRewardForDetail?.item_name}</h3>
-                            <p className="text-sm text-gray-500 mt-1">{selectedRewardForDetail?.item_description || 'No description available'}</p>
+                            <p className="mt-1 text-sm text-gray-500">{selectedRewardForDetail?.item_description || 'No description available'}</p>
                         </div>
 
-                        <div className="flex items-center justify-between py-4 border-t border-b border-gray-100">
+                        <div className="flex items-center justify-between border-b border-t border-gray-100 py-4">
                             <div className="space-y-1">
                                 {(selectedRewardForDetail as any)?.category === 'point' ? (
                                     <>
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Bonus Points</p>
+                                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Bonus Points</p>
                                         <div className="flex items-center gap-2">
-                                            <div className="p-1.5 bg-green-100 rounded-full">
-                                                <Star className="w-4 h-4 text-green-600 fill-green-600" />
+                                            <div className="rounded-full bg-green-100 p-1.5">
+                                                <Star className="h-4 w-4 fill-green-600 text-green-600" />
                                             </div>
                                             <span className="text-2xl font-bold text-green-600">
                                                 +{formatNumber((selectedRewardForDetail as any)?.point_reward_amount || 0)}
@@ -9299,10 +9308,10 @@ export default function PremiumLoyaltyTemplate({
                                     </>
                                 ) : (
                                     <>
-                                        <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Points Required</p>
+                                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Points Required</p>
                                         <div className="flex items-center gap-2">
-                                            <div className="p-1.5 bg-amber-100 rounded-full">
-                                                <Star className="w-4 h-4 text-amber-600 fill-amber-600" />
+                                            <div className="rounded-full bg-amber-100 p-1.5">
+                                                <Star className="h-4 w-4 fill-amber-600 text-amber-600" />
                                             </div>
                                             <span className="text-2xl font-bold text-gray-900">
                                                 {formatNumber(selectedRewardForDetail?.point_offer || selectedRewardForDetail?.points_required)}
@@ -9312,77 +9321,83 @@ export default function PremiumLoyaltyTemplate({
                                 )}
                             </div>
                             <div className="space-y-1 text-right">
-                                <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">Stock</p>
+                                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Stock</p>
                                 <p className="text-lg font-semibold text-gray-900">
                                     {selectedRewardForDetail?.stock_quantity === null ? 'Unlimited' : selectedRewardForDetail?.stock_quantity}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="space-y-3 pt-2">
+                        <div className="space-y-3 pt-1">
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
                                 <span>Staff verification not required</span>
                             </div>
                             <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
                                 <span>No per-consumer limit set</span>
                             </div>
                         </div>
+                    </div>
 
-                        <div className="pt-4 flex gap-3">
-                            <Button
-                                variant="outline"
-                                className="flex-1 h-12 rounded-xl border-gray-200"
-                                onClick={() => setShowRewardDetailModal(false)}
-                            >
-                                Close
-                            </Button>
-                            {selectedRewardForDetail && (
-                                // For Point category (bonus points), always show collect button
-                                (selectedRewardForDetail as any)?.category === 'point' ? (
-                                    <Button
-                                        className="flex-1 h-12 rounded-xl text-white shadow-lg shadow-green-500/20"
-                                        style={{ backgroundColor: '#10B981' }}
-                                        onClick={() => {
-                                            setShowRewardDetailModal(false)
-                                            handleRedeemReward(selectedRewardForDetail)
-                                        }}
-                                        disabled={!isAuthenticated}
-                                    >
-                                        <Gift className="w-4 h-4 mr-2" />
-                                        Collect Bonus
-                                    </Button>
-                                ) : userPoints < (selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required) ? (
-                                    <Button
-                                        className="flex-1 h-12 rounded-xl bg-blue-100 text-blue-600 hover:bg-blue-200 border-none shadow-none"
-                                        onClick={() => {
-                                            setShowRewardDetailModal(false)
-                                            setInsufficientPointsData({
-                                                needed: selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required,
-                                                available: userPoints
-                                            })
-                                            setShowInsufficientPoints(true)
-                                        }}
-                                    >
-                                        <Coins className="w-4 h-4 mr-2" />
-                                        Need more points
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        className="flex-1 h-12 rounded-xl text-white shadow-lg shadow-blue-500/20"
-                                        style={{ backgroundColor: config.button_color }}
-                                        onClick={() => {
-                                            setShowRewardDetailModal(false)
-                                            handleRedeemReward(selectedRewardForDetail)
-                                        }}
-                                        disabled={!isAuthenticated}
-                                    >
-                                        Redeem Now
-                                    </Button>
-                                )
-                            )}
-                        </div>
+                    <div
+                        className="flex shrink-0 gap-3 border-t border-gray-100 bg-white px-4 pt-3"
+                        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+                    >
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-12 flex-1 rounded-xl border-gray-200"
+                            onClick={() => setShowRewardDetailModal(false)}
+                        >
+                            Close
+                        </Button>
+                        {selectedRewardForDetail && (
+                            (selectedRewardForDetail as any)?.category === 'point' ? (
+                                <Button
+                                    type="button"
+                                    className="h-12 flex-1 rounded-xl text-white shadow-lg shadow-green-500/20"
+                                    style={{ backgroundColor: '#10B981' }}
+                                    onClick={() => {
+                                        setShowRewardDetailModal(false)
+                                        handleRedeemReward(selectedRewardForDetail)
+                                    }}
+                                    disabled={!isAuthenticated}
+                                >
+                                    <Gift className="mr-2 h-4 w-4" />
+                                    Collect Points
+                                </Button>
+                            ) : userPoints < (selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required) ? (
+                                <Button
+                                    type="button"
+                                    className="h-12 flex-1 rounded-xl border-none bg-blue-100 text-blue-600 shadow-none hover:bg-blue-200"
+                                    onClick={() => {
+                                        setShowRewardDetailModal(false)
+                                        setInsufficientPointsData({
+                                            needed: selectedRewardForDetail.point_offer || selectedRewardForDetail.points_required,
+                                            available: userPoints
+                                        })
+                                        setShowInsufficientPoints(true)
+                                    }}
+                                >
+                                    <Coins className="mr-2 h-4 w-4" />
+                                    Need more points
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    className="h-12 flex-1 rounded-xl text-white shadow-lg shadow-blue-500/20"
+                                    style={{ backgroundColor: config.button_color }}
+                                    onClick={() => {
+                                        setShowRewardDetailModal(false)
+                                        handleRedeemReward(selectedRewardForDetail)
+                                    }}
+                                    disabled={!isAuthenticated}
+                                >
+                                    Redeem Now
+                                </Button>
+                            )
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>
