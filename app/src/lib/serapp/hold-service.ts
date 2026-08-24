@@ -145,17 +145,76 @@ export async function acceptSerappOrderHold(
   return data
 }
 
+/**
+ * Distributor may cancel only while the hold is active AND the order is still
+ * submitted. If HQ already approved (or the order left submitted), refuse —
+ * never mark the hold cancelled while leaving the order approved.
+ */
 export async function cancelSerappOrderHoldByDistributor(
   supabase: SupabaseClient<any>,
   input: { orderId: string; cancelledBy: string },
 ) {
-  const now = new Date()
+  const nowIso = new Date().toISOString()
+
+  const { data: existingHold, error: existingHoldError } = await supabase
+    .from('serapp_order_holds')
+    .select('id, order_id, status')
+    .eq('order_id', input.orderId)
+    .maybeSingle()
+
+  if (existingHoldError) throw existingHoldError
+  if (!existingHold || existingHold.status !== 'active') {
+    throw Object.assign(new Error('No active Serapp hold to cancel.'), { status: 409 })
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
+    .select('id, status')
+    .eq('id', input.orderId)
+    .maybeSingle()
+
+  if (orderError) throw orderError
+  if (!order) {
+    throw Object.assign(new Error('Order not found.'), { status: 404 })
+  }
+
+  if (order.status !== 'submitted') {
+    await healStaleActiveHold(supabase, existingHold.id, nowIso)
+    throw Object.assign(
+      new Error('This order is already approved or processed. Hold cancel is no longer available.'),
+      { status: 409 },
+    )
+  }
+
+  // Cancel the order first (status guard). Only then mark the hold cancelled.
+  const { data: cancelledOrder, error: cancelError } = await supabase
+    .from('orders')
+    .update({
+      status: 'cancelled',
+      updated_at: nowIso,
+      updated_by: input.cancelledBy,
+    })
+    .eq('id', input.orderId)
+    .eq('status', 'submitted')
+    .select('id')
+    .maybeSingle()
+
+  if (cancelError) throw cancelError
+
+  if (!cancelledOrder) {
+    await healStaleActiveHold(supabase, existingHold.id, nowIso)
+    throw Object.assign(
+      new Error('This order was approved while cancelling. Hold cancel is no longer available.'),
+      { status: 409 },
+    )
+  }
+
   const { data: hold, error: holdError } = await supabase
     .from('serapp_order_holds')
     .update({
       status: 'cancelled_by_distributor',
-      cancelled_at: now.toISOString(),
-      updated_at: now.toISOString(),
+      cancelled_at: nowIso,
+      updated_at: nowIso,
     })
     .eq('order_id', input.orderId)
     .eq('status', 'active')
@@ -164,20 +223,8 @@ export async function cancelSerappOrderHoldByDistributor(
 
   if (holdError) throw holdError
   if (!hold) {
-    throw Object.assign(new Error('No active Serapp hold to cancel.'), { status: 409 })
+    console.warn('[serapp-hold] order cancelled but hold was no longer active', input.orderId)
   }
-
-  const { error: cancelError } = await supabase
-    .from('orders')
-    .update({
-      status: 'cancelled',
-      updated_at: now.toISOString(),
-      updated_by: input.cancelledBy,
-    })
-    .eq('id', input.orderId)
-    .eq('status', 'submitted')
-
-  if (cancelError) throw cancelError
 
   const { error: releaseError } = await supabase.rpc('release_allocation_for_order', {
     p_order_id: input.orderId,
@@ -186,5 +233,21 @@ export async function cancelSerappOrderHoldByDistributor(
     console.warn('[serapp-hold] distributor cancel release:', releaseError.message)
   }
 
-  return hold
+  return hold || { id: existingHold.id, order_id: input.orderId }
+}
+
+async function healStaleActiveHold(
+  supabase: SupabaseClient<any>,
+  holdId: string,
+  nowIso: string,
+) {
+  await supabase
+    .from('serapp_order_holds')
+    .update({
+      status: 'accepted',
+      accepted_at: nowIso,
+      updated_at: nowIso,
+    })
+    .eq('id', holdId)
+    .eq('status', 'active')
 }

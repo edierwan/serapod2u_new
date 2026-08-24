@@ -22,10 +22,21 @@ interface HistoryOrder {
   fromSerapp?: boolean
 }
 
-function holdLabel(hold: HistoryHold | null | undefined) {
+function holdLabel(hold: HistoryHold | null | undefined, orderStatus?: string) {
   if (!hold) return null
+  // Prefer order truth when hold status was left inconsistent after approve.
+  if (
+    hold.status === 'cancelled_by_distributor' &&
+    orderStatus &&
+    ['approved', 'warehouse_packed', 'closed'].includes(orderStatus)
+  ) {
+    return 'Accepted · order already approved'
+  }
   switch (hold.status) {
     case 'active':
+      if (orderStatus && orderStatus !== 'submitted') {
+        return 'Accepted · order already processed'
+      }
       return `Hold until ${new Date(hold.expires_at).toLocaleString()}`
     case 'accepted':
       return 'Accepted · DO issued · approve in Current Orders'
@@ -172,7 +183,7 @@ export default function SerappHistoryView() {
 
       {orders.map((order) => {
         const fromSerapp = Boolean(order.fromSerapp)
-        const holdText = holdLabel(order.hold)
+        const holdText = holdLabel(order.hold, order.status)
         const canCancel =
           isDistributor &&
           order.hold?.status === 'active' &&
