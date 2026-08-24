@@ -4,24 +4,24 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   MessageCircle,
-  Megaphone,
   ClipboardList,
   History,
-  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSerapp } from './SerappContext'
 
-const tabs = [
+const allTabs = [
   { href: '/serapp/conversation', label: 'Chat', icon: MessageCircle, badgeKey: 'chat' as const },
-  { href: '/serapp/announcement', label: 'News', icon: Megaphone, badgeKey: null },
   { href: '/serapp/order', label: 'Order', icon: ClipboardList, badgeKey: null },
   { href: '/serapp/history', label: 'History', icon: History, badgeKey: null },
-  { href: '/serapp/reports', label: 'Reports', icon: BarChart3, badgeKey: null },
 ] as const
 
-const distributorTabs = tabs.filter(
-  (tab) => tab.href === '/serapp/conversation' || tab.href === '/serapp/order' || tab.href === '/serapp/history',
+/** Distributor: Chat · Order · History */
+const distributorTabs = allTabs
+
+/** HQ admin support: Chat · History only */
+const hqTabs = allTabs.filter(
+  (tab) => tab.href === '/serapp/conversation' || tab.href === '/serapp/history',
 )
 
 export default function SerappBottomNav() {
@@ -29,7 +29,7 @@ export default function SerappBottomNav() {
   const { totalUnread, isDistributor } = useSerapp()
   const isThread = Boolean(pathname?.match(/^\/serapp\/conversation\/[^/]+$/))
   if (isThread) return null
-  const visibleTabs = isDistributor ? distributorTabs : tabs
+  const visibleTabs = isDistributor ? distributorTabs : hqTabs
 
   return (
     <nav
