@@ -1,6 +1,6 @@
 'use client'
 
-import { Package, PlusCircle, BarChart3, FileText } from 'lucide-react'
+import { Package, PlusCircle, BarChart3, FileText, MessageCircle, ExternalLink } from 'lucide-react'
 import ModuleLightHeader from '@/components/layout/ModuleLightHeader'
 import DashboardStatistics from './DashboardStatistics'
 import ActionRequired from './ActionRequired'
@@ -58,6 +58,9 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
     return 'Good evening'
   }
 
+  const orgType = (userProfile.organizations?.org_type_code || '').toUpperCase()
+  const canOpenSerapp = orgType === 'HQ' || orgType === 'DIST'
+
   const quickLinks = [
     { label: 'Orders', icon: Package, view: 'orders' },
     { label: 'Create Order', icon: PlusCircle, view: 'create-order' },
@@ -100,6 +103,19 @@ export default function DashboardOverview({ userProfile, onViewChange }: Dashboa
               {label}
             </button>
           ))}
+          {canOpenSerapp ? (
+            <a
+              href="/serapp"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="sera-dashboard__quick-link"
+              aria-label="Open SerApp in a new tab"
+            >
+              <MessageCircle strokeWidth={1.75} />
+              SerApp
+              <ExternalLink strokeWidth={1.75} className="sera-dashboard__quick-link-external" />
+            </a>
+          ) : null}
         </div>
       </section>
 
