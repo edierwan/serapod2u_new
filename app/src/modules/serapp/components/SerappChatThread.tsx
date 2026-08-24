@@ -438,9 +438,31 @@ export default function SerappChatThread() {
     }
   }
 
-  const latestQuickReplies =
-    [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||
-    []
+  const latestQuickReplies = (() => {
+    const replies =
+      [...messages].reverse().find((m) => m.role === 'bot' && m.quickReplies?.length)?.quickReplies ||
+      []
+    // HQ joins the distributor group chat for support — hide ordering chips
+    // (Sample list, Confirm, Cancel hold, etc.) that belong to the distributor.
+    if (isHqSupport) return []
+    return replies
+  })()
+
+  const applyQuickReply = (qr: { id: string; sendText: string }) => {
+    // Sample list: put text in the composer so the distributor can edit before send.
+    if (qr.id === 'sample') {
+      setDraft(qr.sendText)
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        if (!el) return
+        el.focus()
+        el.style.height = 'auto'
+        el.style.height = `${Math.min(el.scrollHeight, 140)}px`
+      })
+      return
+    }
+    void sendText(qr.sendText)
+  }
 
   const presenceLabel = typing
     ? 'typing…'
@@ -651,7 +673,7 @@ export default function SerappChatThread() {
               key={qr.id}
               type="button"
               disabled={sending}
-              onClick={() => void sendText(qr.sendText)}
+              onClick={() => applyQuickReply(qr)}
               className="serapp-wa-chip shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold"
             >
               {qr.label}
