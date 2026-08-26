@@ -314,21 +314,46 @@ export function formatProductInquiryReply(
   }
 
   const top = variants.slice(0, 3)
-  const lines = top.map((variant) => {
-    const qty = typeof variant.available_qty === 'number' ? variant.available_qty : null
-    const stock = qty === null ? 'stock ?' : qty > 0 ? `${qty} available` : 'out of stock'
-    const flavour = variant.variant_name.replace(/^Deluxe Cellera Cartridge\s*/i, '').trim()
-      || variant.variant_name
-    return `**${variant.product_code}** · ${flavour} · ${stock}`
-  })
-
   const bestCode = top[0]?.product_code || query.toUpperCase()
+
+  const shortLabel = (variantName: string) => {
+    const bracket = variantName.match(/\[\s*([^\]]+?)\s*\]/)
+    if (bracket?.[1]) return bracket[1].trim()
+    return variantName
+      .replace(/^(Deluxe|Fruity)\s+Cellera\s+Cartridge\s*/i, '')
+      .trim() || variantName
+  }
+
+  const stockLabel = (qty: number | null | undefined) => {
+    if (typeof qty !== 'number') return 'stock unknown'
+    if (qty <= 0) return 'out of stock'
+    return `${qty.toLocaleString('en-US')} in stock`
+  }
+
+  const itemLine = (variant: (typeof top)[number]) => {
+    const label = shortLabel(variant.variant_name)
+    const stock = stockLabel(variant.available_qty)
+    return `• **${variant.product_code}** — ${label} · ${stock}`
+  }
+
+  if (top.length === 1) {
+    const only = top[0]
+    const label = shortLabel(only.variant_name)
+    const stock = stockLabel(only.available_qty)
+    return [
+      `✅ **${only.product_code}** — ${label} · ${stock}`,
+      '',
+      `👉 **Next step:** Send **${only.product_code} - 50** to place your order`,
+    ].join('\n')
+  }
+
+  const matchCount = variants.length
+  const countLabel = matchCount > top.length ? `${top.length}+` : String(top.length)
   return [
-    `✅ Found for **${query}**`,
-    ...lines,
-    ``,
-    `To order, add qty:`,
-    `**${bestCode} - 50**`,
+    `✅ Matches for **${query}** (${countLabel} items)`,
+    ...top.map(itemLine),
+    '',
+    `👉 **Next step:** Send **${bestCode} - 50** (code + quantity)`,
   ].join('\n')
 }
 
