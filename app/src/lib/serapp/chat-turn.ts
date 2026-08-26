@@ -329,7 +329,10 @@ async function assistantTurn(input: {
       }
 
       return {
-        text: formatCheckIntro(check.summary, check.warehouseName),
+        text: formatCheckIntro(check.summary, check.warehouseName, {
+          estimatedOrderValue: check.estimatedOrderValue,
+          results: check.results,
+        }),
         card: { kind: 'check_summary', check },
         quickReplies: quickRepliesForPhase('checked', check.summary.bucket),
         session,
@@ -480,7 +483,13 @@ async function assistantTurn(input: {
     }
 
     return {
-      text: `✅ **Hold cancelled**\n**Order:** ${orderNo}\nStock released.\nPaste a new list.`,
+      text: [
+        `✅ **Order cancelled** · **${orderNo}**`,
+        '',
+        'This order is stopped. The products are no longer reserved for you.',
+        '',
+        '👉 **Next step:** Send a new product list to order again.',
+      ].join('\n'),
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }

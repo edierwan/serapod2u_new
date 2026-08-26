@@ -1,3 +1,4 @@
+import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import type { SerappChatQuickReply, SerappChatSessionState } from '@/lib/serapp/chat-types'
 import type { SerappPasteCheckSummary } from '@/lib/serapp/paste-check-summary'
 import {
@@ -250,37 +251,19 @@ export function quickRepliesForPhase(
   return [{ id: 'help', label: 'Help', sendText: 'help' }]
 }
 
-export function formatCheckIntro(summary: SerappPasteCheckSummary, warehouseName?: string | null): string {
-  const wh = warehouseName || 'Warehouse'
-  if (summary.bucket === 'available') {
-    return [
-      `✅ **Ready to confirm**`,
-      `**Warehouse:** ${wh}`,
-      `**Next:** **confirm**`,
-    ].join('\n')
-  }
-
-  if (summary.bucket === 'partially_available') {
-    return [
-      `🟡 **Partially available**`,
-      `**Warehouse:** ${wh}`,
-      `**Next:** **confirm** (available only)`,
-    ].join('\n')
-  }
-
-  if (summary.bucket === 'out_of_stock') {
-    return [
-      `🔴 **Out of stock**`,
-      `**Warehouse:** ${wh}`,
-      `**Next:** Paste a new list`,
-    ].join('\n')
-  }
-
-  return [
-    `🟠 **Needs review**`,
-    `**Warehouse:** ${wh}`,
-    `**Next:** Pick match or fix list`,
-  ].join('\n')
+export function formatCheckIntro(
+  summary: SerappPasteCheckSummary,
+  _warehouseName?: string | null,
+  _options?: {
+    estimatedOrderValue?: number
+    results?: PasteMatchResult[]
+  },
+): string {
+  // Details (qty / warehouse / price / next step) live in the check card — keep intro short.
+  if (summary.bucket === 'available') return '✅ **Ready to order**'
+  if (summary.bucket === 'partially_available') return '🟡 **Partially available**'
+  if (summary.bucket === 'out_of_stock') return '🔴 **Out of stock**'
+  return '🟠 **Needs review**'
 }
 
 export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): string {

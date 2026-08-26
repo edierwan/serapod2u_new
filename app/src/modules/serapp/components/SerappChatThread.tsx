@@ -33,13 +33,6 @@ import SerappConversationAvatar from './SerappConversationAvatar'
 import { SerappHqDistributorPicker, useSerappHqDistributors } from './SerappHqDistributorPicker'
 import { cn } from '@/lib/utils'
 
-const bucketTone: Record<string, string> = {
-  available: 'serapp-wa-badge--ok',
-  partially_available: 'serapp-wa-badge--warn',
-  out_of_stock: 'serapp-wa-badge--danger',
-  unmatched_or_review: 'serapp-wa-badge--muted',
-}
-
 function formatMoney(value: number) {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -454,14 +447,28 @@ export default function SerappChatThread() {
   })()
 
   const applyQuickReply = (qr: { id: string; sendText: string }) => {
-    // Sample list: bot shows the example paste content (do not send / fill composer).
+    // Sample list: bot shows a clear example (do not send / fill composer).
     if (qr.id === 'sample') {
+      const sampleBody = [
+        '📋 **Sample order list**',
+        '',
+        'Send **one line per product**: code + qty',
+        '',
+        qr.sendText
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => `• **${line}**`)
+          .join('\n'),
+        '',
+        'Type your own list the same way, then tap Send.',
+      ].join('\n')
       setMessages((prev) => [
         ...prev,
         {
           id: `local-sample-${Date.now()}`,
           role: 'bot' as const,
-          text: qr.sendText,
+          text: sampleBody,
           createdAt: new Date().toISOString(),
           deliveredAt: null,
           seenAt: null,
@@ -841,38 +848,60 @@ function CheckSummaryCard({
 }) {
   const productLines = check.results.filter((r) => r.status !== 'section_header')
   const visible = productLines.slice(0, 12)
+  const warehouse = check.warehouseName || 'Warehouse'
+  const nextStep =
+    check.summary.bucket === 'available'
+      ? 'Reply confirm to place this order.'
+      : check.summary.bucket === 'partially_available'
+        ? 'Reply confirm to order available qty only.'
+        : check.summary.bucket === 'out_of_stock'
+          ? 'Paste a new list with other products.'
+          : 'Pick the correct match, or paste a fixed list.'
+
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={cn('serapp-wa-badge', bucketTone[check.summary.bucket])}>
-          {check.summary.label}
-        </span>
-        <span className="text-[11px] text-[var(--sera-muted)]">
-          Est. {formatMoney(check.estimatedOrderValue)}
-        </span>
-      </div>
-      <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto text-[11px] text-[var(--sera-ink-soft)]">
-        {visible.map((line, idx) => (
-          <li
-            key={`${line.line}-${line.raw}-${idx}`}
-            className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
-          >
-            <div className="flex justify-between gap-2">
+      <div className="space-y-1.5 text-[12px] text-[var(--sera-ink)]">
+        <p>
+          <span className="font-semibold text-[var(--sera-muted)]">Available qty</span>
+        </p>
+        <ul className="space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
+          {visible.map((line, idx) => (
+            <li key={`avail-${line.line}-${idx}`} className="flex justify-between gap-2">
               <span className="min-w-0 truncate">{line.name || line.raw}</span>
-              <span className="shrink-0 tabular-nums text-[var(--sera-muted)]">
+              <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
                 {lineStatusShort(line)}
               </span>
-            </div>
-            {interactive && onPick && (
+            </li>
+          ))}
+        </ul>
+        <p>
+          <span className="font-semibold text-[var(--sera-muted)]">Warehouse: </span>
+          {warehouse}
+        </p>
+        <p>
+          <span className="font-semibold text-[var(--sera-muted)]">Est. price: </span>
+          {formatMoney(check.estimatedOrderValue)}
+        </p>
+        <p className="rounded-lg bg-[var(--sera-orange)]/10 px-2 py-1.5 text-[11px] font-semibold text-[var(--sera-orange-deep)]">
+          Next step: {nextStep}
+        </p>
+      </div>
+      {interactive && onPick && (
+        <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2 text-[11px] text-[var(--sera-ink-soft)]">
+          {visible.map((line, idx) => (
+            <li
+              key={`${line.line}-${line.raw}-${idx}`}
+              className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
+            >
               <SerappReviewLinePicker
                 result={line}
                 disabled={disabled}
                 onPick={onPick}
               />
-            )}
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
