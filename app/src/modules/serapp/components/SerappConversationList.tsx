@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, MessageCirclePlus, Trash2, Search } from 'lucide-react'
 import type { SerappConversationRow } from '@/lib/serapp/conversation-types'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ function canDeleteConversation(kind: string) {
 
 export default function SerappConversationList() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setTotalUnread, isHqSupport } = useSerapp()
   const hq = useSerappHqDistributors()
   const [conversations, setConversations] = useState<SerappConversationRow[]>([])
@@ -37,6 +38,7 @@ export default function SerappConversationList() {
   const [deleting, setDeleting] = useState(false)
   const [query, setQuery] = useState('')
   const supabaseRef = useRef(createClient())
+  const draftRedirectRef = useRef(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,6 +62,17 @@ export default function SerappConversationList() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // If Order tab sent us here with ?draft=, open the assistant thread and keep the draft.
+  useEffect(() => {
+    if (loading || draftRedirectRef.current) return
+    const draft = searchParams.get('draft')
+    if (!draft) return
+    const assistant = conversations.find((chat) => chat.kind === 'assistant')
+    if (!assistant) return
+    draftRedirectRef.current = true
+    router.replace(`/serapp/conversation/${assistant.id}?draft=${encodeURIComponent(draft)}`)
+  }, [loading, conversations, searchParams, router])
 
   useEffect(() => {
     const supabase = supabaseRef.current

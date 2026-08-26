@@ -495,6 +495,15 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         console.warn('Failed to queue order_approved notification:', queueError)
       })
 
+      // SerApp chat: tell the distributor Admin approved + next step (best-effort).
+      fetch('/api/serapp/notify-order-approved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      }).catch((serappError) => {
+        console.warn('Failed to notify SerApp chat of approval:', serappError)
+      })
+
       // Fire-and-forget: trigger notification outbox worker
       fetch('/api/cron/notification-outbox-worker').catch(() => { })
 

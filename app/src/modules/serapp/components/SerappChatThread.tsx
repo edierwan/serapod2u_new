@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -69,13 +69,40 @@ function dayKey(iso: string) {
 
 function renderInlineMessage(text: string) {
   const nodes: React.ReactNode[] = []
-  const token = /(\*\*[^*]+\*\*|\*[^*]+\*)/g
+  // Links first, then bold/italic — e.g. [History](/serapp/history)
+  const token = /(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g
   let cursor = 0
   let match: RegExpExecArray | null
   while ((match = token.exec(text)) !== null) {
     if (match.index > cursor) nodes.push(text.slice(cursor, match.index))
     const raw = match[0]
-    if (raw.startsWith('**') && raw.endsWith('**')) {
+    const linkMatch = raw.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+    if (linkMatch) {
+      const label = linkMatch[1]
+      const href = linkMatch[2]
+      const isInternal = href.startsWith('/')
+      nodes.push(
+        isInternal ? (
+          <Link
+            key={`l-${match.index}`}
+            href={href}
+            className="font-semibold text-[var(--sera-orange)] underline underline-offset-2"
+          >
+            {label}
+          </Link>
+        ) : (
+          <a
+            key={`l-${match.index}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-[var(--sera-orange)] underline underline-offset-2"
+          >
+            {label}
+          </a>
+        ),
+      )
+    } else if (raw.startsWith('**') && raw.endsWith('**')) {
       nodes.push(<strong key={`b-${match.index}`}>{raw.slice(2, -2)}</strong>)
     } else if (raw.startsWith('*') && raw.endsWith('*')) {
       nodes.push(<em key={`i-${match.index}`}>{raw.slice(1, -1)}</em>)
@@ -128,6 +155,7 @@ function mapRow(msg: SerappMessageRow) {
 export default function SerappChatThread() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const conversationId = String(params?.id || '')
   const { isHqSupport, userProfile } = useSerapp()
   const hq = useSerappHqDistributors()
@@ -153,6 +181,7 @@ export default function SerappChatThread() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const supabaseRef = useRef(createClient())
+  const draftAppliedRef = useRef(false)
 
   const load = useCallback(async () => {
     if (!conversationId) return
@@ -186,6 +215,29 @@ export default function SerappChatThread() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    draftAppliedRef.current = false
+  }, [conversationId])
+
+  // Prefill composer from Order tab: /serapp/conversation/[id]?draft=CV%20-%2050
+  useEffect(() => {
+    if (!conversationId || loading || draftAppliedRef.current) return
+    const draftParam = searchParams.get('draft')
+    if (!draftParam) return
+    draftAppliedRef.current = true
+    setDraft(draftParam)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.style.height = 'auto'
+      el.style.height = `${Math.min(el.scrollHeight, 140)}px`
+      const len = draftParam.length
+      el.setSelectionRange(len, len)
+    })
+    router.replace(`/serapp/conversation/${conversationId}`, { scroll: false })
+  }, [conversationId, loading, searchParams, router])
 
   useEffect(() => {
     const el = listRef.current

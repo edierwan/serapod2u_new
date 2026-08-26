@@ -183,32 +183,40 @@ export function detectChatIntent(raw: string): SerappChatIntent {
 }
 
 export function welcomeBotText(distributorName: string, warehouseHint?: string | null): string {
-  const wh = warehouseHint || 'your warehouse'
-  return [
+  const wh = String(warehouseHint || '').trim()
+  const lines = [
     `👋 Hi **${distributorName}**`,
-    `Warehouse: ${wh}`,
-    ``,
-    `Order with **code + qty**. Examples:`,
-    `**CV - 50**`,
-    `**GU - 100**`,
-    `**banana vanilla - 20**`,
-    ``,
-    `Or send a code only (e.g. **CV**) to check stock, then add qty.`,
-    `When ready: **confirm**`,
-  ].join('\n')
+  ]
+  if (wh && wh.toLowerCase() !== 'your warehouse') {
+    lines.push(`Orders ship from: **${wh}**`)
+  }
+  lines.push(
+    '',
+    'To order, send **product code + quantity** — one line each:',
+    '• **CV - 50**',
+    '• **GU - 100**',
+    '• **banana vanilla - 20**',
+    '',
+    'To check stock only, send the code alone (e.g. **CV**).',
+    '',
+    '👉 **Next step:** Send your list now. When stock looks good, reply **confirm**.',
+  )
+  return lines.join('\n')
 }
 
 export function helpBotText(): string {
   return [
-    `How to order:`,
-    `1) Send **code + qty** (or a list)`,
-    `   **CV - 50**`,
-    `   **GU - 100**`,
-    `   **banana vanilla - 20**`,
-    `2) Or send **CV** alone → I show stock, then you add qty`,
-    `3) Reply **confirm** (hold 1 hour)`,
-    ``,
-    `Also: **new order** · **cancel hold**`,
+    '**How to order**',
+    '',
+    '1. Send **code + qty** (one line per product)',
+    '   • **CV - 50**',
+    '   • **GU - 100**',
+    '',
+    '2. Or send **CV** alone to check stock first',
+    '',
+    '3. Reply **confirm** to place the order',
+    '',
+    '👉 **Next step:** Send your product list, or tap **Sample list**.',
   ].join('\n')
 }
 

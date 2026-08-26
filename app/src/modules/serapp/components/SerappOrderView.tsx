@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { Loader2, MessageCircle, Package, Search, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Loader2, Package, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSerapp } from './SerappContext'
 import { SerappHqDistributorPicker, useSerappHqDistributors } from './SerappHqDistributorPicker'
@@ -27,44 +27,26 @@ function stockMeta(variant: CatalogVariant) {
   return { label: `${qty} available`, className: 'bg-[var(--sera-success-soft)] text-[var(--sera-success)]' }
 }
 
-function ProductRow({
-  variant,
-  active,
-  onSelect,
-}: {
-  variant: CatalogVariant
-  active?: boolean
-  onSelect: () => void
-}) {
-  const stock = stockMeta(variant)
-  return (
-    <button
-      type="button"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors',
-        active
-          ? 'border-[var(--sera-orange)]/40 bg-[var(--sera-orange)]/5'
-          : 'border-[var(--sera-line)] bg-[var(--sera-surface)] hover:border-[var(--sera-orange)]/25',
-      )}
-    >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--sera-paper)] text-[var(--sera-orange)]">
-        <Package className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-[var(--sera-ink)]">{variant.product_name}</p>
-        <p className="truncate text-xs text-[var(--sera-muted)]">{variant.variant_name}</p>
-        <p className="mt-0.5 text-[11px] font-medium text-[var(--sera-ink-soft)]">Code: {variant.product_code}</p>
-      </div>
-      <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold', stock.className)}>
-        {stock.label}
-      </span>
-    </button>
-  )
+async function resolveAssistantChatHref(draft: string): Promise<string> {
+  const encoded = encodeURIComponent(draft)
+  try {
+    const res = await fetch('/api/serapp/conversations')
+    const payload = await res.json().catch(() => null)
+    if (res.ok) {
+      const list = (payload?.conversations || []) as Array<{ id: string; kind: string }>
+      const assistant = list.find((chat) => chat.kind === 'assistant')
+      if (assistant?.id) {
+        return `/serapp/conversation/${assistant.id}?draft=${encoded}`
+      }
+    }
+  } catch {
+    // fall through
+  }
+  return `/serapp/conversation?draft=${encoded}`
 }
 
 export default function SerappOrderView() {
+  const router = useRouter()
   const { isHqSupport } = useSerapp()
   const hq = useSerappHqDistributors()
 
@@ -75,7 +57,8 @@ export default function SerappOrderView() {
   const [activeIndex, setActiveIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<CatalogVariant | null>(null)
-  const [recent, setRecent] = useState<CatalogVariant[]>([])
+  const [qty, setQty] = useState('50')
+  const [openingChat, setOpeningChat] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -85,7 +68,7 @@ export default function SerappOrderView() {
 
   const rememberProduct = useCallback((variant: CatalogVariant) => {
     setSelected(variant)
-    setRecent((prev) => [variant, ...prev.filter((item) => item.id !== variant.id)].slice(0, 8))
+    setQty('50')
     setQuery('')
     setSuggestions([])
     setShowSuggest(false)
@@ -174,167 +157,163 @@ export default function SerappOrderView() {
     }
   }
 
+  const sendInChat = async () => {
+    if (!selected) return
+    const qtyNum = Number(qty)
+    if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+      setError('Enter a quantity greater than 0.')
+      return
+    }
+    const draft = `${selected.product_code} - ${Math.floor(qtyNum)}`
+    setOpeningChat(true)
+    setError(null)
+    try {
+      const href = await resolveAssistantChatHref(draft)
+      router.push(href)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open chat.')
+      setOpeningChat(false)
+    }
+  }
+
   const showDropdown = showSuggest && query.trim().length > 0
+  const stock = selected ? stockMeta(selected) : null
 
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="sticky top-0 z-30 border-b border-[var(--sera-line)] bg-[var(--sera-paper)]/95 px-4 py-3 backdrop-blur-md">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="font-display text-base font-semibold text-[var(--sera-ink)]">Products</p>
-            <p className="text-xs text-[var(--sera-muted)]">Live stock lookup</p>
-          </div>
-          <Link
-            href="/serapp/conversation"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--sera-orange)] px-3 py-2 text-xs font-semibold text-white"
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-            Order in Chat
-          </Link>
-        </div>
+    <div className="flex min-h-full flex-col px-4 py-4">
+      <div className="mb-3">
+        <p className="font-display text-base font-semibold text-[var(--sera-ink)]">Check stock</p>
+        <p className="text-xs text-[var(--sera-muted)]">Search a product, then send it in Chat.</p>
+      </div>
 
-        {isHqSupport && (
-          <div className="mt-3">
-            <SerappHqDistributorPicker
-              selectedId={hq.selectedId}
-              distributors={hq.distributors}
-              loading={hq.loading}
-              disabled={searching}
-              onChange={hq.selectDistributor}
-            />
-          </div>
+      {isHqSupport && (
+        <div className="mb-3">
+          <SerappHqDistributorPicker
+            selectedId={hq.selectedId}
+            distributors={hq.distributors}
+            loading={hq.loading}
+            disabled={searching || openingChat}
+            onChange={hq.selectDistributor}
+          />
+        </div>
+      )}
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sera-muted)]" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setShowSuggest(true)
+          }}
+          onFocus={() => setShowSuggest(true)}
+          onBlur={() => window.setTimeout(() => setShowSuggest(false), 150)}
+          onKeyDown={onKeyDown}
+          placeholder="Search code or name (CV, ALMOND…)"
+          className="w-full rounded-xl border border-[var(--sera-line)] bg-white py-3 pl-10 pr-10 text-sm text-[var(--sera-ink)] outline-none focus:border-[var(--sera-orange)]"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery('')
+              setSuggestions([])
+              setShowSuggest(false)
+              inputRef.current?.focus()
+            }}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--sera-muted)] hover:bg-[var(--sera-mist)]"
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        {searching && (
+          <Loader2 className="pointer-events-none absolute right-10 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[var(--sera-muted)]" />
         )}
 
-        <div className="relative mt-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sera-muted)]" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setShowSuggest(true)
-            }}
-            onFocus={() => setShowSuggest(true)}
-            onBlur={() => window.setTimeout(() => setShowSuggest(false), 150)}
-            onKeyDown={onKeyDown}
-            placeholder="Type code or name: CV, ALMOND, GUAVA..."
-            className="w-full rounded-xl border border-[var(--sera-line)] bg-white py-3 pl-10 pr-10 text-sm text-[var(--sera-ink)] outline-none focus:border-[var(--sera-orange)]"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery('')
-                setSuggestions([])
-                setShowSuggest(false)
-                inputRef.current?.focus()
-              }}
-              className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--sera-muted)] hover:bg-[var(--sera-mist)]"
-              aria-label="Clear search"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          {searching && (
-            <Loader2 className="pointer-events-none absolute right-10 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[var(--sera-muted)]" />
-          )}
-
-          {showDropdown && (
-            <div className="serapp-wa-suggest absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-[var(--sera-line)] bg-white shadow-lg">
-              {suggestions.length === 0 && !searching && (
-                <p className="px-3 py-3 text-xs text-[var(--sera-muted)]">No matching products.</p>
-              )}
-              {suggestions.map((item, index) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => rememberProduct(item)}
-                  className={cn(
-                    'flex w-full items-start justify-between gap-3 border-b border-[var(--sera-line)]/70 px-3 py-2.5 text-left last:border-b-0',
-                    index === activeIndex ? 'bg-[var(--sera-orange)]/5' : 'hover:bg-[var(--sera-surface)]',
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[var(--sera-ink)]">{item.product_name}</p>
-                    <p className="truncate text-xs text-[var(--sera-muted)]">{item.variant_name}</p>
-                    <p className="mt-0.5 text-[11px] text-[var(--sera-ink-soft)]">Code: {item.product_code}</p>
-                  </div>
-                  <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold', stockMeta(item).className)}>
-                    {stockMeta(item).label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {showDropdown && (
+          <div className="serapp-wa-suggest absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-[var(--sera-line)] bg-white shadow-lg">
+            {suggestions.length === 0 && !searching && (
+              <p className="px-3 py-3 text-xs text-[var(--sera-muted)]">No matching products.</p>
+            )}
+            {suggestions.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => rememberProduct(item)}
+                className={cn(
+                  'flex w-full items-start justify-between gap-3 border-b border-[var(--sera-line)]/70 px-3 py-2.5 text-left last:border-b-0',
+                  index === activeIndex ? 'bg-[var(--sera-orange)]/5' : 'hover:bg-[var(--sera-surface)]',
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--sera-ink)]">{item.product_name}</p>
+                  <p className="truncate text-xs text-[var(--sera-muted)]">{item.variant_name}</p>
+                  <p className="mt-0.5 text-[11px] text-[var(--sera-ink-soft)]">Code: {item.product_code}</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold', stockMeta(item).className)}>
+                  {stockMeta(item).label}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && (
-        <div className="mx-4 mt-3 rounded-xl border border-[var(--sera-danger)]/20 bg-[var(--sera-danger-soft)] px-3 py-2 text-xs text-[var(--sera-danger)]">
+        <div className="mt-3 rounded-xl border border-[var(--sera-danger)]/20 bg-[var(--sera-danger-soft)] px-3 py-2 text-xs text-[var(--sera-danger)]">
           {error}
         </div>
       )}
 
-      <div className="flex-1 space-y-3 px-4 py-4">
-        {selected && (
-          <div className="serapp-card rounded-2xl p-4">
-            <p className="serapp-eyebrow">Selected</p>
-            <p className="mt-1 text-base font-semibold text-[var(--sera-ink)]">{selected.product_name}</p>
-            <p className="text-sm text-[var(--sera-muted)]">{selected.variant_name}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-[var(--sera-paper)] px-3 py-2">
-                <p className="text-[var(--sera-muted)]">Code</p>
-                <p className="mt-0.5 font-semibold text-[var(--sera-ink)]">{selected.product_code}</p>
-              </div>
-              <div className="rounded-lg bg-[var(--sera-paper)] px-3 py-2">
-                <p className="text-[var(--sera-muted)]">Stock</p>
-                <p className="mt-0.5 font-semibold text-[var(--sera-ink)]">{stockMeta(selected).label}</p>
-              </div>
-            </div>
-            {selected.inventory_classification === 'unclassified' && (
-              <p className="mt-2 text-xs text-[var(--sera-warn)]">Inventory unclassified</p>
-            )}
-            <Link
-              href="/serapp/conversation"
-              className="mt-3 inline-flex text-xs font-semibold text-[var(--sera-orange)]"
-            >
-              Send order in Chat →
-            </Link>
-          </div>
-        )}
+      {selected && stock && (
+        <div className="serapp-card mt-4 rounded-2xl p-4">
+          <p className="text-base font-semibold text-[var(--sera-ink)]">{selected.product_name}</p>
+          <p className="text-sm text-[var(--sera-muted)]">{selected.variant_name}</p>
+          <p className="mt-2 text-sm text-[var(--sera-ink-soft)]">
+            <span className="font-semibold">{selected.product_code}</span>
+            {' · '}
+            <span className={cn('font-semibold', stock.className.includes('danger') ? 'text-[var(--sera-danger)]' : 'text-[var(--sera-success)]')}>
+              {stock.label}
+            </span>
+          </p>
 
-        {!selected && !query && recent.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-[var(--sera-line)] bg-[var(--sera-surface)]/60 px-4 py-8 text-center">
-            <Package className="mx-auto h-8 w-8 text-[var(--sera-muted)]" />
-            <p className="mt-2 text-sm font-medium text-[var(--sera-ink)]">Search any product</p>
-            <p className="mt-1 text-xs text-[var(--sera-muted)]">Start typing — results appear instantly.</p>
-          </div>
-        )}
+          <label className="mt-3 block text-xs font-semibold text-[var(--sera-muted)]">
+            Quantity
+            <input
+              type="number"
+              min={1}
+              inputMode="numeric"
+              value={qty}
+              onChange={(event) => setQty(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-[var(--sera-line)] bg-white px-3 py-2.5 text-sm text-[var(--sera-ink)] outline-none focus:border-[var(--sera-orange)]"
+            />
+          </label>
 
-        {query.trim().length > 0 && !showDropdown && suggestions.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sera-muted)]">Results</p>
-            {suggestions.map((item) => (
-              <ProductRow key={item.id} variant={item} onSelect={() => rememberProduct(item)} />
-            ))}
-          </div>
-        )}
+          <button
+            type="button"
+            disabled={openingChat}
+            onClick={() => void sendInChat()}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--sera-orange)] px-3 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {openingChat ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Send in Chat
+          </button>
+          <p className="mt-2 text-center text-[11px] text-[var(--sera-muted)]">
+            Opens Chat with: <span className="font-semibold text-[var(--sera-ink)]">{selected.product_code} - {qty || '…'}</span>
+          </p>
+        </div>
+      )}
 
-        {recent.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sera-muted)]">Recent</p>
-            {recent.map((item) => (
-              <ProductRow
-                key={item.id}
-                variant={item}
-                active={selected?.id === item.id}
-                onSelect={() => setSelected(item)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      {!selected && !query && (
+        <div className="mt-8 rounded-2xl border border-dashed border-[var(--sera-line)] bg-[var(--sera-surface)]/60 px-4 py-8 text-center">
+          <Package className="mx-auto h-8 w-8 text-[var(--sera-muted)]" />
+          <p className="mt-2 text-sm font-medium text-[var(--sera-ink)]">Search a product</p>
+          <p className="mt-1 text-xs text-[var(--sera-muted)]">Then send it to Chat with quantity.</p>
+        </div>
+      )}
     </div>
   )
 }
