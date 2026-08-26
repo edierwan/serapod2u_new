@@ -454,16 +454,29 @@ export default function SerappChatThread() {
   })()
 
   const applyQuickReply = (qr: { id: string; sendText: string }) => {
-    // Sample list: put text in the composer so the distributor can edit before send.
+    // Sample list: bot shows the example paste content (do not send / fill composer).
     if (qr.id === 'sample') {
-      setDraft(qr.sendText)
-      requestAnimationFrame(() => {
-        const el = textareaRef.current
-        if (!el) return
-        el.focus()
-        el.style.height = 'auto'
-        el.style.height = `${Math.min(el.scrollHeight, 140)}px`
-      })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-sample-${Date.now()}`,
+          role: 'bot' as const,
+          text: qr.sendText,
+          createdAt: new Date().toISOString(),
+          deliveredAt: null,
+          seenAt: null,
+          seenByOwner: true,
+          senderUserId: null,
+          senderDisplayName: null,
+          senderKind: null,
+          attachment: undefined,
+          quickReplies: [
+            { id: 'help', label: 'Help', sendText: 'help' },
+            { id: 'sample', label: 'Sample list', sendText: qr.sendText },
+          ],
+          card: null,
+        },
+      ])
       return
     }
     void sendText(qr.sendText)
