@@ -5,6 +5,7 @@ import {
   formatProductInquiryReply,
   helpBotText,
   incompleteIntentBotText,
+  newOrderBotText,
   quickRepliesForPhase,
   shouldRouteToSerappAi,
   unknownBotText,
@@ -275,7 +276,7 @@ async function assistantTurn(input: {
       humanHandoff: session.humanHandoff,
     }
     return {
-      text: '🆕 **New order**\nPaste your list now.',
+      text: newOrderBotText(),
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }

@@ -6,6 +6,7 @@ import {
   formatConfirmIntro,
   formatProductInquiryReply,
   helpBotText,
+  newOrderBotText,
   quickRepliesForPhase,
   welcomeBotText,
 } from '@/lib/serapp/chat-bot'
@@ -247,7 +248,7 @@ export async function trySerappAiTurn(input: {
       humanHandoff: session.humanHandoff,
     }
     return {
-      text: reply || '🆕 Paste your list now.',
+      text: reply || newOrderBotText(),
       quickReplies: quickRepliesForPhase('awaiting_list'),
       session,
     }

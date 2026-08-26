@@ -220,6 +220,16 @@ export function helpBotText(): string {
   ].join('\n')
 }
 
+export function newOrderBotText(): string {
+  return [
+    'Send **code + qty** — one line per product:',
+    '• **CV - 50**',
+    '• **GU - 100**',
+    '',
+    'When stock looks good, reply **confirm**.',
+  ].join('\n')
+}
+
 export function quickRepliesForPhase(
   phase: SerappChatSessionState['phase'],
   bucket?: SerappPasteCheckSummary['bucket'] | null,
