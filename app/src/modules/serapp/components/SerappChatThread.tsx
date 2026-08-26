@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
 import { describeSerappLineAvailability } from '@/lib/orders/paste-result-display'
+import { isSerappReviewLine } from '@/lib/serapp/line-resolutions'
 import type {
   SerappChatCheckPayload,
   SerappChatConfirmPayload,
@@ -900,6 +901,9 @@ function CheckSummaryCard({
 }) {
   const productLines = check.results.filter((r) => r.status !== 'section_header')
   const visible = productLines.slice(0, 12)
+  const unresolved = visible.filter((line) => isSerappReviewLine(line.status) && !line.selectedVariantId)
+  const showReviewOnly = check.summary.bucket === 'requires_review'
+  const displayLines = showReviewOnly ? unresolved : visible
   const warehouse = check.warehouseName || 'Warehouse'
   const nextStep =
     check.summary.bucket === 'available'
@@ -908,16 +912,16 @@ function CheckSummaryCard({
         ? 'Reply confirm to order available qty only.'
         : check.summary.bucket === 'out_of_stock'
           ? 'Paste a new list with other products.'
-          : 'Pick the correct match, or paste a fixed list.'
+          : 'Choose a product for each unclear line, then tap Apply.'
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
       <div className="space-y-1.5 text-[12px] text-[var(--sera-ink)]">
-        <p>
-          <span className="font-semibold text-[var(--sera-muted)]">Available qty</span>
+        <p className="font-semibold text-[var(--sera-muted)]">
+          {showReviewOnly ? `Needs your selection (${unresolved.length})` : 'Available qty'}
         </p>
         <ul className="space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
-          {visible.map((line, idx) => (
+          {displayLines.map((line, idx) => (
             <li key={`avail-${line.line}-${idx}`} className="flex justify-between gap-2">
               <span className="min-w-0 truncate">{line.name || line.raw}</span>
               <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
@@ -940,7 +944,7 @@ function CheckSummaryCard({
       </div>
       {interactive && onPick && (
         <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2 text-[11px] text-[var(--sera-ink-soft)]">
-          {visible.map((line, idx) => (
+          {displayLines.map((line, idx) => (
             <li
               key={`${line.line}-${line.raw}-${idx}`}
               className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
