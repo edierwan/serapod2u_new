@@ -343,17 +343,15 @@ export function formatProductInquiryReply(
     return [
       `✅ **${only.product_code}** — ${label} · ${stock}`,
       '',
-      `👉 **Next step:** Send **${only.product_code} - 50** to place your order`,
+      `👉 To order, send **code + qty** in one message — e.g. **${only.product_code} - 50**`,
     ].join('\n')
   }
 
-  const matchCount = variants.length
-  const countLabel = matchCount > top.length ? `${top.length}+` : String(top.length)
   return [
-    `✅ Matches for **${query}** (${countLabel} items)`,
+    `✅ **${query}**`,
     ...top.map(itemLine),
     '',
-    `👉 **Next step:** Send **${bestCode} - 50** (code + quantity)`,
+    `👉 To order, send **code + qty** in one message — e.g. **${bestCode} - 50**`,
   ].join('\n')
 }
 
