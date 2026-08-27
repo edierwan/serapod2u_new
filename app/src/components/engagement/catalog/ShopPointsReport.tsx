@@ -1,3 +1,8 @@
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
+import UserManagementNew from "@/components/users/UserManagementNew"
+import { isUuid } from "@/lib/utils/uuid"
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,6 +33,7 @@ interface ShopSummary {
   shop_id: string
   shop_name: string
   branch_name: string | null
+  reference_user_id?: string | null
   shop_reference_am?: string | null
   contact_name: string | null
   contact_phone: string | null
@@ -69,9 +75,30 @@ interface ShopConsumer {
 
 interface ShopPointsReportProps {
   reportStatusRule: ReportStatusRule
+  userProfile: React.ComponentProps<typeof UserManagementNew>["userProfile"]
 }
 
-export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
+export function ShopPointsReport({ reportStatusRule, userProfile }: ShopPointsReportProps) {
+  const router = useRouter()
+  const [unavailableShops, setUnavailableShops] = useState<Set<string>>(new Set())
+  const [recordMessage, setRecordMessage] = useState<string | null>(null)
+  const openShop = async (id: string) => {
+    setRecordMessage('Loading organization...')
+    try {
+      const { data, error } = await createClient().from('organizations').select('id').eq('id', id).single()
+      if (error || !data) {
+        if (!error || ['PGRST116', '42501'].includes(error.code)) setUnavailableShops((ids) => new Set(ids).add(id))
+        throw new Error('Organization unavailable')
+      }
+      setRecordMessage(null)
+      router.push(`/supply-chain/organizations/${id}/edit`)
+    } catch {
+      setRecordMessage('Unable to open organization. It may be unavailable or you may not have permission. Please try again later.')
+    }
+  }
+  const [editUserId, setEditUserId] = useState<string | null>(null)
+  const [unavailableUsers, setUnavailableUsers] = useState<Set<string>>(new Set())
+  const linkClass = "text-blue-600 hover:text-blue-800 hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
   const [data, setData] = useState<ShopSummary[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [loading, setLoading] = useState(true)
@@ -207,6 +234,7 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
 
   return (
     <div className="space-y-4">
+      {recordMessage && <p role="status" className="text-sm">{recordMessage}</p>}
       {/* Summary Banner */}
       <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
         <CardContent className="pt-5 pb-4">
@@ -386,11 +414,17 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
                       <tr key={shop.shop_id} className="hover:bg-muted/30 transition-colors">
                         <td className="px-3 py-2.5 text-center text-xs text-muted-foreground">{startIdx + idx + 1}</td>
                         <td className="px-3 py-2.5">
-                          <div className="font-medium text-sm">{shop.shop_name}</div>
+                          <div className="font-medium text-sm">{isUuid(shop.shop_id) && !unavailableShops.has(shop.shop_id) ? (
+                            <Link href={`/supply-chain/organizations/${shop.shop_id}/edit`} prefetch={false} className={linkClass}
+                              onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openShop(shop.shop_id); }} onKeyDown={(event) => event.stopPropagation()}>{shop.shop_name}</Link>
+                          ) : shop.shop_name}</div>
                           {shop.branch_name && <div className="text-xs text-muted-foreground">{shop.branch_name}</div>}
                         </td>
                         <td className="px-3 py-2.5 text-sm">{shop.state || '—'}</td>
-                        <td className="px-3 py-2.5 text-sm">{shop.shop_reference_am || '—'}</td>
+                        <td className="px-3 py-2.5 text-sm">{shop.shop_reference_am && isUuid(shop.reference_user_id) && !unavailableUsers.has(shop.reference_user_id) ? (
+                          <button type="button" className={linkClass} onKeyDown={(event) => event.stopPropagation()}
+                            onClick={(event) => { event.stopPropagation(); setEditUserId(shop.reference_user_id!); }}>{shop.shop_reference_am}</button>
+                        ) : shop.shop_reference_am || '—'}</td>
                         <td className="px-3 py-2.5 text-sm">
                           {shop.total_consumers > 0 ? (
                             <button
@@ -459,6 +493,10 @@ export function ShopPointsReport({ reportStatusRule }: ShopPointsReportProps) {
           )}
         </CardContent>
       </Card>
+
+      {editUserId && <UserManagementNew key={editUserId} userProfile={userProfile} editUserId={editUserId}
+        onEditClose={() => setEditUserId(null)}
+        onEditUnavailable={() => { setUnavailableUsers((ids) => new Set(ids).add(editUserId)); setEditUserId(null); }} />}
 
       {/* Shop Staff Detail Dialog */}
       {selectedShop && (

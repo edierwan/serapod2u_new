@@ -1406,7 +1406,7 @@ export function AdminCatalogPage({ userProfile }: AdminCatalogPageProps) {
 
         {/* SHOP POINTS MONITOR TAB */}
         <TabsContent value="users" className="space-y-4">
-          <ShopPointsReport reportStatusRule={reportStatusSettings.shopPerformance} />
+          <ShopPointsReport userProfile={userProfile} reportStatusRule={reportStatusSettings.shopPerformance} />
         </TabsContent>
 
         <TabsContent value="staff" className="space-y-4">

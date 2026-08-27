@@ -269,8 +269,14 @@ const hasMeaningfulUserChanges = (
 
 export default function UserManagementNew({
   userProfile,
+  editUserId,
+  onEditClose,
+  onEditUnavailable,
 }: {
   userProfile: UserProfile;
+  editUserId?: string;
+  onEditClose?: () => void;
+  onEditUnavailable?: () => void;
 }) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -330,7 +336,7 @@ export default function UserManagementNew({
     organizationDialogUser?.organization_id === selectedOrganization?.id;
 
   useEffect(() => {
-    if (isReady) {
+    if (isReady && !editUserId) {
       loadUsers();
       loadRoles();
       loadOrganizations();
@@ -340,7 +346,40 @@ export default function UserManagementNew({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady]);
 
+  useEffect(() => {
+    if (!isReady || !editUserId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { data, error } = await supabase.from('users')
+          .select('*, roles:role_code(role_name, role_level)')
+          .eq('id', editUserId).single();
+        const level = resolveCurrentUserLevel();
+        if (error || !data || (level > 20 && (
+          (data.roles?.role_level || 999) < level ||
+          (data.organization_id && data.organization_id !== userProfile.organization_id)
+        ))) throw new Error('This user is unavailable or you do not have permission to access it.');
+        await Promise.all([loadRoles(), loadOrganizations()]);
+        if (!cancelled) {
+          setEditingUser(data as User);
+          setDialogOpen(true);
+        }
+      } catch {
+        if (!cancelled) {
+          toast({ title: 'Unable to open user', description: 'This user is unavailable or you do not have permission to access it. Please try again later.', variant: 'destructive' });
+          onEditUnavailable?.();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, editUserId]);
+
   const loadUsers = async () => {
+    if (editUserId) { onEditClose?.(); return; }
     if (!isReady) return;
     try {
       setLoading(true);
@@ -454,6 +493,7 @@ export default function UserManagementNew({
       setRoles((data || []) as Role[]);
     } catch (error) {
       console.error("Error loading roles:", error);
+      if (editUserId) throw error;
     }
   };
 
@@ -469,6 +509,7 @@ export default function UserManagementNew({
       setOrganizations((data || []) as Organization[]);
     } catch (error) {
       console.error("Error loading organizations:", error);
+      if (editUserId) throw error;
     }
   };
 
@@ -1388,6 +1429,15 @@ export default function UserManagementNew({
   };
 
   // Use shared getOrgTypeName from @/lib/utils/orgHierarchy
+
+  if (editUserId) {
+    return loading ? <div role="status">Loading user...</div> : (
+      <UserDialogNew user={editingUser} roles={roles} organizations={organizations}
+        open={dialogOpen} isSaving={isSaving} currentUserRoleLevel={currentUserLevel}
+        onOpenChange={(open) => { setDialogOpen(open); if (!open) onEditClose?.(); }}
+        onSave={handleSaveUser} />
+    );
+  }
 
   if (loading) {
     return <SeraLoadingState variant="page" label="Loading users" />;
