@@ -1,103 +1,157 @@
 #!/usr/bin/env node
-// ═══════════════════════════════════════════════════════════
-// free-port.js — predev guard
-// Safely kills dev processes on dev port. Refuses to kill infra.
-// macOS + Linux compatible.
-// ═══════════════════════════════════════════════════════════
 'use strict';
 
-const { execSync } = require('child_process');
-const PORT = process.env.PORT || 3000;
+const { spawnSync } = require('child_process');
+const { realpathSync } = require('fs');
+const path = require('path');
 
-// Patterns considered safe dev processes
-const SAFE = ['node', 'nodemon', 'tsx', 'next', 'server.js', 'vite', 'esbuild'];
-// Patterns that are never safe to kill
-const UNSAFE = ['docker', 'nginx', 'caddy', 'cloudflared', 'postgres', 'redis', 'mongod'];
+const PORT = 3000; // Must agree with `next dev -p 3000`; never read process.env.PORT.
+const TIMEOUT_MS = 5000;
 
-function exec(cmd) {
-  try { return execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim(); }
-  catch { return ''; }
-}
+// Inject OS operations so refusal and escalation tests never signal real processes.
+function createGuard(overrides = {}) {
+  const deps = {
+    run: (command, args) => spawnSync(command, args, {
+      encoding: 'utf8', timeout: TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+    appDir: realpathSync(path.resolve(__dirname, '..')),
+    cwd: () => realpathSync(process.cwd()),
+    nodePath: realpathSync(process.execPath),
+    nextVersion: require('../node_modules/next/package.json').version,
+    uid: () => process.getuid(),
+    platform: process.platform,
+    kill: (pid, signal) => process.kill(pid, signal),
+    now: Date.now,
+    sleep: (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+    log: console.log,
+    ...overrides,
+  };
 
-function getPids() {
-  const raw = exec(`lsof -nP -iTCP:${PORT} -sTCP:LISTEN -t`);
-  if (!raw) return [];
-  return raw.split('\n').map(Number).filter(Boolean);
-}
-
-function getCommand(pid) {
-  return exec(`ps -p ${pid} -o command=`);
-}
-
-function isSafe(cmd) {
-  const lower = cmd.toLowerCase();
-  if (UNSAFE.some(p => lower.includes(p))) return false;
-  if (SAFE.some(p => lower.includes(p))) return true;
-  if (lower.includes(process.cwd().toLowerCase())) return true;
-  return false;
-}
-
-function killPid(pid) {
-  try { process.kill(pid, 'SIGTERM'); } catch { return; }
-
-  // Wait 800ms then check
-  const start = Date.now();
-  while (Date.now() - start < 800) { /* busy wait */ }
-
-  try {
-    process.kill(pid, 0); // test if alive
-    // Still alive → force kill
-    console.log(`[dev] PID ${pid} didn't exit, sending SIGKILL`);
-    try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
-  } catch {
-    // Already dead, good
-  }
-}
-
-// ── Main ────────────────────────────────────────────────
-(function main() {
-  // Verify lsof exists
-  if (!exec('which lsof')) {
-    console.error('[dev] lsof not found. Install it or free port 3000 manually.');
-    process.exit(1);
-  }
-
-  const pids = getPids();
-
-  if (pids.length === 0) {
-    console.log(`[dev] Port ${PORT} is free ✓`);
-    return;
-  }
-
-  for (const pid of pids) {
-    const cmd = getCommand(pid);
-    console.log(`[dev] Port ${PORT} occupied by PID ${pid}: ${cmd}`);
-
-    if (isSafe(cmd)) {
-      console.log(`[dev] Safe dev process — terminating PID ${pid}...`);
-      killPid(pid);
-      console.log(`[dev] PID ${pid} terminated ✓`);
-    } else {
-      console.error('');
-      console.error(`  ┌─────────────────────────────────────────────────────┐`);
-      console.error(`  │  REFUSED: Port ${PORT} is used by a non-dev process  │`);
-      console.error(`  ├─────────────────────────────────────────────────────┤`);
-      console.error(`  │  PID:  ${pid}`);
-      console.error(`  │  CMD:  ${cmd}`);
-      console.error(`  │                                                     │`);
-      console.error(`  │  Stop it manually or move it to another port.       │`);
-      console.error(`  └─────────────────────────────────────────────────────┘`);
-      console.error('');
-      process.exit(1);
+  function inspect(command, args, allowNoMatch = false) {
+    const result = deps.run(command, args);
+    if (result.error || result.signal || typeof result.stdout !== 'string' ||
+        typeof result.stderr !== 'string' || result.stderr.trim()) {
+      throw new Error(`${command} inspection failed; refusing automatic termination.`);
     }
+    // Only lsof exit 1 with empty output is an ordinary empty selection.
+    // Warnings, permission errors, missing binaries and timeouts fail closed.
+    if (allowNoMatch && result.status === 1 && !result.stdout.trim()) return null;
+    if (result.status !== 0 || !result.stdout.trim()) {
+      throw new Error(`${command} inspection returned an unexpected result.`);
+    }
+    return result.stdout.trim();
   }
 
-  // Re-check
-  const remaining = getPids();
-  if (remaining.length > 0) {
-    console.error(`[dev] Unable to free port ${PORT}. PIDs still listening: ${remaining.join(', ')}`);
-    process.exit(1);
+  function listeners() {
+    const output = inspect('lsof', ['-nP', `-iTCP:${PORT}`, '-sTCP:LISTEN', '-t'], true);
+    if (output === null) return [];
+    const lines = output.split('\n');
+    if (lines.some((line) => !/^[1-9]\d*$/.test(line) ||
+        !Number.isSafeInteger(Number(line)) || Number(line) <= 1)) {
+      throw new Error('Invalid listener PID output.');
+    }
+    const pids = [...new Set(lines.map(Number))];
+    if (pids.length !== 1) throw new Error('Multiple listeners; stop them manually.');
+    return pids;
   }
 
-  console.log(`[dev] Port ${PORT} is free ✓`);
-})();
+  function ps(pid, field) {
+    return inspect('ps', ['-ww', '-p', String(pid), '-o', `${field}=`]);
+  }
+
+  function identity(pid) {
+    const uid = ps(pid, 'uid');
+    if (!/^\d+$/.test(uid) || Number(uid) === 0 || Number(uid) !== deps.uid()) {
+      throw new Error('Listener or parent is not owned by the current non-root user.');
+    }
+    const cwd = inspect('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn']);
+    if (cwd !== `p${pid}\nfcwd\nn${deps.appDir}`) {
+      throw new Error('Listener or parent working directory does not match this development app.');
+    }
+    const records = inspect('lsof', ['-a', '-p', String(pid), '-d', 'txt', '-Fn']).split('\n');
+    if (records[0] !== `p${pid}` || !records.includes('ftxt') ||
+        !records.includes(`n${deps.nodePath}`) ||
+        records.some((line, index) => index > 0 && !/^[fn]/.test(line))) {
+      throw new Error('Cannot verify the Node executable for listener or parent.');
+    }
+    const ppid = ps(pid, 'ppid');
+    if (!/^[1-9]\d*$/.test(ppid) || !Number.isSafeInteger(Number(ppid))) {
+      throw new Error('Cannot establish parent PID.');
+    }
+    return { pid, uid, ppid: Number(ppid), started: ps(pid, 'lstart'), command: ps(pid, 'command'), cwd };
+  }
+
+  function verify(pid) {
+    const child = identity(pid);
+    // Next replaces its worker argv with this title. The title alone is NOT proof:
+    // its direct parent must have this app's exact Next development invocation.
+    if (child.command !== `next-server (v${deps.nextVersion})` || child.ppid <= 1 || child.ppid === pid) {
+      throw new Error('Listener is not an identifiable Next.js development worker.');
+    }
+    const parent = identity(child.ppid);
+    const commands = ['node', deps.nodePath].flatMap((node) => [
+      `${node} ${deps.appDir}/node_modules/.bin/next dev -p ${PORT}`,
+      `${node} ${deps.appDir}/node_modules/next/dist/bin/next dev -p ${PORT}`,
+    ]);
+    if (!commands.includes(parent.command)) {
+      throw new Error('Parent arguments do not identify this project\'s Next.js dev server on port 3000.');
+    }
+    return JSON.stringify({ child, parent });
+  }
+
+  function stillOwnsPort(pid) {
+    const pids = listeners();
+    if (!pids.length) return false;
+    if (pids[0] !== pid) throw new Error('Port 3000 ownership changed; refusing termination.');
+    return true;
+  }
+
+  function signalVerified(pid, signature, signal) {
+    if (!stillOwnsPort(pid)) return;
+    if (verify(pid) !== signature) throw new Error('Process identity changed; refusing termination.');
+    if (!stillOwnsPort(pid)) return;
+    // macOS has no atomic PID-identity-and-signal API; minimize the race window.
+    // Never signal a parent, process group, or command pattern.
+    deps.kill(pid, signal);
+  }
+
+  function waitForRelease(pid) {
+    const deadline = deps.now() + TIMEOUT_MS;
+    do {
+      if (!stillOwnsPort(pid)) return true;
+      deps.sleep(100);
+    } while (deps.now() < deadline);
+    return !stillOwnsPort(pid);
+  }
+
+  return function guard() {
+    if (deps.platform !== 'darwin' || deps.uid() === 0 || deps.cwd() !== deps.appDir) {
+      throw new Error('Run as a non-root macOS user from this development app directory.');
+    }
+    const pids = listeners();
+    if (pids.length) {
+      const pid = pids[0];
+      const signature = verify(pid);
+      deps.log(`[dev] Sending SIGTERM to verified project Next.js listener ${pid}.`);
+      signalVerified(pid, signature, 'SIGTERM');
+      if (!waitForRelease(pid)) {
+        deps.log(`[dev] Rechecking listener ${pid} before SIGKILL.`);
+        signalVerified(pid, signature, 'SIGKILL');
+        if (!waitForRelease(pid)) throw new Error('Port 3000 was not released.');
+      }
+    }
+    if (listeners().length) throw new Error('Port 3000 was claimed again; refusing startup.');
+    deps.log('[dev] Port 3000 is free.');
+  };
+}
+
+module.exports = { createGuard };
+
+if (require.main === module) {
+  try {
+    createGuard()();
+  } catch (error) {
+    console.error(`[dev] ${error.message}`);
+    process.exitCode = 1;
+  }
+}
