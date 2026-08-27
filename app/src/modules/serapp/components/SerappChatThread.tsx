@@ -901,9 +901,9 @@ function CheckSummaryCard({
 }) {
   const productLines = check.results.filter((r) => r.status !== 'section_header')
   const visible = productLines.slice(0, 12)
-  const unresolved = visible.filter((line) => isSerappReviewLine(line.status) && !line.selectedVariantId)
-  const showReviewOnly = check.summary.bucket === 'requires_review'
-  const displayLines = showReviewOnly ? unresolved : visible
+  const pickableLines = visible.filter(
+    (line) => isSerappReviewLine(line.status) && !line.selectedVariantId && line.candidates && line.candidates.length > 0,
+  )
   const warehouse = check.warehouseName || 'Warehouse'
   const nextStep =
     check.summary.bucket === 'available'
@@ -912,16 +912,16 @@ function CheckSummaryCard({
         ? 'Reply confirm to order available qty only.'
         : check.summary.bucket === 'out_of_stock'
           ? 'Paste a new list with other products.'
-          : 'Tap the correct product below, or send the updated code.'
+          : pickableLines.length > 0
+            ? 'Tap the correct product below, or send the updated code.'
+            : 'Check the items above, or send the updated code.'
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
       <div className="space-y-1.5 text-[12px] text-[var(--sera-ink)]">
-        <p className="font-semibold text-[var(--sera-muted)]">
-          {showReviewOnly ? `Unclear items (${unresolved.length})` : 'Available qty'}
-        </p>
+        <p className="font-semibold text-[var(--sera-muted)]">Available qty</p>
         <ul className="space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
-          {displayLines.map((line, idx) => (
+          {visible.map((line, idx) => (
             <li key={`avail-${line.line}-${idx}`} className="flex justify-between gap-2">
               <span className="min-w-0 truncate">{line.name || line.raw}</span>
               <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
@@ -942,11 +942,11 @@ function CheckSummaryCard({
           Next step: {nextStep}
         </p>
       </div>
-      {interactive && onPick && (
+      {interactive && onPick && pickableLines.length > 0 && (
         <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2 text-[11px] text-[var(--sera-ink-soft)]">
-          {displayLines.map((line, idx) => (
+          {pickableLines.map((line) => (
             <li
-              key={`${line.line}-${line.raw}-${idx}`}
+              key={`picker-${line.line}-${line.raw}`}
               className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
             >
               <SerappReviewLinePicker

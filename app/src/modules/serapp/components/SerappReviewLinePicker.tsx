@@ -29,13 +29,6 @@ export default function SerappReviewLinePicker({
   const candidates = result.candidates.slice(0, 8)
 
   if (candidates.length === 0) {
-    if (result.status === 'not_found') {
-      return (
-        <p className="mt-1 text-[11px] text-[var(--sera-muted)]">
-          Product Not Found
-        </p>
-      )
-    }
     return null
   }
 
