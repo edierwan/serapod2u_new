@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSupabaseAuth } from '@/lib/hooks/useSupabaseAuth'
 import { usePermissions } from '@/hooks/usePermissions'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,7 +28,14 @@ import {
 } from 'lucide-react'
 import ProductThumbnail from './ProductThumbnail'
 import SupplyChainPageHeader from '@/modules/supply-chain/components/SupplyChainPageHeader'
-import BulkEnableStockConfigurationsPanel from '@/components/products/BulkEnableStockConfigurationsPanel'
+import {
+  HQ_CONSOLIDATED_LEGACY_NOTE,
+  buildInventoryLocationScope,
+  filterRowsByInventoryLocation,
+  isHqConsolidatedLocation,
+  type InventoryLocationOption,
+} from '@/lib/inventory/hq-consolidated-location'
+import { variantIdentityLabel } from '@/lib/inventory/variant-display-label'
 import {
   buildIncomingMap,
   getIncomingBreakdown,
@@ -41,6 +48,8 @@ interface InventoryItem {
   id: string
   variant_id: string
   variant_code: string
+  /** product_variants.product_code — the Product Code column of Products > Master Data > Variants. */
+  variant_product_code: string | null
   variant_name: string
   variant_image_url: string | null
   product_name: string
@@ -77,7 +86,14 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
   const [productFilter, setProductFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [products, setProducts] = useState<any[]>([])
-  const [locations, setLocations] = useState<any[]>([])
+  const [locations, setLocations] = useState<InventoryLocationOption[]>([])
+  const [hqWarehouseIdsByHq, setHqWarehouseIdsByHq] = useState<Map<string, string[]>>(new Map())
+  const [allowedLocationIds, setAllowedLocationIds] = useState<Set<string>>(new Set())
+  // The allowed HQ/warehouse scope decides which rows "All Locations" shows, so
+  // the table waits for it instead of flashing an empty result.
+  const [locationsLoading, setLocationsLoading] = useState(true)
+  // Guards the one-time default Location selection (see fetchLocations).
+  const defaultLocationApplied = useRef(false)
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [bulkSettings, setBulkSettings] = useState<StockSettings>({
     reorder_point: '',
@@ -112,7 +128,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
 
   useEffect(() => {
     filterInventory()
-  }, [inventory, searchQuery, productFilter, locationFilter])
+  }, [inventory, searchQuery, productFilter, locationFilter, allowedLocationIds, hqWarehouseIdsByHq])
 
   // Incoming / On Order stock (v_incoming_stock). Non-fatal when the view is
   // not migrated yet — the columns fall back to zero.
@@ -157,6 +173,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           product_variants (
             id,
             variant_code,
+            product_code,
             variant_name,
             image_url,
             products (
@@ -182,6 +199,9 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
           id: item.id,
           variant_id: item.variant_id,
           variant_code: variant?.variant_code || 'N/A',
+          // Deliberately NOT variant_code / products.product_code: the row line
+          // shows the variant Product Code, and blank stays blank.
+          variant_product_code: variant?.product_code || null,
           variant_name: variant?.variant_name || 'Unknown',
           variant_image_url: variant?.image_url || null,
           product_name: product?.product_name || 'Unknown Product',
@@ -239,29 +259,55 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
     }
   }
 
+  // Inventory Settings is an HQ administration page: its Location filter uses
+  // the same data-driven HQ/warehouse scope as View Inventory, so distributor,
+  // shop and manufacturer organizations never appear here.
   const fetchLocations = async () => {
     try {
       const { data, error } = await supabase
         .from('organizations')
-        .select('id, org_name')
+        .select('id, org_name, org_code, org_type_code, parent_org_id, default_warehouse_org_id')
+        .in('org_type_code', ['WH', 'HQ'])
         .eq('is_active', true)
         .order('org_name')
 
-      if (!error && data) {
-        setLocations(data)
+      if (error) throw error
+
+      const scope = buildInventoryLocationScope(data || [], { hqScopeOnly: true })
+      setLocations(scope.locations)
+      setHqWarehouseIdsByHq(scope.warehouseIdsByHq)
+      setAllowedLocationIds(scope.allowedLocationIds)
+
+      // Open on the HQ's default fulfillment warehouse, exactly as View
+      // Inventory does. Applied once per mount so a refetch never overwrites a
+      // location the operator has since chosen.
+      if (!defaultLocationApplied.current) {
+        defaultLocationApplied.current = true
+        if (scope.defaultLocationId) {
+          setLocationFilter(scope.defaultLocationId)
+        }
       }
     } catch (error) {
       console.error('Error fetching locations:', error)
+    } finally {
+      setLocationsLoading(false)
     }
   }
 
   const filterInventory = () => {
-    let filtered = [...inventory]
+    // Location scoping is id-based (organization names are ambiguous) and never
+    // merges rows: each product_inventory record stays individually editable,
+    // including under the consolidated HQ selection.
+    let filtered = filterRowsByInventoryLocation(inventory, locationFilter, {
+      warehouseIdsByHq: hqWarehouseIdsByHq,
+      allowedLocationIds,
+    })
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(item =>
         item.variant_code.toLowerCase().includes(query) ||
+        (item.variant_product_code || '').toLowerCase().includes(query) ||
         item.variant_name.toLowerCase().includes(query) ||
         item.product_name.toLowerCase().includes(query)
       )
@@ -269,10 +315,6 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
 
     if (productFilter !== 'all') {
       filtered = filtered.filter(item => item.product_name === productFilter)
-    }
-
-    if (locationFilter !== 'all') {
-      filtered = filtered.filter(item => item.organization_name === locationFilter)
     }
 
     setFilteredInventory(filtered)
@@ -523,13 +565,6 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
         </div>
       </div>
 
-      <BulkEnableStockConfigurationsPanel
-        canManage={
-          userProfile?.organizations?.org_type_code === 'HQ' &&
-          [1, 10].includes(Number(userProfile?.roles?.role_level))
-        }
-      />
-
       {/* Info Alert */}
       <Card className="sera-sc-panel overflow-hidden border-[var(--sera-orange)]/20 bg-[var(--sera-orange)]/[0.05] shadow-none">
         <CardContent className="p-4">
@@ -662,17 +697,27 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                 ))}
               </SelectContent>
             </Select>
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Locations</SelectItem>
-                {Array.from(new Set(inventory.map(item => item.organization_name))).map(location => (
-                  <SelectItem key={location} value={location}>{location}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="w-64">
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map(location => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.org_name}
+                      {location.is_consolidated ? ' (consolidated)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isHqConsolidatedLocation(locationFilter) && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  {HQ_CONSOLIDATED_LEGACY_NOTE}
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -721,7 +766,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {loading || locationsLoading ? (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center py-8">
                       Loading inventory...
@@ -770,7 +815,7 @@ export default function InventorySettingsView({ userProfile, onViewChange }: Inv
                             <div>
                               <p className="text-sm font-medium">{item.product_name}</p>
                               <p className="text-xs text-[var(--sera-muted)]">
-                                {item.variant_code} • {item.variant_name}
+                                {variantIdentityLabel(item.variant_name, item.variant_product_code)}
                               </p>
                             </div>
                           </div>

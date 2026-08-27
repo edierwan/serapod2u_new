@@ -74,7 +74,9 @@ describe('Supply Chain organization deep links', () => {
     it('still resolves existing inventory paths', () => {
         expect(resolveSupplyChainSlug(['inventory'])).toEqual({ initialView: 'inventory-list' })
         expect(resolveSupplyChainSlug(['inventory', 'settings'])).toEqual({ initialView: 'inventory-settings' })
-        expect(resolveSupplyChainSlug(['inventory', 'repack'])).toEqual({ initialView: 'repack-stock' })
+        // Repack Stock was removed: the old deep link falls back to View Inventory
+        // instead of reopening a page the application no longer ships.
+        expect(resolveSupplyChainSlug(['inventory', 'repack'])).toEqual({ initialView: 'inventory-list' })
         expect(resolveSupplyChainSlug(['something-unknown'])).toEqual({ initialView: 'supply-chain' })
     })
 })

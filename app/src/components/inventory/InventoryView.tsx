@@ -46,13 +46,11 @@ import {
   type VariantInventorySummary
 } from '@/lib/inventory/inventory-view-aggregation'
 import {
-  HQ_ALL_WAREHOUSES_LABEL,
   HQ_CONSOLIDATED_LEGACY_NOTE,
-  hqConsolidatedLocationValue,
+  buildInventoryLocationScope,
   hqIdFromConsolidatedLocation,
   isHqConsolidatedLocation,
   remapRowsForHqConsolidatedView,
-  resolveDefaultInventoryLocationId,
 } from '@/lib/inventory/hq-consolidated-location'
 import {
   variantAlternativeLabel,
@@ -982,43 +980,20 @@ export default function InventoryView({ userProfile, onViewChange }: InventoryVi
 
       if (error) throw error
 
-      const rows = data || []
-      const hqRows = rows.filter((row: any) => row.org_type_code === 'HQ')
-      const warehouseRows = rows.filter((row: any) => row.org_type_code === 'WH')
-      const warehouseIdsByHq = new Map<string, string[]>()
-      for (const warehouse of warehouseRows) {
-        if (!warehouse.parent_org_id) continue
-        const current = warehouseIdsByHq.get(warehouse.parent_org_id) || []
-        current.push(warehouse.id)
-        warehouseIdsByHq.set(warehouse.parent_org_id, current)
-      }
-      setHqWarehouseIdsByHq(warehouseIdsByHq)
-
-      const consolidatedOptions = hqRows
-        .filter((hq: any) => (warehouseIdsByHq.get(hq.id) || []).length > 0)
-        .map((hq: any) => ({
-          id: hqConsolidatedLocationValue(hq.id),
-          org_name: HQ_ALL_WAREHOUSES_LABEL,
-          org_code: 'HQ-ALL-WH',
-          is_consolidated: true,
-        }))
-
+      // Shared with Inventory Settings so both pages resolve the same
+      // HQ/warehouse options, membership and default (see buildInventoryLocationScope).
+      const scope = buildInventoryLocationScope(data || [])
+      setHqWarehouseIdsByHq(scope.warehouseIdsByHq)
       // Keep individual warehouse/HQ filters; append display-only consolidated option(s).
-      setLocations([...rows.map((row: any) => ({
-        id: row.id,
-        org_name: row.org_name,
-        org_code: row.org_code,
-        is_consolidated: false,
-      })), ...consolidatedOptions])
+      setLocations(scope.locations)
 
       // Open on the HQ's default fulfillment warehouse instead of "All Locations".
       // Applied exactly once per mount so a later refetch (Show inactive toggle)
       // never overwrites a location the operator has since chosen.
       if (!defaultLocationApplied.current) {
         defaultLocationApplied.current = true
-        const defaultLocationId = resolveDefaultInventoryLocationId(rows)
-        if (defaultLocationId) {
-          setLocationFilter(defaultLocationId)
+        if (scope.defaultLocationId) {
+          setLocationFilter(scope.defaultLocationId)
         }
       }
     } catch (error) {
