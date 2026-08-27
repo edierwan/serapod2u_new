@@ -11,6 +11,7 @@ import { formatNumber } from '@/lib/utils/formatters'
 import { usePermissions } from '@/hooks/usePermissions'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
+import { getOrderDisplayOrgName, orderMatchesSearch } from '@/lib/orders/order-search'
 import {
   FileText,
   Plus,
@@ -198,12 +199,16 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return acc
   }, [] as Array<{ id: string; org_name: string }>)
 
+  // The Name column and the free-text search share one implementation so the
+  // search always matches what the table renders.
+  const getDisplayOrgName = (order: Order): string =>
+    getOrderDisplayOrgName(order, userProfile.organization_id)
+
   // Filter orders based on all criteria
   const filteredOrders = orders.filter(order => {
-    // Search filter - search both legacy and display doc numbers
-    const matchesSearch = order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.display_doc_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.notes?.toLowerCase().includes(searchQuery.toLowerCase())
+    // Search filter - matches the identity shown in the table: document
+    // numbers, the Name column, both organizations (name and code) and notes.
+    const matchesSearch = orderMatchesSearch(order, searchQuery, userProfile.organization_id)
 
     // Status filter
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
@@ -807,7 +812,7 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, searchQuery, typeFilter])
+  }, [statusFilter, typeFilter])
 
   const handleCreateOrder = async () => {
     // Check if user has digital signature
@@ -972,10 +977,12 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
         query = query.eq('status', statusFilter)
       }
 
-      // Apply search filter - search both legacy and display doc numbers
-      if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%,display_doc_no.ilike.%${searchQuery}%,notes.ilike.%${searchQuery}%`)
-      }
+      // Search is deliberately NOT pushed into the query. It used to be an
+      // `.or(order_no, display_doc_no, notes)` filter, which threw away every
+      // row that only matched on the organization name shown in the table
+      // (searching "skd" returned 3 rows instead of every SKD Distribution
+      // order). ORDER_FETCH_LIMIT already brings back the full window, so the
+      // search runs client-side over the same fields the user can see.
 
       const { data: ordersData, error: ordersError } = await query
 
@@ -1193,47 +1200,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       .trim()
   }
 
-  // Helper function to get the organization name to display in the Name column
-  // For D2H orders, we want to show the distributor (buyer) name - the distributor placing the order
-  // For H2M orders, we want to show the manufacturer (seller) name
-  // For S2D orders, we want to show the shop (buyer) name from distributor's view, or distributor (seller) from shop's view
-  const getDisplayOrgName = (order: Order): string => {
-    // For D2H (Distributor → HQ), show the distributor name (buyer)
-    // In D2H orders: buyer = distributor (placing order), seller = HQ/Warehouse (fulfilling order)
-    if (order.order_type === 'D2H') {
-      const sellerIsHQorWH = order.seller_org?.org_type_code === 'HQ' || order.seller_org?.org_type_code === 'WH'
-      const buyerIsDist = order.buyer_org?.org_type_code === 'DIST'
-
-      // If buyer is distributor, return buyer (distributor) name - this is the expected data structure
-      if (buyerIsDist && order.buyer_org?.org_name) {
-        return order.buyer_org.org_name
-      }
-      // Legacy fallback: If seller is distributor (old data structure), return seller name
-      if (!sellerIsHQorWH && order.seller_org?.org_name) {
-        return order.seller_org.org_name
-      }
-      // Final fallback - show buyer name as it should be the distributor
-      return order.buyer_org?.org_name || order.seller_org?.org_name || 'N/A'
-    }
-
-    // For H2M (HQ → Manufacturer), show the manufacturer name (seller)
-    if (order.order_type === 'H2M') {
-      return order.seller_org?.org_name || 'N/A'
-    }
-
-    // For S2D (Shop → Distributor), show the shop name (buyer) or distributor (seller) based on perspective
-    if (order.order_type === 'S2D') {
-      // If current user is the seller (distributor), show buyer (shop) name
-      if (order.seller_org_id === userProfile.organization_id) {
-        return order.buyer_org?.org_name || 'N/A'
-      }
-      // If current user is the buyer (shop), show seller (distributor) name
-      return order.seller_org?.org_name || 'N/A'
-    }
-
-    // Default: show seller name
-    return order.seller_org?.org_name || 'N/A'
-  }
 
   if (loading && orders.length === 0) {
     return (

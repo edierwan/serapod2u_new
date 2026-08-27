@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
+import { canonicalStateKey } from '@/lib/reporting/canonical-state'
 import StateFlag from './StateFlag'
 
 export interface StateMapMetric {
-  stateId: string | null
+  /** canonical Negeri key (may cover several duplicate `states` rows) */
+  stateKey: string | null
   negeri: string
   shops: number
   scans: number
@@ -14,11 +15,11 @@ export interface StateMapMetric {
 }
 
 interface MalaysiaStateMapProps {
-  /** canonical-state-key -> metric (key from getStateFromCapturedLocation) */
+  /** canonical-state-key -> metric (key from canonicalStateKey) */
   metricsByKey: Map<string, StateMapMetric>
   /** canonical key of the currently selected state */
   selectedKey: string | null
-  onSelectState: (stateId: string) => void
+  onSelectState: (stateKey: string) => void
   isDark: boolean
   /** rendered if the GeoJSON asset fails to load */
   fallback?: React.ReactNode
@@ -42,10 +43,6 @@ const LEVELS = [
   { key: 'low', label: 'Low', color: '#93c5fd' },
   { key: 'veryLow', label: 'Very Low', color: '#dbeafe' },
 ] as const
-
-function canonicalKey(name: string | null | undefined): string {
-  return getStateFromCapturedLocation(name) || (name || '').trim()
-}
 
 export default function MalaysiaStateMap({
   metricsByKey,
@@ -132,7 +129,7 @@ export default function MalaysiaStateMap({
     }
     return features.map((f) => {
       const name = f.properties?.name || ''
-      const key = canonicalKey(name)
+      const key = canonicalStateKey(name)
       let d = ''
       if (f.geometry.type === 'Polygon') {
         for (const ring of f.geometry.coordinates) d += ringToPath(ring)
@@ -197,10 +194,10 @@ export default function MalaysiaStateMap({
               stroke={isSelected ? '#f59e0b' : strokeColor}
               strokeWidth={isSelected ? 2.5 : 0.8}
               opacity={isHover ? 0.85 : 1}
-              style={{ cursor: metric?.stateId ? 'pointer' : 'default', transition: 'opacity .12s' }}
+              style={{ cursor: metric?.stateKey ? 'pointer' : 'default', transition: 'opacity .12s' }}
               onMouseEnter={() => setHoverKey(p.key)}
               onMouseLeave={() => setHoverKey((k) => (k === p.key ? null : k))}
-              onClick={() => { if (metric?.stateId) onSelectState(metric.stateId) }}
+              onClick={() => { if (metric?.stateKey) onSelectState(metric.stateKey) }}
             />
           )
         })}

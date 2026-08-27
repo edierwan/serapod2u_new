@@ -9,6 +9,10 @@ import {
   type NegeriStateRow,
 } from '@/lib/reporting/shop-by-negeri'
 import {
+  buildCanonicalStates,
+  resolveCanonicalStateSelection,
+} from '@/lib/reporting/canonical-state'
+import {
   previousReportingPeriod,
   reportingPeriodDateWindow,
   reportingPeriodFilenameLabel,
@@ -115,7 +119,14 @@ export async function GET(request: Request) {
 
     const rangeLabel = reportingPeriodRangeLabel(selectedPeriod)
     const regionName = region === 'all' ? 'All Regions' : (regions.find((r) => r.id === region)?.region_name || region)
-    const negeriName = negeri === 'all' ? 'All States' : (states.find((s) => s.id === negeri)?.state_name || negeri)
+    // The `negeri` parameter is a canonical Negeri key (a raw states.id from an
+    // older link still resolves), so the export covers every duplicate state row
+    // behind that logical state — exactly like the browser report.
+    const canonicalStates = buildCanonicalStates(states)
+    const selectedNegeriKey = resolveCanonicalStateSelection(negeri, states)
+    const negeriName = !selectedNegeriKey
+      ? 'All States'
+      : (canonicalStates.find((s) => s.key === selectedNegeriKey)?.name || selectedNegeriKey)
 
     // ── Build workbook ────────────────────────────────────────────────
     const wb = new ExcelJS.Workbook()

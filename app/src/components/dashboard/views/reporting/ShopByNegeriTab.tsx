@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import {
   RefreshCw, Loader2, TrendingUp, TrendingDown, MapPin,
-  Store, Users, Scan, Crown, Eye, Filter, RotateCcw,
+  Store, Scan, Crown, Eye,
   Download, FileSpreadsheet, Search, Map as MapIcon,
 } from 'lucide-react'
 import {
@@ -30,7 +30,10 @@ import {
   reportingPeriodRangeLabel,
   type ReportingPeriod,
 } from '@/lib/reporting/reporting-period'
-import { getStateFromCapturedLocation } from '@/lib/roadtour/visit-region'
+import {
+  buildCanonicalStates,
+  type CanonicalState,
+} from '@/lib/reporting/canonical-state'
 import ExecutiveKpiValue from './ExecutiveKpiValue'
 import MalaysiaStateMap, { type StateMapMetric } from './MalaysiaStateMap'
 import StateFlag from './StateFlag'
@@ -86,13 +89,14 @@ export default function ShopByNegeriTab({
   const [states, setStates] = useState<NegeriStateRow[]>([])
   const [regions, setRegions] = useState<NegeriRegionRow[]>([])
 
-  // Draft filters (filter bar) vs applied filters (used for computation)
-  const [draftRegion, setDraftRegion] = useState('all')
-  const [draftNegeri, setDraftNegeri] = useState('all')
-  const [draftSearch, setDraftSearch] = useState('')
-
-  const [applied, setApplied] = useState({ region: 'all', negeri: 'all', search: '' })
-  const [selectedStateId, setSelectedStateId] = useState<string | null>(null)
+  // One authoritative filter state — every control applies immediately, there
+  // is no Apply/Reset step. `searchInput` is only the raw keystrokes; `search`
+  // is the debounced value the report is actually built from.
+  const [region, setRegion] = useState('all')
+  const [negeri, setNegeri] = useState('all')
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedStateKey, setSelectedStateKey] = useState<string | null>(null)
 
   const tooltipBg = isDark ? '#1f2937' : '#ffffff'
   const tooltipStyle = {
@@ -172,18 +176,50 @@ export default function ShopByNegeriTab({
     setRefreshing(false)
   }
 
-  const handleApply = () => {
-    setApplied({ region: draftRegion, negeri: draftNegeri, search: draftSearch })
-    setSelectedStateId(null)
+  // ── Canonical Negeri options ───────────────────────────────────────
+  // `states` holds duplicate rows for the same real state (two "Selangor"
+  // rows today), so both dropdowns and the report are driven by canonical
+  // states. Selecting one covers every underlying states.id behind it.
+  const canonicalStates = useMemo(() => buildCanonicalStates(states), [states])
+
+  const negeriOptions = useMemo<CanonicalState[]>(() => {
+    if (region === 'all') return canonicalStates
+    return canonicalStates.filter((s) => s.regionIds.includes(region))
+  }, [canonicalStates, region])
+
+  // Region changes apply immediately; a Negeri that no longer belongs to the
+  // new region falls back to All States in the same update, so the report is
+  // never built from an invalid pair.
+  const handleRegionChange = (value: string) => {
+    setRegion(value)
+    const stillValid =
+      negeri === 'all' ||
+      value === 'all' ||
+      canonicalStates.some((s) => s.key === negeri && s.regionIds.includes(value))
+    if (!stillValid) setNegeri('all')
+    setSelectedStateKey(null)
   }
 
-  const handleReset = () => {
-    setDraftRegion('all')
-    setDraftNegeri('all')
-    setDraftSearch('')
-    setApplied({ region: 'all', negeri: 'all', search: '' })
-    setSelectedStateId(null)
+  const handleNegeriChange = (value: string) => {
+    setNegeri(value)
+    setSelectedStateKey(null)
   }
+
+  // Debounced free-text search. Clearing the box restores the unsearched
+  // results straight away rather than after the debounce.
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value)
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (!value.trim()) {
+      setSearch('')
+      return
+    }
+    searchTimerRef.current = setTimeout(() => setSearch(value), 250)
+  }
+  useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+  }, [])
 
   // ── Report computation ─────────────────────────────────────────────
   const dateWindow = useMemo(
@@ -195,45 +231,36 @@ export default function ShopByNegeriTab({
     scans,
     orgs,
     states,
-    regionId: applied.region,
-    negeriId: applied.negeri,
-    search: applied.search,
+    regionId: region,
+    negeriId: negeri,
+    search,
     window: dateWindow!,
-  }), [scans, orgs, states, applied, dateWindow])
+  }), [scans, orgs, states, region, negeri, search, dateWindow])
 
   // Default selected state = top ranked
-  const activeStateId = selectedStateId || report.ranking[0]?.stateId || null
-  const activeStateRow = report.ranking.find((r) => r.stateId === activeStateId) || null
-  const activeStateName = activeStateRow?.negeri || states.find((s) => s.id === activeStateId)?.state_name || '—'
+  const activeStateKey = selectedStateKey || report.ranking[0]?.stateKey || null
+  const activeStateRow = report.ranking.find((r) => r.stateKey === activeStateKey) || null
+  const activeStateName = activeStateRow?.negeri
+    || canonicalStates.find((s) => s.key === activeStateKey)?.name
+    || '—'
   const activeTopShops = useMemo(
-    () => report.topShops.filter((s) => s.stateId === activeStateId),
-    [report.topShops, activeStateId]
+    () => report.topShops.filter((s) => s.stateKey === activeStateKey),
+    [report.topShops, activeStateKey]
   )
 
   // Canonical-key metrics for the Malaysia map (covers every state, zero-filled,
   // then overlaid with the filtered ranking metrics).
-  const canonical = (name?: string | null) => getStateFromCapturedLocation(name) || (name || '').trim()
   const metricsByKey = useMemo(() => {
     const m = new Map<string, StateMapMetric>()
-    for (const s of states) {
-      const key = canonical(s.state_name)
-      if (!key || m.has(key)) continue
-      m.set(key, { stateId: s.id, negeri: s.state_name, shops: 0, scans: 0, consumers: 0, avgPerShop: 0 })
+    for (const s of canonicalStates) {
+      m.set(s.key, { stateKey: s.key, negeri: s.name, shops: 0, scans: 0, consumers: 0, avgPerShop: 0 })
     }
     for (const r of report.ranking) {
-      const key = canonical(r.negeri)
-      if (!key) continue
-      m.set(key, { stateId: r.stateId, negeri: r.negeri, shops: r.shops, scans: r.scans, consumers: r.consumers, avgPerShop: r.avgPerShop })
+      m.set(r.stateKey, { stateKey: r.stateKey, negeri: r.negeri, shops: r.shops, scans: r.scans, consumers: r.consumers, avgPerShop: r.avgPerShop })
     }
     return m
-  }, [states, report.ranking])
-  const selectedKey = activeStateId ? canonical(activeStateName) : null
-
-  // States within the currently selected region (for the negeri dropdown)
-  const negeriOptions = useMemo(() => {
-    if (draftRegion === 'all') return states
-    return states.filter((s) => s.region_id === draftRegion)
-  }, [states, draftRegion])
+  }, [canonicalStates, report.ranking])
+  const selectedKey = activeStateKey
 
   const dateRangeLabel = selectedPeriod ? reportingPeriodRangeLabel(selectedPeriod) : ''
 
@@ -243,9 +270,9 @@ export default function ShopByNegeriTab({
       setExporting(true)
       const params = new URLSearchParams({
         period: selectedPeriod!.key,
-        region: applied.region,
-        negeri: applied.negeri,
-        search: applied.search,
+        region,
+        negeri,
+        search,
       })
       const res = await fetch(`/api/reporting/shop-by-negeri/excel?${params.toString()}`)
       if (!res.ok) {
@@ -345,7 +372,7 @@ export default function ShopByNegeriTab({
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Region Type</label>
-              <Select value={draftRegion} onValueChange={(v) => { setDraftRegion(v); setDraftNegeri('all') }}>
+              <Select value={region} onValueChange={handleRegionChange}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="All Regions" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Regions</SelectItem>
@@ -357,15 +384,15 @@ export default function ShopByNegeriTab({
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Negeri (State)</label>
-              <Select value={draftNegeri} onValueChange={setDraftNegeri}>
+              <Select value={negeri} onValueChange={handleNegeriChange}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="All States" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All States</SelectItem>
                   {negeriOptions.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <SelectItem key={s.key} value={s.key}>
                       <span className="inline-flex items-center gap-1.5">
-                        <StateFlag stateName={s.state_name} />
-                        {s.state_name}
+                        <StateFlag stateName={s.name} />
+                        {s.name}
                       </span>
                     </SelectItem>
                   ))}
@@ -377,25 +404,17 @@ export default function ShopByNegeriTab({
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  value={draftSearch}
-                  onChange={(e) => setDraftSearch(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   placeholder="Search negeri…"
                   className="h-9 pl-8 text-sm"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleApply() }}
                 />
               </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-border">
             <p className="text-xs text-muted-foreground">{dateRangeLabel}</p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={handleReset}>
-                <RotateCcw className="h-3.5 w-3.5" /> Reset
-              </Button>
-              <Button size="sm" className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleApply}>
-                <Filter className="h-3.5 w-3.5" /> Apply Filters
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground">Filters apply automatically</p>
           </div>
         </CardContent>
       </Card>
@@ -481,7 +500,7 @@ export default function ShopByNegeriTab({
             <MalaysiaStateMap
               metricsByKey={metricsByKey}
               selectedKey={selectedKey}
-              onSelectState={(stateId) => setSelectedStateId(stateId)}
+              onSelectState={(stateKey) => setSelectedStateKey(stateKey)}
               isDark={isDark}
               fallback={
                 rankingChartData.length === 0 ? (
@@ -513,11 +532,11 @@ export default function ShopByNegeriTab({
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
               <h4 className="font-semibold">State Detail</h4>
-              <Select value={activeStateId || ''} onValueChange={(v) => setSelectedStateId(v)}>
+              <Select value={activeStateKey || ''} onValueChange={(v) => setSelectedStateKey(v)}>
                 <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   {ranking.map((r) => (
-                    <SelectItem key={r.stateId} value={r.stateId}>
+                    <SelectItem key={r.stateKey} value={r.stateKey}>
                       <span className="inline-flex items-center gap-1.5">
                         <StateFlag stateName={r.negeri} />
                         {r.negeri}
@@ -619,8 +638,8 @@ export default function ShopByNegeriTab({
                   <tbody>
                     {ranking.map((r) => (
                       <tr
-                        key={r.stateId}
-                        className={`border-b border-border/60 hover:bg-muted/40 transition-colors ${activeStateId === r.stateId ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}
+                        key={r.stateKey}
+                        className={`border-b border-border/60 hover:bg-muted/40 transition-colors ${activeStateKey === r.stateKey ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}`}
                       >
                         <td className="py-2.5 pr-2 text-muted-foreground">{r.rank}</td>
                         <td className="py-2.5 pr-2 font-medium">
@@ -639,7 +658,7 @@ export default function ShopByNegeriTab({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            onClick={() => setSelectedStateId(r.stateId)}
+                            onClick={() => setSelectedStateKey(r.stateKey)}
                             title="View detail"
                           >
                             <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" />
