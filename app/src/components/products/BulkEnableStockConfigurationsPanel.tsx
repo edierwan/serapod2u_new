@@ -7,13 +7,20 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { variantNameWithProductCode } from '@/lib/inventory/variant-display-label'
 
 interface EligibleVariant {
   id: string
   variantName: string
-  variantCode: string
+  /**
+   * product_variants.product_code — the Product Code from Products > Master
+   * Data > Variants. Never the parent products.product_code and never
+   * variant_code; null when master data carries no code.
+   */
+  variantProductCode: string | null
   productName: string
-  productCode: string
+  groupName?: string | null
+  groupStockConfigProfile?: string | null
   alreadyEnabled: boolean
 }
 
@@ -63,7 +70,7 @@ export default function BulkEnableStockConfigurationsPanel({ canManage }: { canM
 
   const submit = async () => {
     if (selected.size === 0) return
-    if (!window.confirm(`Enable 20 mg New Box, 50 mg New Box, and 50 mg Old Box for ${selected.size} selected flavour(s)? Existing balances stay in Legacy/Unclassified and are not moved.`)) return
+    if (!window.confirm(`Enable 20 mg New Box, 50 mg New Box, and 50 mg Old Box for ${selected.size} selected eligible flavour/cartridge variant(s)? Existing balances stay in Legacy/Unclassified and are not moved.`)) return
     setSubmitting(true)
     setError('')
     setResults(null)
@@ -89,14 +96,14 @@ export default function BulkEnableStockConfigurationsPanel({ canManage }: { canM
     <Card className="border-blue-200">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><Boxes className="h-4 w-4 text-blue-700" />Enable Stock Configurations for Existing Cellera Flavours</CardTitle>
-        <p className="text-xs text-slate-600">HQ Admin only. Creates exactly 20 mg New Box, 50 mg New Box, and 50 mg Old Box for the flavours you select. Does not move or classify any existing balance.</p>
+        <p className="text-xs text-slate-600">HQ Admin only. Creates exactly 20 mg New Box, 50 mg New Box, and 50 mg Old Box for the eligible flavour/cartridge variants you select. Only product groups configured for concentration stock are listed; Devices are not eligible. Does not move or classify any existing balance.</p>
       </CardHeader>
       <CardContent className="space-y-3">
-        {loading ? <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Loading Cellera vape variants…</div> : null}
+        {loading ? <div className="flex items-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" />Loading eligible Cellera flavour/cartridge variants…</div> : null}
         {error ? <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
         {!loading && variants.length === 0 && !error ? (
-          <p className="text-sm text-slate-500">No Cellera vape variants found.</p>
+          <p className="text-sm text-slate-500">No eligible Cellera flavour/cartridge variants found. Devices and other standard-profile product groups keep a single Standard configuration and are not listed here.</p>
         ) : null}
 
         {!loading && variants.length > 0 ? (
@@ -109,8 +116,8 @@ export default function BulkEnableStockConfigurationsPanel({ canManage }: { canM
                   {variants.map(variant => (
                     <TableRow key={variant.id}>
                       <TableCell><Checkbox checked={selected.has(variant.id)} disabled={variant.alreadyEnabled} onCheckedChange={() => toggle(variant.id)} /></TableCell>
-                      <TableCell>{variant.productName} <span className="text-xs text-slate-400">{variant.productCode}</span></TableCell>
-                      <TableCell>{variant.variantName} <span className="text-xs text-slate-400">{variant.variantCode}</span></TableCell>
+                      <TableCell>{variant.productName}</TableCell>
+                      <TableCell>{variantNameWithProductCode(variant.variantName, variant.variantProductCode)}</TableCell>
                       <TableCell>{variant.alreadyEnabled
                         ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">Already enabled</Badge>
                         : <Badge variant="outline">Pending</Badge>}</TableCell>

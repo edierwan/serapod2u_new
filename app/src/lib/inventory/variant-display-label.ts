@@ -69,3 +69,25 @@ export function variantAlternativeLabel(alternativeName?: string | null): string
   const alternative = (alternativeName || '').trim()
   return alternative ? `Alternative: ${alternative}` : null
 }
+
+/**
+ * Full variant name plus the master-data variant Product Code:
+ * "Deluxe Cellera Cartridge [ Strawberry Corn ] - SC".
+ *
+ * Used by administration panels (Inventory Settings) that identify a variant by
+ * its complete master-data name rather than by the bracketed flavour alone.
+ * The code is `product_variants.product_code` — the Product Code column of
+ * Product Management > Variants. There is deliberately NO fallback to
+ * `product_variants.variant_code` or to the parent `products.product_code`: a
+ * variant with no Product Code shows its name alone, never a dangling
+ * separator and never a code that means something else.
+ */
+export function variantNameWithProductCode(
+  variantName?: string | null,
+  variantProductCode?: string | null,
+): string {
+  const name = (variantName || '').trim()
+  const code = (variantProductCode || '').trim()
+  if (!name) return code ? `${NO_VARIANT_LABEL} - ${code}` : NO_VARIANT_LABEL
+  return code ? `${name} - ${code}` : name
+}
