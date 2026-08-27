@@ -91,3 +91,69 @@ export function variantNameWithProductCode(
   if (!name) return code ? `${NO_VARIANT_LABEL} - ${code}` : NO_VARIANT_LABEL
   return code ? `${name} - ${code}` : name
 }
+
+/**
+ * Packaging words that master data repeats on every cartridge variant name
+ * ("Deluxe Cellera Cartridge [ Hazelnut ]"). They restate the parent Product,
+ * so a picker that already prints the Product ahead of the variant gains
+ * nothing from them.
+ */
+const CELLERA_PACKAGING = /\bCellera\s+Cartridges?\b/i
+
+/**
+ * "Deluxe Cellera Cartridge [ Hazelnut ]" → "Deluxe [ Hazelnut ]".
+ *
+ * The dropped words come from the pattern, never from a hard-coded list of
+ * ranges, so "Fruity Cellera Cartridge [ Grape ]" shortens to "Fruity [ Grape ]"
+ * without a code change. Names that carry no packaging phrase, and names the
+ * phrase would consume entirely ("Cellera Cartridge"), keep their full master-
+ * data text rather than rendering short-but-meaningless.
+ *
+ * Display-only: `product_variants.variant_name` itself is never rewritten.
+ */
+export function variantShortName(variantName?: string | null): string {
+  const name = (variantName || '').trim()
+  if (!name) return NO_VARIANT_LABEL
+
+  const short = name.replace(CELLERA_PACKAGING, ' ').replace(/\s+/g, ' ').trim()
+  return short || name
+}
+
+/**
+ * Create Order's "Select Variant" option text, after the Product name and
+ * before the price: "Deluxe [ Hazelnut ] - HA", or with the variant's
+ * attribute text when master data carries one: "Deluxe [ Hazelnut ] (5%) - HA".
+ *
+ * The code is `product_variants.product_code` — the Product Code column of
+ * Product Management > Variants — and there is deliberately no fallback to
+ * `variant_code`, `manufacturer_sku` or the parent `products.product_code`.
+ * A variant with no Product Code ends at the name, never at a dangling "-".
+ */
+export function variantSelectorLabel(
+  variantName?: string | null,
+  variantProductCode?: string | null,
+  attributeText?: string | null,
+): string {
+  const short = variantShortName(variantName)
+  const attribute = (attributeText || '').trim()
+  const base = attribute ? `${short} (${attribute})` : short
+  const code = (variantProductCode || '').trim()
+  return code ? `${base} - ${code}` : base
+}
+
+/**
+ * The selected order-item card keeps the full master-data variant name and
+ * bullets the variant Product Code onto it:
+ * "Deluxe Cellera Cartridge [ Hazelnut ] • HA".
+ *
+ * Same authoritative code as `variantSelectorLabel`, and the same rule for a
+ * missing one: the name alone, never a trailing bullet.
+ */
+export function variantNameWithProductCodeBullet(
+  variantName?: string | null,
+  variantProductCode?: string | null,
+): string {
+  const name = (variantName || '').trim() || NO_VARIANT_LABEL
+  const code = (variantProductCode || '').trim()
+  return code ? `${name} • ${code}` : name
+}

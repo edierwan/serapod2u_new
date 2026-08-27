@@ -8,6 +8,11 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft, User, Package, CheckSquare, Loader2, Trash2 } from 'lucide-react'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
+import {
+  variantIdentityLabel,
+  variantNameWithProductCodeBullet,
+  variantSelectorLabel,
+} from '@/lib/inventory/variant-display-label'
 
 interface UserProfile {
   id: string
@@ -54,7 +59,10 @@ interface ProductVariant {
   id: string
   product_id: string
   product_name: string
+  /** Parent products.product_code — identical across every flavour. */
   product_code: string
+  /** product_variants.product_code — the Product Code column of Products > Master Data > Variants. */
+  variant_product_code?: string | null
   variant_name: string
   attributes?: Record<string, any>
   barcode?: string | null
@@ -72,6 +80,8 @@ interface OrderItem {
   variant_id: string
   product_name: string
   variant_name: string
+  /** product_variants.product_code, carried for display only. */
+  variant_product_code?: string | null
   attributes?: Record<string, any>
   manufacturer_sku?: string | null
   qty: number
@@ -431,6 +441,17 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
     }
   }
 
+  /**
+   * The one reading of "Product Code" shared by the variant picker, the
+   * selected-item card and the Order Summary: `product_variants.product_code`,
+   * carried on the item and otherwise recovered from the loaded catalog. Never
+   * `variant_code`, `manufacturer_sku` or the parent `products.product_code`.
+   */
+  const resolveVariantProductCode = (item: OrderItem): string | null =>
+    item.variant_product_code ||
+    availableVariants.find(v => v.id === item.variant_id)?.variant_product_code ||
+    null
+
   const loadAvailableProducts = async (sellerOrgId: string, manufacturerLock?: string | null) => {
     try {
       const effectiveLock = manufacturerLock !== undefined ? manufacturerLock : lockedManufacturerId
@@ -442,6 +463,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         .select(`
           id,
           product_id,
+          product_code,
           variant_name,
           attributes,
           barcode,
@@ -504,6 +526,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           product_id: v.product_id,
           product_name: product?.product_name || '',
           product_code: product?.product_code || '',
+          variant_product_code: v.product_code || null,
           variant_name: v.variant_name,
           attributes: {
             ...(v.attributes || {}),
@@ -692,6 +715,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
       variant_id: variant.id,
       product_name: variant.product_name,
       variant_name: variant.variant_name,
+      variant_product_code: variant.variant_product_code || null,
       attributes: variant.attributes,
       manufacturer_sku: variant.manufacturer_sku,
       qty: itemQty,
@@ -825,7 +849,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
           // Load product variant
           const { data: variant } = await supabase
             .from('product_variants')
-            .select('variant_name, attributes, manufacturer_sku')
+            .select('variant_name, product_code, attributes, manufacturer_sku')
             .eq('id', item.variant_id)
             .single()
 
@@ -901,6 +925,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         variant_id: item.variant_id,
         product_name: item.products?.product_name || 'Unknown Product',
         variant_name: item.product_variants?.variant_name || 'Default',
+        variant_product_code: item.product_variants?.product_code || null,
         attributes: item.product_variants?.attributes,
         manufacturer_sku: item.product_variants?.manufacturer_sku,
         qty: item.qty,
@@ -1011,6 +1036,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
         variant_id: item.variant_id,
         product_name: item.product?.product_name || 'Unknown Product',
         variant_name: item.product_variants?.variant_name || item.variant_name || 'Default',
+        variant_product_code: item.product_variants?.product_code || item.variant_product_code || null,
         attributes: item.product_variants?.attributes || item.attributes,
         manufacturer_sku: item.product_variants?.manufacturer_sku || item.manufacturer_sku,
         qty: item.qty,
@@ -1905,7 +1931,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           const attrText = variant.attributes?.strength || variant.attributes?.nicotine || ''
                           return (
                             <option key={variant.id} value={variant.id}>
-                              {!selectedProductFilter ? `${variant.product_name} - ` : ''}{variant.variant_name} {attrText ? `(${attrText})` : ''} - RM {formatCurrency(variant.base_cost)}
+                              {!selectedProductFilter ? `${variant.product_name} - ` : ''}{variantSelectorLabel(variant.variant_name, variant.variant_product_code, attrText)} - RM {formatCurrency(variant.base_cost)}
                             </option>
                           )
                         })}
@@ -1941,6 +1967,8 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                     const itemVariant = availableVariants.find(v => v.id === item.variant_id)
                     const productFamily = itemVariant ? getProductFamily(itemVariant) : null
                     const familyDefaultSize = productFamily ? getDefaultCaseSize(productFamily) : null
+                    const itemVariantProductCode = resolveVariantProductCode(item)
+                    const itemAttrText = item.attributes?.strength || item.attributes?.nicotine || ''
                     // Presentation only: the outer-container count (unchanged calculation) is labelled "Box"
                     const boxCount = Math.ceil(item.qty / (item.units_per_case || unitsPerCase))
 
@@ -1956,10 +1984,12 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-[var(--sera-muted)] mt-1">{item.variant_name} • {item.attributes?.strength || item.attributes?.nicotine || ''}</p>
+                            <p className="text-sm text-[var(--sera-muted)] mt-1">
+                              {variantNameWithProductCodeBullet(item.variant_name, itemVariantProductCode)}
+                              {itemAttrText ? ` • ${itemAttrText}` : ''}
+                            </p>
                             <p className="text-xs text-[var(--sera-muted)]/80 mt-1">
                               RM {formatCurrency(item.unit_price)} per case
-                              {item.manufacturer_sku && ` • SKU: ${item.manufacturer_sku}`}
                               {familyDefaultSize && ` • Default: ${familyDefaultSize} cases/box`}
                             </p>
                           </div>
@@ -2231,7 +2261,7 @@ export default function CreateOrderView({ userProfile, onViewChange }: CreateOrd
                           <span className="text-[var(--sera-ink)]/80 font-medium">{item.product_name}</span>
                         </div>
                         <div className="flex justify-between text-xs text-[var(--sera-muted)]">
-                          <span>{item.variant_name}</span>
+                          <span>{variantIdentityLabel(item.variant_name, resolveVariantProductCode(item))}</span>
                         </div>
                         <div className="flex justify-between text-xs text-[var(--sera-muted)]/80 mt-1">
                           <span>{item.qty.toLocaleString()} Cases • {boxCount.toLocaleString()} {boxCount === 1 ? 'Box' : 'Boxes'}</span>
