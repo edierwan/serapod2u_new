@@ -281,7 +281,7 @@ export function formatCheckIntro(
   if (summary.bucket === 'available') return '✅ **Ready to order**'
   if (summary.bucket === 'partially_available') return '🟡 **Partially available**'
   if (summary.bucket === 'out_of_stock') return '🔴 **Out of stock**'
-  return '🟠 **Needs review**'
+  return '⚠️ **Please clarify some items**'
 }
 
 export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): string {

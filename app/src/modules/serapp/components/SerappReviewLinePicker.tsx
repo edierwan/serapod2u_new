@@ -40,8 +40,8 @@ export default function SerappReviewLinePicker({
   }
 
   const heading = candidates.length > 1
-    ? `Relevant suggested matches (${candidates.length})`
-    : 'Possible match — tap to confirm'
+    ? `Tap to match "${result.name || result.raw}":`
+    : 'Tap to confirm match:'
 
   return (
     <div className="mt-2 space-y-1">

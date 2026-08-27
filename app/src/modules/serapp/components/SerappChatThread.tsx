@@ -912,13 +912,13 @@ function CheckSummaryCard({
         ? 'Reply confirm to order available qty only.'
         : check.summary.bucket === 'out_of_stock'
           ? 'Paste a new list with other products.'
-          : 'Choose a product for each unclear line, then tap Apply.'
+          : 'Tap the correct product below, or send the updated code.'
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
       <div className="space-y-1.5 text-[12px] text-[var(--sera-ink)]">
         <p className="font-semibold text-[var(--sera-muted)]">
-          {showReviewOnly ? `Needs your selection (${unresolved.length})` : 'Available qty'}
+          {showReviewOnly ? `Unclear items (${unresolved.length})` : 'Available qty'}
         </p>
         <ul className="space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
           {displayLines.map((line, idx) => (

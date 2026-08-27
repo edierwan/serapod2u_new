@@ -97,10 +97,12 @@ interface OrderToken {
 // off as a quantity. When the full matched slice is itself an authorized Product
 // Code/SKU (for example "SKU-77"), the trailing digits stay part of the code and
 // the real quantity is read from the text that follows it.
+const QTY_UNITS_REGEX = String.raw`(?:PCS?|PIECES?|UNITS?|CASES?|BOX(?:ES)?|CTN|CARTONS?|KOTAK)`
+
 const tokenizeChunk = (chunk: string, codeSet: Set<string>): OrderToken[] => {
   const tokens: OrderToken[] = []
-  const entry = /\s*(.+?)\s*(?:[-:=]+\s*|\t+\s*|\s+)(\d+)(?:\s*(?:PCS?|PIECES?|UNITS?))?(?=\s|$)/iy
-  const trailingQuantity = /^\s*(?:[-:=]+\s*)?(\d+)(?:\s*(?:PCS?|PIECES?|UNITS?))?(?=\s|$)/i
+  const entry = new RegExp(String.raw`\s*(.+?)\s*(?:[-:=]+\s*|\t+\s*|\s+)(\d+)(?:\s*${QTY_UNITS_REGEX})?(?=\s|$)`, 'iy')
+  const trailingQuantity = new RegExp(String.raw`^\s*(?:[-:=]+\s*)?(\d+)(?:\s*${QTY_UNITS_REGEX})?(?=\s|$)`, 'i')
   let pos = 0
 
   while (pos < chunk.length) {
@@ -198,7 +200,7 @@ const words = (value: string) => normalizeMatchName(value).split(/[^\p{L}\p{N}]+
 
 const GENERIC_ORDER_WORDS = new Set([
   'SERAPOD', 'CELLERA', 'FRUITY', 'CARTRIDGE', 'VAPE', 'FLAVOUR', 'FLAVOR',
-  'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS',
+  'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS', 'CASE', 'CASES', 'BOX', 'BOXES', 'CTN', 'CARTON', 'CARTONS', 'KOTAK',
 ])
 
 /**
