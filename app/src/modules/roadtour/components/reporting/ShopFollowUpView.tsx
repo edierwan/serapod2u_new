@@ -13,14 +13,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { EmptyBlock, KpiCard, LoadingBlock } from '../analytics/shared'
 import { ReportingHeader } from './ReportingHeader'
-import { OutcomePill, PriorityPill, downloadCsv, formatDate, formatDateTime } from './ui'
+import {
+    KpiDrilldownDialog,
+    KpiDrilldownEmpty,
+    KpiDrilldownValue,
+    OutcomePill,
+    PriorityPill,
+    SortableHead,
+    downloadCsv,
+    formatDate,
+    formatDateTime,
+} from './ui'
 import { useMonthlyReporting } from '@/modules/roadtour/lib/reporting/useMonthlyReporting'
 import {
     buildFollowUpSummary,
     buildShopEntries,
     isOverdueFollowUp,
+    selectFollowUpKpiEntries,
     sortFollowUpQueue,
+    type FollowUpKpiKey,
 } from '@/modules/roadtour/lib/reporting/aggregate'
+import {
+    orderFollowUpQueue,
+    type FollowUpSortKey,
+} from '@/modules/roadtour/lib/reporting/followUpTable'
+import { nextSortState, type SortState } from '@/modules/roadtour/lib/reporting/tableSort'
 import { IMPACT_METHOD_NOTE } from '@/modules/roadtour/lib/reporting/impactModel'
 import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
 import type { FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
@@ -30,6 +47,13 @@ interface Props { userProfile: any; onViewChange: (viewId: string) => void }
 const PAGE_SIZE = 25
 type QueueFilter = 'actionable' | 'all' | FollowUpPriority
 
+const KPI_DRILLDOWN_TITLE: Record<FollowUpKpiKey, string> = {
+    highPriority: 'High Priority',
+    dueToday: 'Due Today',
+    overdue: 'Overdue',
+    unassignedShops: 'Unassigned Shops',
+}
+
 export function ShopFollowUpView({ userProfile }: Props) {
     const organizationId = userProfile?.organizations?.id ?? userProfile?.organization_id ?? null
     const reporting = useMonthlyReporting(organizationId)
@@ -37,6 +61,8 @@ export function ShopFollowUpView({ userProfile }: Props) {
     const [queueFilter, setQueueFilter] = useState<QueueFilter>('actionable')
     const [search, setSearch] = useState('')
     const [page, setPage] = useState(0)
+    const [sort, setSort] = useState<SortState<FollowUpSortKey> | null>(null)
+    const [kpiDrilldown, setKpiDrilldown] = useState<FollowUpKpiKey | null>(null)
 
     const entries = useMemo(() => (dataset ? buildShopEntries(dataset.rows) : []), [dataset])
     const summary = useMemo(() => buildFollowUpSummary(entries), [entries])
@@ -50,12 +76,23 @@ export function ShopFollowUpView({ userProfile }: Props) {
             const haystack = `${entry.shopName} ${entry.shopCode ?? ''} ${entry.region ?? ''} ${entry.ownerAmName ?? UNASSIGNED_AM_LABEL}`
             return haystack.toLowerCase().includes(term)
         })
-        return sortFollowUpQueue(filtered)
-    }, [entries, queueFilter, search])
+        return orderFollowUpQueue(filtered, sort)
+    }, [entries, queueFilter, search, sort])
 
     const totalPages = Math.max(1, Math.ceil(queue.length / PAGE_SIZE))
     const currentPage = Math.min(page, totalPages - 1)
     const pageRows = queue.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+
+    const handleSort = (key: FollowUpSortKey) => {
+        setSort((current) => nextSortState(current, key))
+        setPage(0)
+    }
+
+    // Drill-down rows come from the same predicates the KPI counts use, so the
+    // number on the card and the number of rows in the dialog cannot diverge.
+    const drilldownRows = useMemo(() => (
+        kpiDrilldown ? sortFollowUpQueue(selectFollowUpKpiEntries(entries, kpiDrilldown)) : []
+    ), [entries, kpiDrilldown])
 
     const exportQueue = () => {
         if (!dataset) return
@@ -113,10 +150,26 @@ export function ShopFollowUpView({ userProfile }: Props) {
             {!loading && dataset && (
                 <>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <KpiCard label="High Priority" icon={Flag} accent="rose" value={summary.highPriority} sub="matured, no response or steep drop" />
-                        <KpiCard label="Due Today" icon={CalendarClock} accent="amber" value={summary.dueToday} sub="actionable today" />
-                        <KpiCard label="Overdue" icon={CalendarClock} accent="rose" value={summary.overdue} sub="past their due date" />
-                        <KpiCard label="Unassigned Shops" icon={UserX} accent="slate" value={summary.unassignedShops} sub="no responsible AM" />
+                        <KpiCard
+                            label="High Priority" icon={Flag} accent="rose"
+                            value={<KpiDrilldownValue value={summary.highPriority} label="High Priority" onOpen={() => setKpiDrilldown('highPriority')} />}
+                            sub="matured, no response or steep drop"
+                        />
+                        <KpiCard
+                            label="Due Today" icon={CalendarClock} accent="amber"
+                            value={<KpiDrilldownValue value={summary.dueToday} label="Due Today" onOpen={() => setKpiDrilldown('dueToday')} />}
+                            sub="actionable today"
+                        />
+                        <KpiCard
+                            label="Overdue" icon={CalendarClock} accent="rose"
+                            value={<KpiDrilldownValue value={summary.overdue} label="Overdue" onOpen={() => setKpiDrilldown('overdue')} />}
+                            sub="past their due date"
+                        />
+                        <KpiCard
+                            label="Unassigned Shops" icon={UserX} accent="slate"
+                            value={<KpiDrilldownValue value={summary.unassignedShops} label="Unassigned Shops" onOpen={() => setKpiDrilldown('unassignedShops')} />}
+                            sub="no responsible AM"
+                        />
                     </div>
 
                     <Card>
@@ -153,24 +206,25 @@ export function ShopFollowUpView({ userProfile }: Props) {
                         </CardHeader>
                         <CardContent className="p-0">
                             <div className="overflow-x-auto">
-                                <Table>
+                                <Table className="text-xs">
                                     <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-24">Priority</TableHead>
-                                            <TableHead>Shop</TableHead>
-                                            <TableHead>Region</TableHead>
-                                            <TableHead>Responsible AM</TableHead>
-                                            <TableHead>Last Visit</TableHead>
-                                            <TableHead>Observation Status</TableHead>
-                                            <TableHead>Last Valid Scan</TableHead>
-                                            <TableHead>Recommended Action</TableHead>
-                                            <TableHead>Follow-Up Due</TableHead>
+                                        <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                            <TableHead className="w-10 text-right">#</TableHead>
+                                            <SortableHead label="Priority" sortKey="priority" sort={sort} onSort={handleSort} className="w-24" />
+                                            <SortableHead label="Shop" sortKey="shop" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Region" sortKey="region" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Responsible AM" sortKey="am" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Last Visit" sortKey="lastVisit" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Observation Status" sortKey="observation" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Last Valid Scan" sortKey="lastScan" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Recommended Action" sortKey="action" sort={sort} onSort={handleSort} />
+                                            <SortableHead label="Follow-Up Due" sortKey="due" sort={sort} onSort={handleSort} />
                                         </TableRow>
                                     </TableHeader>
-                                    <TableBody>
+                                    <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
                                         {pageRows.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={9}>
+                                                <TableCell colSpan={10}>
                                                     <EmptyBlock
                                                         title="Nothing in this queue"
                                                         description="No shop matches the selected month, filters and search."
@@ -178,23 +232,26 @@ export function ShopFollowUpView({ userProfile }: Props) {
                                                 </TableCell>
                                             </TableRow>
                                         )}
-                                        {pageRows.map((entry) => {
+                                        {pageRows.map((entry, index) => {
                                             const impactRow = entry.attributedRow ?? entry.currentRow
                                             const overdue = isOverdueFollowUp(entry)
                                             return (
-                                                <TableRow key={entry.shopId}>
+                                                <TableRow key={entry.shopId} className="hover:bg-[var(--sera-mist)]/60">
+                                                    <TableCell className="text-right tabular-nums text-[11px] text-[var(--sera-muted)]">
+                                                        {currentPage * PAGE_SIZE + index + 1}
+                                                    </TableCell>
                                                     <TableCell><PriorityPill priority={entry.priority} /></TableCell>
                                                     <TableCell>
-                                                        <div className="min-w-[10rem] font-medium">{entry.shopNamePrimary}</div>
+                                                        <div className="min-w-[9rem] font-medium">{entry.shopNamePrimary}</div>
                                                         {entry.shopBranchLabel && (
-                                                            <div className="text-xs text-[var(--sera-muted)]">{entry.shopBranchLabel}</div>
+                                                            <div className="text-[11px] text-[var(--sera-muted)]">{entry.shopBranchLabel}</div>
                                                         )}
                                                     </TableCell>
                                                     <TableCell>{entry.region || '—'}</TableCell>
                                                     <TableCell className={entry.ownerAmName ? '' : 'text-amber-700'}>
                                                         {entry.ownerAmName || UNASSIGNED_AM_LABEL}
                                                     </TableCell>
-                                                    <TableCell>{formatDate(entry.currentRow.visit_date)}</TableCell>
+                                                    <TableCell className="whitespace-nowrap">{formatDate(entry.currentRow.visit_date)}</TableCell>
                                                     <TableCell><OutcomePill outcome={entry.outcome} /></TableCell>
                                                     <TableCell className="whitespace-nowrap">{formatDateTime(impactRow.last_scan_after_at)}</TableCell>
                                                     <TableCell className="whitespace-nowrap">{entry.action}</TableCell>
@@ -221,6 +278,59 @@ export function ShopFollowUpView({ userProfile }: Props) {
                             )}
                         </CardContent>
                     </Card>
+
+                    <KpiDrilldownDialog
+                        open={kpiDrilldown !== null}
+                        onOpenChange={(open) => { if (!open) setKpiDrilldown(null) }}
+                        title={kpiDrilldown
+                            ? `${KPI_DRILLDOWN_TITLE[kpiDrilldown]} — ${drilldownRows.length} ${drilldownRows.length === 1 ? 'Shop' : 'Shops'}`
+                            : ''}
+                        subtitle={month.label}
+                    >
+                        {drilldownRows.length === 0 ? (
+                            <KpiDrilldownEmpty message="No records for this metric." />
+                        ) : (
+                            <Table className="text-xs">
+                                <TableHeader>
+                                    <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                        <TableHead className="w-10 text-right">#</TableHead>
+                                        <TableHead>Shop</TableHead>
+                                        <TableHead>Region</TableHead>
+                                        <TableHead>Responsible AM</TableHead>
+                                        <TableHead>Priority</TableHead>
+                                        <TableHead>Observation Status</TableHead>
+                                        <TableHead>Last Visit</TableHead>
+                                        <TableHead>Recommended Action</TableHead>
+                                        <TableHead>Follow-Up Due</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                                    {drilldownRows.map((entry, index) => (
+                                        <TableRow key={entry.shopId}>
+                                            <TableCell className="text-right tabular-nums text-[11px] text-[var(--sera-muted)]">{index + 1}</TableCell>
+                                            <TableCell>
+                                                <div className="font-medium">{entry.shopNamePrimary}</div>
+                                                {entry.shopBranchLabel && (
+                                                    <div className="text-[11px] text-[var(--sera-muted)]">{entry.shopBranchLabel}</div>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>{entry.region || '—'}</TableCell>
+                                            <TableCell className={entry.ownerAmName ? '' : 'text-amber-700'}>
+                                                {entry.ownerAmName || UNASSIGNED_AM_LABEL}
+                                            </TableCell>
+                                            <TableCell><PriorityPill priority={entry.priority} /></TableCell>
+                                            <TableCell><OutcomePill outcome={entry.outcome} /></TableCell>
+                                            <TableCell className="whitespace-nowrap">{formatDate(entry.currentRow.visit_date)}</TableCell>
+                                            <TableCell className="whitespace-nowrap">{entry.action}</TableCell>
+                                            <TableCell className={`whitespace-nowrap ${isOverdueFollowUp(entry) ? 'font-semibold text-rose-600' : ''}`}>
+                                                {formatDate(entry.dueDate)}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </KpiDrilldownDialog>
                 </>
             )}
         </div>

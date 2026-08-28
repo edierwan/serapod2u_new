@@ -33,6 +33,23 @@ import {
     shiftMonthKey,
 } from '@/modules/roadtour/lib/reporting/month'
 import { UNASSIGNED_AM_LABEL } from '@/modules/roadtour/lib/reporting/types'
+import { applySort, nextSortState, type SortState } from '@/modules/roadtour/lib/reporting/tableSort'
+import {
+    buildUniqueShopRows,
+    buildVisitSortColumns,
+    hasLocationIssue,
+    hasResolvedAccountManager,
+    isCompletedVisit,
+    visitOutcomeForRow,
+    visitTieBreak,
+    type VisitSortKey,
+} from '@/modules/roadtour/lib/visit-log-table'
+import {
+    KpiDrilldownDialog,
+    KpiDrilldownEmpty,
+    KpiDrilldownValue,
+    SortableHead,
+} from './reporting/ui'
 import { RoadtourStateFlag } from './RoadtourStateFlag'
 
 interface RoadtourVisitsViewProps {
@@ -250,6 +267,28 @@ function formatVisitLocationDisplay(visit: OfficialVisit) {
     }
 }
 
+function accountManagerLabel(v: OfficialVisit): string {
+    return hasResolvedAccountManager(v) ? (v.user_name as string) : UNASSIGNED_AM_LABEL
+}
+
+/** The columns sort on exactly the values the Visit Activity rows display. */
+const VISIT_SORT_COLUMNS = buildVisitSortColumns<OfficialVisit>({
+    participantName: (v) => {
+        const display = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+        return display.isPlaceholder ? null : display.primary
+    },
+    locationTitle: (v) => formatVisitLocationDisplay(v).title,
+})
+
+type VisitKpiKey = 'total' | 'uniqueShops' | 'completed' | 'locationIssues'
+
+const VISIT_KPI_TITLE: Record<VisitKpiKey, string> = {
+    total: 'Total Visits',
+    uniqueShops: 'Unique Shops',
+    completed: 'Completed Visits',
+    locationIssues: 'Location Issues',
+}
+
 export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const supabase = createClient()
     const companyId = userProfile.organizations.id
@@ -292,6 +331,11 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     // Pagination
     const [pageSize, setPageSize] = useState(25)
     const [page, setPage] = useState(1)
+
+    // Sorting stays null until the user picks a column, so the default order is
+    // whatever the query returned: visit_date DESC, created_at DESC.
+    const [sort, setSort] = useState<SortState<VisitSortKey> | null>(null)
+    const [kpiDrilldown, setKpiDrilldown] = useState<VisitKpiKey | null>(null)
 
     // Detail dialog
     const [detailOpen, setDetailOpen] = useState(false)
@@ -438,12 +482,9 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
     const metrics = useMemo(() => {
         const total = filtered.length
         const uniqueShops = new Set(filtered.map((v) => v.shop_id)).size
-        const completed = filtered.filter((v) => (v.visit_status || '').toLowerCase().includes('complet')
-            || (v.visit_status || '').toLowerCase() === 'official').length
+        const completed = filtered.filter(isCompletedVisit).length
         const completedPct = total > 0 ? (completed / total) * 100 : 0
-        const locationIssues = filtered.filter((v) =>
-            v.visit_location_status && !['resolved', 'success'].includes(String(v.visit_location_status))
-        ).length
+        const locationIssues = filtered.filter(hasLocationIssue).length
         const locationIssuePct = total > 0 ? (locationIssues / total) * 100 : 0
 
         // Distance: per-reference, sum haversine between consecutive geolocated visits chronological
@@ -500,14 +541,36 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         return map
     }, [filtered])
 
+    // The default order is the one the query already produced; a user-selected
+    // column replaces it only for as long as that column is selected.
+    const ordered = useMemo(() => (
+        sort ? applySort(filtered, VISIT_SORT_COLUMNS[sort.key], sort.direction, visitTieBreak) : filtered
+    ), [filtered, sort])
+
     // Pagination
-    const totalEntries = filtered.length
+    const totalEntries = ordered.length
     const totalPages = Math.max(1, Math.ceil(totalEntries / pageSize))
     const safePage = Math.min(page, totalPages)
     const pageStart = (safePage - 1) * pageSize
-    const pageItems = filtered.slice(pageStart, pageStart + pageSize)
+    const pageItems = ordered.slice(pageStart, pageStart + pageSize)
 
-    useEffect(() => { setPage(1) }, [pageSize, statusFilter, runFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo])
+    useEffect(() => { setPage(1) }, [pageSize, statusFilter, runFilter, campaignFilter, referenceFilter, searchTerm, dateFrom, dateTo, sort])
+
+    const handleSort = (key: VisitSortKey) => {
+        setSort((current) => nextSortState(current, key))
+        setPage(1)
+    }
+
+    // Every drill-down list is derived from `filtered` with the same predicate
+    // its KPI counts with, so a card can never disagree with its own dialog.
+    const uniqueShopRows = useMemo(() => buildUniqueShopRows(filtered), [filtered])
+    const drilldownVisits = useMemo(() => {
+        if (kpiDrilldown === 'total') return filtered
+        if (kpiDrilldown === 'completed') return filtered.filter(isCompletedVisit)
+        if (kpiDrilldown === 'locationIssues') return filtered.filter(hasLocationIssue)
+        return []
+    }, [filtered, kpiDrilldown])
+    const drilldownCount = kpiDrilldown === 'uniqueShops' ? uniqueShopRows.length : drilldownVisits.length
 
     const openDetail = async (visit: OfficialVisit) => {
         setDetailVisit(visit)
@@ -600,15 +663,6 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
         const label = visit.visit_geo_label?.trim()
         if (label && visit.visit_location_status === 'resolved') return label
         return getRoadtourLocationStatusLabel(visit.visit_location_status, Boolean(visit.visit_geolocation?.lat != null && visit.visit_geolocation?.lng != null))
-    }
-
-    const visitOutcomeForRow = (v: OfficialVisit): { label: string; tone: 'emerald' | 'amber' | 'red' | 'slate' } => {
-        const status = (v.visit_status || '').toLowerCase()
-        const locStatus = String(v.visit_location_status || '').toLowerCase()
-        if (locStatus && !['resolved', 'success', ''].includes(locStatus)) return { label: 'Location Issue', tone: 'amber' }
-        if (status === 'official' || status.includes('complet')) return { label: 'Completed', tone: 'emerald' }
-        if (status.includes('reject') || status.includes('fail')) return { label: 'Failed', tone: 'red' }
-        return { label: v.visit_status || '—', tone: 'slate' }
     }
 
     if (loading) return <SeraLoadingState variant="page" />
@@ -768,28 +822,28 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     icon={<Footprints className="h-5 w-5 text-[var(--sera-orange)]" />}
                     iconBg="bg-[var(--sera-orange)]/10"
                     label="Total Visits"
-                    value={metrics.total.toString()}
+                    value={<KpiDrilldownValue value={metrics.total} label="Total Visits" onOpen={() => setKpiDrilldown('total')} />}
                     sub={monthCoverageLabel(month)}
                 />
                 <KpiCard
                     icon={<Store className="h-5 w-5 text-emerald-600" />}
                     iconBg="bg-emerald-100"
                     label="Unique Shops"
-                    value={metrics.uniqueShops.toString()}
+                    value={<KpiDrilldownValue value={metrics.uniqueShops} label="Unique Shops" onOpen={() => setKpiDrilldown('uniqueShops')} />}
                     sub="distinct shops visited"
                 />
                 <KpiCard
                     icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
                     iconBg="bg-emerald-100"
                     label="Completed Visits"
-                    value={metrics.completed.toString()}
+                    value={<KpiDrilldownValue value={metrics.completed} label="Completed Visits" onOpen={() => setKpiDrilldown('completed')} />}
                     sub={`${metrics.completedPct.toFixed(1)}% of total visits`}
                 />
                 <KpiCard
                     icon={<AlertTriangle className="h-5 w-5 text-amber-600" />}
                     iconBg="bg-amber-100"
                     label="Location Issues"
-                    value={metrics.locationIssues.toString()}
+                    value={<KpiDrilldownValue value={metrics.locationIssues} label="Location Issues" onOpen={() => setKpiDrilldown('locationIssues')} />}
                     sub={`${metrics.locationIssuePct.toFixed(1)}% of total visits`}
                 />
             </div>
@@ -815,30 +869,31 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     </div>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
-                    <Table>
+                    <Table className="text-xs">
                         <TableHeader>
-                            <TableRow>
-                                <TableHead>Visit Date / Time</TableHead>
-                                <TableHead>Account Manager</TableHead>
-                                <TableHead>Participant</TableHead>
-                                <TableHead>Shop</TableHead>
-                                <TableHead>Campaign</TableHead>
-                                <TableHead>Location Status</TableHead>
-                                <TableHead>Visit Status</TableHead>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <SortableHead label="Visit Date / Time" sortKey="date" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Account Manager" sortKey="accountManager" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Participant" sortKey="participant" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Shop" sortKey="shop" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Campaign" sortKey="campaign" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Location Status" sortKey="locationStatus" sort={sort} onSort={handleSort} />
+                                <SortableHead label="Visit Status" sortKey="visitStatus" sort={sort} onSort={handleSort} />
                                 <TableHead className="text-right">Details</TableHead>
                             </TableRow>
                         </TableHeader>
-                        <TableBody>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
                             {pageItems.length === 0 && (
-                                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No visits found in {month.label}.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No visits found in {month.label}.</TableCell></TableRow>
                             )}
-                            {pageItems.map((v) => {
+                            {pageItems.map((v, index) => {
                                 const status = visitOutcomeForRow(v)
                                 const locationDisplay = formatVisitLocationDisplay(v)
                                 const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
                                 const participantDisplay = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
-                                const hasAccountManager = Boolean(v.account_manager_user_id) && Boolean(v.user_name) && v.user_name !== '—'
-                                const accountManagerLabel = hasAccountManager ? (v.user_name as string) : UNASSIGNED_AM_LABEL
+                                const hasAccountManager = hasResolvedAccountManager(v)
+                                const amLabel = accountManagerLabel(v)
                                 const locColor = v.visit_location_status === 'resolved' ? 'text-emerald-600'
                                     : v.visit_location_status ? 'text-amber-600' : 'text-muted-foreground'
                                 const statusBadge = status.tone === 'emerald' ? 'bg-emerald-100 text-emerald-700'
@@ -847,42 +902,43 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                             : 'bg-slate-100 text-slate-700'
                                 return (
                                     <TableRow key={v.id}>
-                                        <TableCell className="text-sm whitespace-nowrap">
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{pageStart + index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
                                             <div className="font-medium">{dateTime.dateLabel}</div>
-                                            <div className="text-xs text-muted-foreground">{dateTime.timeLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id || 'unassigned')}`}>{initialsFor(accountManagerLabel)}</div>
-                                                <span className={`text-sm font-medium ${hasAccountManager ? '' : 'text-amber-700'}`}>{accountManagerLabel}</span>
+                                                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${colorFor(v.account_manager_user_id || 'unassigned')}`}>{initialsFor(amLabel)}</div>
+                                                <span className={`max-w-[9rem] font-medium ${hasAccountManager ? '' : 'text-amber-700'}`} title={amLabel}>{amLabel}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div>
-                                                <p className={`text-sm font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</p>
+                                            <div className="max-w-[10rem]">
+                                                <p className={`font-medium ${participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}`}>{participantDisplay.primary}</p>
                                                 {participantDisplay.secondary && (
-                                                    <p className="text-xs text-muted-foreground">{participantDisplay.secondary}</p>
+                                                    <p className="text-[11px] text-muted-foreground">{participantDisplay.secondary}</p>
                                                 )}
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="min-w-[9rem]">
-                                                <p className="text-sm font-medium">{v.shop_name}</p>
+                                            <div className="min-w-[8rem] max-w-[12rem]">
+                                                <p className="font-medium">{v.shop_name}</p>
                                                 {(v.shop_branch || v.shop_state) && (
-                                                    <p className="text-xs text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
+                                                    <p className="text-[11px] text-muted-foreground">{[v.shop_branch, v.shop_state].filter(Boolean).join(', ')}</p>
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="text-sm">{v.campaign_name}</TableCell>
-                                        <TableCell className="text-xs">
-                                            <div className="flex items-start gap-3">
+                                        <TableCell>{v.campaign_name}</TableCell>
+                                        <TableCell>
+                                            <div className="flex items-start gap-2">
                                                 <RoadtourStateFlag stateName={locationDisplay.capturedState} size="md" fallback="placeholder" />
-                                                <div className="space-y-1 min-w-0">
+                                                <div className="min-w-0 max-w-[16rem] space-y-1">
                                                     <div className={`flex items-center gap-1 ${locColor}`}>
-                                                        <span className="text-sm font-medium text-foreground">{locationDisplay.title}</span>
+                                                        <span className="font-medium text-foreground" title={locationDisplay.title}>{locationDisplay.title}</span>
                                                     </div>
                                                     <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
-                                                        <Badge variant="outline" className={`border ${locationDisplay.accuracyBadge.className}`}>
+                                                        <Badge variant="outline" className={`border px-1.5 py-0 text-[10px] ${locationDisplay.accuracyBadge.className}`}>
                                                             {locationDisplay.accuracyBadge.label}
                                                         </Badge>
                                                         {locationDisplay.metaParts.map((part) => (
@@ -893,7 +949,7 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={statusBadge}>{status.label}</Badge>
+                                            <Badge className={`whitespace-nowrap ${statusBadge}`}>{status.label}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button size="sm" variant="ghost" onClick={() => openDetail(v)}>
@@ -940,6 +996,120 @@ export function RoadtourVisitsView({ userProfile }: RoadtourVisitsViewProps) {
                     </div>
                 )}
             </Card>
+
+            {/* KPI drill-downs — every row comes from the same `filtered` set the KPI counts. */}
+            <KpiDrilldownDialog
+                open={kpiDrilldown !== null}
+                onOpenChange={(open) => { if (!open) setKpiDrilldown(null) }}
+                title={kpiDrilldown
+                    ? `${VISIT_KPI_TITLE[kpiDrilldown]} — ${drilldownCount} ${kpiDrilldown === 'uniqueShops'
+                        ? (drilldownCount === 1 ? 'Shop' : 'Shops')
+                        : (drilldownCount === 1 ? 'Visit' : 'Visits')}`
+                    : ''}
+                subtitle={monthCoverageLabel(month)}
+            >
+                {drilldownCount === 0 ? (
+                    <KpiDrilldownEmpty message="No records for this metric." />
+                ) : kpiDrilldown === 'uniqueShops' ? (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Region/State</TableHead>
+                                <TableHead>Latest Visit</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead className="text-right">Visit Count</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {uniqueShopRows.map((shop, index) => (
+                                <TableRow key={shop.shopId}>
+                                    <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                    <TableCell className="font-medium">{shop.shopName}</TableCell>
+                                    <TableCell>{shop.region || '—'}</TableCell>
+                                    <TableCell className="whitespace-nowrap">
+                                        {formatVisitDateTime(shop.latestVisit.visit_date, shop.latestVisit.created_at).dateLabel}
+                                    </TableCell>
+                                    <TableCell>{accountManagerLabel(shop.latestVisit)}</TableCell>
+                                    <TableCell className="text-right tabular-nums">{shop.visitCount}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                ) : kpiDrilldown === 'locationIssues' ? (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Visit Date / Time</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Location Status</TableHead>
+                                <TableHead>Location Message</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {drilldownVisits.map((v, index) => {
+                                const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
+                                return (
+                                    <TableRow key={v.id}>
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            <div className="font-medium">{dateTime.dateLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
+                                        </TableCell>
+                                        <TableCell>{accountManagerLabel(v)}</TableCell>
+                                        <TableCell className="font-medium">{v.shop_name}</TableCell>
+                                        <TableCell className="text-amber-700">
+                                            {getRoadtourLocationStatusLabel(v.visit_location_status, getVisitCoordinates(v).lat !== null && getVisitCoordinates(v).lng !== null)}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {v.visit_location_error?.trim() || formatVisitLocationDisplay(v).title}
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                ) : (
+                    <Table className="text-xs">
+                        <TableHeader>
+                            <TableRow className="[&>th]:h-9 [&>th]:px-3 [&>th]:text-xs">
+                                <TableHead className="w-10 text-right">#</TableHead>
+                                <TableHead>Visit Date / Time</TableHead>
+                                <TableHead>Account Manager</TableHead>
+                                <TableHead>Participant</TableHead>
+                                <TableHead>Shop</TableHead>
+                                <TableHead>Campaign</TableHead>
+                                <TableHead>Visit Status</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="[&>tr>td]:px-3 [&>tr>td]:py-2">
+                            {drilldownVisits.map((v, index) => {
+                                const dateTime = formatVisitDateTime(v.visit_date, v.created_at)
+                                const participantDisplay = resolveVisitParticipantDisplay(v.participant_name, v.participant_phone)
+                                return (
+                                    <TableRow key={v.id}>
+                                        <TableCell className="text-right tabular-nums text-[11px] text-muted-foreground">{index + 1}</TableCell>
+                                        <TableCell className="whitespace-nowrap">
+                                            <div className="font-medium">{dateTime.dateLabel}</div>
+                                            <div className="text-[11px] text-muted-foreground">{dateTime.timeLabel}</div>
+                                        </TableCell>
+                                        <TableCell>{accountManagerLabel(v)}</TableCell>
+                                        <TableCell className={participantDisplay.isPlaceholder ? 'text-muted-foreground' : ''}>
+                                            {participantDisplay.primary}
+                                        </TableCell>
+                                        <TableCell className="font-medium">{v.shop_name}</TableCell>
+                                        <TableCell>{v.campaign_name}</TableCell>
+                                        <TableCell>{visitOutcomeForRow(v).label}</TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                )}
+            </KpiDrilldownDialog>
 
             {/* Detail Dialog */}
             <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
@@ -1053,7 +1223,7 @@ function KpiCard({ icon, iconBg, label, value, sub }: {
     icon: React.ReactNode
     iconBg: string
     label: string
-    value: string
+    value: React.ReactNode
     sub?: string
 }) {
     return (

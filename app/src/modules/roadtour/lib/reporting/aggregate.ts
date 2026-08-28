@@ -283,8 +283,8 @@ function compareRankableAms(a: AmPerformanceRow, b: AmPerformanceRow): number {
     return a.amName.localeCompare(b.amName)
 }
 
-/** Priority order used by the Shop Follow-Up queue. */
-const PRIORITY_WEIGHT: Record<FollowUpPriority, number> = {
+/** Priority order used by the Shop Follow-Up queue — and by its Priority column sort. */
+export const FOLLOW_UP_PRIORITY_WEIGHT: Record<FollowUpPriority, number> = {
     high: 0, medium: 1, observing: 2, low: 3, healthy: 4,
 }
 
@@ -295,7 +295,7 @@ export function sortFollowUpQueue(entries: ShopReportEntry[]): ShopReportEntry[]
         const bUnassignedHigh = b.priority === 'high' && !b.ownerAmId
         if (aUnassignedHigh !== bUnassignedHigh) return aUnassignedHigh ? -1 : 1
 
-        const weightDelta = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority]
+        const weightDelta = FOLLOW_UP_PRIORITY_WEIGHT[a.priority] - FOLLOW_UP_PRIORITY_WEIGHT[b.priority]
         if (weightDelta !== 0) return weightDelta
 
         if (a.dueDate !== b.dueDate) return a.dueDate.localeCompare(b.dueDate)
@@ -310,12 +310,33 @@ export interface FollowUpQueueSummary {
     unassignedShops: number
 }
 
+export type FollowUpKpiKey = keyof FollowUpQueueSummary
+
+/**
+ * The single definition of each Follow-Up KPI. The summary counts them and the
+ * KPI drill-down lists them, so a card can never disagree with its own dialog.
+ */
+export const FOLLOW_UP_KPI_PREDICATE: Record<FollowUpKpiKey, (entry: ShopReportEntry) => boolean> = {
+    highPriority: (entry) => entry.priority === 'high',
+    dueToday: (entry) => isActionableFollowUp(entry.priority) && entry.dueState === 'due_today',
+    overdue: (entry) => isOverdueFollowUp(entry),
+    unassignedShops: (entry) => !entry.ownerAmId,
+}
+
+/** The exact records behind one Follow-Up KPI card. */
+export function selectFollowUpKpiEntries(
+    entries: ShopReportEntry[],
+    key: FollowUpKpiKey,
+): ShopReportEntry[] {
+    return entries.filter(FOLLOW_UP_KPI_PREDICATE[key])
+}
+
 export function buildFollowUpSummary(entries: ShopReportEntry[]): FollowUpQueueSummary {
     return {
-        highPriority: entries.filter((entry) => entry.priority === 'high').length,
-        dueToday: entries.filter((entry) => isActionableFollowUp(entry.priority) && entry.dueState === 'due_today').length,
-        overdue: entries.filter(isOverdueFollowUp).length,
-        unassignedShops: entries.filter((entry) => !entry.ownerAmId).length,
+        highPriority: entries.filter(FOLLOW_UP_KPI_PREDICATE.highPriority).length,
+        dueToday: entries.filter(FOLLOW_UP_KPI_PREDICATE.dueToday).length,
+        overdue: entries.filter(FOLLOW_UP_KPI_PREDICATE.overdue).length,
+        unassignedShops: entries.filter(FOLLOW_UP_KPI_PREDICATE.unassignedShops).length,
     }
 }
 

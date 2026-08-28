@@ -4,8 +4,13 @@
 // Colour discipline: orange is the Serapod accent only, green means healthy,
 // amber means attention, red is reserved for genuinely high-priority or overdue.
 
+import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
+
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { TableHead } from '@/components/ui/table'
 import { OUTCOME_LABEL, type ShopOutcome } from '@/modules/roadtour/lib/reporting/impactModel'
 import { FOLLOW_UP_PRIORITY_LABEL, type FollowUpPriority } from '@/modules/roadtour/lib/reporting/followUp'
+import type { SortState } from '@/modules/roadtour/lib/reporting/tableSort'
 
 const OUTCOME_STYLE: Record<ShopOutcome, string> = {
     improved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -90,6 +95,88 @@ export function SegmentedOutcomeBar({ counts, total }: { counts: Record<ShopOutc
             </ul>
         </div>
     )
+}
+
+/**
+ * A clickable table header. Only sortable columns get one, so an unsorted
+ * header never advertises an interaction it does not have.
+ */
+export function SortableHead<Key extends string>({
+    label, sortKey, sort, onSort, className,
+}: {
+    label: string
+    sortKey: Key
+    sort: SortState<Key> | null
+    onSort: (key: Key) => void
+    className?: string
+}) {
+    const active = sort?.key === sortKey
+    const ariaSort = active ? (sort!.direction === 'asc' ? 'ascending' : 'descending') : 'none'
+    const Icon = active ? (sort!.direction === 'asc' ? ArrowUp : ArrowDown) : ChevronsUpDown
+
+    return (
+        <TableHead className={className} aria-sort={ariaSort}>
+            <button
+                type="button"
+                onClick={() => onSort(sortKey)}
+                className={`group inline-flex items-center gap-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40 ${active ? 'text-[var(--sera-ink)]' : ''}`}
+            >
+                <span>{label}</span>
+                <Icon className={`h-3 w-3 shrink-0 ${active ? 'text-[var(--sera-orange)]' : 'text-[var(--sera-muted)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100'}`} />
+            </button>
+        </TableHead>
+    )
+}
+
+/**
+ * The numeric value of a KPI card, made into a drill-down affordance. A zero
+ * KPI has nothing to show, so it stays a plain number.
+ */
+export function KpiDrilldownValue({ value, label, onOpen }: {
+    value: number
+    label: string
+    onOpen: () => void
+}) {
+    if (value <= 0) return <>{value}</>
+
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`${label}: show the ${value} matching records`}
+            className="cursor-pointer rounded-sm underline decoration-dotted decoration-[var(--sera-muted)] underline-offset-4 transition-colors hover:text-[var(--sera-orange-deep)] hover:decoration-[var(--sera-orange)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sera-orange)]/40"
+        >
+            {value}
+        </button>
+    )
+}
+
+/** Compact, scrollable dialog used by every KPI drill-down. */
+export function KpiDrilldownDialog({ open, onOpenChange, title, subtitle, children }: {
+    open: boolean
+    onOpenChange: (open: boolean) => void
+    title: string
+    subtitle?: string
+    children: React.ReactNode
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-h-[80vh] max-w-4xl overflow-hidden p-0">
+                <DialogHeader className="border-b border-[var(--sera-line)] px-5 py-4">
+                    <DialogTitle className="text-base">{title}</DialogTitle>
+                    {subtitle && <p className="text-xs text-[var(--sera-muted)]">{subtitle}</p>}
+                </DialogHeader>
+                <div className="max-h-[62vh] overflow-auto px-1 pb-3">
+                    {children}
+                </div>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+/** Consistent empty state inside a drill-down dialog. */
+export function KpiDrilldownEmpty({ message = 'No records' }: { message?: string }) {
+    return <p className="px-5 py-10 text-center text-sm text-[var(--sera-muted)]">{message}</p>
 }
 
 export function formatPercent(rate: number | null, fractionDigits = 1): string {
