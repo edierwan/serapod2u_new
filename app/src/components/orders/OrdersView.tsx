@@ -12,6 +12,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { canCreateH2MOrder } from '@/modules/supply-chain/h2m-access'
 import { queryByIdChunks } from '@/lib/orders/chunked-id-query'
 import { getOrderDisplayOrgName, orderMatchesSearch } from '@/lib/orders/order-search'
+import { calculateOrderTotal, sortOrders } from '@/lib/orders/order-list-sort'
 import {
   FileText,
   Plus,
@@ -222,48 +223,11 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
     return matchesSearch && matchesStatus && matchesType && matchesSeller
   })
 
-  // Sort orders
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
-    let aValue: any
-    let bValue: any
-
-    switch (sortColumn) {
-      case 'created_at':
-        aValue = new Date(a.created_at).getTime()
-        bValue = new Date(b.created_at).getTime()
-        break
-      case 'order_no':
-        aValue = a.order_no
-        bValue = b.order_no
-        break
-      case 'seller':
-        aValue = getDisplayOrgName(a)
-        bValue = getDisplayOrgName(b)
-        break
-      case 'total':
-        aValue = calculateOrderTotal(a)
-        bValue = calculateOrderTotal(b)
-        break
-      case 'balance':
-        aValue = a.status === 'approved' ? 0 : calculateOrderTotal(a)
-        bValue = b.status === 'approved' ? 0 : calculateOrderTotal(b)
-        break
-      case 'status':
-        aValue = a.status
-        bValue = b.status
-        break
-      case 'created_by':
-        aValue = a.created_by_user?.full_name || a.created_by_user?.email || ''
-        bValue = b.created_by_user?.full_name || b.created_by_user?.email || ''
-        break
-      default:
-        return 0
-    }
-
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
-    return 0
-  })
+  // Sort orders. The comparator lives in @/lib/orders/order-list-sort so the
+  // helpers it needs are hoisted module functions rather than component consts
+  // declared further down this file — sorting by Total or Balance used to reach
+  // `calculateOrderTotal` before its declaration and throw.
+  const sortedOrders = sortOrders(filteredOrders, sortColumn, sortDirection, userProfile.organization_id)
 
   // Pagination
   const totalPages = Math.ceil(sortedOrders.length / itemsPerPage)
@@ -1173,10 +1137,6 @@ export default function OrdersView({ userProfile, onViewChange }: OrdersViewProp
       S2D: 'Shop → Distributor',
     }
     return labels[type] || type
-  }
-
-  const calculateOrderTotal = (order: Order) => {
-    return order.order_items?.reduce((sum, item) => sum + (item.line_total || 0), 0) || 0
   }
 
   const formatCurrency = (amount: number): string => {
