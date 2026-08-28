@@ -201,6 +201,7 @@ const words = (value: string) => normalizeMatchName(value).split(/[^\p{L}\p{N}]+
 const GENERIC_ORDER_WORDS = new Set([
   'SERAPOD', 'CELLERA', 'FRUITY', 'CARTRIDGE', 'VAPE', 'FLAVOUR', 'FLAVOR',
   'PC', 'PCS', 'PIECE', 'PIECES', 'UNIT', 'UNITS', 'CASE', 'CASES', 'BOX', 'BOXES', 'CTN', 'CARTON', 'CARTONS', 'KOTAK',
+  'AVAILABLE', 'AVAIL', 'STOCK', 'STOK',
 ])
 
 /**

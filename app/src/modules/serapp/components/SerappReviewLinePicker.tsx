@@ -1,6 +1,7 @@
 'use client'
 
 import type { MatchableVariant, PasteMatchResult } from '@/components/orders/quick-order-matcher'
+import { cleanSerappLineLabel } from '@/lib/orders/paste-result-display'
 import { isSerappReviewLine } from '@/lib/serapp/line-resolutions'
 
 interface Props {
@@ -32,13 +33,13 @@ export default function SerappReviewLinePicker({
     return null
   }
 
-  const heading = candidates.length > 1
-    ? `Tap to match "${result.name || result.raw}":`
-    : 'Tap to confirm match:'
+  const label = cleanSerappLineLabel(result.name || result.raw) || 'this item'
 
   return (
-    <div className="mt-2 space-y-1">
-      <p className="text-[11px] font-medium text-[var(--sera-muted)]">{heading}</p>
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-[var(--sera-muted)]">
+        For &quot;{label}&quot;:
+      </p>
       {candidates.map((candidate: MatchableVariant) => (
         <button
           key={candidate.id}

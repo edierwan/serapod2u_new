@@ -16,7 +16,7 @@ import {
   CheckCheck,
 } from 'lucide-react'
 import type { PasteMatchResult } from '@/components/orders/quick-order-matcher'
-import { describeSerappLineAvailability } from '@/lib/orders/paste-result-display'
+import { cleanSerappLineLabel, describeSerappLineAvailability } from '@/lib/orders/paste-result-display'
 import { isSerappReviewLine } from '@/lib/serapp/line-resolutions'
 import type {
   SerappChatCheckPayload,
@@ -917,23 +917,51 @@ function CheckSummaryCard({
         : check.summary.bucket === 'out_of_stock'
           ? 'Paste a new list with other products.'
           : pickableLines.length > 0
-            ? 'Tap the correct product below, or send the updated code.'
-            : 'Check the items above, or send the updated code.'
+            ? 'I couldn\'t match some items — tap what you meant below, or send the correct code.'
+            : 'Some items didn\'t match. Send the correct code, or paste a new list.'
+
+  const okLines = visible.filter((line) => {
+    if (!line.selectedVariantId) return false
+    const status = lineStatusShort(line)
+    return status !== 'Out of stock' && status !== 'Not found'
+  })
+  const problemLines = visible.filter((line) => !okLines.includes(line))
 
   return (
     <div className="serapp-wa-card mt-2 rounded-xl px-2.5 py-2">
-      <div className="space-y-1.5 text-[12px] text-[var(--sera-ink)]">
-        <p className="font-semibold text-[var(--sera-muted)]">Available qty</p>
-        <ul className="space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
-          {visible.map((line, idx) => (
-            <li key={`avail-${line.line}-${idx}`} className="flex justify-between gap-2">
-              <span className="min-w-0 truncate">{line.name || line.raw}</span>
-              <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
-                {lineStatusShort(line)}
-              </span>
-            </li>
-          ))}
-        </ul>
+      <div className="space-y-2 text-[12px] text-[var(--sera-ink)]">
+        {okLines.length > 0 && (
+          <div>
+            <p className="font-semibold text-[var(--sera-muted)]">Matched</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
+              {okLines.map((line, idx) => (
+                <li key={`ok-${line.line}-${idx}`} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
+                  <span className="shrink-0 font-semibold tabular-nums text-[var(--sera-ink)]">
+                    {lineStatusShort(line)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {problemLines.length > 0 && (
+          <div>
+            <p className="font-semibold text-[var(--sera-muted)]">Couldn&apos;t match</p>
+            <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--sera-ink-soft)]">
+              {problemLines.map((line, idx) => (
+                <li key={`unclear-${line.line}-${idx}`} className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">{cleanSerappLineLabel(line.name || line.raw)}</span>
+                  <span className="shrink-0 font-semibold text-[var(--sera-orange-deep)]">
+                    {lineStatusShort(line)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <p>
           <span className="font-semibold text-[var(--sera-muted)]">Warehouse: </span>
           {warehouse}
@@ -947,20 +975,19 @@ function CheckSummaryCard({
         </p>
       </div>
       {interactive && onPick && pickableLines.length > 0 && (
-        <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2 text-[11px] text-[var(--sera-ink-soft)]">
+        <div className="mt-2 max-h-72 space-y-3 overflow-y-auto border-t border-[var(--sera-line)]/50 pt-2">
+          <p className="text-[11px] font-semibold text-[var(--sera-ink)]">
+            Did you mean one of these?
+          </p>
           {pickableLines.map((line) => (
-            <li
+            <SerappReviewLinePicker
               key={`picker-${line.line}-${line.raw}`}
-              className="border-b border-[var(--sera-line)]/50 py-1 last:border-0"
-            >
-              <SerappReviewLinePicker
-                result={line}
-                disabled={disabled}
-                onPick={onPick}
-              />
-            </li>
+              result={line}
+              disabled={disabled}
+              onPick={onPick}
+            />
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )

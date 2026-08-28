@@ -48,14 +48,11 @@ export function describeSerappLineAvailability(
   if (result.status === 'section_header') {
     return `Section: ${result.sectionProductLine || result.name}`
   }
-  if (result.status === 'requires_review') return 'Needs review'
+  if (result.status === 'requires_review') return 'Unclear'
   if (result.status === 'invalid_quantity') return 'Invalid quantity'
   if (result.status === 'duplicate') return 'Duplicate line'
-  if (!result.selectedVariantId && result.candidates.length > 1) {
-    return 'Pick a product'
-  }
-  if (!result.selectedVariantId && result.candidates.length === 1) {
-    return 'Needs review'
+  if (!result.selectedVariantId && result.candidates.length > 0) {
+    return 'Unclear'
   }
   if (!result.selectedVariantId) return 'Not found'
 
@@ -80,4 +77,17 @@ export function describeSerappLineAvailability(
     return qty != null ? `${qty} available` : 'Available'
   }
   return 'Not found'
+}
+
+/**
+ * Strip filler words that often leak into pasted product labels
+ * (e.g. "available Vanilla Potato" → "Vanilla Potato").
+ */
+export function cleanSerappLineLabel(raw: string | null | undefined): string {
+  const text = String(raw || '').trim()
+  if (!text) return ''
+  return text
+    .replace(/^(?:available|avail|in\s+stock|stock|stok)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim() || text
 }
