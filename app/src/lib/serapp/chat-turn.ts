@@ -1,4 +1,5 @@
 import {
+  ackBotText,
   detectChatIntent,
   formatCheckIntro,
   formatConfirmIntro,
@@ -346,6 +347,17 @@ async function assistantTurn(input: {
         quickReplies: quickRepliesForPhase('awaiting_list'),
         session: { ...session, phase: 'awaiting_list' },
       }
+    }
+  }
+
+  if (intent.type === 'ack') {
+    return {
+      text: ackBotText(session),
+      quickReplies: quickRepliesForPhase(
+        session.phase === 'idle' ? 'awaiting_list' : session.phase,
+        session.lastCheck?.summary.bucket,
+      ),
+      session,
     }
   }
 

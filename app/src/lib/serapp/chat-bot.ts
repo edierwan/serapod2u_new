@@ -14,6 +14,8 @@ export type SerappChatIntent =
   | { type: 'product_inquiry'; query: string }
   | { type: 'incomplete_intent' }
   | { type: 'confirm' }
+  /** Casual acknowledgement (ok/yes) — never submits an order. */
+  | { type: 'ack' }
   | { type: 'check_again' }
   | { type: 'new_order' }
   | { type: 'repeat_last' }
@@ -49,6 +51,8 @@ export function isAllowedDuringHumanHandoff(
       return true
     case 'confirm':
       return session.phase === 'checked'
+    case 'ack':
+      return true
     case 'cancel_hold':
       return Boolean(session.lastConfirm?.orderId)
     case 'check_again':
@@ -138,12 +142,19 @@ export function detectChatIntent(raw: string): SerappChatIntent {
     return { type: 'help' }
   }
 
+  // Explicit confirm only — casual "ok"/"yes" must not place an order.
   if (
-    /^(confirm|confirm order|yes|ok|okay|send|submit|sah|sahkan|confirm kan|تأكيد|ارسل|أرسل|موافق)$/i.test(normalized) ||
+    /^(confirm|confirm order|sah|sahkan|confirm kan|تأكيد)$/i.test(normalized) ||
     normalized === 'confirm available only' ||
     normalized === 'confirm available'
   ) {
     return { type: 'confirm' }
+  }
+
+  if (
+    /^(yes|yeah|yep|yup|ok|okay|sure|alright|got it|noted|baik|ok lah|موافق)$/i.test(normalized)
+  ) {
+    return { type: 'ack' }
   }
 
   if (
@@ -293,6 +304,18 @@ export function formatConfirmIntro(orderNo: string, expiresAt?: string | null): 
     `Hold until: ${holdLine}`,
     `Next: warehouse accept → DO`,
   ].join('\n')
+}
+
+/** Soft reply for ok/yes — never submits; nudges explicit confirm when ready. */
+export function ackBotText(session: SerappChatSessionState): string {
+  const bucket = session.lastCheck?.summary.bucket
+  if (
+    session.phase === 'checked'
+    && (bucket === 'available' || bucket === 'partially_available')
+  ) {
+    return 'Reply **confirm** to place this order.'
+  }
+  return 'Send **code + qty** (e.g. **CV - 50**), or reply **confirm** after a stock check.'
 }
 
 export function incompleteIntentBotText(): string {

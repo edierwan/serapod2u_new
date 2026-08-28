@@ -25,7 +25,13 @@ export const createAdminClient = (timeoutMs: number = 10_000) => {
         persistSession: false
       },
       global: {
-        fetch: (url, init) => fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(timeoutMs) })
+        // Next.js caches fetch GET by default — that can freeze empty/404 Supabase
+        // reads for serapp conversation threads in local/dev. Always bypass cache.
+        fetch: (url, init) => fetch(url, {
+          ...init,
+          cache: 'no-store',
+          signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+        })
       }
     }
   )

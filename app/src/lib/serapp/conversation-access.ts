@@ -28,6 +28,7 @@ export function canAccessSerappConversation(
 
   if (ownerUserId && ownerUserId === userId) return true
   if (ownerOrgId && ownerOrgId === orgId) return true
+  if (distributorOrgId && distributorOrgId === orgId) return true
 
   if (actor.isHqSupport) {
     const childIds = new Set(

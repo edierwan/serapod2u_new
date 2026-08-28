@@ -17,39 +17,40 @@ export async function GET(
     const actor = await requireSerappActor()
     if (!actor.ok) return actor.error
 
-    const params = await context.params
-    const pathId = new URL(request.url).pathname.split('/').filter(Boolean).pop() || ''
-    const id = String(params?.id || pathId || '').trim()
-    const admin = createAdminClient()
+    const params = await Promise.resolve(context.params)
+    const pathname = new URL(request.url).pathname
+    const match = pathname.match(/\/api\/serapp\/conversations\/([^/]+)/i)
+    const pathId = match?.[1] ? decodeURIComponent(match[1]) : ''
+    const paramsId = Array.isArray(params?.id) ? params.id[0] : params?.id
+    const id = String(paramsId || pathId || '').trim()
+    const admin = createAdminClient(20_000)
     const conversation = await getAccessibleConversation(admin, id, {
       userId: actor.userId,
       orgId: actor.orgId,
       isHqSupport: actor.access.isHqSupport,
     })
     if (!conversation) {
-      let detail: Record<string, unknown> | undefined
-      if (process.env.NODE_ENV === 'development') {
-        const { data: row, error: rowError } = await (admin as any)
-          .from('serapp_conversations')
-          .select('id, owner_user_id, owner_org_id, distributor_org_id, kind, is_archived')
-          .eq('id', id)
-          .maybeSingle()
-        detail = {
-          id,
-          paramsId: params?.id ?? null,
-          pathId,
-          actorUserId: actor.userId,
-          actorOrgId: actor.orgId,
-          isHqSupport: actor.access.isHqSupport,
-          rowFound: Boolean(row),
-          rowError: rowError?.message || null,
-          row: row || null,
-        }
-        console.warn('[serapp/conversations/:id GET] 404 detail', detail)
+      const { data: row, error: rowError } = await (admin as any)
+        .from('serapp_conversations')
+        .select('id, owner_user_id, owner_org_id, distributor_org_id, kind, is_archived')
+        .eq('id', id)
+        .maybeSingle()
+      const detail = {
+        id,
+        paramsId: paramsId ?? null,
+        pathId,
+        pathname,
+        actorUserId: actor.userId,
+        actorOrgId: actor.orgId,
+        isHqSupport: actor.access.isHqSupport,
+        rowFound: Boolean(row),
+        rowError: rowError?.message || null,
+        row: row || null,
       }
+      console.error('[serapp/conversations/:id GET] 404 detail', detail)
       return NextResponse.json({
         error: 'Conversation not found.',
-        ...(detail ? { detail } : {}),
+        detail,
       }, { status: 404 })
     }
 

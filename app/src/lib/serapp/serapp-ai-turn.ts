@@ -93,7 +93,7 @@ Style:
 - If they send a code/name without qty → search_catalog, then tell them to reply with CODE - QTY.
 - If stock question → search_catalog (or use catalog hits below).
 - If they give product + qty → check_stock with paste lines like "BANANA VANILLA - 100".
-- If ready to submit and phase is checked → confirm.
+- If ready to submit and phase is checked → only emit confirm when the user clearly says *confirm* / *sahkan* / *تأكيد*. Never confirm on ok/yes/okay/sure.
 - If unclear → ask for code/name + qty in one short line. Show 2–3 example formats, not one only.
 
 Actions (server executes). End with exactly one line when needed:

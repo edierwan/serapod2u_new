@@ -66,7 +66,7 @@ export async function listConversationsForActor(
     const { data: orgGroups, error: orgError } = await admin
       .from('serapp_conversations')
       .select('*')
-      .eq('owner_org_id', actor.orgId)
+      .or(`owner_org_id.eq.${actor.orgId},distributor_org_id.eq.${actor.orgId}`)
       .eq('kind', 'assistant')
       .eq('is_archived', false)
     if (orgError) throw orgError
@@ -324,8 +324,12 @@ export async function getAccessibleConversation(
   actor: { userId: string; orgId: string; isHqSupport: boolean },
 ): Promise<SerappConversationRow | null> {
   const id = String(conversationId || '').trim()
-  if (!id) {
-    console.warn('[serapp] getAccessibleConversation: empty conversation id')
+  if (!id || id === 'undefined' || id === 'null') {
+    console.error('[serapp] getAccessibleConversation: empty conversation id', {
+      conversationId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+    })
     return null
   }
 
@@ -337,7 +341,7 @@ export async function getAccessibleConversation(
     .maybeSingle()
   if (error) throw error
   if (!data) {
-    console.warn('[serapp] getAccessibleConversation: row missing', {
+    console.error('[serapp] getAccessibleConversation: row missing', {
       id,
       userId: actor.userId,
       orgId: actor.orgId,
@@ -346,6 +350,21 @@ export async function getAccessibleConversation(
   }
 
   const row = data as SerappConversationRow
+
+  // Fast path: owner / same-org member (no extra queries).
+  const userId = String(actor.userId || '').trim().toLowerCase()
+  const orgId = String(actor.orgId || '').trim().toLowerCase()
+  const ownerUserId = String(row.owner_user_id || '').trim().toLowerCase()
+  const ownerOrgId = String(row.owner_org_id || '').trim().toLowerCase()
+  const distributorOrgId = String(row.distributor_org_id || '').trim().toLowerCase()
+  if (
+    (ownerUserId && ownerUserId === userId)
+    || (ownerOrgId && ownerOrgId === orgId)
+    || (distributorOrgId && distributorOrgId === orgId)
+  ) {
+    return row
+  }
+
   const childDistributorIds = actor.isHqSupport && actor.orgId
     ? await loadChildDistributorIds(admin, actor.orgId)
     : []
@@ -361,24 +380,24 @@ export async function getAccessibleConversation(
 
   // Fallback for HQ: verify parent_org_id directly (avoids child-list gaps / stale cache).
   if (actor.isHqSupport && actor.orgId) {
-    const ownerOrgId = row.owner_org_id || row.distributor_org_id
-    if (ownerOrgId) {
+    const linkedOrgId = row.owner_org_id || row.distributor_org_id
+    if (linkedOrgId) {
       const { data: ownerOrg } = await (admin as any)
         .from('organizations')
         .select('id, parent_org_id, org_type_code')
-        .eq('id', ownerOrgId)
+        .eq('id', linkedOrgId)
         .maybeSingle()
       if (
         ownerOrg
-        && ownerOrg.org_type_code === 'DIST'
-        && ownerOrg.parent_org_id === actor.orgId
+        && String(ownerOrg.org_type_code || '').toUpperCase() === 'DIST'
+        && String(ownerOrg.parent_org_id || '').trim().toLowerCase() === orgId
       ) {
         return row
       }
     }
   }
 
-  console.warn('[serapp] getAccessibleConversation: access denied', {
+  console.error('[serapp] getAccessibleConversation: access denied', {
     id,
     actorUserId: actor.userId,
     actorOrgId: actor.orgId,

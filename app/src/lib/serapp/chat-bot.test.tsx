@@ -38,6 +38,14 @@ describe('detectChatIntent', () => {
     expect(detectChatIntent('cancel hold').type).toBe('cancel_hold')
   })
 
+  it('does not treat ok/yes as confirm', () => {
+    expect(detectChatIntent('ok').type).toBe('ack')
+    expect(detectChatIntent('okay').type).toBe('ack')
+    expect(detectChatIntent('yes').type).toBe('ack')
+    expect(detectChatIntent('confirm').type).toBe('confirm')
+    expect(detectChatIntent('sahkan').type).toBe('confirm')
+  })
+
   it('maps paste lists to order_list', () => {
     const intent = detectChatIntent('HERO\nTEA - 50')
     expect(intent.type).toBe('order_list')
@@ -157,9 +165,16 @@ describe('shouldRunSerappBot', () => {
 
     const confirmTooEarly = shouldRunSerappBot({
       isHqSender: false,
-      text: 'yes',
+      text: 'confirm',
       session: { ...DEFAULT_SESSION, humanHandoff: true, phase: 'awaiting_list' },
     })
     expect(confirmTooEarly.run).toBe(false)
+
+    const ackNudge = shouldRunSerappBot({
+      isHqSender: false,
+      text: 'yes',
+      session: { ...DEFAULT_SESSION, humanHandoff: true, phase: 'awaiting_list' },
+    })
+    expect(ackNudge.run).toBe(true)
   })
 })
