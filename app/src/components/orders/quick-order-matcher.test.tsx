@@ -148,9 +148,59 @@ describe('Quick Order paste matching', () => {
 
   it('returns ranked typo suggestions without auto-selection', () => {
     const result = matchPastedOrder('VANILA CUSTAD - 7', variants)[0]
-    expect(result).toMatchObject({ status: 'suggestion', selectedVariantId: undefined, quantity: 7, matchMethod: 'fuzzy' })
+    expect(result).toMatchObject({ status: 'matched', selectedVariantId: 'vanilla', quantity: 7, matchMethod: 'fuzzy' })
     expect(result.candidates[0].id).toBe('vanilla')
-    expect(result.candidates.length).toBeLessThanOrEqual(3)
+  })
+
+  it('auto-matches a single strong candidate (word order, typo, compact alternative)', () => {
+    const zeroVariants = [
+      {
+        id: 'mango-peach',
+        variant_name: 'Fruity Cellera Cartridge [ Mango Peach ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-MP',
+        manufacturer_sku: 'SKU-Z-MP',
+        available_qty: 100,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'potato',
+        variant_name: 'Fruity Cellera Cartridge [ Potato ]',
+        alternative_name: 'Butter Cake',
+        product_name: 'Cellera Zero',
+        product_code: 'Z-POT',
+        manufacturer_sku: 'SKU-Z-POT',
+        available_qty: 200,
+        inventory_classification: 'classified' as const,
+      },
+      {
+        id: 'strawberry-vanilla',
+        variant_name: 'Fruity Cellera Cartridge [ Strawberry Vanilla ]',
+        alternative_name: null,
+        product_name: 'Cellera Zero',
+        product_code: 'Z-SV',
+        manufacturer_sku: 'SKU-Z-SV',
+        available_qty: 300,
+        inventory_classification: 'classified' as const,
+      },
+    ]
+
+    expect(matchPastedOrder('Peach Mango - 50', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'mango-peach',
+      matchMethod: 'keyword',
+    })
+    expect(matchPastedOrder('ButterCake - 50', zeroVariants)[0]).toMatchObject({
+      status: 'alternative_match',
+      selectedVariantId: 'potato',
+      matchMethod: 'alternative_name',
+    })
+    expect(matchPastedOrder('Starwberry Vanilla - 100', zeroVariants)[0]).toMatchObject({
+      status: 'matched',
+      selectedVariantId: 'strawberry-vanilla',
+      matchMethod: 'keyword',
+    })
   })
 
   it('prioritizes exact Product Code and SKU matches', () => {

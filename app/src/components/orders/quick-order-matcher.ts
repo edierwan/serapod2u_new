@@ -314,6 +314,57 @@ const extractFlavourQuery = (query: string, productLine?: string) => {
     .join(' ')
 }
 
+const compactMatchName = (value: string) => normalizeMatchName(value).replace(/\s+/g, '')
+
+const flavourWordBag = (flavour: string) => words(flavour)
+  .filter(word => !GENERIC_ORDER_WORDS.has(word))
+  .sort()
+  .join(' ')
+
+const queryWordBag = (query: string, productLine?: string) => {
+  const flavourQuery = extractFlavourQuery(query, productLine) || normalizeMatchName(query)
+  return words(flavourQuery)
+    .filter(word => !GENERIC_ORDER_WORDS.has(word))
+    .sort()
+    .join(' ')
+}
+
+/** Peach Mango ↔ Mango Peach when both word sets are identical. */
+const wordsMatchRegardlessOfOrder = (
+  query: string,
+  variant: MatchableVariant,
+  productLine?: string,
+): boolean => {
+  const bag = queryWordBag(query, productLine)
+  const queryWordCount = bag ? bag.split(' ').length : 0
+  if (queryWordCount < 2) return false
+  return flavourNames(variant).some(flavour => flavourWordBag(flavour) === bag)
+}
+
+const matchesAlternativeCompact = (query: string, variant: MatchableVariant, productLine?: string): boolean => {
+  const queryCompact = compactMatchName(extractFlavourQuery(query, productLine) || query)
+  const alt = exactAlternativeName(variant)
+  if (!queryCompact || queryCompact.length < 4 || !alt) return false
+  return alt.replace(/\s+/g, '') === queryCompact
+}
+
+const isStrongFuzzySingleMatch = (query: string, variant: MatchableVariant, productLine?: string): boolean => {
+  const flavourQuery = extractFlavourQuery(query, productLine) || normalizeMatchName(query)
+  return fuzzyScore(flavourQuery, variant) >= 0.82
+}
+
+const isStrongSingleCandidateMatch = (
+  query: string,
+  variant: MatchableVariant,
+  method?: PasteMatchMethod,
+  productLine?: string,
+): boolean => {
+  if (wordsMatchRegardlessOfOrder(query, variant, productLine)) return true
+  if (matchesAlternativeCompact(query, variant, productLine)) return true
+  if ((method === 'fuzzy' || method === 'keyword') && isStrongFuzzySingleMatch(query, variant, productLine)) return true
+  return false
+}
+
 const relevanceScore = (query: string, variant: MatchableVariant) => {
   if (/\bDEVICE\b/i.test(variant.group_name || '')) return 0
   const queryWords = words(query)
@@ -397,6 +448,21 @@ export function resolveCatalogMatch(
     : []
   if (alternativeMatches.length > 0) {
     return { candidates: alternativeMatches.slice(0, 8), method: 'alternative_name' as const, totalMatches: alternativeMatches.length }
+  }
+
+  const compactQuery = compactMatchName(flavourQuery)
+  const compactAlternativeMatches = compactQuery
+    ? scopedVariants.filter((variant) => {
+        const alt = exactAlternativeName(variant)
+        return Boolean(alt) && alt.replace(/\s+/g, '') === compactQuery
+      })
+    : []
+  if (compactAlternativeMatches.length > 0) {
+    return {
+      candidates: compactAlternativeMatches.slice(0, 8),
+      method: 'alternative_name' as const,
+      totalMatches: compactAlternativeMatches.length,
+    }
   }
 
   const fallbackNameMatches = scopedVariants.filter(variant => exactFallbackNames(variant).includes(normalizedMatchName))
@@ -499,10 +565,14 @@ export function matchPastedOrder(text: string, variants: MatchableVariant[]): Pa
         || resolved.method === 'exact_name'
         || resolved.method === 'bracket_flavour'
         || resolved.method === 'alternative_name'
-      const autoSelectable = confidentMethod
-        && candidates.length === 1
-        && (resolved.totalMatches ?? candidates.length) === 1
-      const exactVariantId = autoSelectable ? candidates[0].id : undefined
+      const singleCandidate = candidates.length === 1 && (resolved.totalMatches ?? candidates.length) === 1
+      const strongSingleMatch = Boolean(
+        singleCandidate
+        && candidates[0]
+        && isStrongSingleCandidateMatch(name, candidates[0], resolved.method, activeSection || undefined),
+      )
+      const autoSelectable = (confidentMethod && singleCandidate) || strongSingleMatch
+      const exactVariantId = autoSelectable && candidates[0] ? candidates[0].id : undefined
       // Duplicate keys are section-aware so the same flavour can appear once under
       // HERO and once under ZERO without being treated as a paste duplicate.
       const sectionKey = activeSection || 'global'
